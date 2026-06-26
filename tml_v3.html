@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>TML · Sistema de Liquidaciones</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:'Segoe UI',Arial,sans-serif;background:#f0f2f5;color:#1a1a2e;min-height:100vh}
 header{background:#1a1a2e;color:#fff;padding:14px 28px;display:flex;align-items:center;justify-content:space-between;border-bottom:3px solid #e63946}
@@ -99,37 +100,11 @@ tr:hover td{background:#fafafa}
 .modal h3{font-size:15px;font-weight:800;margin-bottom:16px;color:#1a1a2e}
 .modal-actions{display:flex;gap:10px;margin-top:20px;justify-content:flex-end}
 @media(max-width:600px){.grid2,.grid3,.grid4{grid-template-columns:1fr}}
-
-/* Nav & Firebase status */
-.nav{display:flex;gap:8px}
-.nav a{color:#aaa;text-decoration:none;font-size:12px;padding:6px 12px;border-radius:5px;border:1px solid #333;transition:all .15s}
-.nav a:hover{color:#fff;border-color:#555}
-.nav a.active{color:#fff;background:#e63946;border-color:#e63946}
-.fb-status{font-size:11px;color:#aaa}
-.fb-ok{color:#2d6a4f}.fb-err{color:#e63946}
-/* Historial detail */
-.readonly-badge{background:#f0f2f5;border:1px solid #dde;border-radius:5px;padding:3px 8px;font-size:11px;color:#888}
-.det-section{margin-bottom:18px}
-.det-section h3{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:#888;margin-bottom:8px;padding-bottom:4px;border-bottom:1px solid #eee}
-.det-row{display:flex;justify-content:space-between;padding:6px 8px;font-size:13px;border-bottom:1px solid #f5f5f5;border-radius:4px}
-.det-row.cargo{color:#9b1c1c}.det-row.abono{color:#0a5233}
-.det-row.subtotal{font-weight:700;background:#f5f5f8;padding:8px;border-radius:6px;margin-top:4px}
-/* Login */
-.login-overlay{position:fixed;inset:0;background:#1a1a2e;z-index:99999;display:flex;align-items:center;justify-content:center}
-.login-box{background:#fff;border-radius:14px;padding:36px;width:340px;box-shadow:0 20px 60px rgba(0,0,0,.4);text-align:center}
-.login-box .logo{font-size:22px;font-weight:800;margin-bottom:4px}.login-box .logo span{color:#e63946}
-.login-box p{font-size:13px;color:#888;margin-bottom:20px}
-.login-box input{width:100%;border:1.5px solid #dde;border-radius:8px;padding:10px 14px;font-size:15px;text-align:center;letter-spacing:4px;margin-bottom:12px}
-.login-box input:focus{outline:none;border-color:#e63946}
-.login-box .btn-login{width:100%;padding:11px;background:#e63946;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer}
-.login-box .err{color:#e63946;font-size:12px;margin-top:8px;display:none}
-
+.nav{display:flex;gap:8px}.nav a{color:#aaa;text-decoration:none;font-size:12px;padding:6px 12px;border-radius:5px;border:1px solid #333;transition:all .15s}.nav a:hover{color:#fff;border-color:#555}.nav a.active{color:#fff;background:#e63946;border-color:#e63946}.fb-status{font-size:11px;color:#aaa}.fb-ok{color:#2d6a4f}.fb-err{color:#e63946}.readonly-badge{background:#f0f2f5;border:1px solid #dde;border-radius:5px;padding:3px 8px;font-size:11px;color:#888}.det-section{margin-bottom:18px}.det-section h3{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:#888;margin-bottom:8px;padding-bottom:4px;border-bottom:1px solid #eee}.det-row{display:flex;justify-content:space-between;padding:6px 8px;font-size:13px;border-bottom:1px solid #f5f5f5;border-radius:4px}.det-row.cargo{color:#9b1c1c}.det-row.abono{color:#0a5233}.det-row.subtotal{font-weight:700;background:#f5f5f8;padding:8px;border-radius:6px;margin-top:4px}.login-overlay{position:fixed;inset:0;background:#1a1a2e;z-index:99999;display:flex;align-items:center;justify-content:center}.login-box{background:#fff;border-radius:14px;padding:36px;width:340px;box-shadow:0 20px 60px rgba(0,0,0,.4);text-align:center}.login-box .logo{font-size:22px;font-weight:800;margin-bottom:4px}.login-box .logo span{color:#e63946}.login-box p{font-size:13px;color:#888;margin-bottom:20px}.login-box input{width:100%;border:1.5px solid #dde;border-radius:8px;padding:10px 14px;font-size:15px;text-align:center;letter-spacing:4px;margin-bottom:12px}.login-box input:focus{outline:none;border-color:#e63946}.login-box .btn-login{width:100%;padding:11px;background:#e63946;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer}.login-box .err{color:#e63946;font-size:12px;margin-top:8px;display:none}
+</style>
 </head>
 <body>
 
-<!-- ═══════════════════════════════════════
-     PANTALLA DE LOGIN
-═══════════════════════════════════════ -->
 <div class="login-overlay" id="loginOverlay">
   <div class="login-box">
     <div class="logo">MUDANZAS <span>TML</span></div>
@@ -140,11 +115,8 @@ tr:hover td{background:#fafafa}
   </div>
 </div>
 
-<!-- ═══════════════════════════════════════
-     HEADER UNIFICADO
-═══════════════════════════════════════ -->
 <header id="mainHeader" style="display:none">
-  <div><div class="logo">MUDANZAS <span>TML</span> <span id="moduloLabel" style="font-size:13px;font-weight:400;color:#aaa;margin-left:8px"></span></div></div>
+  <div><div class="logo">MUDANZAS <span>TML</span><span id="moduloLabel" style="font-size:13px;font-weight:400;color:#aaa;margin-left:8px"></span></div></div>
   <div style="display:flex;align-items:center;gap:10px">
     <span class="fb-status" id="fbStatus">⏳ Conectando...</span>
     <span id="headerInfo" style="font-size:12px;color:#aaa"></span>
@@ -157,9 +129,6 @@ tr:hover td{background:#fafafa}
   </div>
 </header>
 
-<!-- ═══════════════════════════════════════
-     MÓDULO: ANTICIPOS (?m=ant)
-═══════════════════════════════════════ -->
 <div id="mod-ant" class="modulo" style="display:none">
 <div class="container">
 
@@ -561,10 +530,6 @@ function exportarCSV(){
 }
 </script>
 </div>
-
-<!-- ═══════════════════════════════════════
-     MÓDULO: INGRESOS (?m=ing)
-═══════════════════════════════════════ -->
 <div id="mod-ing" class="modulo" style="display:none">
 <div class="container">
 
@@ -906,10 +871,6 @@ function exportarCSV(){
 
 </script>
 </div>
-
-<!-- ═══════════════════════════════════════
-     MÓDULO: LIQUIDACIONES (?m=liq)
-═══════════════════════════════════════ -->
 <div id="mod-liq" class="modulo" style="display:none">
 <div class="tabs">
   <div class="tab active" onclick="showTab(0)">🚛 Liquidación</div>
@@ -2391,10 +2352,6 @@ function cerrarLiquidacion(){
 }
 </script>
 </div>
-
-<!-- ═══════════════════════════════════════
-     MÓDULO: HISTORIAL (?m=hist)
-═══════════════════════════════════════ -->
 <div id="mod-hist" class="modulo" style="display:none">
 <div class="container">
 
@@ -2723,7 +2680,6 @@ function cerrarDetalle(){
 </script>
 </div>
 
-<!-- Firebase compat -->
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
 <script>
@@ -2746,40 +2702,28 @@ window.onFBReady=function(cb){if(window._fbInit)cb();else window._fbCallbacks.pu
     window._fbInit=true;
     window._fbCallbacks.forEach(function(cb){try{cb();}catch(e){}});
     window._fbCallbacks=[];
-    setTimeout(function(){window.dispatchEvent(new Event('firebase-ready'));},0);
   }catch(e){console.error('Firebase:',e);}
 })();
 </script>
 
-<!-- ═══════════════════════════════════════
-     ROUTER + LOGIN
-═══════════════════════════════════════ -->
 <script>
-var PASSWORDS = {ant:'ant2026',ing:'ing2026',liq:'liq2026',hist:'hist2026'};
-var MODULOS = {
-  ant:'📋 Anticipos', ing:'📄 Ingresos',
-  liq:'🚛 Liquidaciones', hist:'🗂️ Historial'
-};
+var PASSWORDS={ant:'ant2026',ing:'ing2026',liq:'liq2026',hist:'hist2026'};
+var MODULOS={ant:'· Anticipos',ing:'· Ingresos',liq:'· Liquidaciones',hist:'· Historial'};
 var SUPERVISOR_PASS='tml2026';
 var LIMITE_GASTO_SIN_FACTURA=500;
-
-var modActual = (new URLSearchParams(window.location.search).get('m'))||'liq';
-if(!PASSWORDS[modActual]) modActual='liq';
-
-// Verificar si ya tiene sesión para este módulo
-var sesionKey='tml_sesion_'+modActual;
-var tieneSesion=sessionStorage.getItem(sesionKey)==='ok';
+var modActual=(new URLSearchParams(window.location.search).get('m'))||'liq';
+if(!PASSWORDS[modActual])modActual='liq';
+var tieneSesion=sessionStorage.getItem('tml_ses_'+modActual)==='ok';
 
 function mostrarLogin(){
   document.getElementById('loginOverlay').style.display='flex';
-  document.getElementById('loginModulo').textContent=MODULOS[modActual]||'';
+  document.getElementById('loginModulo').textContent={ant:'Anticipos',ing:'Ingresos',liq:'Liquidaciones',hist:'Historial'}[modActual]||'';
   setTimeout(function(){document.getElementById('loginPass').focus();},100);
 }
-
 function verificarLogin(){
   var pass=document.getElementById('loginPass').value;
   if(pass===PASSWORDS[modActual]){
-    sessionStorage.setItem(sesionKey,'ok');
+    sessionStorage.setItem('tml_ses_'+modActual,'ok');
     document.getElementById('loginOverlay').style.display='none';
     iniciarModulo();
   } else {
@@ -2788,25 +2732,17 @@ function verificarLogin(){
     document.getElementById('loginPass').focus();
   }
 }
-
-document.getElementById('loginPass').addEventListener('keydown',function(e){
-  if(e.key==='Enter')verificarLogin();
-});
-
 function iniciarModulo(){
-  // Mostrar header
   document.getElementById('mainHeader').style.display='flex';
-  document.getElementById('moduloLabel').textContent='· '+MODULOS[modActual];
-  // Marcar nav activo
+  document.getElementById('moduloLabel').textContent=MODULOS[modActual]||'';
   ['ant','ing','liq','hist'].forEach(function(m){
-    var el=document.getElementById('nav'+m.charAt(0).toUpperCase()+m.slice(1));
+    var id='nav'+m.charAt(0).toUpperCase()+m.slice(1);
+    var el=document.getElementById(id);
     if(el)el.className=m===modActual?'active':'';
   });
-  // Mostrar módulo
   document.querySelectorAll('.modulo').forEach(function(d){d.style.display='none';});
   var mod=document.getElementById('mod-'+modActual);
   if(mod)mod.style.display='block';
-  // Iniciar Firebase y módulo
   window.onFBReady(function(){
     document.getElementById('fbStatus').textContent='✅ Conectado';
     document.getElementById('fbStatus').className='fb-status fb-ok';
@@ -2822,14 +2758,13 @@ function iniciarModulo(){
     }
   },8000);
 }
-
-// Arrancar
-if(tieneSesion){iniciarModulo();}
-else{mostrarLogin();}
+if(tieneSesion){iniciarModulo();}else{mostrarLogin();}
 </script>
 
-<!-- ═══ JS MÓDULO ANTICIPOS ═══ -->
 <script>
+// ══ ANTICIPOS ══
+var anticiposDB={};
+var fbReady=true;
 function initAnt(){
 
 const OPERADORES=[
@@ -2847,7 +2782,7 @@ const OPERADORES=[
 ];
 
 const $=id=>document.getElementById(id);
-const fmt=(n,d=2)=>'$'+parseFloat(n||0).toLocaleString('es-MX',{minimumFractionDigits:d,maximumFractionDigits:d
+const fmt=(n,d=2)=>'$'+parseFloat(n||0).toLocaleString('es-MX',{minimumFractionDigits:d,maximumFractionDigits:d});
 const hoy=()=>new Date().toISOString().slice(0,10);
 const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2);
 function dlBlob(c,n,t){const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([c],{type:t}));a.download=n;a.click();}
@@ -2860,7 +2795,7 @@ function matchOp(concepto){
   OPERADORES.forEach(op=>{
     const s=matchScore(concepto,op.nombre);
     if(s>bestS&&s>=0.45){bestS=s;best=op;}
-  
+  });
   return best;
 }
 
@@ -2877,8 +2812,8 @@ function initSelects(){
       const o=document.createElement('option');
       o.value=op.unidad;o.textContent=op.unidad+' · '+op.nombre;
       s.appendChild(o);
-    
-  
+    });
+  });
 }
 initSelects();
 
@@ -2894,15 +2829,15 @@ window.onFBReady(async function(){
   // Escuchar cambios en tiempo real
   window.FB.listen('estado','anticiposDB',data=>{
     if(data&&data.data){anticiposDB=JSON.parse(data.data);renderAnticipos();}
-  
-
+  });
+});
 setTimeout(()=>{
   if(!fbReady){$('fbStatus').textContent='❌ Sin conexión';$('fbStatus').className='fb-status fb-err';}
 },6000);
 
 function guardar(){
   if(!fbReady)return;
-  window.FB.set('estado','anticiposDB',{data:JSON.stringify(anticiposDB)
+  window.FB.set('estado','anticiposDB',{data:JSON.stringify(anticiposDB)});
 }
 
 // ── PARSERS ─────────────────────────────────────────────
@@ -2921,7 +2856,7 @@ function parseCSV(text){
     if((cols[iCA]||'').trim()!=='-')continue;
     const fecha=parseFechaCSV(cols[iFecha]);
     if(!fecha)continue;
-    rows.push({fecha,importe:parseFloat((cols[iImporte]||'0').replace(/,/g,'')),concepto:cols[iConcepto]||''
+    rows.push({fecha,importe:parseFloat((cols[iImporte]||'0').replace(/,/g,'')),concepto:cols[iConcepto]||''});
   }
   return rows;
 }
@@ -2940,7 +2875,7 @@ function parseTXT(text){
     if(!cargo||parseFloat(cargo)<=0)continue;
     const fecha=parseFechaTXT(fechaRaw);
     if(!fecha)continue;
-    rows.push({fecha,importe:parseFloat(cargo),concepto
+    rows.push({fecha,importe:parseFloat(cargo),concepto});
   }
   return rows;
 }
@@ -2971,9 +2906,9 @@ function procesarRows(rows,fname){
     // Verificar duplicado
     const existe=anticiposDB[op.unidad].some(a=>a.fecha===r.fecha&&Math.abs(a.importe-r.importe)<0.01&&norm(a.concepto)===norm(r.concepto));
     if(existe){duplicados++;return;}
-    anticiposDB[op.unidad].push({id:uid(),fecha:r.fecha,importe:r.importe,concepto:r.concepto,estado:'pendiente',liqNum:null,origen:'archivo'
+    anticiposDB[op.unidad].push({id:uid(),fecha:r.fecha,importe:r.importe,concepto:r.concepto,estado:'pendiente',liqNum:null,origen:'archivo'});
     nuevos++;
-  
+  });
   guardar();
   renderAnticipos();
   $('uploadInfo').style.display='block';
@@ -2988,9 +2923,9 @@ function procesarRows(rows,fname){
 // ── DRAG & DROP ──────────────────────────────────────────
 function setupDrop(dzId,inputId,parser){
   const dz=$(dzId);
-  dz.addEventListener('dragover',e=>{e.preventDefault();dz.classList.add('drag')
+  dz.addEventListener('dragover',e=>{e.preventDefault();dz.classList.add('drag')});
   dz.addEventListener('dragleave',()=>dz.classList.remove('drag'));
-  dz.addEventListener('drop',e=>{e.preventDefault();dz.classList.remove('drag');handleFile(e.dataTransfer.files[0],parser)
+  dz.addEventListener('drop',e=>{e.preventDefault();dz.classList.remove('drag');handleFile(e.dataTransfer.files[0],parser)});
   $(inputId).addEventListener('change',e=>handleFile(e.target.files[0],parser));
 }
 setupDrop('dzCSV','fCSV',parseCSV);
@@ -3014,7 +2949,7 @@ function agregarManual(){
   const fecha=$('mFecha').value||hoy();
   const concepto=$('mConcepto').value||$('mForma').value;
   if(!anticiposDB[unidad])anticiposDB[unidad]=[];
-  anticiposDB[unidad].push({id:uid(),fecha,importe,concepto,estado:'pendiente',liqNum:null,origen:'manual'
+  anticiposDB[unidad].push({id:uid(),fecha,importe,concepto,estado:'pendiente',liqNum:null,origen:'manual'});
   guardar();
   renderAnticipos();
   hideManual();
@@ -3037,9 +2972,9 @@ function renderAnticipos(){
       if(filtDesde&&a.fecha<filtDesde)return;
       if(filtHasta&&a.fecha>filtHasta)return;
       if(filtEst&&a.estado!==filtEst)return;
-      todos.push({...a,unidad:parseInt(u),opNombre:op?op.nombre:'?'
-    
-  
+      todos.push({...a,unidad:parseInt(u),opNombre:op?op.nombre:'?'});
+    });
+  });
   todos.sort((a,b)=>b.fecha.localeCompare(a.fecha));
 
   // Stats
@@ -3060,7 +2995,7 @@ function renderAnticipos(){
   todos.forEach(a=>{
     if(!porOp[a.unidad])porOp[a.unidad]={nombre:a.opNombre,unidad:a.unidad,items:[]};
     porOp[a.unidad].items.push(a);
-  
+  });
 
   const cont=$('bloqueAnticipos');
   if(!todos.length){cont.innerHTML='<div style="text-align:center;padding:30px;color:#aaa">Sin anticipos que coincidan con los filtros.</div>';return;}
@@ -3083,7 +3018,7 @@ function renderAnticipos(){
       <tbody>${rows}</tbody>
     </table></div>`;
     cont.appendChild(div);
-  
+  });
 }
 
 function eliminarAnticipo(unidad,id){
@@ -3103,8 +3038,8 @@ function exportarCSV(){
     const op=OPERADORES.find(o=>o.unidad===parseInt(u));
     (anticiposDB[u]||[]).forEach(a=>{
       csv+=`${u},"${op?op.nombre:''}", "${a.fecha}","${a.concepto}",${a.importe},${a.estado},${a.liqNum||''}\n`;
-    
-  
+    });
+  });
   dlBlob(csv,'Anticipos_TML_'+hoy()+'.csv','text/csv');
 }
 
@@ -3115,8 +3050,9 @@ function exportarCSV(){
 }
 </script>
 
-<!-- ═══ JS MÓDULO INGRESOS ═══ -->
 <script>
+// ══ INGRESOS ══
+var ingresosDB=[];
 function initIng(){
 
 const OPERADORES=[
@@ -3344,8 +3280,8 @@ function exportarCSV(){
 }
 </script>
 
-<!-- ═══ JS MÓDULO LIQUIDACIONES ═══ -->
 <script>
+// ══ LIQUIDACIONES ══
 
 // ══════════════════════════════════════════════
 // CATÁLOGO
@@ -4502,7 +4438,7 @@ function generarReporte(){
 }
 
 // Cargar estado cuando Firebase esté listo
-function initLiq(){
+window.onFBReady(function(){
   fbReady = true;
   cargarEstado();
 });
@@ -4557,11 +4493,24 @@ function cerrarLiquidacion(){
   showTab(0);
 }
 
+function initLiq(){
+  cargarEstado();
+}
 </script>
 
-<!-- ═══ JS MÓDULO HISTORIAL ═══ -->
 <script>
+// ══ HISTORIAL ══
+var historialDB=[];
 function initHist(){
+  (async function(){
+    historialDB=await window.FB.getAll('historial');
+    var a=await window.FB.get('estado','anticiposDB');
+    if(a&&a.data)anticiposDB=JSON.parse(a.data);
+    var i=await window.FB.get('estado','ingresosDB');
+    if(i&&i.data)ingresosDB=JSON.parse(i.data);
+    buscar();
+  })();
+}
 
 const OPERADORES=[
   {unidad:4521,nombre:'ALEJANDRO RODRIGUEZ GONZALEZ'},{unidad:4522,nombre:'ANDRÉS MARÍA RAMOS'},
@@ -4572,8 +4521,8 @@ const OPERADORES=[
   {unidad:535,nombre:'ISMAEL CONSTANTINO CABRERA'},
 ];
 const $=id=>document.getElementById(id);
-const fmt=(n,d=2)=>'$'+parseFloat(n||0).toLocaleString('es-MX',{minimumFractionDigits:d,maximumFractionDigits:d
-const fmtN=(n,d=2)=>parseFloat(n||0).toLocaleString('es-MX',{minimumFractionDigits:d,maximumFractionDigits:d
+const fmt=(n,d=2)=>'$'+parseFloat(n||0).toLocaleString('es-MX',{minimumFractionDigits:d,maximumFractionDigits:d});
+const fmtN=(n,d=2)=>parseFloat(n||0).toLocaleString('es-MX',{minimumFractionDigits:d,maximumFractionDigits:d});
 
 let historialDB=[];
 let anticiposDB={};
@@ -4581,7 +4530,7 @@ let ingresosDB=[];
 
 // Init selects
 const s=$('busOp');
-OPERADORES.forEach(op=>{const o=document.createElement('option');o.value=op.unidad;o.textContent=op.unidad+' · '+op.nombre;s.appendChild(o);
+OPERADORES.forEach(op=>{const o=document.createElement('option');o.value=op.unidad;o.textContent=op.unidad+' · '+op.nombre;s.appendChild(o);});
 
 window.onFBReady(async function(){
   $('fbStatus').textContent='✅ Conectado';$('fbStatus').className='fb-status fb-ok';
@@ -4593,7 +4542,7 @@ window.onFBReady(async function(){
   const i=await window.FB.get('estado','ingresosDB');
   if(i&&i.data)ingresosDB=JSON.parse(i.data);
   buscar();
-
+});
 setTimeout(()=>{if($('fbStatus').textContent==='⏳ Conectando...'){$('fbStatus').textContent='❌ Sin conexión';$('fbStatus').className='fb-status fb-err';}},6000);
 
 function buscar(){
@@ -4608,7 +4557,7 @@ function buscar(){
     if(filtDesde&&l.salida<filtDesde)return false;
     if(filtHasta&&l.llegada>filtHasta)return false;
     return true;
-  
+  });
 
   $('countLiq').textContent=filtrados.length+' liquidaciones';
   const tb=$('tbHistorial');tb.innerHTML='';
@@ -4635,7 +4584,7 @@ function buscar(){
       <td><span class="badge ${saldo>=0?'bg-green':'bg-red'}">${saldo>=0?'A favor op.':'En contra op.'}</span></td>
       <td><button class="btn btn-sm" style="background:#f0f2f5;border:1px solid #dde;cursor:pointer;border-radius:5px;padding:4px 10px;font-size:11px">Ver →</button></td>
     </tr>`;
-  
+  });
 }
 
 function limpiarBusqueda(){
@@ -4754,13 +4703,6 @@ function cerrarDetalle(){
   $('cardLista').style.display='block';
 }
 
-  historialDB=await window.FB.getAll('historial');
-  var a=await window.FB.get('estado','anticiposDB');
-  if(a&&a.data)anticiposDB=JSON.parse(a.data);
-  var i=await window.FB.get('estado','ingresosDB');
-  if(i&&i.data)ingresosDB=JSON.parse(i.data);
-  buscar();
-}
 </script>
 
 </body>
