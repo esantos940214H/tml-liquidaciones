@@ -883,7 +883,7 @@ function exportarCSV(){
 <!-- ══════════════════════════════════════════════
      2: LIQUIDACIÓN
 ══════════════════════════════════════════════ -->
-<div id="panel-0" class="panel"><div class="container">
+<div id="panel-0" class="panel active"><div class="container">
   <div class="card">
     <div class="card-title">🚛 Encabezado de liquidación</div>
     <div class="grid2" style="margin-bottom:14px">
@@ -1322,10 +1322,12 @@ function limpiarEstado(){
 // TABS
 // ══════════════════════════════════════════════
 function showTab(i){
-  document.querySelectorAll('.panel').forEach((p,j)=>p.classList.toggle('active',j===i));
-  document.querySelectorAll('.tab').forEach((t,j)=>t.classList.toggle('active',j===i));
+  var modLiq=document.getElementById('mod-liq');
+  if(modLiq){
+    modLiq.querySelectorAll('.panel').forEach(function(p,j){p.classList.toggle('active',j===i);});
+    modLiq.querySelectorAll('.tab').forEach(function(t,j){t.classList.toggle('active',j===i);});
+  }
   if(i===4)generarReporte();
-  
 }
 
 // ══════════════════════════════════════════════
@@ -3464,10 +3466,12 @@ function limpiarEstado(){
 // TABS
 // ══════════════════════════════════════════════
 function showTab(i){
-  document.querySelectorAll('.panel').forEach((p,j)=>p.classList.toggle('active',j===i));
-  document.querySelectorAll('.tab').forEach((t,j)=>t.classList.toggle('active',j===i));
+  var modLiq=document.getElementById('mod-liq');
+  if(modLiq){
+    modLiq.querySelectorAll('.panel').forEach(function(p,j){p.classList.toggle('active',j===i);});
+    modLiq.querySelectorAll('.tab').forEach(function(t,j){t.classList.toggle('active',j===i);});
+  }
   if(i===4)generarReporte();
-  
 }
 
 // ══════════════════════════════════════════════
@@ -4494,7 +4498,43 @@ function cerrarLiquidacion(){
 }
 
 function initLiq(){
-  cargarEstado();
+  // Cargar datos desde Firebase directamente
+  (async function(){
+    if($('headerInfo'))$('headerInfo').textContent='Cargando datos...';
+    var a=await window.FB.get('estado','anticiposDB');
+    if(a&&a.data)anticiposDB=JSON.parse(a.data);
+    var i=await window.FB.get('estado','ingresosDB');
+    if(i&&i.data)ingresosDB=JSON.parse(i.data);
+    var ar=await window.FB.get('estado','arrastres');
+    if(ar&&ar.data)arrastres=JSON.parse(ar.data);
+    var cfg=await window.FB.get('estado','config');
+    if(cfg&&cfg.ultimaLiqNum)ultimaLiqNum=cfg.ultimaLiqNum;
+    var l=await window.FB.get('estado','liqActiva');
+    if(l&&l.data){
+      liq=JSON.parse(l.data);
+      if(liq)restaurarUILiquidacion();
+    }
+    if($('headerInfo'))$('headerInfo').textContent=liq?'Liq. #'+liq.num+' · '+liq.op.nombre:'Sin liquidación activa';
+    // Mostrar el panel de liquidación
+    var panelLiq=document.querySelector('#mod-liq .panel');
+    // Escuchar cambios
+    window.FB.listen('estado','anticiposDB',function(data){
+      if(data&&data.data){anticiposDB=JSON.parse(data.data);}
+    });
+    window.FB.listen('estado','ingresosDB',function(data){
+      if(data&&data.data){ingresosDB=JSON.parse(data.data);}
+    });
+    window.FB.listen('estado','liqActiva',function(data){
+      if(data&&data.data){
+        var lr=JSON.parse(data.data);
+        if(!liq||(liq&&liq.num===lr.num)){
+          liq=lr;
+          if($('headerInfo'))$('headerInfo').textContent='Liq. #'+liq.num+' · '+liq.op.nombre;
+        }
+      }
+    });
+    console.log('Liq init: anticipos='+Object.keys(anticiposDB).length+' ingresos='+ingresosDB.length);
+  })();
 }
 </script>
 
