@@ -1,0 +1,1497 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TML · Liquidaciones v3</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Segoe UI',Arial,sans-serif;background:#f0f2f5;color:#1a1a2e;min-height:100vh}
+header{background:#1a1a2e;color:#fff;padding:14px 28px;display:flex;align-items:center;justify-content:space-between;border-bottom:3px solid #e63946}
+.logo{font-size:19px;font-weight:800;letter-spacing:1px}.logo span{color:#e63946}
+.sub{font-size:11px;color:#aaa;letter-spacing:2px;text-transform:uppercase;margin-top:2px}
+.header-info{font-size:12px;color:#aaa;text-align:right}
+.tabs{display:flex;background:#fff;border-bottom:2px solid #e8e8ee;padding:0 24px;overflow-x:auto;gap:0}
+.tab{padding:13px 18px;font-size:11px;font-weight:700;cursor:pointer;border-bottom:3px solid transparent;margin-bottom:-2px;color:#888;transition:all .15s;text-transform:uppercase;letter-spacing:1px;white-space:nowrap;display:flex;align-items:center;gap:6px}
+.tab.active{color:#e63946;border-bottom-color:#e63946}.tab:hover{color:#1a1a2e}
+.tab .badge-tab{background:#e63946;color:#fff;border-radius:10px;padding:1px 6px;font-size:10px;font-weight:800}
+.panel{display:none}.panel.active{display:block}
+.container{max-width:1150px;margin:0 auto;padding:20px 16px}
+.card{background:#fff;border-radius:10px;box-shadow:0 2px 12px rgba(0,0,0,.07);padding:20px 24px;margin-bottom:16px}
+.card-title{font-size:12px;font-weight:700;color:#1a1a2e;margin-bottom:14px;text-transform:uppercase;letter-spacing:1px;display:flex;align-items:center;justify-content:space-between}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px}
+.grid4{display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:12px}
+.field{display:flex;flex-direction:column;gap:4px}
+.field label{font-size:11px;font-weight:700;color:#666;text-transform:uppercase;letter-spacing:.5px}
+.field input,.field select,.field textarea{border:1.5px solid #dde;border-radius:6px;padding:8px 10px;font-size:13px;color:#1a1a2e;background:#fafafa;width:100%}
+.field input:focus,.field select:focus{outline:none;border-color:#e63946}
+.field input[readonly]{background:#f0f2f5;color:#888}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end}
+.btn{padding:8px 18px;border-radius:6px;border:none;font-size:12px;font-weight:700;cursor:pointer;transition:all .15s;text-transform:uppercase;letter-spacing:.5px;display:inline-flex;align-items:center;gap:5px}
+.btn-red{background:#e63946;color:#fff}.btn-red:hover{background:#c1121f}
+.btn-dark{background:#1a1a2e;color:#fff}.btn-dark:hover{background:#0d0d1a}
+.btn-out{background:#fff;color:#1a1a2e;border:1.5px solid #1a1a2e}.btn-out:hover{background:#f0f2f5}
+.btn-green{background:#2d6a4f;color:#fff}.btn-green:hover{background:#1b4332}
+.btn-yellow{background:#f59e0b;color:#fff}.btn-yellow:hover{background:#d97706}
+.btn:disabled{opacity:.35;cursor:not-allowed}
+.btn-sm{padding:5px 11px;font-size:11px}
+.upload-zone{border:2px dashed #c0c4cc;border-radius:8px;padding:24px;text-align:center;cursor:pointer;transition:all .2s;background:#fafafa}
+.upload-zone:hover,.upload-zone.drag{border-color:#e63946;background:#fff5f5}
+.upload-zone .icon{font-size:26px;margin-bottom:6px}
+.upload-zone p{color:#666;font-size:13px}
+.alert{padding:9px 13px;border-radius:7px;font-size:12px;margin-bottom:10px}
+.alert-info{background:#e8f4fd;color:#0369a1;border:1px solid #bae6fd}
+.alert-ok{background:#d1e7dd;color:#0a5233;border:1px solid #a3cfbb}
+.alert-warn{background:#fffbeb;color:#92400e;border:1px solid #fde68a}
+.alert-err{background:#fde8e8;color:#9b1c1c;border:1px solid #f9a8a8}
+.tbl-wrap{overflow-x:auto}
+table{width:100%;border-collapse:collapse;min-width:400px;font-size:13px}
+th{background:#1a1a2e;color:#fff;padding:8px 10px;font-size:11px;text-transform:uppercase;letter-spacing:.7px;text-align:left;font-weight:600}
+th.r{text-align:right}
+td{padding:7px 10px;border-bottom:1px solid #f0f0f0;vertical-align:middle}
+tr:last-child td{border-bottom:none}
+tr:hover td{background:#fafafa}
+.r{text-align:right}.num{font-family:monospace;font-weight:600}
+.badge{display:inline-block;border-radius:4px;padding:2px 8px;font-size:10px;font-weight:700;white-space:nowrap}
+.bg-green{background:#d1e7dd;color:#0a5233;border:1px solid #a3cfbb}
+.bg-yellow{background:#fff3cd;color:#856404;border:1px solid #ffc107}
+.bg-red{background:#fde8e8;color:#9b1c1c;border:1px solid #f9a8a8}
+.bg-blue{background:#dbeafe;color:#1e40af;border:1px solid #93c5fd}
+.bg-gray{background:#f0f2f5;color:#555;border:1px solid #dde}
+.bg-purple{background:#ede9fe;color:#5b21b6;border:1px solid #c4b5fd}
+.ops-grid{display:flex;flex-wrap:wrap;gap:7px}
+.op-tag{background:#f0f2f5;border:1.5px solid #dde;border-radius:20px;padding:5px 13px;font-size:12px;cursor:pointer;transition:all .15s;user-select:none}
+.op-tag.active{background:#1a1a2e;color:#fff;border-color:#1a1a2e}
+.stats{display:flex;gap:14px;flex-wrap:wrap;margin-bottom:14px}
+.stat .n{font-size:20px;font-weight:800;color:#e63946}
+.stat .l{font-size:10px;color:#888;text-transform:uppercase;letter-spacing:1px}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin-top:14px}
+.kpi{background:#f5f5f8;border-radius:8px;padding:12px 14px}
+.kpi .v{font-size:17px;font-weight:800;color:#1a1a2e}
+.kpi .v.red{color:#e63946}.kpi .v.green{color:#2d6a4f}
+.kpi .k{font-size:10px;color:#888;text-transform:uppercase;letter-spacing:.7px;margin-top:2px}
+.sep{height:1px;background:#eee;margin:14px 0}
+.input-sm{border:1px solid #c0c4cc;border-radius:4px;padding:4px 7px;font-size:12px;text-align:right;width:90px}
+.input-sm:focus{outline:none;border-color:#e63946}
+.op-block{margin-bottom:20px}
+.op-bar{display:flex;justify-content:space-between;align-items:center;background:#1a1a2e;color:#fff;padding:9px 15px;border-radius:8px 8px 0 0;font-weight:700;font-size:13px}
+.op-bar .tot{color:#ffd166}
+.sin-match{background:#fff8f0;border:1px solid #ffd9a0;border-radius:8px;padding:10px 14px;margin-top:10px}
+.sin-match h4{font-size:11px;text-transform:uppercase;letter-spacing:1px;color:#c87f00;margin-bottom:6px}
+.sin-match ul{list-style:none;display:flex;flex-wrap:wrap;gap:5px}
+.sin-match li{background:#fff;border:1px solid #ffd9a0;border-radius:4px;padding:2px 8px;font-size:11px;color:#555}
+/* REPORTE */
+.rep-row{display:flex;justify-content:space-between;padding:7px 10px;font-size:13px;border-bottom:1px solid #f5f5f5;border-radius:4px}
+.rep-row:last-child{border-bottom:none}
+.rep-row.subtotal{font-weight:700;background:#f5f5f8;margin:4px 0;border-radius:6px}
+.rep-row.cargo{color:#9b1c1c}
+.rep-row.abono{color:#0a5233}
+.saldo-box{border-radius:10px;padding:16px 20px;display:flex;justify-content:space-between;align-items:center;margin-top:14px}
+.saldo-fav{background:#d1e7dd;color:#0a5233}
+.saldo-con{background:#fde8e8;color:#9b1c1c}
+.saldo-box .monto{font-size:24px;font-weight:800}
+.saldo-box .label{font-size:13px;font-weight:700}
+/* MODAL */
+.modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:1000;align-items:center;justify-content:center}
+.modal-overlay.open{display:flex}
+.modal{background:#fff;border-radius:12px;padding:28px;min-width:340px;max-width:500px;width:90%;box-shadow:0 8px 40px rgba(0,0,0,.2)}
+.modal h3{font-size:15px;font-weight:800;margin-bottom:16px;color:#1a1a2e}
+.modal-actions{display:flex;gap:10px;margin-top:20px;justify-content:flex-end}
+@media(max-width:600px){.grid2,.grid3,.grid4{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<header>
+  <div><div class="logo">MUDANZAS <span>TML</span></div><div class="sub">Sistema de Liquidaciones v3</div></div>
+  <div class="header-info" id="headerInfo">Sin liquidación activa</div>
+</header>
+
+<div class="tabs">
+  <div class="tab active" onclick="showTab(0)">📋 Anticipos <span class="badge-tab" id="badgeAnt" style="display:none">0</span></div>
+  <div class="tab" onclick="showTab(1)">📄 Ingresos <span class="badge-tab" id="badgeIng" style="display:none">0</span></div>
+  <div class="tab" onclick="showTab(2)">🚛 Liquidación</div>
+  <div class="tab" onclick="showTab(3)">⛽ Diesel</div>
+  <div class="tab" onclick="showTab(4)">🛣️ Autopistas</div>
+  <div class="tab" onclick="showTab(5)">🧾 Gastos</div>
+  <div class="tab" onclick="showTab(6)">💰 Reporte</div>
+</div>
+
+<!-- ══════════════════════════════════════════════
+     0: ANTICIPOS
+══════════════════════════════════════════════ -->
+<div id="panel-0" class="panel active"><div class="container">
+  <div class="card">
+    <div class="card-title">👥 Operadores <span style="font-size:11px;color:#aaa;font-weight:400">Clic para excluir</span></div>
+    <div class="ops-grid" id="opsTags"></div>
+  </div>
+  <div class="card">
+    <div class="card-title">📂 Cargar estado de cuenta BBVA (CSV)</div>
+    <div class="upload-zone" id="dzCSV" onclick="document.getElementById('fCSV').click()">
+      <div class="icon">📂</div><p><strong>Arrastra el CSV del banco</strong> o haz clic para seleccionar</p>
+    </div>
+    <input type="file" id="fCSV" accept=".csv,.txt" style="display:none">
+    <div id="csvInfo" style="display:none;margin-top:10px"></div>
+  </div>
+  <div class="card" id="cardFiltrosA" style="display:none">
+    <div class="card-title">🔍 Filtros</div>
+    <div class="row">
+      <div class="field"><label>Desde</label><input type="date" id="aDesde"></div>
+      <div class="field"><label>Hasta</label><input type="date" id="aHasta"></div>
+      <button class="btn btn-red" onclick="procesarAnticipos()">Analizar</button>
+      <button class="btn btn-dark btn-sm" id="btnExpA" onclick="exportAntCSV()" disabled>Exportar CSV</button>
+    </div>
+  </div>
+  <div id="antRes" style="display:none">
+    <div class="card">
+      <div class="stats">
+        <div class="stat"><div class="n" id="aSOps">0</div><div class="l">Operadores</div></div>
+        <div class="stat"><div class="n" id="aSMovs">0</div><div class="l">Anticipos</div></div>
+        <div class="stat"><div class="n" id="aSTotal">$0</div><div class="l">Total</div></div>
+        <div class="stat"><div class="n" id="aSExcl">0</div><div class="l">Saldos excl.</div></div>
+      </div>
+      <div id="bloqueOps"></div>
+      <div class="sin-match" id="sinMatch" style="display:none"><h4>⚠️ Sin operador identificado</h4><ul id="listaSM"></ul></div>
+    </div>
+  </div>
+</div></div>
+
+<!-- ══════════════════════════════════════════════
+     1: INGRESOS
+══════════════════════════════════════════════ -->
+<div id="panel-1" class="panel"><div class="container">
+  <div class="card">
+    <div class="card-title">📄 Registrar ingreso / viaje</div>
+    <div class="row" style="margin-bottom:14px">
+      <div class="field"><label>Operador</label>
+        <select id="ingOp"><option value="">— Selecciona —</option></select>
+      </div>
+      <div style="display:flex;gap:10px">
+        <div class="upload-zone" style="padding:14px 20px;flex:1;min-width:180px" id="dzXML" onclick="document.getElementById('fXML').click()">
+          <div class="icon" style="font-size:20px">📄</div>
+          <p style="font-size:12px"><strong>XML Carta Porte</strong><br><span style="font-size:11px;color:#aaa">Extrae automático</span></p>
+        </div>
+        <input type="file" id="fXML" accept=".xml" multiple style="display:none">
+        <div class="upload-zone" style="padding:14px 20px;flex:1;min-width:180px" id="dzPDF" onclick="document.getElementById('fPDF').click()">
+          <div class="icon" style="font-size:20px">📑</div>
+          <p style="font-size:12px"><strong>PDF (factura/viaje)</strong><br><span style="font-size:11px;color:#aaa">IA extrae los datos</span></p>
+        </div>
+        <input type="file" id="fPDF" accept=".pdf" multiple style="display:none">
+      </div>
+    </div>
+    <!-- Captura manual / edición -->
+    <div style="background:#f5f5f8;border-radius:8px;padding:16px;margin-bottom:14px" id="ingForm">
+      <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#888;margin-bottom:12px">Captura manual o ajuste de datos extraídos</div>
+      <div class="grid4" style="margin-bottom:12px">
+        <div class="field"><label>Folio / Referencia</label><input type="text" id="ingFolio" placeholder="R2122"></div>
+        <div class="field"><label>Fecha</label><input type="date" id="ingFecha"></div>
+        <div class="field"><label>Cliente</label><input type="text" id="ingCliente" placeholder="Nombre del cliente"></div>
+        <div class="field"><label>Tipo</label>
+          <select id="ingTipo">
+            <option value="flete_mx">Flete México</option>
+            <option value="flete_for">Flete Foráneo</option>
+            <option value="maniobra">Maniobra</option>
+            <option value="otro">Otro ingreso</option>
+          </select>
+        </div>
+      </div>
+      <div class="grid4">
+        <div class="field"><label>Subtotal</label><input type="number" id="ingSubtotal" placeholder="0.00" step="0.01" onchange="calcIngTotales()"></div>
+        <div class="field"><label>IVA</label><input type="number" id="ingIva" placeholder="0.00" step="0.01" onchange="calcIngTotales()"></div>
+        <div class="field"><label>Retención IVA</label><input type="number" id="ingRet" placeholder="0.00" step="0.01" onchange="calcIngTotales()"></div>
+        <div class="field"><label>Total</label><input type="number" id="ingTotal" placeholder="0.00" readonly style="background:#ececec;font-weight:700"></div>
+      </div>
+      <div id="ingInfo" style="display:none;margin-top:10px"></div>
+      <div style="margin-top:12px;display:flex;gap:8px">
+        <button class="btn btn-red" onclick="agregarIngreso()">+ Registrar viaje</button>
+        <button class="btn btn-out btn-sm" onclick="limpiarIngForm()">Limpiar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- DB de viajes por operador -->
+  <div class="card">
+    <div class="card-title">
+      📋 Viajes registrados
+      <div style="display:flex;gap:8px">
+        <select id="filtroIngOp" onchange="renderIngresos()" style="border:1px solid #dde;border-radius:6px;padding:5px 10px;font-size:12px">
+          <option value="">Todos los operadores</option>
+        </select>
+        <select id="filtroIngEst" onchange="renderIngresos()" style="border:1px solid #dde;border-radius:6px;padding:5px 10px;font-size:12px">
+          <option value="">Todos</option>
+          <option value="sin_liquidar">Sin liquidar</option>
+          <option value="liquidado">Liquidados</option>
+        </select>
+      </div>
+    </div>
+    <div class="tbl-wrap">
+      <table>
+        <thead><tr>
+          <th>Folio</th><th>Fecha</th><th>Operador</th><th>Cliente</th><th>Tipo</th>
+          <th class="r">Subtotal</th><th class="r">IVA</th><th class="r">Ret.</th><th class="r">Total</th>
+          <th>Estado</th><th>Liq.</th><th></th>
+        </tr></thead>
+        <tbody id="tbIngresos"></tbody>
+      </table>
+    </div>
+    <div id="ingResumen" style="margin-top:12px"></div>
+  </div>
+</div></div>
+
+<!-- ══════════════════════════════════════════════
+     2: LIQUIDACIÓN
+══════════════════════════════════════════════ -->
+<div id="panel-2" class="panel"><div class="container">
+  <div class="card">
+    <div class="card-title">🚛 Encabezado de liquidación</div>
+    <div class="grid2" style="margin-bottom:14px">
+      <div class="field"><label>Número de liquidación <span style="color:#e63946">(auto)</span></label><input type="number" id="liqNum" placeholder="Auto" min="1"></div>
+      <div class="field"><label>Operador</label><select id="liqOp" onchange="onLiqOpChange()"><option value="">— Selecciona —</option></select></div>
+      <div class="field"><label>Unidad</label><input type="text" id="liqUnidad" readonly></div>
+      <div class="field"><label>Clave operador</label><input type="text" id="liqClave" placeholder="Ej: 018"></div>
+      <div class="field"><label>% Comisión fletes</label><input type="number" id="liqComision" value="12" step="1" min="0" max="100"></div>
+      <div class="field"><label>Costo diesel ($/lt)</label><input type="number" id="liqCostoDiesel" value="27.00" step="0.0001"></div>
+    </div>
+    <div class="sep"></div>
+    <div class="card-title" style="margin-bottom:12px">📊 Escaneo de unidad</div>
+    <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:14px">
+      <div class="upload-zone" id="dzDDEC" onclick="document.getElementById('fDDEC').click()" style="flex:1;min-width:200px;padding:16px">
+        <div class="icon" style="font-size:22px">📄</div>
+        <p style="font-size:12px"><strong>Subir PDF del escaneo</strong><br><span style="font-size:11px;color:#aaa">DDEC u otro — la IA extrae los datos</span></p>
+      </div>
+      <input type="file" id="fDDEC" accept=".pdf" style="display:none">
+      <div id="ddecInfo" style="display:none;flex:1;min-width:200px;align-items:center"></div>
+    </div>
+    <div style="background:#f5f5f8;border-radius:8px;padding:16px;margin-bottom:16px">
+      <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#888;margin-bottom:12px">Datos del viaje</div>
+      <div class="grid3">
+        <div class="field"><label>Fecha de salida</label><input type="date" id="liqSalida" onchange="calcDuracion()"></div>
+        <div class="field"><label>Fecha de llegada</label><input type="date" id="liqLlegada" onchange="calcDuracion()"></div>
+        <div class="field"><label>Duración (días)</label><input type="text" id="liqDuracion" readonly></div>
+        <div class="field"><label>Kilómetros</label><input type="number" id="liqKms" placeholder="0" step="0.1" onchange="calcRendAuto()"></div>
+        <div class="field"><label>Litros ECM</label><input type="number" id="liqLitrosECM" placeholder="0" step="0.1" onchange="calcRendAuto()"></div>
+        <div class="field"><label>Rendimiento (km/lt)</label><input type="number" id="liqRend" step="0.01" placeholder="0.00"></div>
+        <div class="field"><label>Diesel inicial en tanque (lts)</label><input type="number" id="liqDieselIni" placeholder="0" step="0.1"></div>
+      </div>
+      <div id="ddecResumen" style="display:none;margin-top:10px"></div>
+    </div>
+    <button class="btn btn-red" onclick="iniciarLiquidacion()">Iniciar liquidación →</button>
+  </div>
+  <div id="liqInfo" style="display:none"></div>
+
+  <!-- Vista previa: anticipos e ingresos que se jalarán -->
+  <div id="liqPreview" style="display:none">
+    <div class="card">
+      <div class="card-title">💰 Anticipos pendientes del operador</div>
+      <div id="prevAnticipos"></div>
+    </div>
+    <div class="card">
+      <div class="card-title">📄 Viajes sin liquidar del operador</div>
+      <div id="prevIngresos"></div>
+      <div id="prevIngAlerta" style="margin-top:8px"></div>
+    </div>
+  </div>
+</div></div>
+
+<!-- ══════════════════════════════════════════════
+     3: DIESEL
+══════════════════════════════════════════════ -->
+<div id="panel-3" class="panel"><div class="container">
+  <div id="liqReqMsg3" class="alert alert-warn">⚠️ Primero inicia una liquidación.</div>
+  <div id="panel3Content" style="display:none">
+    <div class="card">
+      <div class="card-title">⛽ Cargar reporte Edenred (Excel)</div>
+      <div class="upload-zone" id="dzXLSX" onclick="document.getElementById('fXLSX').click()"><div class="icon">⛽</div><p><strong>Arrastra el Excel de Edenred</strong></p></div>
+      <input type="file" id="fXLSX" accept=".xlsx,.xls" style="display:none">
+      <div id="xlsxInfo" style="display:none;margin-top:10px"></div>
+    </div>
+    <div class="card">
+      <div class="card-title">📦 Diesel inicial (arrastre)</div>
+      <div class="row">
+        <div class="field"><label>Litros pendientes</label><input type="number" id="dIniLts" value="0" min="0" step="0.01" onchange="calcDiesel()"></div>
+        <div class="field"><label>Precio promedio ant. ($/lt)</label><input type="number" id="dIniPrecio" value="0" min="0" step="0.0001" onchange="calcDiesel()"></div>
+        <div style="background:#f5f5f8;border-radius:8px;padding:10px 14px">
+          <div style="font-size:10px;color:#888;text-transform:uppercase;letter-spacing:.5px">Importe inicial</div>
+          <div id="dIniImporte" style="font-size:16px;font-weight:800">$0.00</div>
+        </div>
+      </div>
+    </div>
+    <div id="cardDiesel" style="display:none"><div class="card">
+      <div class="card-title">⛽ Cargas del periodo — <span id="dOpNombre"></span></div>
+      <div id="alertDiesel"></div>
+      <div class="tbl-wrap"><table>
+        <thead><tr><th>Fecha</th><th>Hora</th><th>Estación</th><th class="r">Litros</th><th class="r">$/lt</th><th class="r">Importe</th><th class="r" style="min-width:110px">Lts que dejó</th><th class="r">Lts aplicados</th><th>Estado</th></tr></thead>
+        <tbody id="tbDiesel"></tbody>
+      </table></div>
+      <div style="margin-top:14px;padding:14px;background:#f5f5f8;border-radius:8px">
+        <div class="row"><div class="field"><label>🔴 Litros finales en tanque</label><input type="number" id="dFinalLts" value="0" min="0" step="0.01" onchange="calcDiesel()"></div></div>
+      </div>
+      <div class="kpis" id="kpisDiesel"></div>
+      <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap">
+        <button class="btn btn-dark btn-sm" onclick="exportDieselCSV()">Exportar diesel</button>
+        <button class="btn btn-green btn-sm" onclick="guardarArrastre()">💾 Guardar arrastre</button>
+      </div>
+    </div></div>
+  </div>
+</div></div>
+
+<!-- ══════════════════════════════════════════════
+     4: AUTOPISTAS
+══════════════════════════════════════════════ -->
+<div id="panel-4" class="panel"><div class="container">
+  <div id="liqReqMsg4" class="alert alert-warn">⚠️ Primero inicia una liquidación.</div>
+  <div id="panel4Content" style="display:none">
+    <div class="card">
+      <div class="card-title">🛣️ Cargar CSV IAVE</div>
+      <div class="upload-zone" id="dzIAVE" onclick="document.getElementById('fIAVE').click()"><div class="icon">🛣️</div><p><strong>Arrastra el CSV del IAVE</strong> — se filtra por unidad y fechas automáticamente</p></div>
+      <input type="file" id="fIAVE" accept=".csv,.txt" style="display:none">
+      <div id="iaveInfo" style="display:none;margin-top:10px"></div>
+    </div>
+    <div class="card" id="cardAutopistas" style="display:none">
+      <div class="card-title">🛣️ Cruces — <span id="iaveOpNombre"></span></div>
+      <div class="tbl-wrap"><table>
+        <thead><tr><th>Fecha</th><th>Hora</th><th>Caseta</th><th>Carril</th><th class="r">Importe</th><th>¿Op. paga?</th><th></th></tr></thead>
+        <tbody id="tbIAVE"></tbody><tfoot id="tfIAVE"></tfoot>
+      </table></div>
+      <div class="kpis" id="kpisIAVE"></div>
+    </div>
+  </div>
+</div></div>
+
+<!-- ══════════════════════════════════════════════
+     5: GASTOS
+══════════════════════════════════════════════ -->
+<div id="panel-5" class="panel"><div class="container">
+  <div id="liqReqMsg5" class="alert alert-warn">⚠️ Primero inicia una liquidación.</div>
+  <div id="panel5Content" style="display:none">
+    <div class="card">
+      <div class="card-title">🧾 Gastos facturados (XML)</div>
+      <div class="upload-zone" id="dzGastoXML" onclick="document.getElementById('fGastoXML').click()"><div class="icon">🧾</div><p><strong>Arrastra XML de gastos</strong></p></div>
+      <input type="file" id="fGastoXML" accept=".xml" multiple style="display:none">
+      <div id="gastoXMLInfo" style="display:none;margin-top:10px"></div>
+    </div>
+    <div class="card">
+      <div class="card-title">📝 Gastos sin factura</div>
+      <div class="alert alert-info" style="margin-bottom:14px">⚠️ Gastos mayores a $<strong id="limiteGastoLabel">500</strong> sin factura requieren autorización de supervisor.</div>
+      <div class="row" style="margin-bottom:12px">
+        <div class="field"><label>Concepto</label>
+          <select id="gastoConcepto">
+            <option>VIÁTICOS</option><option>REFACCIONES</option><option>MANIOBRAS</option>
+            <option>GASTOS P/VIAJE</option><option>EMPAQUE</option><option>OTROS</option>
+          </select>
+        </div>
+        <div class="field"><label>Descripción</label><input type="text" id="gastoDesc" placeholder="Detalle del gasto"></div>
+        <div class="field"><label>Importe</label><input type="number" id="gastoImporte" placeholder="0.00" step="0.01" min="0"></div>
+        <div class="field"><label>¿Op. comprueba?</label>
+          <select id="gastoPagaOp"><option value="si">Sí (operador)</option><option value="no">No (empresa)</option></select>
+        </div>
+        <button class="btn btn-red" style="align-self:flex-end" onclick="agregarGasto()">+ Agregar</button>
+      </div>
+      <div class="tbl-wrap"><table>
+        <thead><tr><th>Concepto</th><th>Descripción</th><th class="r">Importe</th><th>Tipo</th><th>¿Op. comprueba?</th><th>Estado</th><th></th></tr></thead>
+        <tbody id="tbGastos"></tbody><tfoot id="tfGastos"></tfoot>
+      </table></div>
+    </div>
+  </div>
+</div></div>
+
+<!-- ══════════════════════════════════════════════
+     6: REPORTE
+══════════════════════════════════════════════ -->
+<div id="panel-6" class="panel"><div class="container">
+  <div id="liqReqMsg6" class="alert alert-warn">⚠️ Primero inicia una liquidación.</div>
+  <div id="panel6Content" style="display:none">
+    <div class="card">
+      <div class="card-title">📊 Liquidación de viaje <span id="repLiqNum"></span>
+        <div style="display:flex;gap:8px">
+          <button class="btn btn-out btn-sm" onclick="generarReporte()">🔄 Recalcular</button>
+          <button class="btn btn-dark btn-sm" onclick="window.print()">🖨️ Imprimir</button>
+          <button class="btn btn-green btn-sm" onclick="cerrarLiquidacion()">✅ Cerrar liquidación</button>
+        </div>
+      </div>
+      <div id="repEncabezado" style="background:#f5f5f8;border-radius:8px;padding:14px;margin-bottom:16px;font-size:13px"></div>
+
+      <div class="grid2">
+        <!-- INGRESOS -->
+    <div class="card" style="margin-bottom:12px">
+      <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#1e40af;margin-bottom:10px;padding:6px 10px;background:#dbeafe;border-radius:6px">📥 INGRESOS TOTALES</div>
+      <div id="repIngresos"></div>
+    </div>
+
+    <!-- GASTOS -->
+    <div class="card" style="margin-bottom:12px">
+      <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#92400e;margin-bottom:10px;padding:6px 10px;background:#fde68a;border-radius:6px">📤 GASTOS DEL VIAJE</div>
+      <div id="repGastos"></div>
+    </div>
+
+    <!-- RESULTADO -->
+    <div class="card" style="margin-bottom:12px">
+      <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#1a1a2e;margin-bottom:10px;padding:6px 10px;background:#f0f2f5;border-radius:6px">📊 RESULTADO DEL VIAJE</div>
+      <div id="repResultado"></div>
+    </div>
+
+    <!-- CUENTA OPERADOR -->
+    <div class="card" style="margin-bottom:12px">
+      <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#1a1a2e;margin-bottom:12px;padding:6px 10px;background:#f0f2f5;border-radius:6px">👷 CUENTA DEL OPERADOR</div>
+      <div class="grid2" style="gap:16px">
+        <div>
+          <div style="font-size:11px;font-weight:700;text-transform:uppercase;color:#9b1c1c;margin-bottom:8px;padding:5px 10px;background:#fde8e8;border-radius:5px">📤 CARGOS</div>
+          <div id="repCargos"></div>
+        </div>
+        <div>
+          <div style="font-size:11px;font-weight:700;text-transform:uppercase;color:#0a5233;margin-bottom:8px;padding:5px 10px;background:#d1e7dd;border-radius:5px">📥 ABONOS (comprueba)</div>
+          <div id="repAbonos"></div>
+        </div>
+      </div>
+      <div id="repSaldo" style="margin-top:14px"></div>
+    </div>
+
+    <!-- CARTERA Y RUTA -->
+    <div class="grid2" style="gap:12px;margin-bottom:12px">
+      <div class="card">
+        <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#1a1a2e;margin-bottom:10px;padding:6px 10px;background:#f0f2f5;border-radius:6px">📋 CARTERA / DOCS X COBRAR</div>
+        <div id="repCartera"></div>
+      </div>
+      <div class="card">
+        <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#1a1a2e;margin-bottom:10px;padding:6px 10px;background:#f0f2f5;border-radius:6px">🗺️ RUTA DEL VIAJE</div>
+        <div id="repRuta"><div style="color:#aaa;font-size:13px">Se extrae del XML carta porte.</div></div>
+      </div>
+    </div>
+
+    </div>
+  </div>
+</div></div>
+
+<!-- MODAL AUTORIZACIÓN -->
+<div class="modal-overlay" id="modalAuth">
+  <div class="modal">
+    <h3>🔒 Autorización de supervisor</h3>
+    <p style="font-size:13px;color:#666;margin-bottom:16px">Este gasto supera el límite permitido sin factura. Ingresa la contraseña de supervisor para continuar.</p>
+    <div class="field"><label>Contraseña</label><input type="password" id="authPass" placeholder="••••••••"></div>
+    <div id="authError" style="display:none;margin-top:8px" class="alert alert-err">Contraseña incorrecta.</div>
+    <div class="modal-actions">
+      <button class="btn btn-out btn-sm" onclick="cerrarModal()">Cancelar</button>
+      <button class="btn btn-red btn-sm" onclick="verificarAuth()">Autorizar</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ══════════════════════════════════════════════
+// CATÁLOGO
+// ══════════════════════════════════════════════
+const OPERADORES=[
+  {unidad:4521,nombre:'ALEJANDRO RODRIGUEZ GONZALEZ',comision:12},
+  {unidad:4522,nombre:'ANDRÉS MARÍA RAMOS',comision:12},
+  {unidad:4523,nombre:'ANDRÉS NAVARRO RAMÍREZ',comision:12},
+  {unidad:4524,nombre:'RAFAEL TAPIA CARREÑO',comision:12},
+  {unidad:4526,nombre:'EDUARDO HERNÁNDEZ ACEVES',comision:12},
+  {unidad:529, nombre:'OSCAR ISRAEL RAMOS',comision:12},
+  {unidad:531, nombre:'MARTÍN FLORES LUGO',comision:12},
+  {unidad:532, nombre:'JOSÉ ROLANDO DOMINGUEZ LOPEZ',comision:12},
+  {unidad:533, nombre:'FRANCISCO ARTEMIO PEÑA VAZQUEZ',comision:12},
+  {unidad:534, nombre:'MIGUEL ALONSO CALDERON',comision:12},
+  {unidad:535, nombre:'ISMAEL CONSTANTINO CABRERA',comision:12},
+];
+
+const SUPERVISOR_PASS='tml2026';
+const LIMITE_GASTO_SIN_FACTURA=500;
+document.getElementById('limiteGastoLabel').textContent=LIMITE_GASTO_SIN_FACTURA;
+
+// ══════════════════════════════════════════════
+// ESTADO GLOBAL
+// ══════════════════════════════════════════════
+let opExcluidos=new Set();
+let csvRows=[];
+let anticiposDB={};   // {unidad:[{...anticipo,estado,liqNum}]}
+let ingresosDB=[];    // [{id,unidad,folio,fecha,cliente,tipo,subtotal,iva,ret,total,estado,liqNum,origen}]
+let liq=null;
+let arrastres={};
+let cargasEdenred=[];
+let cargasOp=[];
+let ultimaLiqNum=0;
+let gastoPendiente=null; // gasto esperando autorización
+
+// ══════════════════════════════════════════════
+// UTILS
+// ══════════════════════════════════════════════
+const $=id=>document.getElementById(id);
+const fmt=(n,d=2)=>'$'+parseFloat(n||0).toLocaleString('es-MX',{minimumFractionDigits:d,maximumFractionDigits:d});
+const fmtN=(n,d=2)=>parseFloat(n||0).toLocaleString('es-MX',{minimumFractionDigits:d,maximumFractionDigits:d});
+const hoy=()=>new Date().toISOString().slice(0,10);
+function dlBlob(c,n,t){const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([c],{type:t}));a.download=n;a.click();}
+function norm(s){return(s||'').toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^A-Z0-9 ]/g,' ').replace(/\s+/g,' ').trim();}
+function palabras(s){return norm(s).split(' ').filter(w=>w.length>2);}
+function matchScore(c,n){const cW=palabras(c),oW=palabras(n);if(!oW.length)return 0;return oW.filter(w=>cW.some(x=>x.includes(w)||w.includes(x))).length/oW.length;}
+function esSaldo(c){const n=norm(c);return n.includes('SALDO')||n.includes('LIQUIDACION')||/^LIQ\b/.test(n);}
+function normUnidad(u){
+  // Mapa de placas a número económico
+  const PLACAS={'42BC9V':529};
+  const str=(u||'').toString().trim().toUpperCase();
+  if(PLACAS[str])return PLACAS[str];
+  return parseInt(str.replace(/\D/g,''),10)||0;
+}
+function parseDate(str){if(!str)return null;const s=str.toString().replace(/\D/g,'');if(s.length===8){const d=new Date(s.slice(4)+'-'+s.slice(2,4)+'-'+s.slice(0,2));return isNaN(d)?null:d;}const d=new Date(str);return isNaN(d)?null:d;}
+function parseDateDDMM(str){if(!str)return null;const p=str.trim().split('/');if(p.length===3){const d=new Date(p[2]+'-'+p[1].padStart(2,'0')+'-'+p[0].padStart(2,'0'));return isNaN(d)?null:d;}return null;}
+function uid(){return Date.now().toString(36)+Math.random().toString(36).slice(2);}
+
+// ══════════════════════════════════════════════
+// TABS
+// ══════════════════════════════════════════════
+function showTab(i){
+  document.querySelectorAll('.panel').forEach((p,j)=>p.classList.toggle('active',j===i));
+  document.querySelectorAll('.tab').forEach((t,j)=>t.classList.toggle('active',j===i));
+  if(i===6)generarReporte();
+  if(i===1)renderIngresos();
+}
+
+// ══════════════════════════════════════════════
+// INIT SELECTS & TAGS
+// ══════════════════════════════════════════════
+function initSelects(){
+  ['liqOp','ingOp','filtroIngOp'].forEach(function(id){
+    const s=$(id);if(!s)return;
+    OPERADORES.forEach(function(op){
+      const o=document.createElement('option');
+      o.value=op.unidad;o.textContent=op.unidad+' · '+op.nombre;
+      s.appendChild(o);
+    });
+  });
+}
+initSelects();
+
+function renderTags(){
+  const c=$('opsTags');c.innerHTML='';
+  OPERADORES.forEach(function(op){
+    const t=document.createElement('div');
+    t.className='op-tag'+(opExcluidos.has(op.unidad)?'':' active');
+    t.textContent=op.unidad+' · '+op.nombre;
+    t.onclick=function(){opExcluidos.has(op.unidad)?opExcluidos.delete(op.unidad):opExcluidos.add(op.unidad);renderTags();};
+    c.appendChild(t);
+  });
+}
+renderTags();
+
+function actualizarBadges(){
+  const pendAnts=Object.values(anticiposDB).reduce(function(s,arr){return s+arr.filter(function(a){return a.estado==='pendiente';}).length;},0);
+  const pendIng=ingresosDB.filter(function(v){return v.estado==='sin_liquidar';}).length;
+  const bA=$('badgeAnt'),bI=$('badgeIng');
+  bA.textContent=pendAnts;bA.style.display=pendAnts?'inline':'none';
+  bI.textContent=pendIng;bI.style.display=pendIng?'inline':'none';
+}
+
+// ══════════════════════════════════════════════
+// 0: ANTICIPOS
+// ══════════════════════════════════════════════
+const dzCSV=$('dzCSV');
+dzCSV.addEventListener('dragover',function(e){e.preventDefault();dzCSV.classList.add('drag');});
+dzCSV.addEventListener('dragleave',function(){dzCSV.classList.remove('drag');});
+dzCSV.addEventListener('drop',function(e){e.preventDefault();dzCSV.classList.remove('drag');handleCSV(e.dataTransfer.files[0]);});
+$('fCSV').addEventListener('change',function(e){handleCSV(e.target.files[0]);});
+
+function handleCSV(file){
+  if(!file)return;
+  const r=new FileReader();
+  r.onload=function(e){parseCSV(e.target.result,file.name);};
+  r.readAsText(file,'UTF-8');
+}
+
+function parseCSV(text,fname){
+  const lines=text.split(/\r?\n/).filter(function(l){return l.trim();});
+  const clean=function(s){return s.replace(/^'+/,'').replace(/'+$/,'').trim();};
+  const sep=lines[0].includes('\t')?'\t':',';
+  const headers=lines[0].split(sep).map(function(h){return h.trim().replace(/^'/,'');});
+  const idx=function(h){return headers.findIndex(function(x){return x.toLowerCase().includes(h.toLowerCase());});};
+  const iFecha=idx('Fecha'),iCA=idx('Cargo'),iImporte=idx('Importe'),iConcepto=idx('Concepto');
+  csvRows=[];
+  for(var i=1;i<lines.length;i++){
+    const cols=lines[i].split(sep).map(clean);
+    if(cols.length<5)continue;
+    if((cols[iCA]||'').trim()!=='-')continue;
+    const fecha=parseDate(cols[iFecha]);
+    csvRows.push({fecha:fecha,fechaStr:fecha?fecha.toLocaleDateString('es-MX'):cols[iFecha],importe:parseFloat((cols[iImporte]||'0').replace(/,/g,'')),concepto:cols[iConcepto]||''});
+  }
+  const fechas=csvRows.map(function(r){return r.fecha;}).filter(Boolean).sort(function(a,b){return a-b;});
+  if(fechas.length){$('aDesde').value=fechas[0].toISOString().slice(0,10);$('aHasta').value=fechas[fechas.length-1].toISOString().slice(0,10);}
+  $('csvInfo').style.display='block';
+  $('csvInfo').innerHTML='<div class="alert alert-ok"><strong>'+fname+'</strong> — '+csvRows.length+' movimientos de salida cargados.</div>';
+  $('cardFiltrosA').style.display='block';
+}
+
+function matchOp(concepto){
+  var best=null,bestS=0;
+  OPERADORES.forEach(function(op){
+    if(opExcluidos.has(op.unidad))return;
+    const s=matchScore(concepto,op.nombre);
+    if(s>bestS&&s>=0.5){bestS=s;best=op;}
+  });
+  return best;
+}
+
+function procesarAnticipos(){
+  const desde=$('aDesde').value?new Date($('aDesde').value):null;
+  const hasta=$('aHasta').value?new Date($('aHasta').value+'T23:59:59'):null;
+  const filtrados=csvRows.filter(function(r){
+    if(!r.fecha)return false;
+    if(desde&&r.fecha<desde)return false;
+    if(hasta&&r.fecha>hasta)return false;
+    return true;
+  });
+  const porOp={};var totalExcl=0;const sinMatch=[];
+  filtrados.forEach(function(r){
+    const esSal=esSaldo(r.concepto);
+    const op=matchOp(r.concepto);
+    if(op){
+      if(!porOp[op.unidad])porOp[op.unidad]={op:op,anticipos:[],saldos:[]};
+      if(esSal){porOp[op.unidad].saldos.push(r);totalExcl++;}
+      else{
+        porOp[op.unidad].anticipos.push(r);
+        if(!anticiposDB[op.unidad])anticiposDB[op.unidad]=[];
+        const existe=anticiposDB[op.unidad].some(function(a){return a.fechaStr===r.fechaStr&&a.importe===r.importe&&a.concepto===r.concepto;});
+        if(!existe)anticiposDB[op.unidad].push(Object.assign({},r,{estado:'pendiente',liqNum:null,id:uid()}));
+      }
+    } else if(!esSal){sinMatch.push(r);}
+  });
+  const dataProcesada=Object.values(porOp).sort(function(a,b){return a.op.unidad-b.op.unidad;});
+  const totalAnts=dataProcesada.reduce(function(s,d){return s+d.anticipos.reduce(function(ss,r){return ss+r.importe;},0);},0);
+  $('aSOps').textContent=dataProcesada.filter(function(d){return d.anticipos.length;}).length;
+  $('aSMovs').textContent=dataProcesada.reduce(function(s,d){return s+d.anticipos.length;},0);
+  $('aSTotal').textContent=fmt(totalAnts);
+  $('aSExcl').textContent=totalExcl;
+  const cont=$('bloqueOps');cont.innerHTML='';
+  dataProcesada.forEach(function(d){
+    if(!d.anticipos.length&&!d.saldos.length)return;
+    const totalOp=d.anticipos.reduce(function(s,r){return s+r.importe;},0);
+    const rows=d.anticipos.map(function(r){return '<tr><td>'+r.fechaStr+'</td><td>'+r.concepto+'</td><td class="num r">'+fmt(r.importe)+'</td><td><span class="badge bg-green">ANTICIPO</span></td></tr>';}).join('')
+      +d.saldos.map(function(r){return '<tr style="opacity:.4"><td>'+r.fechaStr+'</td><td>'+r.concepto+'</td><td class="num r">'+fmt(r.importe)+'</td><td><span class="badge bg-yellow">SALDO EXCL.</span></td></tr>';}).join('');
+    const div=document.createElement('div');div.className='op-block';
+    div.innerHTML='<div class="op-bar"><span>Unidad '+d.op.unidad+' · '+d.op.nombre+'</span><span class="tot">'+fmt(totalOp)+'</span></div>'
+      +'<div class="tbl-wrap"><table><thead><tr><th>Fecha</th><th>Concepto</th><th class="r">Importe</th><th>Tipo</th></tr></thead><tbody>'+rows+'</tbody></table></div>';
+    cont.appendChild(div);
+  });
+  const sm=$('sinMatch');
+  if(sinMatch.length){sm.style.display='block';$('listaSM').innerHTML=sinMatch.map(function(r){return '<li>'+r.fechaStr+' · '+fmt(r.importe)+' · '+r.concepto+'</li>';}).join('');}
+  else sm.style.display='none';
+  $('antRes').style.display='block';
+  $('btnExpA').disabled=false;
+  actualizarBadges();
+}
+
+function exportAntCSV(){
+  var csv='Unidad,Operador,Fecha,Concepto,Importe,Estado\n';
+  Object.keys(anticiposDB).forEach(function(u){
+    const op=OPERADORES.find(function(o){return o.unidad===parseInt(u);});
+    anticiposDB[u].forEach(function(a){csv+=u+',"'+(op?op.nombre:'')+'",'+',"'+a.fechaStr+'","'+a.concepto+'",'+a.importe+','+a.estado+'\n';});
+  });
+  dlBlob(csv,'Anticipos_TML_'+hoy()+'.csv','text/csv');
+}
+
+// ══════════════════════════════════════════════
+// 1: INGRESOS
+// ══════════════════════════════════════════════
+function calcIngTotales(){
+  const sub=parseFloat($('ingSubtotal').value||0);
+  const iva=parseFloat($('ingIva').value||0);
+  const ret=parseFloat($('ingRet').value||0);
+  $('ingTotal').value=(sub+iva-ret).toFixed(2);
+}
+
+function limpiarIngForm(){
+  ['ingFolio','ingFecha','ingCliente','ingSubtotal','ingIva','ingRet','ingTotal'].forEach(function(id){$(id).value='';});
+  $('ingTipo').value='flete_for';
+  $('ingInfo').style.display='none';
+}
+
+// XML carta porte
+const dzXML=$('dzXML');
+dzXML.addEventListener('dragover',function(e){e.preventDefault();dzXML.classList.add('drag');});
+dzXML.addEventListener('dragleave',function(){dzXML.classList.remove('drag');});
+dzXML.addEventListener('drop',function(e){e.preventDefault();dzXML.classList.remove('drag');handleXMLIngFiles(e.dataTransfer.files);});
+$('fXML').addEventListener('change',function(e){handleXMLIngFiles(e.target.files);});
+
+function handleXMLIngFiles(files){
+  const unidad=parseInt($('ingOp').value||0);
+  if(!unidad){alert('Selecciona el operador primero.');return;}
+  Array.from(files).forEach(function(f){const r=new FileReader();r.onload=function(e){parseXMLIngreso(e.target.result,f.name,unidad);};r.readAsText(f,'UTF-8');});
+}
+
+function parseXMLIngreso(text,fname,unidad){
+  const doc=new DOMParser().parseFromString(text,'text/xml');
+  const comp=doc.querySelector('Comprobante');if(!comp){alert(fname+': no es un CFDI válido.');return;}
+  const serie=comp.getAttribute('Serie')||'';
+  const folio=comp.getAttribute('Folio')||'';
+  const fecha=(comp.getAttribute('Fecha')||'').slice(0,10);
+  const subtotal=parseFloat(comp.getAttribute('SubTotal')||0);
+  const total=parseFloat(comp.getAttribute('Total')||0);
+  var iva=0,ret=0;
+  doc.querySelectorAll('Traslado').forEach(function(t){if(t.getAttribute('Impuesto')==='002')iva+=parseFloat(t.getAttribute('Importe')||0);});
+  doc.querySelectorAll('Retencion').forEach(function(r){if(r.getAttribute('Impuesto')==='002')ret+=parseFloat(r.getAttribute('Importe')||0);});
+  const receptor=doc.querySelector('Receptor');
+  const cliente=receptor?receptor.getAttribute('Nombre'):'';
+  // Extraer ruta del complemento carta porte
+  var ruta=[];
+  var ubicaciones=doc.querySelectorAll('Ubicacion');
+  if(!ubicaciones.length){
+    // Namespace carta porte
+    ubicaciones=doc.querySelectorAll('[Tipo]');
+  }
+  // Intentar con CartaPorte
+  var cpUbics=doc.querySelectorAll('cartaporte\\:Ubicacion,cartaporte20\\:Ubicacion,cp\\:Ubicacion,Ubicacion');
+  if(cpUbics.length>=2){
+    var orig=null;
+    cpUbics.forEach(function(u){
+      var tipo=u.getAttribute('TipoUbicacion')||u.getAttribute('tipo');
+      var domicilio=u.querySelector('Domicilio');
+      var ciudad=(domicilio?domicilio.getAttribute('Municipio')||domicilio.getAttribute('municipio'):'') || u.getAttribute('NombreRemitenteDestinatario')||'';
+      var estado=(domicilio?domicilio.getAttribute('Estado')||domicilio.getAttribute('estado'):'');
+      var label=(ciudad&&estado)?ciudad+', '+estado:(ciudad||estado||'Punto');
+      var kms=u.getAttribute('DistanciaRecorrida')||'';
+      if(tipo==='Origen'||tipo==='OR'){orig=label;}
+      else if((tipo==='Destino'||tipo==='DE')&&orig){
+        ruta.push({origen:orig,destino:label,kms:kms});
+        orig=label;
+      }
+    });
+  }
+
+  // Detectar si ya existe
+  if(ingresosDB.some(function(v){return v.folio===serie+'-'+folio&&v.unidad===unidad;})){alert(fname+': ya está registrado.');return;}
+  ingresosDB.push({id:uid(),unidad:unidad,folio:serie+'-'+folio,fecha:fecha,cliente:cliente,tipo:'flete_for',subtotal:subtotal,iva:iva,ret:ret,total:total,estado:'sin_liquidar',liqNum:null,origen:'xml',ruta:ruta});
+  // Guardar ruta en liq si está activa
+  if(liq&&liq.unidad===unidad&&ruta.length){
+    if(!liq.rutaCP)liq.rutaCP=[];
+    ruta.forEach(function(r){
+      if(!liq.rutaCP.some(function(x){return x.origen===r.origen&&x.destino===r.destino;}))
+        liq.rutaCP.push(r);
+    });
+  }
+  renderIngresos();
+  actualizarBadges();
+  alert('✅ '+fname+' registrado.'+(ruta.length?' Ruta extraída: '+ruta.length+' tramos.':''));
+}
+
+// PDF via Claude
+const dzPDF=$('dzPDF');
+dzPDF.addEventListener('dragover',function(e){e.preventDefault();dzPDF.classList.add('drag');});
+dzPDF.addEventListener('dragleave',function(){dzPDF.classList.remove('drag');});
+dzPDF.addEventListener('drop',function(e){e.preventDefault();dzPDF.classList.remove('drag');handlePDFIngFiles(e.dataTransfer.files);});
+$('fPDF').addEventListener('change',function(e){handlePDFIngFiles(e.target.files);});
+
+function handlePDFIngFiles(files){
+  const unidad=parseInt($('ingOp').value||0);
+  if(!unidad){alert('Selecciona el operador primero.');return;}
+  Array.from(files).forEach(function(f){leerPDFIngreso(f,unidad);});
+}
+
+function leerPDFIngreso(file,unidad){
+  $('ingInfo').style.display='block';
+  $('ingInfo').innerHTML='<div class="alert alert-info">⏳ Analizando PDF con IA...</div>';
+  fileToBase64(file).then(function(base64){
+    return fetch('https://api.anthropic.com/v1/messages',{
+      method:'POST',
+      headers:{'Content-Type':'application/json','anthropic-dangerous-direct-browser-access':'true'},
+      body:JSON.stringify({model:'claude-sonnet-4-6',max_tokens:500,messages:[{role:'user',content:[
+        {type:'document',source:{type:'base64',media_type:'application/pdf',data:base64}},
+        {type:'text',text:'Es una factura o documento de viaje de transporte. Extrae y responde SOLO JSON sin texto ni backticks: {"folio":"string","fecha":"YYYY-MM-DD","cliente":"string","subtotal":numero,"iva":numero,"ret":numero,"total":numero}. Si no existe un dato pon null.'}
+      ]}]})
+    });
+  }).then(function(res){return res.json();}).then(function(data){
+    const txt=(data.content||[]).filter(function(b){return b.type==='text';}).map(function(b){return b.text;}).join('');
+    const datos=JSON.parse(txt.replace(/```json|```/g,'').trim());
+    if(datos.folio)$('ingFolio').value=datos.folio;
+    if(datos.fecha)$('ingFecha').value=datos.fecha;
+    if(datos.cliente)$('ingCliente').value=datos.cliente;
+    if(datos.subtotal!=null)$('ingSubtotal').value=datos.subtotal;
+    if(datos.iva!=null)$('ingIva').value=datos.iva;
+    if(datos.ret!=null)$('ingRet').value=datos.ret;
+    calcIngTotales();
+    $('ingInfo').innerHTML='<div class="alert alert-ok">✅ <strong>'+file.name+'</strong> — datos extraídos. Revisa y ajusta si es necesario, luego haz clic en "Registrar viaje".</div>';
+  }).catch(function(err){
+    $('ingInfo').innerHTML='<div class="alert alert-warn">⚠️ Error: '+err.message+'. Captura manualmente.</div>';
+  });
+}
+
+function agregarIngreso(){
+  const unidad=parseInt($('ingOp').value||0);
+  if(!unidad){alert('Selecciona el operador.');return;}
+  const subtotal=parseFloat($('ingSubtotal').value||0);
+  if(!subtotal){alert('Ingresa el subtotal.');return;}
+  const folio=$('ingFolio').value||('MAN-'+uid().slice(0,6).toUpperCase());
+  ingresosDB.push({
+    id:uid(),unidad:unidad,folio:folio,
+    fecha:$('ingFecha').value||hoy(),
+    cliente:$('ingCliente').value||'Sin cliente',
+    tipo:$('ingTipo').value,
+    subtotal:subtotal,
+    iva:parseFloat($('ingIva').value||0),
+    ret:parseFloat($('ingRet').value||0),
+    total:parseFloat($('ingTotal').value||0),
+    estado:'sin_liquidar',liqNum:null,origen:'manual'
+  });
+  limpiarIngForm();
+  renderIngresos();
+  actualizarBadges();
+}
+
+function renderIngresos(){
+  const filtOp=parseInt($('filtroIngOp').value||0);
+  const filtEst=$('filtroIngEst').value;
+  const tb=$('tbIngresos');tb.innerHTML='';
+  const filtrados=ingresosDB.filter(function(v){
+    if(filtOp&&v.unidad!==filtOp)return false;
+    if(filtEst&&v.estado!==filtEst)return false;
+    return true;
+  });
+  if(!filtrados.length){tb.innerHTML='<tr><td colspan="12" style="text-align:center;color:#aaa;padding:20px">Sin viajes registrados</td></tr>';return;}
+  filtrados.forEach(function(v){
+    const op=OPERADORES.find(function(o){return o.unidad===v.unidad;});
+    const tipoLabel={'flete_mx':'Flete Mx','flete_for':'Flete For.','maniobra':'Maniobra','otro':'Otro'}[v.tipo]||v.tipo;
+    tb.innerHTML+='<tr>'
+      +'<td class="num">'+v.folio+'</td>'
+      +'<td>'+v.fecha+'</td>'
+      +'<td style="font-size:11px">'+(op?op.nombre.split(' ')[0]+' '+op.nombre.split(' ')[1]:'?')+'</td>'
+      +'<td style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px">'+v.cliente+'</td>'
+      +'<td><span class="badge bg-blue">'+tipoLabel+'</span></td>'
+      +'<td class="num r">'+fmt(v.subtotal)+'</td>'
+      +'<td class="num r">'+fmt(v.iva)+'</td>'
+      +'<td class="num r">'+fmt(v.ret)+'</td>'
+      +'<td class="num r">'+fmt(v.total)+'</td>'
+      +'<td><span class="badge '+(v.estado==='sin_liquidar'?'bg-yellow':'bg-green')+'">'+( v.estado==='sin_liquidar'?'Sin liquidar':'Liquidado')+'</span></td>'
+      +'<td style="font-size:11px;color:#aaa">'+(v.liqNum?'Liq.#'+v.liqNum:'—')+'</td>'
+      +'<td>'+(v.estado==='sin_liquidar'?'<button class="btn btn-sm" style="background:#fde8e8;color:#9b1c1c;border:none;cursor:pointer" onclick="eliminarIngreso(\''+v.id+'\')">✕</button>':'')+'</td>'
+      +'</tr>';
+  });
+  // Resumen
+  const totSub=filtrados.reduce(function(s,v){return s+v.subtotal;},0);
+  const totTot=filtrados.reduce(function(s,v){return s+v.total;},0);
+  const sinLiq=filtrados.filter(function(v){return v.estado==='sin_liquidar';});
+  $('ingResumen').innerHTML='<div style="display:flex;gap:16px;flex-wrap:wrap;margin-top:8px;font-size:12px;color:#555">'
+    +'<span>'+filtrados.length+' viajes · Subtotal: <strong>'+fmt(totSub)+'</strong> · Total: <strong>'+fmt(totTot)+'</strong></span>'
+    +'<span style="color:#856404">⏳ Sin liquidar: <strong>'+sinLiq.length+'</strong></span>'
+    +'</div>';
+}
+
+function eliminarIngreso(id){
+  if(!confirm('¿Eliminar este viaje?'))return;
+  ingresosDB=ingresosDB.filter(function(v){return v.id!==id;});
+  renderIngresos();actualizarBadges();
+}
+
+// ══════════════════════════════════════════════
+// 2: LIQUIDACIÓN
+// ══════════════════════════════════════════════
+function onLiqOpChange(){
+  const unidad=parseInt($('liqOp').value||0);
+  const op=OPERADORES.find(function(o){return o.unidad===unidad;});
+  $('liqUnidad').value=op?op.unidad:'';
+  $('liqComision').value=op?op.comision:12;
+  if(arrastres[unidad]){$('dIniLts').value=arrastres[unidad].lts;$('dIniPrecio').value=arrastres[unidad].precio;}
+  if(!$('liqNum').value)$('liqNum').value=ultimaLiqNum+1;
+  if(unidad)mostrarPreviewLiq(unidad);
+}
+
+function mostrarPreviewLiq(unidad){
+  const ants=(anticiposDB[unidad]||[]).filter(function(a){return a.estado==='pendiente';});
+  const viajes=ingresosDB.filter(function(v){return v.unidad===unidad&&v.estado==='sin_liquidar';});
+  // Anticipos
+  const pA=$('prevAnticipos');
+  if(ants.length){
+    const tot=ants.reduce(function(s,a){return s+a.importe;},0);
+    pA.innerHTML='<div class="tbl-wrap"><table><thead><tr><th>Fecha</th><th>Concepto</th><th class="r">Importe</th></tr></thead><tbody>'
+      +ants.map(function(a){return '<tr><td>'+a.fechaStr+'</td><td>'+a.concepto+'</td><td class="num r">'+fmt(a.importe)+'</td></tr>';}).join('')
+      +'</tbody><tfoot><tr style="font-weight:700;background:#f5f5f8"><td colspan="2">Total</td><td class="num r">'+fmt(tot)+'</td></tr></tfoot></table></div>';
+  } else {
+    pA.innerHTML='<div style="color:#aaa;font-size:13px;padding:10px">Sin anticipos pendientes para este operador.</div>';
+  }
+  // Viajes
+  const pI=$('prevIngresos'),pIA=$('prevIngAlerta');
+  if(viajes.length){
+    pI.innerHTML='<div class="tbl-wrap"><table><thead><tr><th>Folio</th><th>Fecha</th><th>Cliente</th><th class="r">Subtotal</th><th class="r">Total</th><th>Origen</th></tr></thead><tbody>'
+      +viajes.map(function(v){return '<tr><td class="num">'+v.folio+'</td><td>'+v.fecha+'</td><td style="font-size:11px">'+v.cliente+'</td><td class="num r">'+fmt(v.subtotal)+'</td><td class="num r">'+fmt(v.total)+'</td><td><span class="badge '+(v.origen==='xml'?'bg-blue':'bg-purple')+'">'+v.origen.toUpperCase()+'</span></td></tr>';}).join('')
+      +'</tbody></table></div>';
+    pIA.innerHTML='';
+  } else {
+    pI.innerHTML='<div style="color:#aaa;font-size:13px;padding:10px">Sin viajes sin liquidar para este operador.</div>';
+    pIA.innerHTML='<div class="alert alert-warn">⚠️ Este operador no tiene viajes registrados en Ingresos. Regresa al módulo de Ingresos a registrarlos antes de continuar.</div>';
+  }
+  $('liqPreview').style.display='block';
+}
+
+function calcDuracion(){
+  const s=$('liqSalida').value,l=$('liqLlegada').value;
+  if(s&&l){const d=Math.round((new Date(l)-new Date(s))/(1000*60*60*24));$('liqDuracion').value=d>=0?d:0;}
+}
+function calcRendAuto(){
+  const kms=parseFloat($('liqKms').value||0),lts=parseFloat($('liqLitrosECM').value||0);
+  if(kms>0&&lts>0)$('liqRend').value=(kms/lts).toFixed(2);
+}
+
+// DDEC via Claude
+const dzDDEC=$('dzDDEC');
+dzDDEC.addEventListener('dragover',function(e){e.preventDefault();dzDDEC.classList.add('drag');});
+dzDDEC.addEventListener('dragleave',function(){dzDDEC.classList.remove('drag');});
+dzDDEC.addEventListener('drop',function(e){e.preventDefault();dzDDEC.classList.remove('drag');handleDDEC(e.dataTransfer.files[0]);});
+$('fDDEC').addEventListener('change',function(e){handleDDEC(e.target.files[0]);});
+
+function fileToBase64(file){return new Promise(function(res,rej){const r=new FileReader();r.onload=function(e){res(e.target.result.split(',')[1]);};r.onerror=rej;r.readAsDataURL(file);});}
+
+function handleDDEC(file){
+  if(!file)return;
+  $('ddecInfo').style.display='flex';
+  $('ddecInfo').innerHTML='<div class="alert alert-info" style="width:100%">⏳ Analizando escaneo con IA...</div>';
+  fileToBase64(file).then(function(base64){
+    return fetch('https://api.anthropic.com/v1/messages',{
+      method:'POST',
+      headers:{'Content-Type':'application/json','anthropic-dangerous-direct-browser-access':'true'},
+      body:JSON.stringify({model:'claude-sonnet-4-6',max_tokens:500,messages:[{role:'user',content:[
+        {type:'document',source:{type:'base64',media_type:'application/pdf',data:base64}},
+        {type:'text',text:'Reporte de escaneo de camion. Responde SOLO JSON sin texto ni backticks: {"kms":numero,"lts":numero,"rend":numero,"unidad":"string","fechaIni":"YYYY-MM-DD","fechaFin":"YYYY-MM-DD"}. Busca: Distancia del Viaje=kms, Combustible del Viaje=lts, Economia de Combustible=rend, Identificacion Vehiculo=unidad, rango del viaje=fechas. Pon null si no existe.'}
+      ]}]})
+    });
+  }).then(function(res){if(!res.ok)return res.json().then(function(e){throw new Error(e.error&&e.error.message?e.error.message:'HTTP '+res.status);});return res.json();})
+  .then(function(data){
+    const txt=(data.content||[]).filter(function(b){return b.type==='text';}).map(function(b){return b.text;}).join('');
+    const datos=JSON.parse(txt.replace(/```json|```/g,'').trim());
+    aplicarDatosDDEC(datos,file.name);
+  }).catch(function(err){
+    $('ddecInfo').innerHTML='<div class="alert alert-warn" style="width:100%">⚠️ Error: '+err.message+'. Captura manualmente.</div>';
+  });
+}
+
+function aplicarDatosDDEC(datos,fname){
+  const enc=[];
+  if(datos.kms!=null){$('liqKms').value=datos.kms;enc.push(Number(datos.kms).toLocaleString('es-MX')+' km');}
+  if(datos.lts!=null){$('liqLitrosECM').value=datos.lts;enc.push(Number(datos.lts).toLocaleString('es-MX')+' L');}
+  if(datos.rend!=null){$('liqRend').value=datos.rend;enc.push(datos.rend+' km/L');}else if(datos.kms&&datos.lts)calcRendAuto();
+  if(datos.fechaIni&&datos.fechaIni!='null'){$('liqSalida').value=datos.fechaIni;enc.push('Salida '+datos.fechaIni);}
+  if(datos.fechaFin&&datos.fechaFin!='null'){$('liqLlegada').value=datos.fechaFin;enc.push('Llegada '+datos.fechaFin);}
+  if(datos.fechaIni&&datos.fechaFin)calcDuracion();
+  $('ddecInfo').innerHTML=enc.length
+    ?'<div class="alert alert-ok" style="width:100%">✅ <strong>'+fname+'</strong> — '+enc.join(' · ')+(datos.unidad&&datos.unidad!='null'?' · Unidad: '+datos.unidad:'')+'</div>'
+    :'<div class="alert alert-warn" style="width:100%">⚠️ No se encontraron datos. Captura manualmente.</div>';
+  $('ddecResumen').style.display='none';
+}
+
+function iniciarLiquidacion(){
+  const unidad=parseInt($('liqOp').value||0);
+  const op=OPERADORES.find(function(o){return o.unidad===unidad;});
+  if(!op||!$('liqSalida').value||!$('liqLlegada').value){alert('Completa operador y fechas.');return;}
+  const numIng=parseInt($('liqNum').value||0);
+  const num=numIng>0?numIng:ultimaLiqNum+1;
+  $('liqNum').value=num;ultimaLiqNum=Math.max(ultimaLiqNum,num);
+  liq={num:num,op:op,unidad:unidad,clave:$('liqClave').value,
+    salida:$('liqSalida').value,llegada:$('liqLlegada').value,duracion:$('liqDuracion').value,
+    kms:parseFloat($('liqKms').value||0),litrosECM:parseFloat($('liqLitrosECM').value||0),
+    rendimiento:parseFloat($('liqRend').value||4),dieselIniTanque:parseFloat($('liqDieselIni').value||0),
+    costoDiesel:parseFloat($('liqCostoDiesel').value||27),comision:parseFloat($('liqComision').value||12),
+    diesel:null,autopistas:[],gastos:[],gastosXML:[]};
+  $('liqInfo').style.display='block';
+  $('liqInfo').innerHTML='<div class="alert alert-ok">✅ Liquidación <strong>#'+num+'</strong> — <strong>'+op.nombre+'</strong> · Unidad '+op.unidad+' · '+liq.salida+' al '+liq.llegada+(liq.kms?' · '+liq.kms.toLocaleString('es-MX')+' km':'')+(liq.rendimiento?' · '+liq.rendimiento+' km/L':'')+'</div>';
+  ['3','4','5','6'].forEach(function(i){$('liqReqMsg'+i).style.display='none';$('panel'+i+'Content').style.display='block';});
+  $('dOpNombre').textContent=op.nombre;$('iaveOpNombre').textContent=op.nombre;
+  $('headerInfo').textContent='Liq. #'+num+' · '+op.nombre;
+  cargasOp=cargasEdenred.filter(function(c){return c.unidad===unidad;});
+  if(cargasOp.length)renderTablaDiesel();
+  mostrarPreviewLiq(unidad);
+}
+
+// ══════════════════════════════════════════════
+// 3: DIESEL
+// ══════════════════════════════════════════════
+const dzXLSX=$('dzXLSX');
+dzXLSX.addEventListener('dragover',function(e){e.preventDefault();dzXLSX.classList.add('drag');});
+dzXLSX.addEventListener('dragleave',function(){dzXLSX.classList.remove('drag');});
+dzXLSX.addEventListener('drop',function(e){e.preventDefault();dzXLSX.classList.remove('drag');handleXLSX(e.dataTransfer.files[0]);});
+$('fXLSX').addEventListener('change',function(e){handleXLSX(e.target.files[0]);});
+
+function handleXLSX(file){
+  if(!file)return;
+  const r=new FileReader();
+  r.onload=function(e){
+    const wb=XLSX.read(new Uint8Array(e.target.result),{type:'array'});
+    const ws=wb.Sheets[wb.SheetNames[0]];
+    const data=XLSX.utils.sheet_to_json(ws,{defval:''});
+    cargasEdenred=data.filter(function(row){return (row['FECHA']||'').toString().trim().match(/\d{2}\/\d{2}\/\d{4}/);})
+      .map(function(row,i){return {id:i,fecha:row['FECHA'],hora:row['HORA'],unidad:normUnidad(row['UNIDAD']),
+        litros:parseFloat(row['LITROS']||0),precio:parseFloat(row['PRECIO LTS CON DESCUENTO']||0),
+        importe:parseFloat(row['M.N.']||0),estacion:(row['ESTACIÓN DE SERVICIO']||'').trim(),ltsDejoInput:0};});
+    const totLtsG=cargasEdenred.reduce(function(s,c){return s+c.litros;},0);
+    const totImpG=cargasEdenred.reduce(function(s,c){return s+c.importe;},0);
+    const ppG=totLtsG>0?totImpG/totLtsG:0;
+    $('xlsxInfo').style.display='block';
+    $('xlsxInfo').innerHTML='<div class="alert alert-ok">'+cargasEdenred.length+' cargas · Precio promedio ponderado: <strong>'+fmt(ppG)+'/lt</strong></div>';
+    if(liq){
+      cargasOp=cargasEdenred.filter(function(c){return c.unidad===liq.unidad;});
+      const totLtsOp=cargasOp.reduce(function(s,c){return s+c.litros;},0);
+      const totImpOp=cargasOp.reduce(function(s,c){return s+c.importe;},0);
+      const ppOp=totLtsOp>0?totImpOp/totLtsOp:ppG;
+      $('liqCostoDiesel').value=ppOp.toFixed(4);
+      if(!parseFloat($('dIniPrecio').value))$('dIniPrecio').value=ppOp.toFixed(4);
+      renderTablaDiesel();
+    }
+  };
+  r.readAsArrayBuffer(file);
+}
+
+function renderTablaDiesel(){
+  const tb=$('tbDiesel');tb.innerHTML='';
+  if(!cargasOp.length){$('alertDiesel').innerHTML='<div class="alert alert-warn">No hay cargas para esta unidad en el reporte.</div>';$('cardDiesel').style.display='block';return;}
+  $('alertDiesel').innerHTML='';
+  const dSal=liq?new Date(liq.salida):null,dLleg=liq?new Date(liq.llegada+'T23:59:59'):null;
+  cargasOp.forEach(function(c,i){
+    const fc=parseDateDDMM(c.fecha);
+    const fuera=dSal&&dLleg&&fc&&(fc<dSal||fc>dLleg);
+    tb.innerHTML+='<tr id="rowD'+i+'"'+(fuera?' style="opacity:.5"':'')+'>'
+      +'<td>'+c.fecha+(fuera?' <span class="badge bg-yellow" style="font-size:9px">fuera rango</span>':'')+'</td>'
+      +'<td>'+c.hora+'</td><td>'+c.estacion+'</td>'
+      +'<td class="num r">'+fmtN(c.litros)+'</td><td class="num r">'+fmt(c.precio)+'</td><td class="num r">'+fmt(c.importe)+'</td>'
+      +'<td class="r"><input class="input-sm" type="number" min="0" max="'+c.litros+'" step="0.01" value="'+c.ltsDejoInput+'" onchange="cargasOp['+i+'].ltsDejoInput=parseFloat(this.value)||0;calcDiesel()"></td>'
+      +'<td class="num r" id="ltsApl'+i+'">—</td><td id="estD'+i+'"></td></tr>';
+  });
+  $('cardDiesel').style.display='block';
+  calcDiesel();
+}
+
+function calcDiesel(){
+  const ltsIni=parseFloat($('dIniLts').value)||0;
+  const precioIni=parseFloat($('dIniPrecio').value)||0;
+  const importeIni=ltsIni*precioIni;
+  $('dIniImporte').textContent=fmt(importeIni);
+
+  // Sumar cargas del periodo (sin considerar "lts que dejó" — eso es solo para el arrastre)
+  var totLtsCarg=0,totImporteCarg=0;
+  var ultimoPrecio=precioIni; // precio de la última carga para valuar el arrastre
+  cargasOp.forEach(function(c,i){
+    totLtsCarg+=c.litros;
+    totImporteCarg+=c.importe;
+    if(c.litros>0)ultimoPrecio=c.precio; // precio de la última carga
+    // UI: mostrar litros aplicados en tabla (informativo)
+    const dejo=Math.min(c.ltsDejoInput||0,c.litros);
+    const apl=c.litros-dejo;
+    const ca=$('ltsApl'+i),es=$('estD'+i),rw=$('rowD'+i);
+    if(ca)ca.textContent=fmtN(apl);
+    if(es)es.innerHTML=dejo>0?'<span class="badge bg-yellow">'+fmtN(dejo)+' lts pend.</span>':'<span class="badge bg-green">Completa</span>';
+    if(rw)rw.style.background=dejo>0?'#fffbeb':'';
+  });
+
+  // Precio promedio ponderado de todo lo disponible
+  const totDisp=ltsIni+totLtsCarg;
+  const totImpDisp=importeIni+totImporteCarg;
+  const pp=totDisp>0?totImpDisp/totDisp:0;
+
+  // Diesel final en tanque (al precio de la última carga)
+  const ltsFinal=parseFloat($('dFinalLts').value)||0;
+  const importeFinal=ltsFinal*ultimoPrecio;
+
+  // Diesel por comprobar = inicial + cargas - final en tanque
+  const ltsPorComprobar=ltsIni+totLtsCarg-ltsFinal;
+
+  // Litros ECM del escaneo (capturado en el encabezado de liquidación)
+  const ltsECM=liq?parseFloat($('liqLitrosECM').value||0):0;
+
+  // Diesel no comprobado = MAX(0, por comprobar - ECM)
+  const ltsNoComprobados=Math.max(0,ltsPorComprobar-ltsECM);
+  const importeNoComprobado=ltsNoComprobados*pp;
+
+  // Diesel comprobado = MIN(ltsECM, ltsPorComprobar) × pp
+  const ltsComprobados=Math.min(ltsECM,ltsPorComprobar);
+  const importeComprobado=ltsComprobados*pp;
+
+  // Arrastre: litros finales al precio de la última carga
+  const importePend=importeFinal;
+
+  $('kpisDiesel').innerHTML=
+    '<div class="kpi"><div class="v">'+fmtN(totLtsCarg)+'</div><div class="k">Lts cargados</div></div>'
+    +'<div class="kpi"><div class="v">'+fmtN(ltsIni)+'</div><div class="k">Lts arrastre ant.</div></div>'
+    +'<div class="kpi"><div class="v">'+fmtN(ltsFinal)+'</div><div class="k">Lts final en tanque</div></div>'
+    +'<div class="kpi"><div class="v">'+fmtN(ltsPorComprobar)+'</div><div class="k">Lts por comprobar</div></div>'
+    +'<div class="kpi"><div class="v">'+fmt(pp)+'</div><div class="k">Precio prom. pond./lt</div></div>'
+    +'<div class="kpi"><div class="v">'+fmt(ultimoPrecio)+'</div><div class="k">Precio última carga</div></div>'
+    +'<div class="kpi"><div class="v green">'+fmtN(ltsComprobados)+'</div><div class="k">Lts comprobados (ECM)</div></div>'
+    +'<div class="kpi"><div class="v green">'+fmt(importeComprobado)+'</div><div class="k">Importe comprobado</div></div>'
+    +'<div class="kpi"><div class="v '+(ltsNoComprobados>0?'red':'green')+'">'+fmtN(ltsNoComprobados)+'</div><div class="k">Lts no comprobados</div></div>'
+    +'<div class="kpi"><div class="v '+(ltsNoComprobados>0?'red':'green')+'">'+fmt(importeNoComprobado)+'</div><div class="k">Importe no comprobado</div></div>'
+    +'<div class="kpi"><div class="v red">'+fmtN(ltsFinal)+'</div><div class="k">Lts arrastre próx. (último precio)</div></div>'
+    +'<div class="kpi"><div class="v red">'+fmt(importePend)+'</div><div class="k">Importe arrastre próx.</div></div>';
+
+  if(liq)liq.diesel={
+    ltsIni:ltsIni,precioIni:precioIni,importeIni:importeIni,
+    totLtsCarg:totLtsCarg,totImporteCarg:totImporteCarg,
+    ltsFinal:ltsFinal,importeFinal:importeFinal,ultimoPrecio:ultimoPrecio,
+    totDisp:totDisp,totImpDisp:totImpDisp,pp:pp,
+    ltsPorComprobar:ltsPorComprobar,ltsECM:ltsECM,
+    ltsComprobados:ltsComprobados,importeComprobado:importeComprobado,
+    ltsNoComprobados:ltsNoComprobados,importeNoComprobado:importeNoComprobado,
+    ltsPend:ltsFinal,importePend:importePend
+  };
+}
+
+function guardarArrastre(){
+  if(!liq||!liq.diesel)return;
+  arrastres[liq.unidad]={lts:liq.diesel.ltsPend,precio:liq.diesel.pp};
+  alert('✅ Arrastre guardado: '+fmtN(liq.diesel.ltsPend)+' lts a '+fmt(liq.diesel.pp)+'/lt');
+}
+function exportDieselCSV(){
+  if(!liq)return;
+  var csv='Fecha,Estacion,Litros,Precio/lt,Importe,LtsDejo,LtsApl\n';
+  cargasOp.forEach(function(c){const d=Math.min(c.ltsDejoInput,c.litros);csv+='"'+c.fecha+'","'+c.estacion+'",'+c.litros+','+c.precio+','+c.importe+','+d+','+(c.litros-d)+'\n';});
+  dlBlob(csv,'Diesel_Liq'+liq.num+'.csv','text/csv');
+}
+
+// ══════════════════════════════════════════════
+// 4: AUTOPISTAS
+// ══════════════════════════════════════════════
+const dzIAVE=$('dzIAVE');
+dzIAVE.addEventListener('dragover',function(e){e.preventDefault();dzIAVE.classList.add('drag');});
+dzIAVE.addEventListener('dragleave',function(){dzIAVE.classList.remove('drag');});
+dzIAVE.addEventListener('drop',function(e){e.preventDefault();dzIAVE.classList.remove('drag');handleIAVE(e.dataTransfer.files[0]);});
+$('fIAVE').addEventListener('change',function(e){handleIAVE(e.target.files[0]);});
+
+function handleIAVE(file){if(!file)return;const r=new FileReader();r.onload=function(e){parseIAVE(e.target.result,file.name);};r.readAsText(file,'UTF-8');}
+
+function parseIAVE(text,fname){
+  if(!liq)return;
+  const lines=text.split(/\r?\n/).filter(function(l){return l.trim();});
+  const headers=lines[0].split(',').map(function(h){return h.trim();});
+  const idx=function(h){return headers.findIndex(function(x){return norm(x).includes(norm(h));});};
+  const iU=idx('No.Economico'),iF=idx('Fecha'),iH=idx('Hora'),iC=idx('Caseta'),iCa=idx('Carril'),iI=idx('Importe');
+  const dSal=new Date(liq.salida),dLleg=new Date(liq.llegada+'T23:59:59');
+  liq.autopistas=[];
+  for(var i=1;i<lines.length;i++){
+    const cols=lines[i].split(',').map(function(c){return c.trim();});
+    if(cols.length<6)continue;
+    if(normUnidad(cols[iU])!==liq.unidad)continue;
+    const fo=parseDateDDMM(cols[iF]);
+    if(fo&&(fo<dSal||fo>dLleg))continue;
+    liq.autopistas.push({fecha:cols[iF],hora:cols[iH]||'',caseta:cols[iC]||'',carril:cols[iCa]||'',importe:Math.abs(parseFloat((cols[iI]||'0').replace(/[$,\s]/g,''))),pagaOp:false});
+  }
+  renderIAVE();
+  $('iaveInfo').style.display='block';
+  $('iaveInfo').innerHTML='<div class="alert alert-ok">'+fname+' — '+liq.autopistas.length+' cruces para unidad '+liq.unidad+'.</div>';
+}
+
+function renderIAVE(){
+  if(!liq)return;
+  const tb=$('tbIAVE');tb.innerHTML='';
+  var totEmp=0,totOp=0;
+  liq.autopistas.forEach(function(a,i){
+    if(a.pagaOp)totOp+=a.importe;else totEmp+=a.importe;
+    tb.innerHTML+='<tr><td>'+a.fecha+'</td><td>'+a.hora+'</td><td>'+a.caseta+'</td><td>'+a.carril+'</td><td class="num r">'+fmt(a.importe)+'</td>'
+      +'<td><select class="input-sm" onchange="liq.autopistas['+i+'].pagaOp=this.value===\'si\';renderIAVE()">'
+      +'<option value="no"'+(a.pagaOp?'':' selected')+'>Empresa</option><option value="si"'+(a.pagaOp?' selected':'')+'>Operador</option></select></td>'
+      +'<td><button class="btn btn-sm" style="background:#fde8e8;color:#9b1c1c;border:none;cursor:pointer" onclick="liq.autopistas.splice('+i+',1);renderIAVE()">✕</button></td></tr>';
+  });
+  $('tfIAVE').innerHTML='<tr style="background:#f5f5f8;font-weight:700"><td colspan="4">TOTAL</td><td class="num r">'+fmt(totEmp+totOp)+'</td><td colspan="2"></td></tr>';
+  $('kpisIAVE').innerHTML='<div class="kpi"><div class="v">'+liq.autopistas.length+'</div><div class="k">Cruces</div></div>'
+    +'<div class="kpi"><div class="v">'+fmt(totEmp+totOp)+'</div><div class="k">Total</div></div>'
+    +'<div class="kpi"><div class="v green">'+fmt(totEmp)+'</div><div class="k">Empresa</div></div>'
+    +'<div class="kpi"><div class="v red">'+fmt(totOp)+'</div><div class="k">Op. comprueba</div></div>';
+  $('cardAutopistas').style.display='block';
+}
+
+// ══════════════════════════════════════════════
+// 5: GASTOS
+// ══════════════════════════════════════════════
+const dzGX=$('dzGastoXML');
+dzGX.addEventListener('dragover',function(e){e.preventDefault();dzGX.classList.add('drag');});
+dzGX.addEventListener('dragleave',function(){dzGX.classList.remove('drag');});
+dzGX.addEventListener('drop',function(e){e.preventDefault();dzGX.classList.remove('drag');handleGastoXMLFiles(e.dataTransfer.files);});
+$('fGastoXML').addEventListener('change',function(e){handleGastoXMLFiles(e.target.files);});
+
+function handleGastoXMLFiles(files){Array.from(files).forEach(function(f){const r=new FileReader();r.onload=function(e){parseGastoXML(e.target.result,f.name);};r.readAsText(f,'UTF-8');});}
+
+function parseGastoXML(text,fname){
+  if(!liq)return;
+  const doc=new DOMParser().parseFromString(text,'text/xml');
+  const comp=doc.querySelector('Comprobante');if(!comp)return;
+  const subtotal=parseFloat(comp.getAttribute('SubTotal')||0);
+  var iva=0;
+  doc.querySelectorAll('Traslado').forEach(function(t){if(t.getAttribute('Impuesto')==='002')iva+=parseFloat(t.getAttribute('Importe')||0);});
+  const emisor=doc.querySelector('Emisor');
+  liq.gastosXML.push({serie:comp.getAttribute('Serie')||'',folio:comp.getAttribute('Folio')||'',
+    fecha:(comp.getAttribute('Fecha')||'').slice(0,10),proveedor:emisor?emisor.getAttribute('Nombre'):'',
+    subtotal:subtotal,iva:iva,total:parseFloat(comp.getAttribute('Total')||0),
+    concepto:'GASTO FACTURADO',desc:fname,pagaOp:true,tipo:'xml',autorizado:true});
+  renderGastos();
+  $('gastoXMLInfo').style.display='block';
+  $('gastoXMLInfo').innerHTML='<div class="alert alert-ok">'+liq.gastosXML.length+' gastos con XML registrados.</div>';
+}
+
+function agregarGasto(){
+  if(!liq)return;
+  const importe=parseFloat($('gastoImporte').value||0);
+  if(!importe){alert('Ingresa un importe.');return;}
+  const pagaOp=$('gastoPagaOp').value==='si';
+  const gasto={concepto:$('gastoConcepto').value,desc:$('gastoDesc').value||'',importe:importe,pagaOp:pagaOp,tipo:'manual',autorizado:false};
+  // Candado: si supera límite y no tiene factura, requiere autorización
+  if(importe>LIMITE_GASTO_SIN_FACTURA){
+    gastoPendiente=gasto;
+    $('authPass').value='';$('authError').style.display='none';
+    $('modalAuth').classList.add('open');
+  } else {
+    gasto.autorizado=true;
+    liq.gastos.push(gasto);
+    $('gastoImporte').value='';$('gastoDesc').value='';
+    renderGastos();
+  }
+}
+
+function verificarAuth(){
+  if($('authPass').value===SUPERVISOR_PASS){
+    $('modalAuth').classList.remove('open');
+    if(gastoPendiente){gastoPendiente.autorizado=true;liq.gastos.push(gastoPendiente);gastoPendiente=null;}
+    $('gastoImporte').value='';$('gastoDesc').value='';
+    renderGastos();
+  } else {
+    $('authError').style.display='block';
+  }
+}
+function cerrarModal(){$('modalAuth').classList.remove('open');gastoPendiente=null;}
+
+function renderGastos(){
+  if(!liq)return;
+  const todos=liq.gastosXML.concat(liq.gastos);
+  const tb=$('tbGastos');tb.innerHTML='';
+  var totOp=0,totEmp=0;
+  todos.forEach(function(g,i){
+    const imp=g.tipo==='xml'?g.total:g.importe;
+    if(g.pagaOp)totOp+=imp;else totEmp+=imp;
+    tb.innerHTML+='<tr><td>'+g.concepto+'</td><td>'+(g.desc||g.proveedor||'')+'</td><td class="num r">'+fmt(imp)+'</td>'
+      +'<td><span class="badge '+(g.tipo==='xml'?'bg-blue':'bg-gray')+'">'+(g.tipo==='xml'?'XML':'Manual')+'</span></td>'
+      +'<td><span class="badge '+(g.pagaOp?'bg-green':'bg-red')+'">'+(g.pagaOp?'Sí':'No')+'</span></td>'
+      +'<td>'+(g.autorizado?'<span class="badge bg-green">✓ OK</span>':'<span class="badge bg-yellow">Pendiente</span>')+'</td>'
+      +'<td><button class="btn btn-sm" style="background:#fde8e8;color:#9b1c1c;border:none;cursor:pointer" onclick="eliminarGasto('+i+')">✕</button></td></tr>';
+  });
+  $('tfGastos').innerHTML='<tr style="background:#f5f5f8;font-weight:700"><td colspan="2">TOTALES</td><td class="num r">'+fmt(totOp+totEmp)+'</td>'
+    +'<td colspan="2"><span style="color:#0a5233">Op: '+fmt(totOp)+'</span> · <span style="color:#9b1c1c">Emp: '+fmt(totEmp)+'</span></td><td colspan="2"></td></tr>';
+}
+
+function eliminarGasto(i){
+  if(!liq)return;
+  const todos=liq.gastosXML.concat(liq.gastos);
+  const g=todos[i];
+  if(g.tipo==='xml'){const xi=liq.gastosXML.indexOf(g);if(xi>=0)liq.gastosXML.splice(xi,1);}
+  else{const mi=liq.gastos.indexOf(g);if(mi>=0)liq.gastos.splice(mi,1);}
+  renderGastos();
+}
+
+// ══════════════════════════════════════════════
+// 6: REPORTE
+// ══════════════════════════════════════════════
+function generarReporte(){
+  if(!liq){$('panel6Content').style.display='none';$('liqReqMsg6').style.display='block';return;}
+  $('panel6Content').style.display='block';$('liqReqMsg6').style.display='none';
+  $('repLiqNum').textContent='#'+liq.num;
+
+  // Encabezado compacto
+  $('repEncabezado').innerHTML=
+    'Operador: <strong>'+liq.op.nombre+'</strong> · Unidad: <strong>'+liq.unidad+'</strong> · '
+    +liq.salida+' al '+liq.llegada+' · <strong>'+liq.duracion+' días</strong>'
+    +(liq.kms?' · '+liq.kms.toLocaleString('es-MX')+' km':'')
+    +(liq.rendimiento?' · '+liq.rendimiento+' km/L':'');
+
+  // ── Datos base ─────────────────────────────────────
+  const antsPend=(anticiposDB[liq.unidad]||[]).filter(function(a){return a.estado==='pendiente';});
+  const totAnts=antsPend.reduce(function(s,a){return s+a.importe;},0);
+  const viajes=ingresosDB.filter(function(v){return v.unidad===liq.unidad&&v.estado==='sin_liquidar';});
+
+  // Separar fletes de maniobras y otros
+  const vFletes=viajes.filter(function(v){return v.tipo==='flete_mx'||v.tipo==='flete_for';});
+  const vManiobras=viajes.filter(function(v){return v.tipo==='maniobra';});
+  const vOtros=viajes.filter(function(v){return v.tipo==='otro';});
+
+  const totSubFletes=vFletes.reduce(function(s,v){return s+v.subtotal;},0);
+  const totIvaFletes=vFletes.reduce(function(s,v){return s+v.iva;},0);
+  const totRetFletes=vFletes.reduce(function(s,v){return s+v.ret;},0);
+  const totSubManiobras=vManiobras.reduce(function(s,v){return s+v.subtotal;},0);
+  const totIvaManiobras=vManiobras.reduce(function(s,v){return s+v.iva;},0);
+  const totSubOtros=vOtros.reduce(function(s,v){return s+v.subtotal;},0);
+  const totIvaOtros=vOtros.reduce(function(s,v){return s+v.iva;},0);
+
+  // IVA total
+  const totIvaTrasl=totIvaFletes+totIvaManiobras+totIvaOtros;
+  const totRetTotal=totRetFletes;
+  const totIngSubtotal=totSubFletes+totSubManiobras+totSubOtros;
+  const totIngTotal=totIngSubtotal+totIvaTrasl-totRetTotal;
+
+  // Comisión SOLO sobre fletes
+  const totComision=totSubFletes*(liq.comision/100);
+  const totGastos1=totSubFletes*0.01;
+
+  // Diesel
+  const d=liq.diesel||{totLtsCarg:0,pp:0,ltsComprobados:0,importeComprobado:0,ltsNoComprobados:0,importeNoComprobado:0,ltsPend:0,importePend:0,ltsFinal:0,ultimoPrecio:0,ltsPorComprobar:0,ltsECM:0};
+  const dieselComprobado=d.importeComprobado||0;
+  const dieselNoComprobado=d.importeNoComprobado||0;
+
+  // Autopistas
+  const totAutEmp=liq.autopistas.filter(function(a){return !a.pagaOp;}).reduce(function(s,a){return s+a.importe;},0);
+  const totAutOp=liq.autopistas.filter(function(a){return a.pagaOp;}).reduce(function(s,a){return s+a.importe;},0);
+  const totAut=totAutEmp+totAutOp;
+
+  // Gastos
+  const todosGastos=liq.gastosXML.concat(liq.gastos);
+  const totGastosOp=todosGastos.filter(function(g){return g.pagaOp;}).reduce(function(s,g){return s+(g.tipo==='xml'?g.total:g.importe);},0);
+  const totGastosEmp=todosGastos.filter(function(g){return !g.pagaOp;}).reduce(function(s,g){return s+(g.tipo==='xml'?g.total:g.importe);},0);
+
+  // Desglose gastos por concepto
+  const gastosXMLTot=liq.gastosXML.reduce(function(s,g){return s+g.total;},0);
+  const gastosPorConcepto={};
+  liq.gastos.forEach(function(g){
+    if(!gastosPorConcepto[g.concepto])gastosPorConcepto[g.concepto]=0;
+    gastosPorConcepto[g.concepto]+=g.importe;
+  });
+
+  // Totales empresa
+  const totGastosEmpTotal=dieselTotal+totAut+totGastosEmp+gastosXMLTot;
+  const utilidad=totIngSubtotal-totGastosEmpTotal;
+
+  // Cuenta operador
+  const totalCargos=totAnts+dieselNoComprobado;
+  const totalAbonos=totComision+totGastos1+dieselComprobado+totAutOp+totGastosOp;
+  const saldo=totalAbonos-totalCargos;
+
+  function rr(label,val,cls,sub){
+    return '<div class="rep-row'+(sub?' subtotal':'')+(cls?' '+cls:'')+'">'
+      +'<span>'+label+'</span><span class="num">'+fmt(val)+'</span></div>';
+  }
+  function rrDetail(label,val){
+    return '<div style="display:flex;justify-content:space-between;padding:4px 10px 4px 20px;font-size:12px;color:#666;border-bottom:1px solid #f5f5f5">'
+      +'<span>'+label+'</span><span class="num">'+fmt(val)+'</span></div>';
+  }
+
+  // ── INGRESOS ───────────────────────────────────────
+  $('repIngresos').innerHTML=
+    rr('Fletes foráneos',totSubFletes)
+    +rrDetail('IVA fletes',totIvaFletes)
+    +rrDetail('Retención IVA',totRetFletes)
+    +rr('Maniobras',totSubManiobras)
+    +(totSubOtros?rr('Otros ingresos',totSubOtros):'')
+    +'<div style="height:1px;background:#eee;margin:6px 0"></div>'
+    +rr('SUBTOTAL INGRESOS',totIngSubtotal)
+    +rr('IVA TRASLADADO',totIvaTrasl,'abono')
+    +rr('RETENCIÓN IVA',-totRetTotal,'cargo')
+    +rr('TOTAL INGRESOS',totIngTotal,null,true);
+
+  // ── GASTOS ─────────────────────────────────────────
+  var gastosHTML=
+    rr('Diesel cargado + inicial ('+fmtN(d.ltsPorComprobar||0)+' lts por comprobar × '+fmt(d.pp||0)+')',(d.ltsPorComprobar||0)*(d.pp||0))
+    +rrDetail('Lts comprobados ECM: '+fmtN(d.ltsComprobados||0),-dieselComprobado)
+    +rrDetail('Lts no comprobados: '+fmtN(d.ltsNoComprobados||0),dieselNoComprobado)
+    +rrDetail('Arrastre próx. liq. ('+fmtN(d.ltsFinal||0)+' lts × '+fmt(d.ultimoPrecio||0)+')',d.importePend||0)
+    +rr('Autopistas',totAut)
+    +rrDetail('Empresa',totAutEmp)
+    +rrDetail('Operador (comprueba)',totAutOp);
+  Object.keys(gastosPorConcepto).forEach(function(k){
+    gastosHTML+=rr(k,gastosPorConcepto[k]);
+  });
+  if(gastosXMLTot)gastosHTML+=rr('Gastos facturados (XML)',gastosXMLTot);
+  gastosHTML+=rr('Comisión operador ('+liq.comision+'% s/ fletes)',totComision)
+    +rr('1% gastos sin comprobante',totGastos1)
+    +'<div style="height:1px;background:#eee;margin:6px 0"></div>'
+    +rr('TOTAL GASTOS',totGastosEmpTotal,null,true);
+  $('repGastos').innerHTML=gastosHTML;
+
+  // ── RESULTADO ──────────────────────────────────────
+  const margen=totIngSubtotal>0?(utilidad/totIngSubtotal*100):0;
+  $('repResultado').innerHTML=
+    '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px">'
+    +'<div class="kpi"><div class="v">'+fmt(totIngSubtotal)+'</div><div class="k">Ingresos subtotal</div></div>'
+    +'<div class="kpi"><div class="v red">'+fmt(totGastosEmpTotal)+'</div><div class="k">Total gastos</div></div>'
+    +'<div class="kpi"><div class="v '+(utilidad>=0?'green':'red')+'">'+fmt(utilidad)+'</div><div class="k">Utilidad bruta</div></div>'
+    +'<div class="kpi"><div class="v '+(margen>=0?'green':'red')+'">'+margen.toFixed(1)+'%</div><div class="k">Margen</div></div>'
+    +'<div class="kpi"><div class="v">'+fmt(totIvaTrasl)+'</div><div class="k">IVA trasladado</div></div>'
+    +'<div class="kpi"><div class="v">'+fmt(totIvaTrasl-totRetTotal)+'</div><div class="k">IVA acreditable</div></div>'
+    +'<div class="kpi"><div class="v red">'+fmt(totRetTotal)+'</div><div class="k">IVA retenido</div></div>'
+    +'<div class="kpi"><div class="v">'+viajes.length+'</div><div class="k">Viajes incluidos</div></div>'
+    +'</div>';
+
+  // ── CUENTA OPERADOR ────────────────────────────────
+  $('repCargos').innerHTML=
+    rr('Anticipos recibidos',totAnts,'cargo')
+    +rr('Diesel no comprobado ('+fmtN(d.ltsNoComprobados||0)+' lts × '+fmt(d.pp||0)+')',dieselNoComprobado,'cargo')
+    +'<div class="rep-row subtotal cargo"><span>TOTAL CARGOS</span><span class="num">'+fmt(totalCargos)+'</span></div>';
+
+  $('repAbonos').innerHTML=
+    rr('Comisión fletes '+liq.comision+'% (s/ '+fmt(totSubFletes)+')',totComision,'abono')
+    +rr('1% gastos sin comprobante',totGastos1,'abono')
+    +rr('Diesel comprobado ('+fmtN(d.ltsComprobados||0)+' lts × '+fmt(d.pp||0)+')',dieselComprobado,'abono')
+    +rr('Autopistas pagadas por op.',totAutOp,'abono')
+    +rr('Gastos del operador comprobados',totGastosOp,'abono')
+    +'<div class="rep-row subtotal abono"><span>TOTAL ABONOS</span><span class="num">'+fmt(totalAbonos)+'</span></div>';
+
+  $('repSaldo').innerHTML='<div class="saldo-box '+(saldo>=0?'saldo-fav':'saldo-con')+'">'
+    +'<div class="label">'+(saldo>=0?'✅ SALDO A FAVOR DEL OPERADOR':'⚠️ SALDO EN CONTRA DEL OPERADOR')+'</div>'
+    +'<div class="monto">'+fmt(Math.abs(saldo))+'</div>'
+    +'</div>';
+
+  // ── CARTERA ────────────────────────────────────────
+  var carteraHTML='';
+  if(viajes.length){
+    carteraHTML='<div class="tbl-wrap"><table>'
+      +'<thead><tr><th>Folio</th><th>Cliente</th><th class="r">Subtotal</th><th class="r">IVA</th><th class="r">Ret.</th><th class="r">Total</th></tr></thead><tbody>';
+    var totCar=0,totIvaCar=0,totRetCar=0,totTotCar=0;
+    viajes.forEach(function(v){
+      totCar+=v.subtotal;totIvaCar+=v.iva;totRetCar+=v.ret;totTotCar+=v.total;
+      carteraHTML+='<tr><td class="num">'+v.folio+'</td>'
+        +'<td style="font-size:11px;max-width:130px;overflow:hidden;text-overflow:ellipsis">'+v.cliente+'</td>'
+        +'<td class="num r">'+fmt(v.subtotal)+'</td>'
+        +'<td class="num r">'+fmt(v.iva)+'</td>'
+        +'<td class="num r">'+fmt(v.ret)+'</td>'
+        +'<td class="num r">'+fmt(v.total)+'</td></tr>';
+    });
+    carteraHTML+='</tbody><tfoot><tr style="font-weight:700;background:#f5f5f8">'
+      +'<td colspan="2">TOTAL</td>'
+      +'<td class="num r">'+fmt(totCar)+'</td>'
+      +'<td class="num r">'+fmt(totIvaCar)+'</td>'
+      +'<td class="num r">'+fmt(totRetCar)+'</td>'
+      +'<td class="num r">'+fmt(totTotCar)+'</td>'
+      +'</tr></tfoot></table></div>';
+    carteraHTML+='<div style="margin-top:10px;padding:8px 12px;background:#fffbeb;border-radius:6px;font-size:12px;color:#92400e">'
+      +'💼 Cuentas por cobrar: <strong>'+fmt(totTotCar)+'</strong></div>';
+  } else {
+    carteraHTML='<div style="color:#aaa;font-size:13px">Sin viajes registrados.</div>';
+  }
+  $('repCartera').innerHTML=carteraHTML;
+
+  // ── RUTA (del XML carta porte si existe) ───────────
+  var rutaHTML='';
+  if(liq.rutaCP&&liq.rutaCP.length){
+    rutaHTML='<div style="font-size:12px">';
+    liq.rutaCP.forEach(function(r,i){
+      rutaHTML+='<div style="display:flex;align-items:center;gap:6px;padding:5px 0;'+(i<liq.rutaCP.length-1?'border-bottom:1px solid #f0f0f0':'')+'">'
+        +'<span style="color:#e63946;font-weight:700;min-width:20px">'+(i+1)+'</span>'
+        +'<span>'+r.origen+'</span>'
+        +'<span style="color:#aaa">→</span>'
+        +'<span>'+r.destino+'</span>'
+        +(r.kms?'<span style="margin-left:auto;color:#888;font-size:11px">'+r.kms+' km</span>':'')
+        +'</div>';
+    });
+    rutaHTML+='</div>';
+  } else {
+    rutaHTML='<div style="color:#aaa;font-size:13px">Ruta no disponible. Se extrae del XML carta porte al registrar los ingresos.</div>';
+  }
+  $('repRuta').innerHTML=rutaHTML;
+}
+
+function cerrarLiquidacion(){
+  if(!liq)return;
+  if(!confirm('¿Cerrar liquidación #'+liq.num+'?\nSe marcarán anticipos y viajes como liquidados.'))return;
+  // Marcar anticipos
+  const ants=anticiposDB[liq.unidad]||[];
+  ants.filter(function(a){return a.estado==='pendiente';}).forEach(function(a){a.estado='liquidado';a.liqNum=liq.num;});
+  // Marcar viajes
+  ingresosDB.filter(function(v){return v.unidad===liq.unidad&&v.estado==='sin_liquidar';})
+    .forEach(function(v){v.estado='liquidado';v.liqNum=liq.num;});
+  const nA=ants.filter(function(a){return a.liqNum===liq.num;}).length;
+  const nV=ingresosDB.filter(function(v){return v.liqNum===liq.num;}).length;
+  alert('✅ Liquidación #'+liq.num+' cerrada.\n'+nA+' anticipos y '+nV+' viajes marcados como liquidados.');
+  liq=null;
+  $('headerInfo').textContent='Sin liquidación activa';
+  ['3','4','5','6'].forEach(function(i){$('liqReqMsg'+i).style.display='block';$('panel'+i+'Content').style.display='none';});
+  actualizarBadges();
+  showTab(0);
+}
+</script>
+</body>
+</html>
