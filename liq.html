@@ -913,8 +913,8 @@ function onLiqOpChange(){
   if(arrastres[unidad]){$('dIniLts').value=arrastres[unidad].lts;$('dIniPrecio').value=arrastres[unidad].precio;}
   if(!$('liqNum').value)$('liqNum').value=ultimaLiqNum+1;
   if(unidad){
-    // Si Firebase no ha cargado aún, intentar cargar primero
-    if(fbReady && !Object.keys(anticiposDB).length && !ingresosDB.length){
+    // Siempre recargar desde Firebase al seleccionar operador
+    if(fbReady){
       cargarEstado().then(function(){ mostrarPreviewLiq(unidad); });
     } else {
       mostrarPreviewLiq(unidad);
