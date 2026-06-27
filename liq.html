@@ -492,16 +492,15 @@ async function cargarEstado(){
     window.FB.listen('estado','anticiposDB', function(data){
       if(data&&data.data){
         anticiposDB=JSON.parse(data.data);
-        // Actualizar preview si hay operador seleccionado
         var op=parseInt($('liqOp')?$('liqOp').value||0:0);
-        if(op&&!liq) mostrarPreviewLiq(op);
+        if(op) mostrarPreviewLiq(op);  // siempre refrescar preview
       }
     });
     window.FB.listen('estado','ingresosDB', function(data){
       if(data&&data.data){
         ingresosDB=JSON.parse(data.data);
         var op=parseInt($('liqOp')?$('liqOp').value||0:0);
-        if(op&&!liq) mostrarPreviewLiq(op);
+        if(op) mostrarPreviewLiq(op);  // siempre refrescar preview
       }
     });
     window.FB.listen('estado','liqActiva', function(data){
@@ -549,8 +548,6 @@ function restaurarUILiquidacion(){
   if(liq.gastosXML||liq.gastos) renderGastos();
   if(liq.autopistas&&liq.autopistas.length) renderIAVE();
   if(liq.diesel&&$('kpisDiesel')) calcDiesel();
-  // Mostrar preview de anticipos/ingresos siempre al restaurar
-  mostrarPreviewLiq(liq.unidad);
 }
 
 function limpiarEstado(){
