@@ -36,19 +36,8 @@ iframe.visible{display:block}
 </head>
 <body>
 
-<!-- LOGIN -->
-<div class="login-overlay" id="loginOverlay">
-  <div class="login-box">
-    <div class="login-logo">MUDANZAS <span>TML</span></div>
-    <p class="login-modulo" id="loginModulo">Sistema de Liquidaciones</p>
-    <input type="password" class="login-input" id="loginPass" placeholder="••••••••">
-    <button class="login-btn" onclick="verificarLogin()">Entrar</button>
-    <div class="login-err" id="loginErr">Contraseña incorrecta</div>
-  </div>
-</div>
-
-<!-- HEADER (oculto hasta login) -->
-<header id="mainHeader" style="display:none">
+<!-- HEADER -->
+<header id="mainHeader">
   <div class="logo">MUDANZAS <span>TML</span> <span id="moduloLabel" style="font-size:13px;font-weight:400;color:#aaa;margin-left:8px"></span></div>
   <nav class="nav">
     <a href="?m=ant" id="navAnt">📋 Anticipos</a>
@@ -67,55 +56,23 @@ iframe.visible{display:block}
 </div>
 
 <script>
-var PASSWORDS = {ant:'ant2026', ing:'ing2026', liq:'liq2026', hist:'hist2026'};
-var NOMBRES   = {ant:'· Anticipos', ing:'· Ingresos', liq:'· Liquidaciones', hist:'· Historial'};
-var LABELS    = {ant:'📋 Anticipos', ing:'📄 Ingresos', liq:'🚛 Liquidaciones', hist:'🗂️ Historial'};
-
+var NOMBRES = {ant:'· Anticipos', ing:'· Ingresos', liq:'· Liquidaciones', hist:'· Historial'};
 var modActual = (new URLSearchParams(window.location.search).get('m')) || 'liq';
-if (!PASSWORDS[modActual]) modActual = 'liq';
+var mods = ['ant','ing','liq','hist'];
+if (!NOMBRES[modActual]) modActual = 'liq';
 
-var sesKey = 'tml_ses_' + modActual;
-var tieneSesion = sessionStorage.getItem(sesKey) === 'ok';
-
-document.getElementById('loginModulo').textContent = LABELS[modActual] || '';
-
-function verificarLogin() {
-  var pass = document.getElementById('loginPass').value;
-  if (pass === PASSWORDS[modActual]) {
-    sessionStorage.setItem(sesKey, 'ok');
-    document.getElementById('loginOverlay').style.display = 'none';
-    mostrarModulo();
-  } else {
-    document.getElementById('loginErr').style.display = 'block';
-    document.getElementById('loginPass').value = '';
-    document.getElementById('loginPass').focus();
-  }
-}
-
-document.getElementById('loginPass').addEventListener('keydown', function(e) {
-  if (e.key === 'Enter') verificarLogin();
+// Mostrar directamente — el candado está en las acciones de cada módulo
+document.getElementById('mainHeader').style.display = 'flex';
+document.getElementById('moduloLabel').textContent = NOMBRES[modActual] || '';
+mods.forEach(function(m) {
+  var el = document.getElementById('nav' + m.charAt(0).toUpperCase() + m.slice(1));
+  if (el) el.className = m === modActual ? 'active' : '';
 });
-
-function mostrarModulo() {
-  // Mostrar header
-  document.getElementById('mainHeader').style.display = 'flex';
-  document.getElementById('moduloLabel').textContent = NOMBRES[modActual] || '';
-  // Marcar nav activo
-  ['ant','ing','liq','hist'].forEach(function(m) {
-    var el = document.getElementById('nav' + m.charAt(0).toUpperCase() + m.slice(1));
-    if (el) el.className = m === modActual ? 'active' : '';
-  });
-  // Mostrar iframe del módulo activo
-  document.querySelectorAll('#app iframe').forEach(function(fr) {
-    fr.classList.remove('visible');
-  });
-  var fr = document.getElementById('fr-' + modActual);
-  if (fr) fr.classList.add('visible');
-}
-
-// Arrancar
-if (tieneSesion) { mostrarModulo(); }
-else { setTimeout(function(){ document.getElementById('loginPass').focus(); }, 100); }
+document.querySelectorAll('#app iframe').forEach(function(fr) {
+  fr.classList.remove('visible');
+});
+var fr = document.getElementById('fr-' + modActual);
+if (fr) fr.classList.add('visible');
 </script>
 </body>
 </html>
