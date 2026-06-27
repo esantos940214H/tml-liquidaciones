@@ -482,9 +482,11 @@ async function cargarEstado(){
 
     if($('headerInfo'))$('headerInfo').textContent=liq?'Liq. #'+liq.num+' · '+liq.op.nombre:'Sin liquidación activa';
 
-    // Si hay operador seleccionado mostrar preview
-    var selOp=parseInt($('liqOp')?$('liqOp').value||0:0);
-    if(selOp) mostrarPreviewLiq(selOp);
+    // Si hay operador seleccionado mostrar preview (restaurarUILiquidacion ya lo llama si hay liq)
+    if(!liq){
+      var selOp=parseInt($('liqOp')?$('liqOp').value||0:0);
+      if(selOp) mostrarPreviewLiq(selOp);
+    }
 
     // Escuchar cambios en tiempo real
     window.FB.listen('estado','anticiposDB', function(data){
@@ -547,6 +549,8 @@ function restaurarUILiquidacion(){
   if(liq.gastosXML||liq.gastos) renderGastos();
   if(liq.autopistas&&liq.autopistas.length) renderIAVE();
   if(liq.diesel&&$('kpisDiesel')) calcDiesel();
+  // Mostrar preview de anticipos/ingresos siempre al restaurar
+  mostrarPreviewLiq(liq.unidad);
 }
 
 function limpiarEstado(){
