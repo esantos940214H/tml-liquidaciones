@@ -450,9 +450,7 @@ var fbReady = false;
 
 function guardarEstado(){
   if(!fbReady){ console.warn('Firebase no listo aún'); return; }
-  // Guardar en Firebase (async, no bloqueante)
-  window.FB.set('estado','anticiposDB',{data: JSON.stringify(anticiposDB)});
-  window.FB.set('estado','ingresosDB',{data: JSON.stringify(ingresosDB)});
+  // SOLO guarda lo que pertenece a liquidaciones — NO toca anticiposDB ni ingresosDB
   window.FB.set('estado','arrastres',{data: JSON.stringify(arrastres)});
   window.FB.set('estado','config',{ultimaLiqNum: ultimaLiqNum});
   if(liq) window.FB.set('estado','liqActiva',{data: JSON.stringify(liq)});
@@ -1591,6 +1589,11 @@ function cerrarLiquidacion(){
   $('headerInfo').textContent='Sin liquidación activa';
   ['1','2','3','4'].forEach(function(i){$('liqReqMsg'+i).style.display='block';$('panel'+i+'Content').style.display='none';});
   actualizarBadges();
+  // Al cerrar: persistir los cambios de estado en anticiposDB e ingresosDB
+  if(fbReady){
+    window.FB.set('estado','anticiposDB',{data: JSON.stringify(anticiposDB)});
+    window.FB.set('estado','ingresosDB',{data: JSON.stringify(ingresosDB)});
+  }
   guardarEstado();
   showTab(0);
 }
