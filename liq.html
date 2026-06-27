@@ -605,11 +605,12 @@ function actualizarBadges(){
 // ══════════════════════════════════════════════
 // 0: ANTICIPOS
 // ══════════════════════════════════════════════
-const dzCSV=$('dzCSV');
+const dzCSV=$('dzCSV'); if(dzCSV){
 dzCSV.addEventListener('dragover',function(e){e.preventDefault();dzCSV.classList.add('drag');});
 dzCSV.addEventListener('dragleave',function(){dzCSV.classList.remove('drag');});
 dzCSV.addEventListener('drop',function(e){e.preventDefault();dzCSV.classList.remove('drag');handleCSV(e.dataTransfer.files[0]);});
 $('fCSV').addEventListener('change',function(e){handleCSV(e.target.files[0]);});
+}
 
 function handleCSV(file){
   if(!file)return;
@@ -725,11 +726,12 @@ function limpiarIngForm(){
 }
 
 // XML carta porte
-const dzXML=$('dzXML');
+const dzXML=$('dzXML'); if(dzXML){
 dzXML.addEventListener('dragover',function(e){e.preventDefault();dzXML.classList.add('drag');});
 dzXML.addEventListener('dragleave',function(){dzXML.classList.remove('drag');});
 dzXML.addEventListener('drop',function(e){e.preventDefault();dzXML.classList.remove('drag');handleXMLIngFiles(e.dataTransfer.files);});
 $('fXML').addEventListener('change',function(e){handleXMLIngFiles(e.target.files);});
+}
 
 function handleXMLIngFiles(files){
   const unidad=parseInt($('ingOp').value||0);
@@ -792,11 +794,12 @@ function parseXMLIngreso(text,fname,unidad){
 }
 
 // PDF via Claude
-const dzPDF=$('dzPDF');
+const dzPDF=$('dzPDF'); if(dzPDF){
 dzPDF.addEventListener('dragover',function(e){e.preventDefault();dzPDF.classList.add('drag');});
 dzPDF.addEventListener('dragleave',function(){dzPDF.classList.remove('drag');});
 dzPDF.addEventListener('drop',function(e){e.preventDefault();dzPDF.classList.remove('drag');handlePDFIngFiles(e.dataTransfer.files);});
 $('fPDF').addEventListener('change',function(e){handlePDFIngFiles(e.target.files);});
+}
 
 function handlePDFIngFiles(files){
   const unidad=parseInt($('ingOp').value||0);
@@ -967,11 +970,12 @@ function calcRendAuto(){
 }
 
 // DDEC via Claude
-const dzDDEC=$('dzDDEC');
+const dzDDEC=$('dzDDEC'); if(dzDDEC){
 dzDDEC.addEventListener('dragover',function(e){e.preventDefault();dzDDEC.classList.add('drag');});
 dzDDEC.addEventListener('dragleave',function(){dzDDEC.classList.remove('drag');});
 dzDDEC.addEventListener('drop',function(e){e.preventDefault();dzDDEC.classList.remove('drag');handleDDEC(e.dataTransfer.files[0]);});
 $('fDDEC').addEventListener('change',function(e){handleDDEC(e.target.files[0]);});
+}
 
 function fileToBase64(file){return new Promise(function(res,rej){const r=new FileReader();r.onload=function(e){res(e.target.result.split(',')[1]);};r.onerror=rej;r.readAsDataURL(file);});}
 
@@ -1039,11 +1043,12 @@ function iniciarLiquidacion(){
 // ══════════════════════════════════════════════
 // 3: DIESEL
 // ══════════════════════════════════════════════
-const dzXLSX=$('dzXLSX');
+const dzXLSX=$('dzXLSX'); if(dzXLSX){
 dzXLSX.addEventListener('dragover',function(e){e.preventDefault();dzXLSX.classList.add('drag');});
 dzXLSX.addEventListener('dragleave',function(){dzXLSX.classList.remove('drag');});
 dzXLSX.addEventListener('drop',function(e){e.preventDefault();dzXLSX.classList.remove('drag');handleXLSX(e.dataTransfer.files[0]);});
 $('fXLSX').addEventListener('change',function(e){handleXLSX(e.target.files[0]);});
+}
 
 function handleXLSX(file){
   if(!file)return;
@@ -1183,11 +1188,12 @@ function exportDieselCSV(){
 // ══════════════════════════════════════════════
 // 4: AUTOPISTAS
 // ══════════════════════════════════════════════
-const dzIAVE=$('dzIAVE');
+const dzIAVE=$('dzIAVE'); if(dzIAVE){
 dzIAVE.addEventListener('dragover',function(e){e.preventDefault();dzIAVE.classList.add('drag');});
 dzIAVE.addEventListener('dragleave',function(){dzIAVE.classList.remove('drag');});
 dzIAVE.addEventListener('drop',function(e){e.preventDefault();dzIAVE.classList.remove('drag');handleIAVE(e.dataTransfer.files[0]);});
 $('fIAVE').addEventListener('change',function(e){handleIAVE(e.target.files[0]);});
+}
 
 function handleIAVE(file){if(!file)return;const r=new FileReader();r.onload=function(e){parseIAVE(e.target.result,file.name);};r.readAsText(file,'UTF-8');}
 
@@ -1235,11 +1241,12 @@ function renderIAVE(){
 // ══════════════════════════════════════════════
 // 5: GASTOS
 // ══════════════════════════════════════════════
-const dzGX=$('dzGastoXML');
+const dzGX=$('dzGastoXML'); if(dzGX){
 dzGX.addEventListener('dragover',function(e){e.preventDefault();dzGX.classList.add('drag');});
 dzGX.addEventListener('dragleave',function(){dzGX.classList.remove('drag');});
 dzGX.addEventListener('drop',function(e){e.preventDefault();dzGX.classList.remove('drag');handleGastoXMLFiles(e.dataTransfer.files);});
-$('fGastoXML').addEventListener('change',function(e){handleGastoXMLFiles(e.target.files);});
+if($('fGastoXML'))$('fGastoXML').addEventListener('change',function(e){handleGastoXMLFiles(e.target.files);});
+}
 
 function handleGastoXMLFiles(files){Array.from(files).forEach(function(f){const r=new FileReader();r.onload=function(e){parseGastoXML(e.target.result,f.name);};r.readAsText(f,'UTF-8');});}
 
