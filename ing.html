@@ -55,6 +55,19 @@ tr:hover td{background:#fafafa}
 .fb-status{font-size:11px;color:#aaa}
 .fb-ok{color:#2d6a4f}.fb-err{color:#e63946}
 @media(max-width:600px){.grid2,.grid4{grid-template-columns:1fr}}
+
+/* ── MODAL CANDADO ── */
+.lock-overlay{position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:9999;display:flex;align-items:center;justify-content:center}
+.lock-box{background:#fff;border-radius:12px;padding:30px;width:320px;box-shadow:0 16px 48px rgba(0,0,0,.3);text-align:center}
+.lock-box h3{font-size:15px;font-weight:700;margin-bottom:6px;color:#1a1a2e}
+.lock-box p{font-size:12px;color:#888;margin-bottom:16px}
+.lock-box input{width:100%;border:1.5px solid #dde;border-radius:7px;padding:9px 12px;font-size:14px;text-align:center;letter-spacing:3px;margin-bottom:10px;outline:none}
+.lock-box input:focus{border-color:#e63946}
+.lock-row{display:flex;gap:8px}
+.lock-row button{flex:1;padding:9px;border:none;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer}
+.lock-ok{background:#e63946;color:#fff}.lock-ok:hover{background:#c1121f}
+.lock-cancel{background:#f0f2f5;color:#555}.lock-cancel:hover{background:#e0e2e5}
+.lock-err{color:#e63946;font-size:11px;margin-top:6px;display:none}
 </style>
 </head>
 <body>
@@ -250,7 +263,9 @@ $('fXML').addEventListener('change',e=>handleXMLFiles(e.target.files));
 function handleXMLFiles(files){
   const unidad=parseInt($('ingOp').value||0);
   if(!unidad){alert('Selecciona el operador primero.');return;}
-  Array.from(files).forEach(f=>{const r=new FileReader();r.onload=e=>parseXML(e.target.result,f.name,unidad);r.readAsText(f,'UTF-8');});
+  lockRequest('Subir XML de viaje/flete — Ingresos', function(){
+    Array.from(files).forEach(f=>{const r=new FileReader();r.onload=e=>parseXML(e.target.result,f.name,unidad);r.readAsText(f,'UTF-8');});
+  });
 }
 
 function parseXML(text,fname,unidad){
@@ -303,7 +318,9 @@ $('fPDF').addEventListener('change',e=>handlePDFFiles(e.target.files));
 function handlePDFFiles(files){
   const unidad=parseInt($('ingOp').value||0);
   if(!unidad){alert('Selecciona el operador primero.');return;}
-  Array.from(files).forEach(f=>leerPDF(f,unidad));
+  lockRequest('Subir PDF de factura — Ingresos', function(){
+    Array.from(files).forEach(f=>leerPDF(f,unidad));
+  });
 }
 
 function fileToBase64(file){return new Promise((res,rej)=>{const r=new FileReader();r.onload=e=>res(e.target.result.split(',')[1]);r.onerror=rej;r.readAsDataURL(file);});}
@@ -335,7 +352,7 @@ async function leerPDF(file,unidad){
   }catch(e){$('ingInfo').innerHTML='<div class="alert alert-warn">⚠️ Error: '+e.message+'. Captura manualmente.</div>';}
 }
 
-function agregarIngreso(){
+function agregarIngresoReal(){
   const unidad=parseInt($('ingOp').value||0);
   if(!unidad){alert('Selecciona operador.');return;}
   const subtotal=parseFloat($('ingSubtotal').value||0);
@@ -409,6 +426,58 @@ function exportarCSV(){
   dlBlob(csv,'Ingresos_TML_'+hoy()+'.csv','text/csv');
 }
 
+
+// ── CANDADO RM2026 ──────────────────────────────────────────────────────────
+var _lockCallback = null;
+var LOCK_PASS_ING = 'RM2026';
+
+function lockRequest(desc, callback){
+  _lockCallback = callback;
+  document.getElementById('lockDesc').textContent = desc;
+  document.getElementById('lockPass').value = '';
+  document.getElementById('lockErr').style.display = 'none';
+  document.getElementById('lockModal').style.display = 'flex';
+  setTimeout(function(){ document.getElementById('lockPass').focus(); }, 100);
+}
+function lockConfirm(){
+  if(document.getElementById('lockPass').value === LOCK_PASS_ING){
+    document.getElementById('lockModal').style.display = 'none';
+    if(_lockCallback) _lockCallback();
+    _lockCallback = null;
+  } else {
+    document.getElementById('lockErr').style.display = 'block';
+    document.getElementById('lockPass').value = '';
+    document.getElementById('lockPass').focus();
+  }
+}
+function lockCancel(){
+  document.getElementById('lockModal').style.display = 'none';
+  _lockCallback = null;
+  // Limpiar el file input para que no quede seleccionado
+  var fi = document.getElementById('fXML');
+  if(fi) fi.value = '';
+  var fp = document.getElementById('fPDF');
+  if(fp) fp.value = '';
+}
+
+function agregarIngreso(){
+  lockRequest('Registrar viaje/ingreso manual', function(){ agregarIngresoReal(); });
+}
 </script>
+
+<!-- MODAL CANDADO INGRESOS -->
+<div class="lock-overlay" id="lockModal" style="display:none">
+  <div class="lock-box">
+    <h3>🔒 Autorización requerida</h3>
+    <p id="lockDesc">Ingresa la contraseña para continuar</p>
+    <input type="password" id="lockPass" placeholder="••••••••"
+      onkeydown="if(event.key==='Enter')lockConfirm()">
+    <div class="lock-row">
+      <button class="lock-ok" onclick="lockConfirm()">Confirmar</button>
+      <button class="lock-cancel" onclick="lockCancel()">Cancelar</button>
+    </div>
+    <div class="lock-err" id="lockErr">Contraseña incorrecta</div>
+  </div>
+</div>
 </body>
 </html>
