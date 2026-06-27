@@ -923,7 +923,7 @@ function onLiqOpChange(){
 }
 
 async function refrescarPreview(){
-  if(!fbReady){alert('Sin conexión a Firebase');return;}
+  if(!fbReady){console.warn('Firebase no listo');return;}
   const a=await window.FB.get('estado','anticiposDB');
   if(a&&a.data)anticiposDB=JSON.parse(a.data);
   const i=await window.FB.get('estado','ingresosDB');
