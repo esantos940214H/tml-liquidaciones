@@ -462,16 +462,13 @@ async function cargarEstado(){
   try{
     if($('headerInfo'))$('headerInfo').textContent='Cargando datos...';
 
-    const [a,i,ar,cfg,l] = await Promise.all([
-      window.FB.get('estado','anticiposDB'),
-      window.FB.get('estado','ingresosDB'),
+    // Cargar datos que NO cambian frecuentemente con get() directo
+    const [ar,cfg,l] = await Promise.all([
       window.FB.get('estado','arrastres'),
       window.FB.get('estado','config'),
       window.FB.get('estado','liqActiva'),
     ]);
 
-    if(a&&a.data) anticiposDB=JSON.parse(a.data);
-    if(i&&i.data) ingresosDB=JSON.parse(i.data);
     if(ar&&ar.data) arrastres=JSON.parse(ar.data);
     if(cfg&&cfg.ultimaLiqNum) ultimaLiqNum=cfg.ultimaLiqNum;
 
@@ -482,25 +479,24 @@ async function cargarEstado(){
 
     if($('headerInfo'))$('headerInfo').textContent=liq?'Liq. #'+liq.num+' · '+liq.op.nombre:'Sin liquidación activa';
 
-    // Si hay operador seleccionado mostrar preview (restaurarUILiquidacion ya lo llama si hay liq)
-    if(!liq){
-      var selOp=parseInt($('liqOp')?$('liqOp').value||0:0);
-      if(selOp) mostrarPreviewLiq(selOp);
-    }
-
-    // Escuchar cambios en tiempo real
+    // anticiposDB e ingresosDB: SOLO via listeners (onSnapshot dispara inmediatamente con datos actuales)
     window.FB.listen('estado','anticiposDB', function(data){
       if(data&&data.data){
-        anticiposDB=JSON.parse(data.data);
+        var _la=JSON.parse(data.data);
+        anticiposDB=Array.isArray(_la)?{}:_la;
+        console.log('anticiposDB cargado via listener, claves:', Object.keys(anticiposDB));
         var op=parseInt($('liqOp')?$('liqOp').value||0:0);
-        if(op) mostrarPreviewLiq(op);  // siempre refrescar preview
+        if(!op && liq) op=liq.unidad;
+        if(op) mostrarPreviewLiq(op);
       }
     });
     window.FB.listen('estado','ingresosDB', function(data){
       if(data&&data.data){
         ingresosDB=JSON.parse(data.data);
+        console.log('ingresosDB cargado via listener, registros:', ingresosDB.length);
         var op=parseInt($('liqOp')?$('liqOp').value||0:0);
-        if(op) mostrarPreviewLiq(op);  // siempre refrescar preview
+        if(!op && liq) op=liq.unidad;
+        if(op) mostrarPreviewLiq(op);
       }
     });
     window.FB.listen('estado','liqActiva', function(data){
@@ -587,7 +583,7 @@ function initSelects(){
 initSelects();
 
 function renderTags(){
-  const c=$('opsTags');c.innerHTML='';
+  const c=$('opsTags');if(!c)return;c.innerHTML='';
   OPERADORES.forEach(function(op){
     const t=document.createElement('div');
     t.className='op-tag'+(opExcluidos.has(op.unidad)?'':' active');
