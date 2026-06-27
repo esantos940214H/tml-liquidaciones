@@ -127,7 +127,7 @@ tr:hover td{background:#fafafa}
 <!-- ══════════════════════════════════════════════
      2: LIQUIDACIÓN
 ══════════════════════════════════════════════ -->
-<div id="panel-0" class="panel"><div class="container">
+<div id="panel-0" class="panel active"><div class="container">
   <div class="card">
     <div class="card-title">🚛 Encabezado de liquidación</div>
     <div class="grid2" style="margin-bottom:14px">
@@ -1594,6 +1594,10 @@ function cerrarLiquidacion(){
   guardarEstado();
   showTab(0);
 }
+
+document.addEventListener('DOMContentLoaded', function(){
+  showTab(0);
+});
 </script>
 </body>
 </html>
