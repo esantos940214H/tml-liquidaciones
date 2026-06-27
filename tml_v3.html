@@ -766,6 +766,14 @@ function iniciarModulo(){
   document.querySelectorAll('[id^="mod-"]').forEach(function(d){d.style.display='none';});
   var mod=$('mod-'+modActual);
   if(mod)mod.style.display='block';
+  // Poblar selects AHORA que el módulo es visible
+  var selectMap={
+    ant:['mOp','filtOp'],
+    ing:['ingOp','filtOpIng'],
+    liq:['liqOp','ingOp','filtroIngOp'],
+    hist:['busOp']
+  };
+  (selectMap[modActual]||[]).forEach(function(id){poblarSelect(id);});
   // Esperar Firebase y luego iniciar módulo
   function doInit(){
     $('fbStatus').textContent='✅ Conectado';
@@ -1046,11 +1054,6 @@ function exportarCSV(){
   dlBlob(csv,'Anticipos_TML_'+hoy()+'.csv','text/csv');
 }
 function initAnt(){
-  // Pequeño delay para asegurar que el DOM del módulo esté visible
-  setTimeout(function(){
-    poblarSelect('mOp');
-    poblarSelect('filtOp');
-  }, 50);
   (async function(){
     var d=await window.FB.get('estado','anticiposDB');
     if(d&&d.data)anticiposDB=JSON.parse(d.data);
@@ -1263,7 +1266,6 @@ function exportarCSV(){
   dlBlob(csv,'Ingresos_TML_'+hoy()+'.csv','text/csv');
 }
 function initIng(){
-  setTimeout(function(){poblarSelect('ingOp');poblarSelect('filtOpIng');}, 50);
   (async function(){
     var d=await window.FB.get('estado','ingresosDB');
     if(d&&d.data)ingresosDB=JSON.parse(d.data);
@@ -2465,11 +2467,6 @@ function cerrarLiquidacion(){
 }
 
 function initLiq(){
-  setTimeout(function(){
-    poblarSelect('liqOp');
-    poblarSelect('ingOp');
-    poblarSelect('filtroIngOp');
-  }, 50);
   renderTagsLiq();
   (async function(){
     if($('headerInfo'))$('headerInfo').textContent='Cargando...';
