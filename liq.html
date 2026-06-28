@@ -484,19 +484,27 @@ async function cargarEstado(){
       if(data&&data.data){
         var _la=JSON.parse(data.data);
         anticiposDB=Array.isArray(_la)?{}:_la;
-        console.log('anticiposDB cargado via listener, claves:', Object.keys(anticiposDB));
         var op=parseInt($('liqOp')?$('liqOp').value||0:0);
         if(!op && liq) op=liq.unidad;
         if(op) mostrarPreviewLiq(op);
+        // Si el reporte está visible, regenerarlo con datos actuales
+        var tabActivo=document.querySelector('.tab.active');
+        var tabs=document.querySelectorAll('.tab');
+        var idxTab=Array.from(tabs).indexOf(tabActivo);
+        if(idxTab===4) generarReporte();
       }
     });
     window.FB.listen('estado','ingresosDB', function(data){
       if(data&&data.data){
         ingresosDB=JSON.parse(data.data);
-        console.log('ingresosDB cargado via listener, registros:', ingresosDB.length);
         var op=parseInt($('liqOp')?$('liqOp').value||0:0);
         if(!op && liq) op=liq.unidad;
         if(op) mostrarPreviewLiq(op);
+        // Si el reporte está visible, regenerarlo con datos actuales
+        var tabActivo=document.querySelector('.tab.active');
+        var tabs=document.querySelectorAll('.tab');
+        var idxTab=Array.from(tabs).indexOf(tabActivo);
+        if(idxTab===4) generarReporte();
       }
     });
     window.FB.listen('estado','liqActiva', function(data){
