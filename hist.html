@@ -1,0 +1,475 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TML · Historial</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Segoe UI',Arial,sans-serif;background:#f0f2f5;color:#1a1a2e;min-height:100vh}
+header{background:#1a1a2e;color:#fff;padding:14px 24px;display:flex;align-items:center;justify-content:space-between;border-bottom:3px solid #e63946}
+.logo{font-size:18px;font-weight:800}.logo span{color:#e63946}
+.nav{display:flex;gap:6px}
+.nav a{color:#aaa;text-decoration:none;font-size:11px;padding:5px 10px;border-radius:5px;border:1px solid #333;transition:all .15s}
+.nav a:hover{color:#fff;border-color:#555}
+.nav a.active{color:#fff;background:#e63946;border-color:#e63946}
+.container{max-width:1150px;margin:0 auto;padding:20px 16px}
+.card{background:#fff;border-radius:10px;box-shadow:0 2px 12px rgba(0,0,0,.07);padding:20px 24px;margin-bottom:16px}
+.card-title{font-size:12px;font-weight:700;color:#1a1a2e;margin-bottom:14px;text-transform:uppercase;letter-spacing:1px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px}
+.field{display:flex;flex-direction:column;gap:4px}
+.field label{font-size:11px;font-weight:700;color:#666;text-transform:uppercase;letter-spacing:.5px}
+.field input,.field select{border:1.5px solid #dde;border-radius:6px;padding:8px 10px;font-size:13px;color:#1a1a2e;background:#fafafa;width:100%}
+.field input:focus,.field select:focus{outline:none;border-color:#e63946}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end}
+.btn{padding:8px 18px;border-radius:6px;border:none;font-size:12px;font-weight:700;cursor:pointer;transition:all .15s;text-transform:uppercase;letter-spacing:.5px}
+.btn-red{background:#e63946;color:#fff}.btn-red:hover{background:#c1121f}
+.btn-dark{background:#1a1a2e;color:#fff}.btn-dark:hover{background:#0d0d1a}
+.btn-out{background:#fff;color:#1a1a2e;border:1.5px solid #1a1a2e}.btn-out:hover{background:#f0f2f5}
+.btn-sm{padding:5px 11px;font-size:11px}
+.tbl-wrap{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th{background:#1a1a2e;color:#fff;padding:8px 10px;font-size:11px;text-transform:uppercase;letter-spacing:.7px;text-align:left;font-weight:600}
+th.r{text-align:right}
+td{padding:8px 10px;border-bottom:1px solid #f0f0f0;vertical-align:middle}
+tr:last-child td{border-bottom:none}
+tr:hover td{background:#fafafa}
+.r{text-align:right}.num{font-family:monospace;font-weight:600}
+.badge{display:inline-block;border-radius:4px;padding:2px 8px;font-size:10px;font-weight:700}
+.bg-green{background:#d1e7dd;color:#0a5233;border:1px solid #a3cfbb}
+.bg-red{background:#fde8e8;color:#9b1c1c;border:1px solid #f9a8a8}
+.fb-status{font-size:11px;color:#aaa}
+.fb-ok{color:#2d6a4f}.fb-err{color:#e63946}
+
+/* DETALLE LIQUIDACIÓN */
+.det-section{margin-bottom:18px}
+.det-section h3{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:#888;margin-bottom:8px;padding-bottom:4px;border-bottom:1px solid #eee}
+.det-row{display:flex;justify-content:space-between;padding:6px 8px;font-size:13px;border-bottom:1px solid #f5f5f5;border-radius:4px}
+.det-row.cargo{color:#9b1c1c}
+.det-row.abono{color:#0a5233}
+.det-row.subtotal{font-weight:700;background:#f5f5f8;padding:8px;border-radius:6px;margin-top:4px}
+.saldo-box{border-radius:10px;padding:14px 20px;display:flex;justify-content:space-between;align-items:center;margin-top:12px}
+.saldo-fav{background:#d1e7dd;color:#0a5233}
+.saldo-con{background:#fde8e8;color:#9b1c1c}
+.saldo-box .monto{font-size:22px;font-weight:800}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin-top:12px}
+.kpi{background:#f5f5f8;border-radius:8px;padding:11px 13px}
+.kpi .v{font-size:16px;font-weight:800;color:#1a1a2e}
+.kpi .v.red{color:#e63946}.kpi .v.green{color:#2d6a4f}
+.kpi .k{font-size:10px;color:#888;text-transform:uppercase;letter-spacing:.7px;margin-top:2px}
+.readonly-badge{background:#f0f2f5;border:1px solid #dde;border-radius:5px;padding:3px 8px;font-size:11px;color:#888}
+.firma-bloque{margin-top:8px}
+.firma-texto{font-size:11.5px;line-height:1.7;color:#333;text-align:justify;font-weight:600;text-transform:uppercase;margin-bottom:28px}
+.firma-campos{display:grid;grid-template-columns:2fr 1fr;gap:48px;margin-top:8px}
+.firma-linea{border-top:1.5px solid #1a1a2e;margin-top:40px;margin-bottom:6px}
+.firma-label{font-size:10px;color:#666;text-transform:uppercase;letter-spacing:.7px;text-align:center}
+.firma-opnombre{font-size:12px;color:#555;text-align:center;font-weight:700;margin-top:4px}
+@media(max-width:600px){.grid2{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<header>
+  <div class="logo">MUDANZAS <span>TML</span> <span style="font-size:13px;font-weight:400;color:#aaa;margin-left:8px">· Historial</span></div>
+  <div style="display:flex;align-items:center;gap:12px">
+    <span class="fb-status" id="fbStatus">⏳ Conectando...</span>
+    <nav class="nav">
+      <a href="ant.html">📋 Anticipos</a>
+      <a href="ing.html">📄 Ingresos</a>
+      <a href="liq.html">🚛 Liquidaciones</a>
+      <a href="hist.html" class="active">🗂️ Historial</a>
+    </nav>
+  </div>
+</header>
+
+<div class="container">
+
+  <!-- BÚSQUEDA -->
+  <div class="card">
+    <div class="card-title">🔍 Buscar liquidaciones cerradas</div>
+    <div class="row">
+      <div class="field"><label>Operador</label>
+        <select id="busOp" onchange="buscar()"><option value="">Todos</option></select>
+      </div>
+      <div class="field"><label>No. Liquidación</label>
+        <input type="number" id="busNum" placeholder="Ej: 3" onchange="buscar()">
+      </div>
+      <div class="field"><label>Desde</label>
+        <input type="date" id="busDesde" onchange="buscar()">
+      </div>
+      <div class="field"><label>Hasta</label>
+        <input type="date" id="busHasta" onchange="buscar()">
+      </div>
+      <button class="btn btn-red btn-sm" onclick="buscar()">🔍 Buscar</button>
+      <button class="btn btn-out btn-sm" onclick="limpiarBusqueda()">Limpiar</button>
+      <button class="btn btn-dark btn-sm" onclick="recargarHistorial()">🔄 Recargar</button>
+    </div>
+  </div>
+
+  <!-- LISTA DE LIQUIDACIONES -->
+  <div class="card" id="cardLista">
+    <div class="card-title">📋 Liquidaciones cerradas <span id="countLiq" style="font-size:11px;font-weight:400;color:#aaa"></span></div>
+    <div class="tbl-wrap">
+      <table>
+        <thead><tr>
+          <th>#</th><th>Operador</th><th>Unidad</th><th>Salida</th><th>Llegada</th>
+          <th>Días</th><th class="r">Ingresos</th><th class="r">Saldo Op.</th><th>Resultado</th><th></th>
+        </tr></thead>
+        <tbody id="tbHistorial"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- DETALLE LIQUIDACIÓN (solo lectura) -->
+  <div id="cardDetalle" style="display:none">
+    <div class="card">
+      <div class="card-title">
+        <span>📊 Liquidación <span id="detLiqNum" style="color:#e63946"></span> <span class="readonly-badge">Solo lectura</span></span>
+        <button class="btn btn-out btn-sm" onclick="cerrarDetalle()">← Volver a la lista</button>
+      </div>
+
+      <div id="detEncabezado" style="background:#f5f5f8;border-radius:8px;padding:12px;margin-bottom:16px;font-size:13px"></div>
+
+      <!-- Ingresos -->
+      <div class="det-section">
+        <h3>📥 Ingresos</h3>
+        <div id="detIngresos"></div>
+      </div>
+
+      <!-- Gastos -->
+      <div class="det-section">
+        <h3>📤 Gastos del viaje</h3>
+        <div id="detGastos"></div>
+      </div>
+
+      <!-- Resultado empresa -->
+      <div class="det-section">
+        <h3>📊 Resultado del viaje</h3>
+        <div class="kpis" id="detResultado"></div>
+      </div>
+
+      <!-- Cuenta operador -->
+      <div class="det-section">
+        <h3>👷 Cuenta del operador</h3>
+        <div class="grid2">
+          <div>
+            <div style="font-size:11px;font-weight:700;color:#9b1c1c;margin-bottom:8px;padding:5px 10px;background:#fde8e8;border-radius:5px">CARGOS</div>
+            <div id="detCargos"></div>
+          </div>
+          <div>
+            <div style="font-size:11px;font-weight:700;color:#0a5233;margin-bottom:8px;padding:5px 10px;background:#d1e7dd;border-radius:5px">ABONOS</div>
+            <div id="detAbonos"></div>
+          </div>
+        </div>
+        <div id="detSaldo" style="margin-top:12px"></div>
+      </div>
+
+      <!-- Cartera -->
+      <div class="det-section">
+        <h3>📋 Cartera / Docs x cobrar</h3>
+        <div id="detCartera"></div>
+      </div>
+
+      <!-- Anticipos incluidos -->
+      <div class="det-section">
+        <h3>💰 Anticipos incluidos en esta liquidación</h3>
+        <div id="detAnticipos"></div>
+      </div>
+
+      <!-- Diesel / Combustible -->
+      <div class="det-section">
+        <h3>⛽ Cargas de combustible del periodo</h3>
+        <div id="detDiesel"></div>
+      </div>
+
+      <!-- Firma de conformidad -->
+      <div class="det-section">
+        <h3>✍️ Firma de conformidad</h3>
+        <div id="detFirma"></div>
+      </div>
+
+      <div style="margin-top:16px">
+        <button class="btn btn-dark btn-sm" onclick="window.print()">🖨️ Imprimir</button>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- Firebase compat -->
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+<script>
+window._fbInit=false;
+window._fbCallbacks=[];
+window.onFBReady=function(cb){if(window._fbInit)cb();else window._fbCallbacks.push(cb);};
+(function(){
+  try{
+    var cfg={apiKey:"AIzaSyDqlhREJFVFLGzz7bVlPcNl1Uba9HI3r8s",authDomain:"tml-liquidaciones.firebaseapp.com",
+      projectId:"tml-liquidaciones",storageBucket:"tml-liquidaciones.firebasestorage.app",
+      messagingSenderId:"268455373953",appId:"1:268455373953:web:ad359c5dbcba9f53557180"};
+    if(!firebase.apps.length)firebase.initializeApp(cfg);
+    var db=firebase.firestore();
+    window.FB={
+      set:function(col,id,data){return db.collection(col).doc(id).set(data);},
+      get:async function(col,id){try{var s=await db.collection(col).doc(id).get();return s.exists?s.data():null;}catch(e){console.error('FB.get:',e);return null;}},
+      del:function(col,id){return db.collection(col).doc(id).delete();},
+      listen:function(col,id,cb){return db.collection(col).doc(id).onSnapshot(function(s){cb(s.exists?s.data():null);});},
+      getAll:async function(col){
+        try{var s=await db.collection(col).get();var r=[];s.forEach(function(d){r.push(Object.assign({id:d.id},d.data()));});return r.sort(function(a,b){return(b.num||0)-(a.num||0);});}
+        catch(e){console.error('FB.getAll:',e);return[];}
+      }
+    };
+    window._fbInit=true;
+    window._fbCallbacks.forEach(function(cb){try{cb();}catch(e){console.error(e);}});
+    window._fbCallbacks=[];
+    // También disparar evento por compatibilidad
+    setTimeout(function(){window.dispatchEvent(new Event('firebase-ready'));},0);
+  }catch(e){console.error('Firebase init error:',e);}
+})();
+</script>
+
+<script>
+const OPERADORES=[
+  {unidad:4521,nombre:'ALEJANDRO RODRIGUEZ GONZALEZ'},{unidad:4522,nombre:'ANDRÉS MARÍA RAMOS'},
+  {unidad:4523,nombre:'ANDRÉS NAVARRO RAMÍREZ'},{unidad:4524,nombre:'RAFAEL TAPIA CARREÑO'},
+  {unidad:4526,nombre:'EDUARDO HERNÁNDEZ ACEVES'},{unidad:529,nombre:'OSCAR ISRAEL RAMOS'},
+  {unidad:531,nombre:'MARTÍN FLORES LUGO'},{unidad:532,nombre:'JOSÉ ROLANDO DOMINGUEZ LOPEZ'},
+  {unidad:533,nombre:'FRANCISCO ARTEMIO PEÑA VAZQUEZ'},{unidad:534,nombre:'MIGUEL ALONSO CALDERON'},
+  {unidad:535,nombre:'ISMAEL CONSTANTINO CABRERA'},
+];
+const $=id=>document.getElementById(id);
+const fmt=(n,d=2)=>'$'+parseFloat(n||0).toLocaleString('es-MX',{minimumFractionDigits:d,maximumFractionDigits:d});
+const fmtN=(n,d=2)=>parseFloat(n||0).toLocaleString('es-MX',{minimumFractionDigits:d,maximumFractionDigits:d});
+
+let historialDB=[];
+let anticiposDB={};
+let ingresosDB=[];
+
+// Init selects
+const s=$('busOp');
+OPERADORES.forEach(op=>{const o=document.createElement('option');o.value=op.unidad;o.textContent=op.unidad+' · '+op.nombre;s.appendChild(o);});
+
+window.onFBReady(async function(){
+  $('fbStatus').textContent='✅ Conectado';$('fbStatus').className='fb-status fb-ok';
+  // Cargar historial de liquidaciones cerradas
+  historialDB=await window.FB.getAll('historial');
+  // Cargar anticipos e ingresos para el detalle
+  const a=await window.FB.get('estado','anticiposDB');
+  if(a&&a.data)anticiposDB=JSON.parse(a.data);
+  const i=await window.FB.get('estado','ingresosDB');
+  if(i&&i.data)ingresosDB=JSON.parse(i.data);
+  buscar();
+});
+setTimeout(()=>{if($('fbStatus').textContent==='⏳ Conectando...'){$('fbStatus').textContent='❌ Sin conexión';$('fbStatus').className='fb-status fb-err';}},6000);
+
+function buscar(){
+  const filtOp=parseInt($('busOp').value||0);
+  const filtNum=parseInt($('busNum').value||0);
+  const filtDesde=$('busDesde').value;
+  const filtHasta=$('busHasta').value;
+
+  const filtrados=historialDB.filter(l=>{
+    if(filtOp&&parseInt(l.unidad)!==filtOp)return false;
+    if(filtNum&&l.num!==filtNum)return false;
+    if(filtDesde&&l.salida<filtDesde)return false;
+    if(filtHasta&&l.llegada>filtHasta)return false;
+    return true;
+  });
+
+  $('countLiq').textContent=filtrados.length+' liquidaciones';
+  const tb=$('tbHistorial');tb.innerHTML='';
+
+  if(!filtrados.length){
+    const sinFiltros=!$('busOp').value&&!$('busNum').value&&!$('busDesde').value&&!$('busHasta').value;
+    tb.innerHTML='<tr><td colspan="10" style="text-align:center;padding:24px">'
+      +(sinFiltros&&!historialDB.length
+        ?'<div style="color:#92400e;font-size:13px">⚠️ No hay liquidaciones cerradas en el historial.<br><span style="font-size:11px;color:#aaa;display:block;margin-top:6px">Las nuevas liquidaciones cerradas desde hoy aparecerán aquí automáticamente.</span></div>'
+        :'<span style="color:#aaa;font-size:13px">Sin liquidaciones que coincidan con los filtros.</span>')
+      +'</td></tr>';
+    return;
+  }
+
+  filtrados.forEach(l=>{
+    const op=OPERADORES.find(o=>o.unidad===parseInt(l.unidad));
+    const snap=l.snapshot||{};
+    const saldo=snap.saldoReal||0;
+    const ingresos=snap.totIngSubtotal||0;
+    tb.innerHTML+=`<tr style="cursor:pointer" onclick="verDetalle('${l.id}')">
+      <td class="num">#${l.num}</td>
+      <td>${op?op.nombre.split(' ').slice(0,2).join(' '):'?'}</td>
+      <td>${l.unidad}</td>
+      <td>${l.salida||''}</td>
+      <td>${l.llegada||''}</td>
+      <td>${l.duracion||0} días</td>
+      <td class="num r">${fmt(ingresos)}</td>
+      <td class="num r" style="color:${saldo>=0?'#0a5233':'#9b1c1c'}">${fmt(Math.abs(saldo))}</td>
+      <td><span class="badge ${saldo>=0?'bg-green':'bg-red'}">${saldo>=0?'A favor op.':'En contra op.'}</span></td>
+      <td><button class="btn btn-sm" style="background:#f0f2f5;border:1px solid #dde;cursor:pointer;border-radius:5px;padding:4px 10px;font-size:11px">Ver →</button></td>
+    </tr>`;
+  });
+}
+
+function limpiarBusqueda(){
+  $('busOp').value='';$('busNum').value='';$('busDesde').value='';$('busHasta').value='';
+  buscar();
+}
+
+async function recargarHistorial(){
+  if(!window.FB){alert('Sin conexión a Firebase.');return;}
+  const tb=$('tbHistorial');
+  tb.innerHTML='<tr><td colspan="10" style="text-align:center;color:#aaa;padding:20px">⏳ Cargando desde Firebase...</td></tr>';
+  historialDB=await window.FB.getAll('historial');
+  buscar();
+}
+
+function verDetalle(id){
+  const l=historialDB.find(x=>x.id===id);
+  if(!l)return;
+  const snap=l.snapshot||{};
+  const op=OPERADORES.find(o=>o.unidad===parseInt(l.unidad));
+
+  $('cardLista').style.display='none';
+  $('cardDetalle').style.display='block';
+  $('detLiqNum').textContent='#'+l.num;
+
+  // Encabezado
+  $('detEncabezado').innerHTML=`<div style="display:flex;gap:20px;flex-wrap:wrap">
+    <div>Operador: <strong>${op?op.nombre:'?'}</strong></div>
+    <div>Unidad: <strong>${l.unidad}</strong></div>
+    <div>Salida: <strong>${l.salida}</strong></div>
+    <div>Llegada: <strong>${l.llegada}</strong></div>
+    <div>Duración: <strong>${l.duracion} días</strong></div>
+    ${l.kms?'<div>Kms: <strong>'+fmtN(l.kms)+'</strong></div>':''}
+    ${l.rendimiento?'<div>Rend.: <strong>'+l.rendimiento+' km/L</strong></div>':''}
+    <div style="margin-left:auto;color:#2d6a4f;font-size:11px">✅ Liquidación cerrada el ${l.fechaCierre||l.llegada}</div>
+  </div>`;
+
+  function dr(label,val,cls){return`<div class="det-row${cls?' '+cls:''}""><span>${label}</span><span class="num">${fmt(val)}</span></div>`;}
+
+  // Ingresos
+  $('detIngresos').innerHTML=
+    dr('Fletes foráneos',snap.totSubFletes||0)
+    +dr('Maniobras',snap.totSubManiobras||0)
+    +dr('Otros ingresos',snap.totSubOtros||0)
+    +'<div style="height:1px;background:#eee;margin:4px 0"></div>'
+    +dr('IVA trasladado',snap.totIvaTrasl||0)
+    +dr('Retención IVA',-(snap.totRetTotal||0))
+    +`<div class="det-row subtotal"><span>TOTAL INGRESOS</span><span class="num">${fmt(snap.totIngSubtotal||0)}</span></div>`;
+
+  // Gastos
+  const d=snap.diesel||{};
+  $('detGastos').innerHTML=
+    dr('Diesel comprobado ('+fmtN(d.ltsComprobados||0)+' lts × '+fmt(d.pp||0)+')',snap.dieselComprobado||0)
+    +dr('Autopistas',snap.totAut||0)
+    +dr('Maniobras y otros gastos',snap.totGastosOp||0)
+    +dr('Comisión operador ('+l.comision+'%)',snap.totComision||0)
+    +dr('1% gastos sin comprobante',snap.totGastos1||0)
+    +`<div class="det-row subtotal"><span>TOTAL GASTOS</span><span class="num">${fmt(snap.totGastosEmpTotal||0)}</span></div>`;
+
+  // Resultado empresa
+  const utilidad=(snap.totIngSubtotal||0)-(snap.totGastosEmpTotal||0);
+  const margen=snap.totIngSubtotal>0?(utilidad/snap.totIngSubtotal*100):0;
+  $('detResultado').innerHTML=
+    `<div class="kpi"><div class="v">${fmt(snap.totIngSubtotal||0)}</div><div class="k">Ingresos</div></div>`
+    +`<div class="kpi"><div class="v red">${fmt(snap.totGastosEmpTotal||0)}</div><div class="k">Gastos</div></div>`
+    +`<div class="kpi"><div class="v ${utilidad>=0?'green':'red'}">${fmt(utilidad)}</div><div class="k">Utilidad bruta</div></div>`
+    +`<div class="kpi"><div class="v ${margen>=0?'green':'red'}">${margen.toFixed(1)}%</div><div class="k">Margen</div></div>`
+    +`<div class="kpi"><div class="v">${fmt(snap.totIvaTrasl||0)}</div><div class="k">IVA trasladado</div></div>`
+    +`<div class="kpi"><div class="v red">${fmt(snap.totRetTotal||0)}</div><div class="k">IVA retenido</div></div>`;
+
+  // Cuenta operador
+  const saldo=snap.saldoReal||0;
+  $('detCargos').innerHTML=
+    dr('Anticipos recibidos',snap.totAnts||0,'cargo')
+    +dr('Diesel no comprobado',snap.dieselNoComprobado||0,'cargo')
+    +(snap.saldoPendAnt>0?dr('Saldo en contra liq #'+(snap.saldoPendNum||'?')+' (cargo anterior)',snap.saldoPendAnt,'cargo'):'')
+    +`<div class="det-row subtotal cargo"><span>TOTAL CARGOS</span><span class="num">${fmt(snap.totalCargosReal||0)}</span></div>`;
+
+  $('detAbonos').innerHTML=
+    dr('Comisión fletes '+l.comision+'%',snap.totComision||0,'abono')
+    +dr('1% gastos sin comprobante',snap.totGastos1||0,'abono')
+    +dr('Diesel comprobado',snap.dieselComprobado||0,'abono')
+    +dr('Autopistas op.',snap.totAutOp||0,'abono')
+    +dr('Gastos del operador',snap.totGastosOp||0,'abono')
+    +`<div class="det-row subtotal abono"><span>TOTAL ABONOS</span><span class="num">${fmt(snap.totalAbonosReal||0)}</span></div>`;
+
+  $('detSaldo').innerHTML=`<div class="saldo-box ${saldo>=0?'saldo-fav':'saldo-con'}">
+    <div style="font-weight:700">${saldo>=0?'✅ SALDO A FAVOR DEL OPERADOR':'⚠️ SALDO EN CONTRA DEL OPERADOR'}</div>
+    <div class="monto">${fmt(Math.abs(saldo))}</div>
+  </div>`;
+
+  // Cartera: usar snap.viajesList si está disponible (guardado al cerrar), sino buscar en ingresosDB
+  var viajesData=(snap.viajesList&&snap.viajesList.length)
+    ?snap.viajesList
+    :ingresosDB.filter(function(v){return v.liqNum===l.num&&parseInt(v.unidad)===parseInt(l.unidad);});
+  if(viajesData.length){
+    var totC=0;
+    var rowsC=viajesData.map(function(v){totC+=parseFloat(v.total||0);return'<tr><td class="num">'+(v.folio||'—')+'</td><td>'+(v.fecha||'')+'</td><td style="font-size:11px;max-width:200px;overflow:hidden;text-overflow:ellipsis">'+(v.cliente||'')+'</td><td class="num r">'+fmt(v.subtotal||0)+'</td><td class="num r">'+fmt(v.iva||0)+'</td><td class="num r">'+fmt(v.ret||0)+'</td><td class="num r">'+fmt(v.total||0)+'</td></tr>';}).join('');
+    $('detCartera').innerHTML='<div class="tbl-wrap"><table>'
+      +'<thead><tr><th>Folio</th><th>Fecha</th><th>Cliente</th><th class="r">Subtotal</th><th class="r">IVA</th><th class="r">Ret.</th><th class="r">Total</th></tr></thead>'
+      +'<tbody>'+rowsC+'</tbody>'
+      +'<tfoot><tr style="font-weight:700;background:#f5f5f8"><td colspan="6">TOTAL CARTERA</td><td class="num r">'+fmt(totC)+'</td></tr></tfoot>'
+      +'</table></div>';
+  } else {
+    $('detCartera').innerHTML='<div style="color:#aaa;font-size:13px">Sin viajes registrados en esta liquidación.</div>';
+  }
+
+  // Anticipos: usar snap.antsList si está disponible (guardado al cerrar), sino buscar en anticiposDB por clave
+  var antsData=snap.antsList&&snap.antsList.length?snap.antsList:(function(){
+    var res=[];
+    Object.keys(anticiposDB).forEach(function(key){
+      if(parseInt(key)===parseInt(l.unidad)){
+        (anticiposDB[key]||[]).filter(function(a){return a.liqNum===l.num;})
+          .forEach(function(a){res.push(a);});
+      }
+    });
+    return res;
+  })();
+  if(antsData.length){
+    var totA=0;
+    var rowsA=antsData.map(function(a){totA+=parseFloat(a.importe||0);return'<tr><td>'+(a.fecha||'')+'</td><td style="max-width:280px;overflow:hidden;text-overflow:ellipsis">'+(a.concepto||'')+'</td><td class="num r">'+fmt(a.importe||0)+'</td></tr>';}).join('');
+    $('detAnticipos').innerHTML='<div class="tbl-wrap"><table>'
+      +'<thead><tr><th>Fecha</th><th>Concepto</th><th class="r">Importe</th></tr></thead>'
+      +'<tbody>'+rowsA+'</tbody>'
+      +'<tfoot><tr style="font-weight:700;background:#f5f5f8"><td colspan="2">TOTAL ANTICIPOS</td><td class="num r">'+fmt(totA)+'</td></tr></tfoot>'
+      +'</table></div>';
+  } else {
+    $('detAnticipos').innerHTML='<div style="color:#aaa;font-size:13px">Sin anticipos registrados en esta liquidación.</div>';
+  }
+
+  // Diesel / Combustible: usar snap.cargasDiesel si está disponible, sino resumen del snap.diesel
+  var cargasD=snap.cargasDiesel||[];
+  if(cargasD.length){
+    var totLD=0,totID=0;
+    var rowsD=cargasD.map(function(c){totLD+=parseFloat(c.litros||0);totID+=parseFloat(c.importe||0);
+      return'<tr><td>'+(c.fecha||'')+'</td><td style="font-size:11px">'+(c.estacion||'')+'</td>'
+        +'<td class="num r">'+fmtN(c.litros||0)+'</td><td class="num r">'+fmt(c.precio||0)+'</td><td class="num r">'+fmt(c.importe||0)+'</td></tr>';}).join('');
+    $('detDiesel').innerHTML='<div class="tbl-wrap"><table>'
+      +'<thead><tr><th>Fecha</th><th>Estación</th><th class="r">Litros</th><th class="r">$/lt</th><th class="r">Importe</th></tr></thead>'
+      +'<tbody>'+rowsD+'</tbody>'
+      +'<tfoot><tr style="font-weight:700;background:#f5f5f8"><td colspan="2">TOTAL CARGAS</td><td class="num r">'+fmtN(totLD)+'</td><td></td><td class="num r">'+fmt(totID)+'</td></tr></tfoot>'
+      +'</table></div>';
+  } else if(d.totLtsCarg>0){
+    $('detDiesel').innerHTML='<div style="font-size:12px;color:#666;padding:8px">Lts cargados: <strong>'+fmtN(d.totLtsCarg)+'</strong> · Precio prom.: <strong>'+fmt(d.pp)+'</strong> · Total: <strong>'+fmt(d.totImporteCarg)+'</strong></div>';
+  } else {
+    $('detDiesel').innerHTML='<div style="color:#aaa;font-size:13px">Sin cargas de combustible registradas.</div>';
+  }
+
+  // Firma de conformidad
+  $('detFirma').innerHTML='<div class="firma-bloque">'
+    +'<div class="firma-texto">Estando de acuerdo con el presente estado de cuenta, doy fe de haber recibido los recursos descritos y reconozco el saldo indicado como correcto, comprometiéndome a su liquidación conforme a los términos establecidos por Mudanzas TML.</div>'
+    +'<div class="firma-campos">'
+    +'<div><div class="firma-linea"></div><div class="firma-label">Firma y nombre del operador</div><div class="firma-opnombre">'+(op?op.nombre:'')+'</div></div>'
+    +'<div><div class="firma-linea"></div><div class="firma-label">Fecha</div><div class="firma-opnombre">'+(l.llegada||l.fechaCierre||'')+'</div></div>'
+    +'</div></div>';
+
+  window.scrollTo(0,0);
+}
+
+function cerrarDetalle(){
+  $('cardDetalle').style.display='none';
+  $('cardLista').style.display='block';
+}
+</script>
+</body>
+</html>
