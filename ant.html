@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>TML · Ingresos</title>
+<title>TML · Anticipos</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:'Segoe UI',Arial,sans-serif;background:#f0f2f5;color:#1a1a2e;min-height:100vh}
@@ -17,29 +17,29 @@ header{background:#1a1a2e;color:#fff;padding:14px 24px;display:flex;align-items:
 .card{background:#fff;border-radius:10px;box-shadow:0 2px 12px rgba(0,0,0,.07);padding:20px 24px;margin-bottom:16px}
 .card-title{font-size:12px;font-weight:700;color:#1a1a2e;margin-bottom:14px;text-transform:uppercase;letter-spacing:1px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px}
 .grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
-.grid4{display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:12px}
 .field{display:flex;flex-direction:column;gap:4px}
 .field label{font-size:11px;font-weight:700;color:#666;text-transform:uppercase;letter-spacing:.5px}
 .field input,.field select{border:1.5px solid #dde;border-radius:6px;padding:8px 10px;font-size:13px;color:#1a1a2e;background:#fafafa;width:100%}
 .field input:focus,.field select:focus{outline:none;border-color:#e63946}
-.field input[readonly]{background:#f0f2f5;color:#888}
 .row{display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end}
 .btn{padding:8px 18px;border-radius:6px;border:none;font-size:12px;font-weight:700;cursor:pointer;transition:all .15s;text-transform:uppercase;letter-spacing:.5px}
 .btn-red{background:#e63946;color:#fff}.btn-red:hover{background:#c1121f}
 .btn-dark{background:#1a1a2e;color:#fff}.btn-dark:hover{background:#0d0d1a}
 .btn-out{background:#fff;color:#1a1a2e;border:1.5px solid #1a1a2e}.btn-out:hover{background:#f0f2f5}
+.btn-green{background:#2d6a4f;color:#fff}.btn-green:hover{background:#1b4332}
 .btn:disabled{opacity:.35;cursor:not-allowed}
 .btn-sm{padding:5px 11px;font-size:11px}
-.upload-zone{border:2px dashed #c0c4cc;border-radius:8px;padding:20px;text-align:center;cursor:pointer;transition:all .2s;background:#fafafa}
+.upload-zone{border:2px dashed #c0c4cc;border-radius:8px;padding:24px;text-align:center;cursor:pointer;transition:all .2s;background:#fafafa}
 .upload-zone:hover,.upload-zone.drag{border-color:#e63946;background:#fff5f5}
-.upload-zone .icon{font-size:24px;margin-bottom:5px}
-.upload-zone p{color:#666;font-size:12px}
+.upload-zone .icon{font-size:26px;margin-bottom:6px}
+.upload-zone p{color:#666;font-size:13px}
 .alert{padding:9px 13px;border-radius:7px;font-size:12px;margin-bottom:10px}
 .alert-info{background:#e8f4fd;color:#0369a1;border:1px solid #bae6fd}
 .alert-ok{background:#d1e7dd;color:#0a5233;border:1px solid #a3cfbb}
 .alert-warn{background:#fffbeb;color:#92400e;border:1px solid #fde68a}
+.alert-err{background:#fde8e8;color:#9b1c1c;border:1px solid #f9a8a8}
 .tbl-wrap{overflow-x:auto}
-table{width:100%;border-collapse:collapse;font-size:13px;min-width:600px}
+table{width:100%;border-collapse:collapse;font-size:13px;min-width:500px}
 th{background:#1a1a2e;color:#fff;padding:8px 10px;font-size:11px;text-transform:uppercase;letter-spacing:.7px;text-align:left;font-weight:600}
 th.r{text-align:right}
 td{padding:7px 10px;border-bottom:1px solid #f0f0f0;vertical-align:middle}
@@ -49,12 +49,22 @@ tr:hover td{background:#fafafa}
 .badge{display:inline-block;border-radius:4px;padding:2px 8px;font-size:10px;font-weight:700;white-space:nowrap}
 .bg-green{background:#d1e7dd;color:#0a5233;border:1px solid #a3cfbb}
 .bg-yellow{background:#fff3cd;color:#856404;border:1px solid #ffc107}
-.bg-blue{background:#dbeafe;color:#1e40af;border:1px solid #93c5fd}
-.bg-purple{background:#ede9fe;color:#5b21b6;border:1px solid #c4b5fd}
+.bg-red{background:#fde8e8;color:#9b1c1c;border:1px solid #f9a8a8}
 .bg-gray{background:#f0f2f5;color:#555;border:1px solid #dde}
+.bg-blue{background:#dbeafe;color:#1e40af;border:1px solid #93c5fd}
+.stats{display:flex;gap:14px;flex-wrap:wrap;margin-bottom:14px}
+.stat .n{font-size:20px;font-weight:800;color:#e63946}
+.stat .l{font-size:10px;color:#888;text-transform:uppercase;letter-spacing:1px}
+.op-block{margin-bottom:20px}
+.op-bar{display:flex;justify-content:space-between;align-items:center;background:#1a1a2e;color:#fff;padding:9px 15px;border-radius:8px 8px 0 0;font-weight:700;font-size:13px}
+.op-bar .tot{color:#ffd166}
+.sin-match{background:#fff8f0;border:1px solid #ffd9a0;border-radius:8px;padding:10px 14px;margin-top:10px}
+.sin-match h4{font-size:11px;text-transform:uppercase;letter-spacing:1px;color:#c87f00;margin-bottom:6px}
+.sin-match ul{list-style:none;display:flex;flex-wrap:wrap;gap:5px}
+.sin-match li{background:#fff;border:1px solid #ffd9a0;border-radius:4px;padding:2px 8px;font-size:11px;color:#555}
 .fb-status{font-size:11px;color:#aaa}
 .fb-ok{color:#2d6a4f}.fb-err{color:#e63946}
-@media(max-width:600px){.grid2,.grid4{grid-template-columns:1fr}}
+@media(max-width:600px){.grid2{grid-template-columns:1fr}}
 
 /* ── MODAL CANDADO ── */
 .lock-overlay{position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:9999;display:flex;align-items:center;justify-content:center}
@@ -72,12 +82,12 @@ tr:hover td{background:#fafafa}
 </head>
 <body>
 <header>
-  <div class="logo">MUDANZAS <span>TML</span> <span style="font-size:13px;font-weight:400;color:#aaa;margin-left:8px">· Ingresos</span></div>
+  <div class="logo">MUDANZAS <span>TML</span> <span style="font-size:13px;font-weight:400;color:#aaa;margin-left:8px">· Anticipos</span></div>
   <div style="display:flex;align-items:center;gap:12px">
     <span class="fb-status" id="fbStatus">⏳ Conectando...</span>
     <nav class="nav">
-      <a href="ant.html">📋 Anticipos</a>
-      <a href="ing.html" class="active">📄 Ingresos</a>
+      <a href="ant.html" class="active">📋 Anticipos</a>
+      <a href="ing.html">📄 Ingresos</a>
       <a href="liq.html">🚛 Liquidaciones</a>
       <a href="hist.html">🗂️ Historial</a>
     </nav>
@@ -86,83 +96,89 @@ tr:hover td{background:#fafafa}
 
 <div class="container">
 
-  <!-- REGISTRO -->
+  <!-- CARGAR ARCHIVO -->
   <div class="card">
-    <div class="card-title">📄 Registrar viaje / ingreso</div>
-    <div class="row" style="margin-bottom:14px">
-      <div class="field"><label>Operador</label><select id="ingOp"><option value="">— Selecciona —</option></select></div>
-      <div class="upload-zone" style="flex:1;min-width:160px;padding:14px" id="dzXML" onclick="document.getElementById('fXML').click()">
-        <div class="icon">📄</div><p><strong>XML Carta Porte</strong><br><span style="font-size:10px;color:#aaa">Extrae automático</span></p>
+    <div class="card-title">📂 Cargar estado de cuenta
+      <div class="row">
+        <button class="btn btn-green btn-sm" onclick="showManual()">+ Anticipo manual</button>
       </div>
-      <input type="file" id="fXML" accept=".xml" multiple style="display:none">
-      <div class="upload-zone" style="flex:1;min-width:160px;padding:14px" id="dzPDF" onclick="document.getElementById('fPDF').click()">
-        <div class="icon">📑</div><p><strong>PDF / Factura global</strong><br><span style="font-size:10px;color:#aaa">IA extrae los datos</span></p>
-      </div>
-      <input type="file" id="fPDF" accept=".pdf" multiple style="display:none">
     </div>
-    <div style="background:#f5f5f8;border-radius:8px;padding:14px">
-      <div style="font-size:11px;font-weight:700;text-transform:uppercase;color:#888;margin-bottom:10px">Captura manual / ajuste</div>
-      <div class="grid4" style="margin-bottom:10px">
-        <div class="field"><label>Folio</label><input type="text" id="ingFolio" placeholder="R2122"></div>
-        <div class="field"><label>Fecha</label><input type="date" id="ingFecha"></div>
-        <div class="field"><label>Cliente</label><input type="text" id="ingCliente" placeholder="Nombre del cliente"></div>
-        <div class="field"><label>Tipo</label>
-          <select id="ingTipo">
-            <option value="flete_for">Flete Foráneo</option>
-            <option value="flete_mx">Flete México</option>
-            <option value="maniobra">Maniobra</option>
-            <option value="otro">Otro</option>
-          </select>
-        </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
+      <div class="upload-zone" id="dzCSV" onclick="document.getElementById('fCSV').click()">
+        <div class="icon">📊</div>
+        <p><strong>CSV BBVA</strong><br><span style="font-size:11px;color:#aaa">MovimientosCheque.csv</span></p>
       </div>
-      <div class="grid4">
-        <div class="field"><label>Subtotal</label><input type="number" id="ingSubtotal" placeholder="0.00" step="0.01" onchange="calcTotales()"></div>
-        <div class="field"><label>IVA</label><input type="number" id="ingIva" placeholder="0.00" step="0.01" onchange="calcTotales()"></div>
-        <div class="field"><label>Retención IVA</label><input type="number" id="ingRet" placeholder="0.00" step="0.01" onchange="calcTotales()"></div>
-        <div class="field"><label>Total</label><input type="number" id="ingTotal" readonly></div>
+      <div class="upload-zone" id="dzTXT" onclick="document.getElementById('fTXT').click()">
+        <div class="icon">📄</div>
+        <p><strong>TXT BBVA</strong><br><span style="font-size:11px;color:#aaa">Movimientos separados por tabulador</span></p>
       </div>
-      <div id="ingInfo" style="display:none;margin-top:10px"></div>
-      <div style="margin-top:10px;display:flex;gap:8px">
-        <button class="btn btn-red" onclick="agregarIngreso()">+ Registrar viaje</button>
-        <button class="btn btn-out btn-sm" onclick="limpiarForm()">Limpiar</button>
+    </div>
+    <input type="file" id="fCSV" accept=".csv" style="display:none">
+    <input type="file" id="fTXT" accept=".txt" style="display:none">
+    <div id="uploadInfo" style="display:none"></div>
+  </div>
+
+  <!-- ANTICIPO MANUAL -->
+  <div class="card" id="cardManual" style="display:none">
+    <div class="card-title">✏️ Registrar anticipo manual</div>
+    <div class="grid2" style="margin-bottom:12px">
+      <div class="field"><label>Operador</label><select id="mOp"><option value="">— Selecciona —</option></select></div>
+      <div class="field"><label>Fecha</label><input type="date" id="mFecha"></div>
+      <div class="field"><label>Importe</label><input type="number" id="mImporte" placeholder="0.00" step="0.01" min="0"></div>
+      <div class="field"><label>Forma de entrega</label>
+        <select id="mForma">
+          <option>DEPÓSITO BANCARIO</option><option>TRANSFERENCIA</option><option>EFECTIVO</option><option>CHEQUE</option>
+        </select>
       </div>
+      <div class="field" style="grid-column:span 2"><label>Concepto / Descripción</label><input type="text" id="mConcepto" placeholder="Ej: Anticipo viaje León"></div>
+    </div>
+    <div class="row">
+      <button class="btn btn-red" onclick="agregarManual()">+ Registrar</button>
+      <button class="btn btn-out btn-sm" onclick="hideManual()">Cancelar</button>
     </div>
   </div>
 
   <!-- FILTROS -->
   <div class="card">
-    <div class="card-title">🔍 Filtros
-      <button class="btn btn-dark btn-sm" onclick="exportarCSV()">Exportar CSV</button>
-    </div>
+    <div class="card-title">🔍 Filtros y búsqueda</div>
     <div class="row">
-      <div class="field"><label>Operador</label><select id="filtOp" onchange="renderIngresos()"><option value="">Todos</option></select></div>
-      <div class="field"><label>Desde</label><input type="date" id="filtDesde" onchange="renderIngresos()"></div>
-      <div class="field"><label>Hasta</label><input type="date" id="filtHasta" onchange="renderIngresos()"></div>
+      <div class="field"><label>Operador</label>
+        <select id="filtOp" onchange="renderAnticipos()"><option value="">Todos</option></select>
+      </div>
+      <div class="field"><label>Desde</label><input type="date" id="filtDesde" onchange="renderAnticipos()"></div>
+      <div class="field"><label>Hasta</label><input type="date" id="filtHasta" onchange="renderAnticipos()"></div>
       <div class="field"><label>Estatus</label>
-        <select id="filtEst" onchange="renderIngresos()">
+        <select id="filtEst" onchange="renderAnticipos()">
           <option value="">Todos</option>
-          <option value="sin_liquidar">Sin liquidar</option>
+          <option value="pendiente">Pendiente</option>
           <option value="liquidado">Liquidado</option>
         </select>
       </div>
       <button class="btn btn-out btn-sm" onclick="limpiarFiltros()">Limpiar</button>
+      <button class="btn btn-dark btn-sm" onclick="exportarCSV()">Exportar CSV</button>
+    </div>
+  </div>
+
+  <!-- RESUMEN STATS -->
+  <div class="card" id="cardStats" style="display:none">
+    <div class="stats">
+      <div class="stat"><div class="n" id="stOps">0</div><div class="l">Operadores</div></div>
+      <div class="stat"><div class="n" id="stMovs">0</div><div class="l">Anticipos</div></div>
+      <div class="stat"><div class="n" id="stTotal">$0</div><div class="l">Total</div></div>
+      <div class="stat"><div class="n" id="stPend">0</div><div class="l">Pendientes</div></div>
+      <div class="stat"><div class="n" id="stLiq">0</div><div class="l">Liquidados</div></div>
+      <div class="stat"><div class="n" id="stDup">0</div><div class="l">Duplicados excluidos</div></div>
     </div>
   </div>
 
   <!-- TABLA -->
   <div class="card">
-    <div class="card-title">📋 Viajes registrados</div>
-    <div class="tbl-wrap">
-      <table>
-        <thead><tr>
-          <th>Folio</th><th>Fecha</th><th>Operador</th><th>Cliente</th><th>Tipo</th>
-          <th class="r">Subtotal</th><th class="r">IVA</th><th class="r">Ret.</th><th class="r">Total</th>
-          <th>Estatus</th><th>Liq.</th><th></th>
-        </tr></thead>
-        <tbody id="tbIngresos"></tbody>
-      </table>
+    <div class="card-title">💰 Anticipos registrados</div>
+    <div id="bloqueAnticipos"><div style="text-align:center;padding:30px;color:#aaa">Sin anticipos registrados aún.</div></div>
+    <div class="sin-match" id="sinMatch" style="display:none">
+      <h4>⚠️ Movimientos sin operador identificado — revisar manualmente</h4>
+      <ul id="listaSM"></ul>
     </div>
-    <div id="ingResumen" style="margin-top:10px"></div>
   </div>
 
 </div>
@@ -202,234 +218,286 @@ window.onFBReady=function(cb){if(window._fbInit)cb();else window._fbCallbacks.pu
 
 <script>
 const OPERADORES=[
-  {unidad:4521,nombre:'ALEJANDRO RODRIGUEZ GONZALEZ'},{unidad:4522,nombre:'ANDRÉS MARÍA RAMOS'},
-  {unidad:4523,nombre:'ANDRÉS NAVARRO RAMÍREZ'},{unidad:4524,nombre:'RAFAEL TAPIA CARREÑO'},
-  {unidad:4526,nombre:'EDUARDO HERNÁNDEZ ACEVES'},{unidad:529,nombre:'OSCAR ISRAEL RAMOS'},
-  {unidad:531,nombre:'MARTÍN FLORES LUGO'},{unidad:532,nombre:'JOSÉ ROLANDO DOMINGUEZ LOPEZ'},
-  {unidad:533,nombre:'FRANCISCO ARTEMIO PEÑA VAZQUEZ'},{unidad:534,nombre:'MIGUEL ALONSO CALDERON'},
-  {unidad:535,nombre:'ISMAEL CONSTANTINO CABRERA'},
+  {unidad:4521,nombre:'ALEJANDRO RODRIGUEZ GONZALEZ'},
+  {unidad:4522,nombre:'ANDRÉS MARÍA RAMOS'},
+  {unidad:4523,nombre:'ANDRÉS NAVARRO RAMÍREZ'},
+  {unidad:4524,nombre:'RAFAEL TAPIA CARREÑO'},
+  {unidad:4526,nombre:'EDUARDO HERNÁNDEZ ACEVES'},
+  {unidad:529, nombre:'OSCAR ISRAEL RAMOS'},
+  {unidad:531, nombre:'MARTÍN FLORES LUGO'},
+  {unidad:532, nombre:'JOSÉ ROLANDO DOMINGUEZ LOPEZ'},
+  {unidad:533, nombre:'FRANCISCO ARTEMIO PEÑA VAZQUEZ'},
+  {unidad:534, nombre:'MIGUEL ALONSO CALDERON'},
+  {unidad:535, nombre:'ISMAEL CONSTANTINO CABRERA'},
 ];
+
 const $=id=>document.getElementById(id);
 const fmt=(n,d=2)=>'$'+parseFloat(n||0).toLocaleString('es-MX',{minimumFractionDigits:d,maximumFractionDigits:d});
 const hoy=()=>new Date().toISOString().slice(0,10);
 const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2);
 function dlBlob(c,n,t){const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([c],{type:t}));a.download=n;a.click();}
+function norm(s){return(s||'').toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^A-Z0-9 ]/g,' ').replace(/\s+/g,' ').trim();}
+function palabras(s){return norm(s).split(' ').filter(w=>w.length>2);}
+function matchScore(c,n){const cW=palabras(c),oW=palabras(n);if(!oW.length)return 0;return oW.filter(w=>cW.some(x=>x.includes(w)||w.includes(x))).length/oW.length;}
+function esSaldo(c){const n=norm(c);return n.includes('SALDO LIQ')||n.includes('SALDO LIQ')||(n.includes('SALDO')&&n.includes('LIQ'));}
+function matchOp(concepto){
+  let best=null,bestS=0;
+  OPERADORES.forEach(op=>{
+    const s=matchScore(concepto,op.nombre);
+    if(s>bestS&&s>=0.45){bestS=s;best=op;}
+  });
+  return best;
+}
 
-let ingresosDB=[];
+let anticiposDB={};
 let fbReady=false;
 
+// Init selects
 function initSelects(){
-  ['ingOp','filtOp'].forEach(id=>{
+  ['mOp','filtOp'].forEach(id=>{
     const s=$(id);if(!s)return;
+    // Limpiar opciones extras
     while(s.options.length>1)s.remove(1);
-    OPERADORES.forEach(op=>{const o=document.createElement('option');o.value=op.unidad;o.textContent=op.unidad+' · '+op.nombre;s.appendChild(o);});
+    OPERADORES.forEach(op=>{
+      const o=document.createElement('option');
+      o.value=op.unidad;o.textContent=op.unidad+' · '+op.nombre;
+      s.appendChild(o);
+    });
   });
 }
 initSelects();
 
+// Firebase
 window.onFBReady(async function(){
   fbReady=true;
-  $('fbStatus').textContent='✅ Conectado';$('fbStatus').className='fb-status fb-ok';
-  const data=await window.FB.get('estado','ingresosDB');
-  if(data&&data.data)ingresosDB=JSON.parse(data.data);
-  renderIngresos();
-  window.FB.listen('estado','ingresosDB',data=>{
-    if(data&&data.data){ingresosDB=JSON.parse(data.data);renderIngresos();}
+  $('fbStatus').textContent='✅ Conectado';
+  $('fbStatus').className='fb-status fb-ok';
+  // Cargar datos
+  const data=await window.FB.get('estado','anticiposDB');
+  if(data&&data.data){anticiposDB=JSON.parse(data.data);}
+  renderAnticipos();
+  // Escuchar cambios en tiempo real
+  window.FB.listen('estado','anticiposDB',data=>{
+    if(data&&data.data){anticiposDB=JSON.parse(data.data);renderAnticipos();}
   });
 });
-setTimeout(()=>{if(!fbReady){$('fbStatus').textContent='❌ Sin conexión';$('fbStatus').className='fb-status fb-err';}},6000);
+setTimeout(()=>{
+  if(!fbReady){$('fbStatus').textContent='❌ Sin conexión';$('fbStatus').className='fb-status fb-err';}
+},6000);
 
-function guardar(){if(!fbReady)return;window.FB.set('estado','ingresosDB',{data:JSON.stringify(ingresosDB)});}
-
-function calcTotales(){
-  const sub=parseFloat($('ingSubtotal').value||0);
-  const iva=parseFloat($('ingIva').value||0);
-  const ret=parseFloat($('ingRet').value||0);
-  $('ingTotal').value=(sub+iva-ret).toFixed(2);
+function guardar(){
+  if(!fbReady)return;
+  window.FB.set('estado','anticiposDB',{data:JSON.stringify(anticiposDB)});
 }
 
-function limpiarForm(){
-  ['ingFolio','ingFecha','ingCliente','ingSubtotal','ingIva','ingRet','ingTotal'].forEach(id=>{$(id).value='';});
-  $('ingTipo').value='flete_for';$('ingInfo').style.display='none';
+// ── PARSERS ─────────────────────────────────────────────
+// CSV BBVA (MovimientosCheque.csv)
+function parseCSV(text){
+  const lines=text.split(/\r?\n/).filter(l=>l.trim());
+  const clean=s=>s.replace(/^'+/,'').replace(/'+$/,'').trim();
+  const sep=lines[0].includes('\t')?'\t':',';
+  const headers=lines[0].split(sep).map(h=>h.trim().replace(/^'/,''));
+  const idx=h=>headers.findIndex(x=>x.toLowerCase().includes(h.toLowerCase()));
+  const iFecha=idx('Fecha'),iCA=idx('Cargo'),iImporte=idx('Importe'),iConcepto=idx('Concepto');
+  const rows=[];
+  for(let i=1;i<lines.length;i++){
+    const cols=lines[i].split(sep).map(clean);
+    if(cols.length<4)continue;
+    if((cols[iCA]||'').trim()!=='-')continue;
+    const fecha=parseFechaCSV(cols[iFecha]);
+    if(!fecha)continue;
+    rows.push({fecha,importe:parseFloat((cols[iImporte]||'0').replace(/,/g,'')),concepto:cols[iConcepto]||''});
+  }
+  return rows;
 }
 
-// XML
-const dzXML=$('dzXML');
-dzXML.addEventListener('dragover',e=>{e.preventDefault();dzXML.classList.add('drag')});
-dzXML.addEventListener('dragleave',()=>dzXML.classList.remove('drag'));
-dzXML.addEventListener('drop',e=>{e.preventDefault();dzXML.classList.remove('drag');handleXMLFiles(e.dataTransfer.files)});
-$('fXML').addEventListener('change',e=>handleXMLFiles(e.target.files));
+// TXT BBVA (tabulador)
+function parseTXT(text){
+  const lines=text.split(/\r?\n/).filter(l=>l.trim());
+  const rows=[];
+  for(let i=1;i<lines.length;i++){
+    const cols=lines[i].split('\t');
+    if(cols.length<3)continue;
+    const fechaRaw=(cols[0]||'').trim(); // DD-MM-YYYY
+    const concepto=(cols[1]||'').trim();
+    const cargo=(cols[2]||'').trim().replace(/,/g,'');
+    // Solo cargos (salidas)
+    if(!cargo||parseFloat(cargo)<=0)continue;
+    const fecha=parseFechaTXT(fechaRaw);
+    if(!fecha)continue;
+    rows.push({fecha,importe:parseFloat(cargo),concepto});
+  }
+  return rows;
+}
 
-function handleXMLFiles(files){
-  const unidad=parseInt($('ingOp').value||0);
-  if(!unidad){alert('Selecciona el operador primero.');return;}
-  lockRequest('Subir XML de viaje/flete — Ingresos', function(){
-    Array.from(files).forEach(f=>{const r=new FileReader();r.onload=e=>parseXML(e.target.result,f.name,unidad);r.readAsText(f,'UTF-8');});
+function parseFechaCSV(str){
+  if(!str)return null;
+  const s=str.toString().replace(/\D/g,'');
+  if(s.length===8){const d=new Date(s.slice(4)+'-'+s.slice(2,4)+'-'+s.slice(0,2));return isNaN(d)?null:d.toISOString().slice(0,10);}
+  return null;
+}
+function parseFechaTXT(str){
+  // DD-MM-YYYY
+  if(!str)return null;
+  const p=str.split('-');
+  if(p.length===3){const d=new Date(p[2]+'-'+p[1].padStart(2,'0')+'-'+p[0].padStart(2,'0'));return isNaN(d)?null:d.toISOString().slice(0,10);}
+  return null;
+}
+
+// ── PROCESAR ARCHIVO ─────────────────────────────────────
+function procesarRows(rows,fname){
+  let nuevos=0,duplicados=0,saldosExcl=0;
+  const sinMatch=[];
+  rows.forEach(r=>{
+    if(esSaldo(r.concepto)){saldosExcl++;return;}
+    const op=matchOp(r.concepto);
+    if(!op){sinMatch.push(r);return;}
+    if(!anticiposDB[op.unidad])anticiposDB[op.unidad]=[];
+    // Verificar duplicado
+    const existe=anticiposDB[op.unidad].some(a=>a.fecha===r.fecha&&Math.abs(a.importe-r.importe)<0.01&&norm(a.concepto)===norm(r.concepto));
+    if(existe){duplicados++;return;}
+    anticiposDB[op.unidad].push({id:uid(),fecha:r.fecha,importe:r.importe,concepto:r.concepto,estado:'pendiente',liqNum:null,origen:'archivo'});
+    nuevos++;
+  });
+  guardar();
+  renderAnticipos();
+  $('uploadInfo').style.display='block';
+  $('uploadInfo').innerHTML=`<div class="alert alert-ok">✅ <strong>${fname}</strong> — ${nuevos} anticipos nuevos · ${duplicados} duplicados ignorados · ${saldosExcl} saldos excluidos${sinMatch.length?' · <span style="color:#92400e">'+sinMatch.length+' sin identificar</span>':''}</div>`;
+  // Mostrar sin match
+  if(sinMatch.length){
+    $('sinMatch').style.display='block';
+    $('listaSM').innerHTML=sinMatch.map(r=>`<li>${r.fecha} · ${fmt(r.importe)} · ${r.concepto.slice(0,60)}</li>`).join('');
+  }
+}
+
+// ── DRAG & DROP ──────────────────────────────────────────
+function setupDrop(dzId,inputId,parser){
+  const dz=$(dzId);
+  dz.addEventListener('dragover',e=>{e.preventDefault();dz.classList.add('drag')});
+  dz.addEventListener('dragleave',()=>dz.classList.remove('drag'));
+  dz.addEventListener('drop',e=>{e.preventDefault();dz.classList.remove('drag');handleFile(e.dataTransfer.files[0],parser)});
+  $(inputId).addEventListener('change',e=>handleFile(e.target.files[0],parser));
+}
+setupDrop('dzCSV','fCSV',parseCSV);
+setupDrop('dzTXT','fTXT',parseTXT);
+
+function handleFile(file,parser){
+  if(!file)return;
+  lockRequest('Subir estado de cuenta BBVA — Anticipos', function(){
+    const r=new FileReader();
+    r.onload=e=>procesarRows(parser(e.target.result),file.name);
+    r.readAsText(file,'UTF-8');
   });
 }
 
-function parseXML(text,fname,unidad){
-  const doc=new DOMParser().parseFromString(text,'text/xml');
-  const comp=doc.querySelector('Comprobante');
-  if(!comp){alert(fname+': no es CFDI válido.');return;}
-  const serie=comp.getAttribute('Serie')||'';
-  const folio=comp.getAttribute('Folio')||'';
-  const fecha=(comp.getAttribute('Fecha')||'').slice(0,10);
-  const subtotal=parseFloat(comp.getAttribute('SubTotal')||0);
-  let iva=0,ret=0;
-  doc.querySelectorAll('Traslado').forEach(t=>{if(t.getAttribute('Impuesto')==='002')iva+=parseFloat(t.getAttribute('Importe')||0);});
-  doc.querySelectorAll('Retencion').forEach(r=>{if(r.getAttribute('Impuesto')==='002')ret+=parseFloat(r.getAttribute('Importe')||0);});
-  const receptor=doc.querySelector('Receptor');
-  const cliente=receptor?receptor.getAttribute('Nombre'):'';
-  const folioCompleto=serie+'-'+folio;
-  if(ingresosDB.some(v=>v.folio===folioCompleto&&v.unidad===unidad)){
-    alert(fname+': ya está registrado (duplicado).');return;
-  }
-  // Extraer ruta carta porte
-  let ruta=[];
-  const ubics=doc.querySelectorAll('Ubicacion');
-  if(ubics.length>=2){
-    let orig=null;
-    ubics.forEach(u=>{
-      const tipo=u.getAttribute('TipoUbicacion')||'';
-      const dom=u.querySelector('Domicilio');
-      const ciudad=dom?dom.getAttribute('Municipio')||'':'';
-      const estado=dom?dom.getAttribute('Estado')||'':'';
-      const label=ciudad&&estado?ciudad+', '+estado:ciudad||estado||'Punto';
-      const kms=u.getAttribute('DistanciaRecorrida')||'';
-      if(tipo==='OR'){orig=label;}
-      else if(tipo==='DE'&&orig){ruta.push({origen:orig,destino:label,kms});orig=label;}
-    });
-  }
-  ingresosDB.push({id:uid(),unidad,folio:folioCompleto,fecha,cliente,tipo:'flete_for',
-    subtotal,iva,ret,total:parseFloat(comp.getAttribute('Total')||0),
-    estado:'sin_liquidar',liqNum:null,origen:'xml',ruta});
-  guardar();renderIngresos();
-  alert('✅ '+fname+' registrado.'+(ruta.length?' Ruta: '+ruta.length+' tramos.':''));
+// ── ANTICIPO MANUAL ──────────────────────────────────────
+function showManual(){$('cardManual').style.display='block';$('mFecha').value=hoy();}
+function hideManual(){$('cardManual').style.display='none';}
+function agregarManualReal(){
+  const unidad=parseInt($('mOp').value||0);
+  if(!unidad){alert('Selecciona el operador.');return;}
+  const importe=parseFloat($('mImporte').value||0);
+  if(!importe){alert('Ingresa el importe.');return;}
+  const fecha=$('mFecha').value||hoy();
+  const concepto=$('mConcepto').value||$('mForma').value;
+  if(!anticiposDB[unidad])anticiposDB[unidad]=[];
+  anticiposDB[unidad].push({id:uid(),fecha,importe,concepto,estado:'pendiente',liqNum:null,origen:'manual'});
+  guardar();
+  renderAnticipos();
+  hideManual();
+  $('mOp').value='';$('mImporte').value='';$('mConcepto').value='';
 }
 
-// PDF via Claude
-const dzPDF=$('dzPDF');
-dzPDF.addEventListener('dragover',e=>{e.preventDefault();dzPDF.classList.add('drag')});
-dzPDF.addEventListener('dragleave',()=>dzPDF.classList.remove('drag'));
-dzPDF.addEventListener('drop',e=>{e.preventDefault();dzPDF.classList.remove('drag');handlePDFFiles(e.dataTransfer.files)});
-$('fPDF').addEventListener('change',e=>handlePDFFiles(e.target.files));
-
-function handlePDFFiles(files){
-  const unidad=parseInt($('ingOp').value||0);
-  if(!unidad){alert('Selecciona el operador primero.');return;}
-  lockRequest('Subir PDF de factura — Ingresos', function(){
-    Array.from(files).forEach(f=>leerPDF(f,unidad));
-  });
-}
-
-function fileToBase64(file){return new Promise((res,rej)=>{const r=new FileReader();r.onload=e=>res(e.target.result.split(',')[1]);r.onerror=rej;r.readAsDataURL(file);});}
-
-async function leerPDF(file,unidad){
-  $('ingInfo').style.display='block';
-  $('ingInfo').innerHTML='<div class="alert alert-info">⏳ Analizando PDF con IA...</div>';
-  try{
-    const base64=await fileToBase64(file);
-    const res=await fetch('https://api.anthropic.com/v1/messages',{
-      method:'POST',
-      headers:{'Content-Type':'application/json','anthropic-dangerous-direct-browser-access':'true'},
-      body:JSON.stringify({model:'claude-sonnet-4-6',max_tokens:500,messages:[{role:'user',content:[
-        {type:'document',source:{type:'base64',media_type:'application/pdf',data:base64}},
-        {type:'text',text:'Factura o documento de viaje. Responde SOLO JSON sin texto ni backticks: {"folio":"string","fecha":"YYYY-MM-DD","cliente":"string","subtotal":numero,"iva":numero,"ret":numero,"total":numero}. Pon null si no existe.'}
-      ]}]})
-    });
-    const data=await res.json();
-    const txt=(data.content||[]).filter(b=>b.type==='text').map(b=>b.text).join('');
-    const d=JSON.parse(txt.replace(/```json|```/g,'').trim());
-    if(d.folio)$('ingFolio').value=d.folio;
-    if(d.fecha)$('ingFecha').value=d.fecha;
-    if(d.cliente)$('ingCliente').value=d.cliente;
-    if(d.subtotal!=null)$('ingSubtotal').value=d.subtotal;
-    if(d.iva!=null)$('ingIva').value=d.iva;
-    if(d.ret!=null)$('ingRet').value=d.ret;
-    calcTotales();
-    $('ingInfo').innerHTML='<div class="alert alert-ok">✅ '+file.name+' — revisa y ajusta si es necesario, luego haz clic en Registrar.</div>';
-  }catch(e){$('ingInfo').innerHTML='<div class="alert alert-warn">⚠️ Error: '+e.message+'. Captura manualmente.</div>';}
-}
-
-function agregarIngresoReal(){
-  const unidad=parseInt($('ingOp').value||0);
-  if(!unidad){alert('Selecciona operador.');return;}
-  const subtotal=parseFloat($('ingSubtotal').value||0);
-  if(!subtotal){alert('Ingresa el subtotal.');return;}
-  const folio=$('ingFolio').value||('MAN-'+uid().slice(0,6).toUpperCase());
-  if(ingresosDB.some(v=>v.folio===folio&&v.unidad===unidad)){alert('Este folio ya está registrado para este operador.');return;}
-  ingresosDB.push({id:uid(),unidad,folio,fecha:$('ingFecha').value||hoy(),
-    cliente:$('ingCliente').value||'Sin cliente',tipo:$('ingTipo').value,
-    subtotal,iva:parseFloat($('ingIva').value||0),ret:parseFloat($('ingRet').value||0),
-    total:parseFloat($('ingTotal').value||0),estado:'sin_liquidar',liqNum:null,origen:'manual',ruta:[]});
-  limpiarForm();guardar();renderIngresos();
-}
-
-function renderIngresos(){
+// ── RENDER ───────────────────────────────────────────────
+function renderAnticipos(){
   const filtOp=parseInt($('filtOp').value||0);
   const filtDesde=$('filtDesde').value;
   const filtHasta=$('filtHasta').value;
   const filtEst=$('filtEst').value;
-  const filtrados=ingresosDB.filter(v=>{
-    if(filtOp&&v.unidad!==filtOp)return false;
-    if(filtDesde&&v.fecha<filtDesde)return false;
-    if(filtHasta&&v.fecha>filtHasta)return false;
-    if(filtEst&&v.estado!==filtEst)return false;
-    return true;
-  }).sort((a,b)=>b.fecha.localeCompare(a.fecha));
 
-  const tb=$('tbIngresos');tb.innerHTML='';
-  if(!filtrados.length){tb.innerHTML='<tr><td colspan="12" style="text-align:center;color:#aaa;padding:20px">Sin viajes registrados</td></tr>';return;}
-
-  let totSub=0,totTot=0;
-  filtrados.forEach(v=>{
-    const op=OPERADORES.find(o=>o.unidad===v.unidad);
-    const tipos={flete_mx:'Flete Mx',flete_for:'Flete For.',maniobra:'Maniobra',otro:'Otro'};
-    totSub+=v.subtotal;totTot+=v.total;
-    tb.innerHTML+=`<tr>
-      <td class="num">${v.folio}</td><td>${v.fecha}</td>
-      <td style="font-size:11px">${op?op.nombre.split(' ').slice(0,2).join(' '):'?'}</td>
-      <td style="max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px">${v.cliente}</td>
-      <td><span class="badge ${v.tipo==='maniobra'?'bg-purple':v.tipo.includes('for')?'bg-blue':'bg-gray'}">${tipos[v.tipo]||v.tipo}</span></td>
-      <td class="num r">${fmt(v.subtotal)}</td><td class="num r">${fmt(v.iva)}</td>
-      <td class="num r">${fmt(v.ret)}</td><td class="num r">${fmt(v.total)}</td>
-      <td><span class="badge ${v.estado==='sin_liquidar'?'bg-yellow':'bg-green'}">${v.estado==='sin_liquidar'?'Sin liquidar':'Liquidado'}</span></td>
-      <td style="font-size:11px;color:#aaa">${v.liqNum?'Liq.#'+v.liqNum:'—'}</td>
-      <td>${v.estado==='sin_liquidar'?`<button style="background:#fde8e8;color:#9b1c1c;border:none;cursor:pointer;border-radius:4px;padding:3px 8px;font-size:11px" onclick="eliminar('${v.id}')">✕</button>`:'—'}</td>
-    </tr>`;
+  // Construir lista filtrada
+  let todos=[];
+  Object.keys(anticiposDB).forEach(u=>{
+    const op=OPERADORES.find(o=>o.unidad===parseInt(u));
+    (anticiposDB[u]||[]).forEach(a=>{
+      if(filtOp&&parseInt(u)!==filtOp)return;
+      if(filtDesde&&a.fecha<filtDesde)return;
+      if(filtHasta&&a.fecha>filtHasta)return;
+      if(filtEst&&a.estado!==filtEst)return;
+      todos.push({...a,unidad:parseInt(u),opNombre:op?op.nombre:'?'});
+    });
   });
-  const sinLiq=filtrados.filter(v=>v.estado==='sin_liquidar').length;
-  $('ingResumen').innerHTML=`<div style="display:flex;gap:16px;flex-wrap:wrap;font-size:12px;color:#555;margin-top:8px">
-    <span>${filtrados.length} viajes · Subtotal: <strong>${fmt(totSub)}</strong> · Total: <strong>${fmt(totTot)}</strong></span>
-    <span style="color:#856404">⏳ Sin liquidar: <strong>${sinLiq}</strong></span>
-  </div>`;
+  todos.sort((a,b)=>b.fecha.localeCompare(a.fecha));
+
+  // Stats
+  const totImporte=todos.reduce((s,a)=>s+a.importe,0);
+  const pend=todos.filter(a=>a.estado==='pendiente').length;
+  const liqCount=todos.filter(a=>a.estado==='liquidado').length;
+  const ops=new Set(todos.map(a=>a.unidad)).size;
+  $('stOps').textContent=ops;
+  $('stMovs').textContent=todos.length;
+  $('stTotal').textContent=fmt(totImporte);
+  $('stPend').textContent=pend;
+  $('stLiq').textContent=liqCount;
+  $('stDup').textContent=0;
+  $('cardStats').style.display=todos.length?'block':'none';
+
+  // Agrupar por operador
+  const porOp={};
+  todos.forEach(a=>{
+    if(!porOp[a.unidad])porOp[a.unidad]={nombre:a.opNombre,unidad:a.unidad,items:[]};
+    porOp[a.unidad].items.push(a);
+  });
+
+  const cont=$('bloqueAnticipos');
+  if(!todos.length){cont.innerHTML='<div style="text-align:center;padding:30px;color:#aaa">Sin anticipos que coincidan con los filtros.</div>';return;}
+
+  cont.innerHTML='';
+  Object.values(porOp).sort((a,b)=>a.unidad-b.unidad).forEach(grp=>{
+    const totGrp=grp.items.reduce((s,a)=>s+a.importe,0);
+    const div=document.createElement('div');div.className='op-block';
+    const rows=grp.items.map(a=>`<tr>
+      <td>${a.fecha}</td>
+      <td style="max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${a.concepto}</td>
+      <td class="num r">${fmt(a.importe)}</td>
+      <td><span class="badge ${a.estado==='pendiente'?'bg-yellow':'bg-green'}">${a.estado==='pendiente'?'PENDIENTE':'LIQUIDADO'+(a.liqNum?' #'+a.liqNum:'')}</span></td>
+      <td><span class="badge ${a.origen==='manual'?'bg-blue':'bg-gray'}">${a.origen==='manual'?'MANUAL':'ARCHIVO'}</span></td>
+      <td>${a.estado==='pendiente'?`<button class="btn-sm" style="background:#fde8e8;color:#9b1c1c;border:none;cursor:pointer;border-radius:4px;padding:3px 8px" onclick="eliminarAnticipo(${a.unidad},'${a.id}')">✕</button>`:'—'}</td>
+    </tr>`).join('');
+    div.innerHTML=`<div class="op-bar"><span>Unidad ${grp.unidad} · ${grp.nombre}</span><span class="tot">${fmt(totGrp)}</span></div>
+    <div class="tbl-wrap"><table>
+      <thead><tr><th>Fecha</th><th>Concepto</th><th class="r">Importe</th><th>Estatus</th><th>Origen</th><th></th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table></div>`;
+    cont.appendChild(div);
+  });
 }
 
-function eliminar(id){
-  if(!confirm('¿Eliminar este viaje?'))return;
-  ingresosDB=ingresosDB.filter(v=>v.id!==id);
-  guardar();renderIngresos();
+function eliminarAnticipo(unidad,id){
+  if(!confirm('¿Eliminar este anticipo?'))return;
+  if(anticiposDB[unidad])anticiposDB[unidad]=anticiposDB[unidad].filter(a=>a.id!==id);
+  guardar();renderAnticipos();
 }
 
 function limpiarFiltros(){
   $('filtOp').value='';$('filtDesde').value='';$('filtHasta').value='';$('filtEst').value='';
-  renderIngresos();
+  renderAnticipos();
 }
 
 function exportarCSV(){
-  let csv='Folio,Fecha,Unidad,Operador,Cliente,Tipo,Subtotal,IVA,Retención,Total,Estatus,Liquidación\n';
-  ingresosDB.forEach(v=>{
-    const op=OPERADORES.find(o=>o.unidad===v.unidad);
-    csv+=`"${v.folio}","${v.fecha}",${v.unidad},"${op?op.nombre:''}", "${v.cliente}","${v.tipo}",${v.subtotal},${v.iva},${v.ret},${v.total},${v.estado},${v.liqNum||''}\n`;
+  let csv='Unidad,Operador,Fecha,Concepto,Importe,Estatus,Liquidación\n';
+  Object.keys(anticiposDB).forEach(u=>{
+    const op=OPERADORES.find(o=>o.unidad===parseInt(u));
+    (anticiposDB[u]||[]).forEach(a=>{
+      csv+=`${u},"${op?op.nombre:''}", "${a.fecha}","${a.concepto}",${a.importe},${a.estado},${a.liqNum||''}\n`;
+    });
   });
-  dlBlob(csv,'Ingresos_TML_'+hoy()+'.csv','text/csv');
+  dlBlob(csv,'Anticipos_TML_'+hoy()+'.csv','text/csv');
 }
 
-
-// ── CANDADO RM2026 ──────────────────────────────────────────────────────────
+// ── CANDADO KM2026 ──────────────────────────────────────────────────────────
 var _lockCallback = null;
-var LOCK_PASS_ING = 'RM2026';
+var LOCK_PASS_ANT = 'KM2026';
 
 function lockRequest(desc, callback){
   _lockCallback = callback;
@@ -440,7 +508,7 @@ function lockRequest(desc, callback){
   setTimeout(function(){ document.getElementById('lockPass').focus(); }, 100);
 }
 function lockConfirm(){
-  if(document.getElementById('lockPass').value === LOCK_PASS_ING){
+  if(document.getElementById('lockPass').value === LOCK_PASS_ANT){
     document.getElementById('lockModal').style.display = 'none';
     if(_lockCallback) _lockCallback();
     _lockCallback = null;
@@ -453,19 +521,14 @@ function lockConfirm(){
 function lockCancel(){
   document.getElementById('lockModal').style.display = 'none';
   _lockCallback = null;
-  // Limpiar el file input para que no quede seleccionado
-  var fi = document.getElementById('fXML');
-  if(fi) fi.value = '';
-  var fp = document.getElementById('fPDF');
-  if(fp) fp.value = '';
 }
 
-function agregarIngreso(){
-  lockRequest('Registrar viaje/ingreso manual', function(){ agregarIngresoReal(); });
+function agregarManual(){
+  lockRequest('Registrar anticipo manual', function(){ agregarManualReal(); });
 }
 </script>
 
-<!-- MODAL CANDADO INGRESOS -->
+<!-- MODAL CANDADO ANTICIPOS -->
 <div class="lock-overlay" id="lockModal" style="display:none">
   <div class="lock-box">
     <h3>🔒 Autorización requerida</h3>
