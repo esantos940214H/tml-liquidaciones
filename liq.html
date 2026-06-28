@@ -1047,10 +1047,15 @@ function bloquearComision(){
 function desbloquearComision(){
   var pass=prompt('Contraseña de supervisor para modificar comisión:');
   if(pass!==SUPERVISOR_PASS){alert('Contraseña incorrecta.');return;}
+  var nueva=prompt('Nueva comisión (entre 11% y 13%):');
+  if(nueva===null)return;
+  var val=parseFloat(nueva);
+  if(isNaN(val)||val<11||val>13){alert('Valor inválido. Solo se permite entre 11% y 13%.');return;}
   var el=$('liqComision');
-  if(el){el.readOnly=false;el.style.background='';el.style.color='';el.style.cursor='';}
-  if($('comisionLock'))$('comisionLock').textContent='🔓';
-  el.focus();
+  if(el){el.value=val;}
+  if(liq)liq.comision=val;
+  guardarEstado();
+  if($('comisionLock'))$('comisionLock').textContent='🔒';
 }
 
 async function refrescarPreview(){
