@@ -1,0 +1,541 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TML · Ingresos</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Segoe UI',Arial,sans-serif;background:#f0f2f5;color:#1a1a2e;min-height:100vh}
+html.in-iframe header{display:none!important}
+header{background:#1a1a2e;color:#fff;padding:14px 24px;display:flex;align-items:center;justify-content:space-between;border-bottom:3px solid #e63946}
+.logo{font-size:18px;font-weight:800}.logo span{color:#e63946}
+.nav{display:flex;gap:8px}
+.nav a{color:#aaa;text-decoration:none;font-size:12px;padding:6px 12px;border-radius:5px;border:1px solid #333;transition:all .15s}
+.nav a:hover{color:#fff;border-color:#555}
+.nav a.active{color:#fff;background:#e63946;border-color:#e63946}
+.container{max-width:1100px;margin:0 auto;padding:20px 16px}
+.card{background:#fff;border-radius:10px;box-shadow:0 2px 12px rgba(0,0,0,.07);padding:20px 24px;margin-bottom:16px}
+.card-title{font-size:12px;font-weight:700;color:#1a1a2e;margin-bottom:14px;text-transform:uppercase;letter-spacing:1px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.grid4{display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:12px}
+.field{display:flex;flex-direction:column;gap:4px}
+.field label{font-size:11px;font-weight:700;color:#666;text-transform:uppercase;letter-spacing:.5px}
+.field input,.field select{border:1.5px solid #dde;border-radius:6px;padding:8px 10px;font-size:13px;color:#1a1a2e;background:#fafafa;width:100%}
+.field input:focus,.field select:focus{outline:none;border-color:#e63946}
+.field input[readonly]{background:#f0f2f5;color:#888}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end}
+.btn{padding:8px 18px;border-radius:6px;border:none;font-size:12px;font-weight:700;cursor:pointer;transition:all .15s;text-transform:uppercase;letter-spacing:.5px}
+.btn-red{background:#e63946;color:#fff}.btn-red:hover{background:#c1121f}
+.btn-dark{background:#1a1a2e;color:#fff}.btn-dark:hover{background:#0d0d1a}
+.btn-out{background:#fff;color:#1a1a2e;border:1.5px solid #1a1a2e}.btn-out:hover{background:#f0f2f5}
+.btn:disabled{opacity:.35;cursor:not-allowed}
+.btn-sm{padding:5px 11px;font-size:11px}
+.upload-zone{border:2px dashed #c0c4cc;border-radius:8px;padding:20px;text-align:center;cursor:pointer;transition:all .2s;background:#fafafa}
+.upload-zone:hover,.upload-zone.drag{border-color:#e63946;background:#fff5f5}
+.upload-zone .icon{font-size:24px;margin-bottom:5px}
+.upload-zone p{color:#666;font-size:12px}
+.alert{padding:9px 13px;border-radius:7px;font-size:12px;margin-bottom:10px}
+.alert-info{background:#e8f4fd;color:#0369a1;border:1px solid #bae6fd}
+.alert-ok{background:#d1e7dd;color:#0a5233;border:1px solid #a3cfbb}
+.alert-warn{background:#fffbeb;color:#92400e;border:1px solid #fde68a}
+.tbl-wrap{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:13px;min-width:600px}
+th{background:#1a1a2e;color:#fff;padding:8px 10px;font-size:11px;text-transform:uppercase;letter-spacing:.7px;text-align:left;font-weight:600}
+th.r{text-align:right}
+td{padding:7px 10px;border-bottom:1px solid #f0f0f0;vertical-align:middle}
+tr:last-child td{border-bottom:none}
+tr:hover td{background:#fafafa}
+.r{text-align:right}.num{font-family:monospace;font-weight:600}
+.badge{display:inline-block;border-radius:4px;padding:2px 8px;font-size:10px;font-weight:700;white-space:nowrap}
+.bg-green{background:#d1e7dd;color:#0a5233;border:1px solid #a3cfbb}
+.bg-yellow{background:#fff3cd;color:#856404;border:1px solid #ffc107}
+.bg-blue{background:#dbeafe;color:#1e40af;border:1px solid #93c5fd}
+.bg-purple{background:#ede9fe;color:#5b21b6;border:1px solid #c4b5fd}
+.bg-gray{background:#f0f2f5;color:#555;border:1px solid #dde}
+.fb-status{font-size:11px;color:#aaa}
+.fb-ok{color:#2d6a4f}.fb-err{color:#e63946}
+@media(max-width:600px){.grid2,.grid4{grid-template-columns:1fr}}
+
+/* ── MODAL CANDADO ── */
+.lock-overlay{position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:9999;display:flex;align-items:center;justify-content:center}
+.lock-box{background:#fff;border-radius:12px;padding:30px;width:320px;box-shadow:0 16px 48px rgba(0,0,0,.3);text-align:center}
+.lock-box h3{font-size:15px;font-weight:700;margin-bottom:6px;color:#1a1a2e}
+.lock-box p{font-size:12px;color:#888;margin-bottom:16px}
+.lock-box input{width:100%;border:1.5px solid #dde;border-radius:7px;padding:9px 12px;font-size:14px;text-align:center;letter-spacing:3px;margin-bottom:10px;outline:none}
+.lock-box input:focus{border-color:#e63946}
+.lock-row{display:flex;gap:8px}
+.lock-row button{flex:1;padding:9px;border:none;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer}
+.lock-ok{background:#e63946;color:#fff}.lock-ok:hover{background:#c1121f}
+.lock-cancel{background:#f0f2f5;color:#555}.lock-cancel:hover{background:#e0e2e5}
+.lock-err{color:#e63946;font-size:11px;margin-top:6px;display:none}
+</style>
+<script>if(window!==window.top)document.documentElement.className+=' in-iframe';</script>
+</head>
+<body>
+<header>
+  <div class="logo">MUDANZAS <span>TML</span> <span style="font-size:13px;font-weight:400;color:#aaa;margin-left:8px">· Ingresos</span></div>
+  <div style="display:flex;align-items:center;gap:12px">
+    <span class="fb-status" id="fbStatus">⏳ Conectando...</span>
+    <nav class="nav">
+      <a href="ant.html">📋 Anticipos</a>
+      <a href="ing.html" class="active">📄 Ingresos</a>
+      <a href="liq.html">🚛 Liquidaciones</a>
+      <a href="hist.html">🗂️ Historial</a>
+    </nav>
+  </div>
+</header>
+
+<div class="container">
+
+  <!-- REGISTRO -->
+  <div class="card">
+    <div class="card-title">📄 Registrar viaje / ingreso</div>
+    <div class="row" style="margin-bottom:14px">
+      <div class="field"><label>Operador</label><select id="ingOp"><option value="">— Selecciona —</option></select></div>
+      <div class="upload-zone" style="flex:1;min-width:160px;padding:14px" id="dzXML" onclick="document.getElementById('fXML').click()">
+        <div class="icon">📄</div><p><strong>XML Carta Porte</strong><br><span style="font-size:10px;color:#aaa">Extrae automático</span></p>
+      </div>
+      <input type="file" id="fXML" accept=".xml" multiple style="display:none">
+      <div class="upload-zone" style="flex:1;min-width:160px;padding:14px" id="dzPDF" onclick="document.getElementById('fPDF').click()">
+        <div class="icon">📑</div><p><strong>PDF / Factura global</strong><br><span style="font-size:10px;color:#aaa">IA extrae los datos</span></p>
+      </div>
+      <input type="file" id="fPDF" accept=".pdf" multiple style="display:none">
+    </div>
+    <div style="background:#f5f5f8;border-radius:8px;padding:14px">
+      <div style="font-size:11px;font-weight:700;text-transform:uppercase;color:#888;margin-bottom:10px">Captura manual / ajuste</div>
+      <div class="grid4" style="margin-bottom:10px">
+        <div class="field"><label>Folio</label><input type="text" id="ingFolio" placeholder="R2122"></div>
+        <div class="field"><label>Fecha</label><input type="date" id="ingFecha"></div>
+        <div class="field"><label>Cliente</label><input type="text" id="ingCliente" placeholder="Nombre del cliente"></div>
+        <div class="field"><label>Tipo</label>
+          <select id="ingTipo">
+            <option value="flete_for">Flete Foráneo</option>
+            <option value="flete_mx">Flete México</option>
+            <option value="maniobra">Maniobra</option>
+            <option value="otro">Otro</option>
+          </select>
+        </div>
+      </div>
+      <div class="grid4">
+        <div class="field"><label>Subtotal</label><input type="number" id="ingSubtotal" placeholder="0.00" step="0.01" onchange="calcTotales()"></div>
+        <div class="field"><label>IVA</label><input type="number" id="ingIva" placeholder="0.00" step="0.01" onchange="calcTotales()"></div>
+        <div class="field"><label>Retención IVA</label><input type="number" id="ingRet" placeholder="0.00" step="0.01" onchange="calcTotales()"></div>
+        <div class="field"><label>Total</label><input type="number" id="ingTotal" readonly></div>
+      </div>
+      <div class="grid4" style="margin-top:8px">
+        <div class="field"><label style="color:#888">Origen <span style="font-weight:400;font-size:11px">(opcional)</span></label><input type="text" id="ingOrigen" placeholder="Municipio, Estado"></div>
+        <div class="field"><label style="color:#888">Destino <span style="font-weight:400;font-size:11px">(opcional)</span></label><input type="text" id="ingDestino" placeholder="Municipio, Estado"></div>
+        <div class="field"><label style="color:#888">Distancia km <span style="font-weight:400;font-size:11px">(opcional)</span></label><input type="number" id="ingDistKms" placeholder="0" step="1"></div>
+      </div>
+      <div id="ingInfo" style="display:none;margin-top:10px"></div>
+      <div style="margin-top:10px;display:flex;gap:8px">
+        <button class="btn btn-red" onclick="agregarIngreso()">+ Registrar viaje</button>
+        <button class="btn btn-out btn-sm" onclick="limpiarForm()">Limpiar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- FILTROS -->
+  <div class="card">
+    <div class="card-title">🔍 Filtros
+      <button class="btn btn-dark btn-sm" onclick="exportarCSV()">Exportar CSV</button>
+    </div>
+    <div class="row">
+      <div class="field"><label>Operador</label><select id="filtOp" onchange="renderIngresos()"><option value="">Todos</option></select></div>
+      <div class="field"><label>Desde</label><input type="date" id="filtDesde" onchange="renderIngresos()"></div>
+      <div class="field"><label>Hasta</label><input type="date" id="filtHasta" onchange="renderIngresos()"></div>
+      <div class="field"><label>Estatus</label>
+        <select id="filtEst" onchange="renderIngresos()">
+          <option value="">Todos</option>
+          <option value="sin_liquidar">Sin liquidar</option>
+          <option value="liquidado">Liquidado</option>
+        </select>
+      </div>
+      <button class="btn btn-out btn-sm" onclick="limpiarFiltros()">Limpiar</button>
+    </div>
+  </div>
+
+  <!-- TABLA -->
+  <div class="card">
+    <div class="card-title" style="display:flex;justify-content:space-between;align-items:center">
+      <span>📋 Viajes registrados</span>
+      <div id="barraSelIng" style="display:none;align-items:center;gap:8px">
+        <span id="cntSelIng" style="font-size:12px;color:#aaa"></span>
+        <button class="btn btn-sm" style="background:#e63946;color:#fff;border:none;cursor:pointer;border-radius:5px;padding:5px 12px" onclick="eliminarSeleccionadosIng()">🗑 Eliminar seleccionados</button>
+      </div>
+    </div>
+    <div class="tbl-wrap">
+      <table>
+        <thead><tr>
+          <th style="width:32px"><input type="checkbox" title="Seleccionar todos sin liquidar" onchange="toggleTodosIng(this)"></th>
+          <th>Folio</th><th>Fecha</th><th>Operador</th><th>Cliente</th><th>Tipo</th>
+          <th class="r">Subtotal</th><th class="r">IVA</th><th class="r">Ret.</th><th class="r">Total</th>
+          <th>Estatus</th><th>Liq.</th><th></th>
+        </tr></thead>
+        <tbody id="tbIngresos"></tbody>
+      </table>
+    </div>
+    <div id="ingResumen" style="margin-top:10px"></div>
+  </div>
+
+</div>
+
+<!-- Firebase compat -->
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+<script>
+window._fbInit=false;
+window._fbCallbacks=[];
+window.onFBReady=function(cb){if(window._fbInit)cb();else window._fbCallbacks.push(cb);};
+(function(){
+  try{
+    var cfg={apiKey:"AIzaSyDqlhREJFVFLGzz7bVlPcNl1Uba9HI3r8s",authDomain:"tml-liquidaciones.firebaseapp.com",
+      projectId:"tml-liquidaciones",storageBucket:"tml-liquidaciones.firebasestorage.app",
+      messagingSenderId:"268455373953",appId:"1:268455373953:web:ad359c5dbcba9f53557180"};
+    if(!firebase.apps.length)firebase.initializeApp(cfg);
+    var db=firebase.firestore();
+    window.FB={
+      set:function(col,id,data){return db.collection(col).doc(id).set(data);},
+      get:async function(col,id){try{var s=await db.collection(col).doc(id).get();return s.exists?s.data():null;}catch(e){console.error('FB.get:',e);return null;}},
+      del:function(col,id){return db.collection(col).doc(id).delete();},
+      listen:function(col,id,cb){return db.collection(col).doc(id).onSnapshot(function(s){cb(s.exists?s.data():null);});},
+      getAll:async function(col){
+        try{var s=await db.collection(col).get();var r=[];s.forEach(function(d){r.push(Object.assign({id:d.id},d.data()));});return r.sort(function(a,b){return(b.num||0)-(a.num||0);});}
+        catch(e){console.error('FB.getAll:',e);return[];}
+      }
+    };
+    window._fbInit=true;
+    window._fbCallbacks.forEach(function(cb){try{cb();}catch(e){console.error(e);}});
+    window._fbCallbacks=[];
+    // También disparar evento por compatibilidad
+    setTimeout(function(){window.dispatchEvent(new Event('firebase-ready'));},0);
+  }catch(e){console.error('Firebase init error:',e);}
+})();
+</script>
+
+<script>
+const OPERADORES=[
+  {unidad:4521,nombre:'ALEJANDRO RODRIGUEZ GONZALEZ'},{unidad:4522,nombre:'ANDRÉS MARÍA RAMOS'},
+  {unidad:4523,nombre:'ANDRÉS NAVARRO RAMÍREZ'},{unidad:4524,nombre:'RAFAEL TAPIA CARREÑO'},
+  {unidad:4526,nombre:'EDUARDO HERNÁNDEZ ACEVES'},{unidad:529,nombre:'OSCAR ISRAEL RAMOS'},
+  {unidad:531,nombre:'MARTÍN FLORES LUGO'},{unidad:532,nombre:'JOSÉ ROLANDO DOMINGUEZ LOPEZ'},
+  {unidad:533,nombre:'FRANCISCO ARTEMIO PEÑA VAZQUEZ'},{unidad:534,nombre:'MIGUEL ALONSO CALDERON'},
+  {unidad:535,nombre:'ISMAEL CONSTANTINO CABRERA'},
+];
+const $=id=>document.getElementById(id);
+const fmt=(n,d=2)=>'$'+parseFloat(n||0).toLocaleString('es-MX',{minimumFractionDigits:d,maximumFractionDigits:d});
+const hoy=()=>new Date().toISOString().slice(0,10);
+const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2);
+var C_MUNICIPIO={"AGU":{"001":"Aguascalientes","002":"Asientos","003":"Calvillo","004":"Cosío","005":"Jesús María","006":"Pabellón de Arteaga","007":"Rincón de Romos","008":"San José de Gracia","009":"Tepezalá","010":"El Llano","011":"San Francisco de los Romo"},"BCN":{"001":"Ensenada","002":"Mexicali","003":"Tecate","004":"Tijuana","005":"Playas de Rosarito"},"BCS":{"001":"Comondú","002":"Mulegé","003":"La Paz","008":"Los Cabos","009":"Loreto"},"CAM":{"001":"Calkiní","002":"Campeche","003":"Carmen","004":"Champotón","005":"Hecelchakán","006":"Hopelchén","007":"Palizada","008":"Tenabo","009":"Escárcega","010":"Calakmul","011":"Candelaria"},"COA":{"001":"Abasolo","002":"Acuña","003":"Allende","004":"Arteaga","005":"Candela","006":"Castaños","007":"Cuatro Ciénegas","008":"Escobedo","009":"Francisco I. Madero","010":"Frontera","011":"General Cepeda","012":"Guerrero","013":"Hidalgo","014":"Jiménez","015":"Juárez","016":"Lamadrid","017":"Matamoros","018":"Monclova","019":"Morelos","020":"Múzquiz","021":"Nadadores","022":"Nava","023":"Ocampo","024":"Parras","025":"Piedras Negras","026":"Progreso","027":"Ramos Arizpe","028":"Sabinas","029":"Sacramento","030":"Saltillo","031":"San Buenaventura","032":"San Juan de Sabinas","033":"San Pedro","034":"Sierra Mojada","035":"Torreón","036":"Viesca","037":"Villa Unión","038":"Zaragoza"},"COL":{"001":"Armería","002":"Colima","003":"Comala","004":"Coquimatlán","005":"Cuauhtémoc","006":"Ixtlahuacán","007":"Manzanillo","008":"Minatitlán","009":"Tecomán","010":"Villa de Álvarez"},"CHH":{"001":"Ahumada","002":"Aldama","003":"Allende","004":"Aquiles Serdán","005":"Ascensión","006":"Bachíniva","007":"Balleza","008":"Batopilas","009":"Bocoyna","010":"Buenaventura","011":"Camargo","012":"Carichí","013":"Casas Grandes","014":"Coronado","015":"Coyame del Sotol","016":"La Cruz","017":"Cuauhtémoc","018":"Cusihuiriachi","019":"Chihuahua","020":"Chínipas","021":"Delicias","022":"Dr. Belisario Domínguez","023":"Galeana","024":"Santa Isabel","025":"Gómez Farías","026":"Gran Morelos","027":"Guachochi","028":"Guadalupe","029":"Guadalupe y Calvo","030":"Guazapares","031":"Guerrero","032":"Hidalgo del Parral","033":"Huejotitán","034":"Ignacio Zaragoza","035":"Janos","036":"Jiménez","037":"Juárez","038":"Julimes","039":"López","040":"Madera","041":"Maguarichi","042":"Manuel Benavides","043":"Matachí","044":"Matamoros","045":"Meoqui","046":"Morelos","047":"Moris","048":"Namiquipa","049":"Nonoava","050":"Nuevo Casas Grandes","051":"Ocampo","052":"Ojinaga","053":"Praxedis G. Guerrero","054":"Riva Palacio","055":"Rosales","056":"Rosario","057":"San Francisco de Borja","058":"San Francisco de Conchos","059":"San Francisco del Oro","060":"Santa Bárbara","061":"Satevó","062":"Saucillo","063":"Temósachic","064":"El Tule","065":"Urique","066":"Uruachi","067":"Valle de Zaragoza"},"CHP":{"001":"Acacoyagua","002":"Acala","003":"Acapetahua","004":"Altamirano","005":"Amatán","006":"Amatenango de la Frontera","007":"Amatenango del Valle","008":"Angel Albino Corzo","009":"Arriaga","010":"Bejucal de Ocampo","011":"Bella Vista","012":"Berriozábal","013":"Bochil","014":"El Bosque","015":"Cacahoatán","016":"Catazajá","017":"Cintalapa","018":"Coapilla","019":"Comitán de Domínguez","020":"La Concordia","021":"Copainalá","022":"Chalchihuitán","023":"Chamula","024":"Chanal","025":"Chapultenango","026":"Chenalhó","027":"Chiapa de Corzo","028":"Chiapilla","029":"Chicoasén","030":"Chicomuselo","031":"Chilón","032":"Escuintla","033":"Francisco León","034":"Frontera Comalapa","035":"Frontera Hidalgo","036":"La Grandeza","037":"Huehuetán","038":"Huixtán","039":"Huitiupán","040":"Huixtla","041":"La Independencia","042":"Ixhuatán","043":"Ixtacomitán","044":"Ixtapa","045":"Ixtapangajoya","046":"Jiquipilas","047":"Jitotol","048":"Juárez","049":"Larráinzar","050":"La Libertad","051":"Mapastepec","052":"Las Margaritas","053":"Mazapa de Madero","054":"Mazatán","055":"Metapa","056":"Mitontic","057":"Motozintla","058":"Nicolás Ruíz","059":"Ocosingo","060":"Ocotepec","061":"Ocozocoautla de Espinosa","062":"Ostuacán","063":"Osumacinta","064":"Oxchuc","065":"Palenque","066":"Pantelhó","067":"Pantepec","068":"Pichucalco","069":"Pijijiapan","070":"El Porvenir","071":"Villa Comaltitlán","072":"Pueblo Nuevo Solistahuacán","073":"Rayón","074":"Reforma","075":"Las Rosas","076":"Sabanilla","077":"Salto de Agua","078":"San Cristóbal de las Casas","079":"San Fernando","080":"Siltepec","081":"Simojovel","082":"Sitalá","083":"Socoltenango","084":"Solosuchiapa","085":"Soyaló","086":"Suchiapa","087":"Suchiate","088":"Sunuapa","089":"Tapachula","090":"Tapalapa","091":"Tapilula","092":"Tecpatán","093":"Tenejapa","094":"Teopisca","096":"Tila","097":"Tonalá","098":"Totolapa","099":"La Trinitaria","100":"Tumbalá","101":"Tuxtla Gutiérrez","102":"Tuxtla Chico","103":"Tuzantán","104":"Tzimol","105":"Unión Juárez","106":"Venustiano Carranza","107":"Villa Corzo","108":"Villaflores","109":"Yajalón","110":"San Lucas","111":"Zinacantán","112":"San Juan Cancuc","113":"Aldama","114":"Benemérito de las Américas","115":"Maravilla Tenejapa","116":"Marqués de Comillas","117":"Montecristo de Guerrero","118":"San Andrés Duraznal","119":"Santiago el Pinar"},"DUR":{"001":"Canatlán","002":"Canelas","003":"Coneto de Comonfort","004":"Cuencamé","005":"Durango","006":"General Simón Bolívar","007":"Gómez Palacio","008":"Guadalupe Victoria","009":"Guanaceví","010":"Hidalgo","011":"Indé","012":"Lerdo","013":"Mapimí","014":"Mezquital","015":"Nazas","016":"Nombre de Dios","017":"Ocampo","018":"El Oro","019":"Otáez","020":"Pánuco de Coronado","021":"Peñón Blanco","022":"Poanas","023":"Pueblo Nuevo","024":"Rodeo","025":"San Bernardo","026":"San Dimas","027":"San Juan de Guadalupe","028":"San Juan del Río","029":"San Luis del Cordero","030":"San Pedro del Gallo","031":"Santa Clara","032":"Santiago Papasquiaro","033":"Súchil","034":"Tamazula","035":"Tepehuanes","036":"Tlahualilo","037":"Topia","038":"Vicente Guerrero","039":"Nuevo Ideal"},"GRO":{"001":"Acapulco de Juárez","002":"Ahuacuotzingo","003":"Ajuchitlán del Progreso","004":"Alcozauca de Guerrero","005":"Alpoyeca","006":"Apaxtla","007":"Arcelia","008":"Atenango del Río","009":"Atlamajalcingo del Monte","010":"Atlixtac","011":"Atoyac de Álvarez","012":"Ayutla de los Libres","013":"Azoyú","014":"Benito Juárez","015":"Buenavista de Cuéllar","016":"Coahuayutla de José María Izazaga","017":"Cocula","018":"Copala","019":"Copalillo","020":"Copanatoyac","021":"Coyuca de Benítez","022":"Coyuca de Catalán","023":"Cuajinicuilapa","024":"Cualác","025":"Cuautepec","026":"Cuetzala del Progreso","027":"Cutzamala de Pinzón","028":"Chilapa de Álvarez","029":"Chilpancingo de los Bravo","030":"Florencio Villarreal","031":"General Canuto A. Neri","032":"General Heliodoro Castillo","033":"Huamuxtitlán","034":"Huitzuco de los Figueroa","035":"Iguala de la Independencia","036":"Igualapa","037":"Ixcateopan de Cuauhtémoc","038":"Zihuatanejo de Azueta","039":"Juan R. Escudero","040":"Leonardo Bravo","041":"Malinaltepec","042":"Mártir de Cuilapan","043":"Metlatónoc","044":"Mochitlán","045":"Olinalá","046":"Ometepec","047":"Pedro Ascencio Alquisiras","048":"Petatlán","049":"Pilcaya","050":"Pungarabato","051":"Quechultenango","052":"San Luis Acatlán","053":"San Marcos","054":"San Miguel Totolapan","055":"Taxco de Alarcón","056":"Tecoanapa","057":"Técpan de Galeana","058":"Teloloapan","059":"Tepecoacuilco de Trujano","060":"Tetipac","061":"Tixtla de Guerrero","062":"Tlacoachistlahuaca","063":"Tlacoapa","064":"Tlalchapa","065":"Tlalixtaquilla de Maldonado","066":"Tlapa de Comonfort","067":"Tlapehuala","068":"La Unión de Isidoro Montes de Oca","069":"Xalpatláhuac","070":"Xochihuehuetlán","071":"Xochistlahuaca","072":"Zapotitlán Tablas","073":"Zirándaro","074":"Zitlala","075":"Eduardo Neri","076":"Acatepec","077":"Marquelia","078":"Cochoapa el Grande","079":"José Joaquín de Herrera","080":"Juchitán","081":"Iliatenco"},"GUA":{"001":"Abasolo","002":"Acámbaro","003":"San Miguel de Allende","004":"Apaseo el Alto","005":"Apaseo el Grande","006":"Atarjea","007":"Celaya","008":"Manuel Doblado","009":"Comonfort","010":"Coroneo","011":"Cortazar","012":"Cuerámaro","013":"Doctor Mora","014":"Dolores Hidalgo Cuna de la Independencia Nacional","015":"Guanajuato","016":"Huanímaro","017":"Irapuato","018":"Jaral del Progreso","019":"Jerécuaro","020":"León","021":"Moroleón","022":"Ocampo","023":"Pénjamo","024":"Pueblo Nuevo","025":"Purísima del Rincón","026":"Romita","027":"Salamanca","028":"Salvatierra","029":"San Diego de la Unión","030":"San Felipe","031":"San Francisco del Rincón","032":"San José Iturbide","033":"San Luis de la Paz","034":"Santa Catarina","035":"Santa Cruz de Juventino Rosas","036":"Santiago Maravatío","037":"Silao de la Victoria","038":"Tarandacuao","039":"Tarimoro","040":"Tierra Blanca","041":"Uriangato","042":"Valle de Santiago","043":"Victoria","044":"Villagrán","045":"Xichú","046":"Yuriria"},"HID":{"001":"Acatlán","002":"Acaxochitlán","003":"Actopan","004":"Agua Blanca de Iturbide","005":"Ajacuba","006":"Alfajayucan","007":"Almoloya","008":"Apan","009":"El Arenal","010":"Atitalaquia","011":"Atlapexco","012":"Atotonilco el Grande","013":"Atotonilco de Tula","014":"Calnali","015":"Cardonal","016":"Cuautepec de Hinojosa","017":"Chapantongo","018":"Chapulhuacán","019":"Chilcuautla","020":"Eloxochitlán","021":"Emiliano Zapata","022":"Epazoyucan","023":"Francisco I. Madero","024":"Huasca de Ocampo","025":"Huautla","026":"Huazalingo","027":"Huehuetla","028":"Huejutla de Reyes","029":"Huichapan","030":"Ixmiquilpan","031":"Jacala de Ledezma","032":"Jaltocán","033":"Juárez Hidalgo","034":"Lolotla","035":"Metepec","036":"San Agustín Metzquititlán","037":"Metztitlán","038":"Mineral del Chico","039":"Mineral del Monte","040":"La Misión","041":"Mixquiahuala de Juárez","042":"Molango de Escamilla","043":"Nicolás Flores","044":"Nopala de Villagrán","045":"Omitlán de Juárez","046":"San Felipe Orizatlán","047":"Pacula","048":"Pachuca de Soto","049":"Pisaflores","050":"Progreso de Obregón","051":"Mineral de la Reforma","052":"San Agustín Tlaxiaca","053":"San Bartolo Tutotepec","054":"San Salvador","055":"Santiago de Anaya","056":"Santiago Tulantepec de Lugo Guerrero","057":"Singuilucan","058":"Tasquillo","059":"Tecozautla","060":"Tenango de Doria","061":"Tepeapulco","062":"Tepehuacán de Guerrero","063":"Tepeji del Río de Ocampo","064":"Tepetitlán","065":"Tetepango","066":"Villa de Tezontepec","067":"Tezontepec de Aldama","068":"Tianguistengo","069":"Tizayuca","070":"Tlahuelilpan","071":"Tlahuiltepa","072":"Tlanalapa","073":"Tlanchinol","074":"Tlaxcoapan","075":"Tolcayuca","076":"Tula de Allende","077":"Tulancingo de Bravo","078":"Xochiatipan","079":"Xochicoatlán","080":"Yahualica","081":"Zacualtipán de Ángeles","082":"Zapotlán de Juárez","083":"Zempoala","084":"Zimapán"},"JAL":{"001":"Acatic","002":"Acatlán de Juárez","003":"Ahualulco de Mercado","004":"Amacueca","005":"Amatitán","006":"Ameca","007":"San Juanito de Escobedo","008":"Arandas","009":"El Arenal","010":"Atemajac de Brizuela","011":"Atengo","012":"Atenguillo","013":"Atotonilco el Alto","014":"Atoyac","015":"Autlán de Navarro","016":"Ayotlán","017":"Ayutla","018":"La Barca","019":"Bolaños","020":"Cabo Corrientes","021":"Casimiro Castillo","022":"Cihuatlán","023":"Zapotlán el Grande","024":"Cocula","025":"Colotlán","026":"Concepción de Buenos Aires","027":"Cuautitlán de García Barragán","028":"Cuautla","029":"Cuquío","030":"Chapala","031":"Chimaltitán","032":"Chiquilistlán","033":"Degollado","034":"Ejutla","035":"Encarnación de Díaz","036":"Etzatlán","037":"El Grullo","038":"Guachinango","039":"Guadalajara","040":"Hostotipaquillo","041":"Huejúcar","042":"Huejuquilla el Alto","043":"La Huerta","044":"Ixtlahuacán de los Membrillos","045":"Ixtlahuacán del Río","046":"Jalostotitlán","047":"Jamay","048":"Jesús María","049":"Jilotlán de los Dolores","050":"Jocotepec","051":"Juanacatlán","052":"Juchitlán","053":"Lagos de Moreno","054":"El Limón","055":"Magdalena","056":"Santa María del Oro","057":"La Manzanilla de la Paz","058":"Mascota","059":"Mazamitla","060":"Mexticacán","061":"Mezquitic","062":"Mixtlán","063":"Ocotlán","064":"Ojuelos de Jalisco","065":"Pihuamo","066":"Poncitlán","067":"Puerto Vallarta","068":"Villa Purificación","069":"Quitupan","070":"El Salto","071":"San Cristóbal de la Barranca","072":"San Diego de Alejandría","073":"San Juan de los Lagos","074":"San Julián","075":"San Marcos","076":"San Martín de Bolaños","077":"San Martín Hidalgo","078":"San Miguel el Alto","079":"Gómez Farías","080":"San Sebastián del Oeste","081":"Santa María de los Ángeles","082":"Sayula","083":"Tala","084":"Talpa de Allende","085":"Tamazula de Gordiano","086":"Tapalpa","087":"Tecalitlán","088":"Tecolotlán","089":"Techaluta de Montenegro","090":"Tenamaxtlán","091":"Teocaltiche","092":"Teocuitatlán de Corona","093":"Tepatitlán de Morelos","094":"Tequila","095":"Teuchitlán","096":"Tizapán el Alto","097":"Tlajomulco de Zúñiga","098":"San Pedro Tlaquepaque","099":"Tolimán","100":"Tomatlán","101":"Tonalá","102":"Tonaya","103":"Tonila","104":"Totatiche","105":"Tototlán","106":"Tuxcacuesco","107":"Tuxcueca","108":"Tuxpan","109":"Unión de San Antonio","110":"Unión de Tula","111":"Valle de Guadalupe","112":"Valle de Juárez","113":"San Gabriel","114":"Villa Corona","115":"Villa Guerrero","116":"Villa Hidalgo","117":"Cañadas de Obregón","118":"Yahualica de González Gallo","119":"Zacoalco de Torres","120":"Zapopan","121":"Zapotiltic","122":"Zapotitlán de Vadillo","123":"Zapotlán del Rey","124":"Zapotlanejo","125":"San Ignacio Cerro Gordo"},"MEX":{"001":"Acambay de Ruíz Castañeda","002":"Acolman","003":"Aculco","004":"Almoloya de Alquisiras","005":"Almoloya de Juárez","006":"Almoloya del Río","007":"Amanalco","008":"Amatepec","009":"Amecameca","010":"Apaxco","011":"Atenco","012":"Atizapán","013":"Atizapán de Zaragoza","014":"Atlacomulco","015":"Atlautla","016":"Axapusco","017":"Ayapango","018":"Calimaya","019":"Capulhuac","020":"Coacalco de Berriozábal","021":"Coatepec Harinas","022":"Cocotitlán","023":"Coyotepec","024":"Cuautitlán","025":"Chalco","026":"Chapa de Mota","027":"Chapultepec","028":"Chiautla","029":"Chicoloapan","030":"Chiconcuac","031":"Chimalhuacán","032":"Donato Guerra","033":"Ecatepec de Morelos","034":"Ecatzingo","035":"Huehuetoca","036":"Hueypoxtla","037":"Huixquilucan","038":"Isidro Fabela","039":"Ixtapaluca","040":"Ixtapan de la Sal","041":"Ixtapan del Oro","042":"Ixtlahuaca","043":"Xalatlaco","044":"Jaltenco","045":"Jilotepec","046":"Jilotzingo","047":"Jiquipilco","048":"Jocotitlán","049":"Joquicingo","050":"Juchitepec","051":"Lerma","052":"Malinalco","053":"Melchor Ocampo","054":"Metepec","055":"Mexicaltzingo","056":"Morelos","057":"Naucalpan de Juárez","058":"Nezahualcóyotl","059":"Nextlalpan","060":"Nicolás Romero","061":"Nopaltepec","062":"Ocoyoacac","063":"Ocuilan","064":"El Oro","065":"Otumba","066":"Otzoloapan","067":"Otzolotepec","068":"Ozumba","069":"Papalotla","070":"La Paz","071":"Polotitlán","072":"Rayón","073":"San Antonio la Isla","074":"San Felipe del Progreso","075":"San Martín de las Pirámides","076":"San Mateo Atenco","077":"San Simón de Guerrero","078":"Santo Tomás","079":"Soyaniquilpan de Juárez","080":"Sultepec","081":"Tecámac","082":"Tejupilco","083":"Temamatla","084":"Temascalapa","085":"Temascalcingo","086":"Temascaltepec","087":"Temoaya","088":"Tenancingo","089":"Tenango del Aire","090":"Tenango del Valle","091":"Teoloyucan","092":"Teotihuacán","093":"Tepetlaoxtoc","094":"Tepetlixpa","095":"Tepotzotlán","096":"Tequixquiac","097":"Texcaltitlán","098":"Texcalyacac","099":"Texcoco","100":"Tezoyuca","101":"Tianguistenco","102":"Timilpan","103":"Tlalmanalco","104":"Tlalnepantla de Baz","105":"Tlatlaya","106":"Toluca","107":"Tonatico","108":"Tultepec","109":"Tultitlán","110":"Valle de Bravo","111":"Villa de Allende","112":"Villa del Carbón","113":"Villa Guerrero","114":"Villa Victoria","115":"Xonacatlán","116":"Zacazonapan","117":"Zacualpan","118":"Zinacantepec","119":"Zumpahuacán","120":"Zumpango","121":"Cuautitlán Izcalli","122":"Valle de Chalco Solidaridad","123":"Luvianos","124":"San José del Rincón","125":"Tonanitla"},"MIC":{"001":"Acuitzio","002":"Aguililla","003":"Álvaro Obregón","004":"Angamacutiro","005":"Angangueo","006":"Apatzingán","007":"Aporo","008":"Aquila","009":"Ario","010":"Arteaga","011":"Briseñas","012":"Buenavista","013":"Carácuaro","014":"Coahuayana","015":"Coalcomán de Vázquez Pallares","016":"Coeneo","017":"Contepec","018":"Copándaro","019":"Cotija","020":"Cuitzeo","021":"Charapan","022":"Charo","023":"Chavinda","024":"Cherán","025":"Chilchota","026":"Chinicuila","027":"Chucándiro","028":"Churintzio","029":"Churumuco","030":"Ecuandureo","031":"Epitacio Huerta","032":"Erongarícuaro","033":"Gabriel Zamora","034":"Hidalgo","035":"La Huacana","036":"Huandacareo","037":"Huaniqueo","038":"Huetamo","039":"Huiramba","040":"Indaparapeo","041":"Irimbo","042":"Ixtlán","043":"Jacona","044":"Jiménez","045":"Jiquilpan","046":"Juárez","047":"Jungapeo","048":"Lagunillas","049":"Madero","050":"Maravatío","051":"Marcos Castellanos","052":"Lázaro Cárdenas","053":"Morelia","054":"Morelos","055":"Múgica","056":"Nahuatzen","057":"Nocupétaro","058":"Nuevo Parangaricutiro","059":"Nuevo Urecho","060":"Numarán","061":"Ocampo","062":"Pajacuarán","063":"Panindícuaro","064":"Parácuaro","065":"Paracho","066":"Pátzcuaro","067":"Penjamillo","068":"Peribán","069":"La Piedad","070":"Purépero","071":"Puruándiro","072":"Queréndaro","073":"Quiroga","074":"Cojumatlán de Régules","075":"Los Reyes","076":"Sahuayo","077":"San Lucas","078":"Santa Ana Maya","079":"Salvador Escalante","080":"Senguio","081":"Susupuato","082":"Tacámbaro","083":"Tancítaro","084":"Tangamandapio","085":"Tangancícuaro","086":"Tanhuato","087":"Taretan","088":"Tarímbaro","089":"Tepalcatepec","090":"Tingambato","091":"Tingüindín","092":"Tiquicheo de Nicolás Romero","093":"Tlalpujahua","094":"Tlazazalca","095":"Tocumbo","096":"Tumbiscatío","097":"Turicato","098":"Tuxpan","099":"Tuzantla","100":"Tzintzuntzan","101":"Tzitzio","102":"Uruapan","103":"Venustiano Carranza","104":"Villamar","105":"Vista Hermosa","106":"Yurécuaro","107":"Zacapu","108":"Zamora","109":"Zináparo","110":"Zinapécuaro","111":"Ziracuaretiro","112":"Zitácuaro","113":"José Sixto Verduzco"},"MOR":{"001":"Amacuzac","002":"Atlatlahucan","003":"Axochiapan","004":"Ayala","005":"Coatlán del Río","006":"Cuautla","007":"Cuernavaca","008":"Emiliano Zapata","009":"Huitzilac","010":"Jantetelco","011":"Jiutepec","012":"Jojutla","013":"Jonacatepec","014":"Mazatepec","015":"Miacatlán","016":"Ocuituco","017":"Puente de Ixtla","018":"Temixco","019":"Tepalcingo","020":"Tepoztlán","021":"Tetecala","022":"Tetela del Volcán","023":"Tlalnepantla","024":"Tlaltizapán de Zapata","025":"Tlaquiltenango","026":"Tlayacapan","027":"Totolapan","028":"Xochitepec","029":"Yautepec","030":"Yecapixtla","031":"Zacatepec","032":"Zacualpan","033":"Temoac"},"NAY":{"001":"Acaponeta","002":"Ahuacatlán","003":"Amatlán de Cañas","004":"Compostela","005":"Huajicori","006":"Ixtlán del Río","007":"Jala","008":"Xalisco","009":"Del Nayar","010":"Rosamorada","011":"Ruíz","012":"San Blas","013":"San Pedro Lagunillas","014":"Santa María del Oro","015":"Santiago Ixcuintla","016":"Tecuala","017":"Tepic","018":"Tuxpan","019":"La Yesca","020":"Bahía de Banderas"},"NLE":{"001":"Abasolo","002":"Agualeguas","003":"Los Aldamas","004":"Allende","005":"Anáhuac","006":"Apodaca","007":"Aramberri","008":"Bustamante","009":"Cadereyta Jiménez","010":"El Carmen","011":"Cerralvo","012":"Ciénega de Flores","013":"China","014":"Doctor Arroyo","015":"Doctor Coss","016":"Doctor González","017":"Galeana","018":"García","019":"San Pedro Garza García","020":"General Bravo","021":"General Escobedo","022":"General Terán","023":"General Treviño","024":"General Zaragoza","025":"General Zuazua","026":"Guadalupe","027":"Los Herreras","028":"Higueras","029":"Hualahuises","030":"Iturbide","031":"Juárez","032":"Lampazos de Naranjo","033":"Linares","034":"Marín","035":"Melchor Ocampo","036":"Mier y Noriega","037":"Mina","038":"Montemorelos","039":"Monterrey","040":"Parás","041":"Pesquería","042":"Los Ramones","043":"Rayones","044":"Sabinas Hidalgo","045":"Salinas Victoria","046":"San Nicolás de los Garza","047":"Hidalgo","048":"Santa Catarina","049":"Santiago","050":"Vallecillo","051":"Villaldama"},"OAX":{"001":"Abejones","002":"Acatlán de Pérez Figueroa","003":"Asunción Cacalotepec","004":"Asunción Cuyotepeji","005":"Asunción Ixtaltepec","006":"Asunción Nochixtlán","007":"Asunción Ocotlán","008":"Asunción Tlacolulita","009":"Ayotzintepec","010":"El Barrio de la Soledad","011":"Calihualá","012":"Candelaria Loxicha","013":"Ciénega de Zimatlán","014":"Ciudad Ixtepec","015":"Coatecas Altas","016":"Coicoyán de las Flores","017":"La Compañía","018":"Concepción Buenavista","019":"Concepción Pápalo","020":"Constancia del Rosario","021":"Cosolapa","022":"Cosoltepec","023":"Cuilápam de Guerrero","024":"Cuyamecalco Villa de Zaragoza","025":"Chahuites","026":"Chalcatongo de Hidalgo","027":"Chiquihuitlán de Benito Juárez","028":"Heroica Ciudad de Ejutla de Crespo","029":"Eloxochitlán de Flores Magón","030":"El Espinal","031":"Tamazulápam del Espíritu Santo","032":"Fresnillo de Trujano","033":"Guadalupe Etla","034":"Guadalupe de Ramírez","035":"Guelatao de Juárez","036":"Guevea de Humboldt","037":"Mesones Hidalgo","038":"Villa Hidalgo","039":"Heroica Ciudad de Huajuapan de León","040":"Huautepec","041":"Huautla de Jiménez","042":"Ixtlán de Juárez","043":"Heroica Ciudad de Juchitán de Zaragoza","044":"Loma Bonita","045":"Magdalena Apasco","046":"Magdalena Jaltepec","047":"Santa Magdalena Jicotlán","048":"Magdalena Mixtepec","049":"Magdalena Ocotlán","050":"Magdalena Peñasco","051":"Magdalena Teitipac","052":"Magdalena Tequisistlán","053":"Magdalena Tlacotepec","054":"Magdalena Zahuatlán","055":"Mariscala de Juárez","056":"Mártires de Tacubaya","057":"Matías Romero Avendaño","058":"Mazatlán Villa de Flores","059":"Miahuatlán de Porfirio Díaz","060":"Mixistlán de la Reforma","061":"Monjas","062":"Natividad","063":"Nazareno Etla","064":"Nejapa de Madero","065":"Ixpantepec Nieves","066":"Santiago Niltepec","067":"Oaxaca de Juárez","068":"Ocotlán de Morelos","069":"La Pe","070":"Pinotepa de Don Luis","071":"Pluma Hidalgo","072":"San José del Progreso","073":"Putla Villa de Guerrero","074":"Santa Catarina Quioquitani","075":"Reforma de Pineda","076":"La Reforma","077":"Reyes Etla","078":"Rojas de Cuauhtémoc","079":"Salina Cruz","080":"San Agustín Amatengo","081":"San Agustín Atenango","082":"San Agustín Chayuco","083":"San Agustín de las Juntas","084":"San Agustín Etla","085":"San Agustín Loxicha","086":"San Agustín Tlacotepec","087":"San Agustín Yatareni","088":"San Andrés Cabecera Nueva","089":"San Andrés Dinicuiti","090":"San Andrés Huaxpaltepec","091":"San Andrés Huayápam","092":"San Andrés Ixtlahuaca","093":"San Andrés Lagunas","094":"San Andrés Nuxiño","095":"San Andrés Paxtlán","096":"San Andrés Sinaxtla","097":"San Andrés Solaga","098":"San Andrés Teotilálpam","099":"San Andrés Tepetlapa","100":"San Andrés Yaá","101":"San Andrés Zabache","102":"San Andrés Zautla","103":"San Antonino Castillo Velasco","104":"San Antonino el Alto","105":"San Antonino Monte Verde","106":"San Antonio Acutla","107":"San Antonio de la Cal","108":"San Antonio Huitepec","109":"San Antonio Nanahuatípam","110":"San Antonio Sinicahua","111":"San Antonio Tepetlapa","112":"San Baltazar Chichicápam","113":"San Baltazar Loxicha","114":"San Baltazar Yatzachi el Bajo","115":"San Bartolo Coyotepec","116":"San Bartolomé Ayautla","117":"San Bartolomé Loxicha","118":"San Bartolomé Quialana","119":"San Bartolomé Yucuañe","120":"San Bartolomé Zoogocho","121":"San Bartolo Soyaltepec","122":"San Bartolo Yautepec","123":"San Bernardo Mixtepec","124":"San Blas Atempa","125":"San Carlos Yautepec","126":"San Cristóbal Amatlán","127":"San Cristóbal Amoltepec","128":"San Cristóbal Lachirioag","129":"San Cristóbal Suchixtlahuaca","130":"San Dionisio del Mar","131":"San Dionisio Ocotepec","132":"San Dionisio Ocotlán","133":"San Esteban Atatlahuca","134":"San Felipe Jalapa de Díaz","135":"San Felipe Tejalápam","136":"San Felipe Usila","137":"San Francisco Cahuacuá","138":"San Francisco Cajonos","139":"San Francisco Chapulapa","140":"San Francisco Chindúa","141":"San Francisco del Mar","142":"San Francisco Huehuetlán","143":"San Francisco Ixhuatán","144":"San Francisco Jaltepetongo","145":"San Francisco Lachigoló","146":"San Francisco Logueche","147":"San Francisco Nuxaño","148":"San Francisco Ozolotepec","149":"San Francisco Sola","150":"San Francisco Telixtlahuaca","151":"San Francisco Teopan","152":"San Francisco Tlapancingo","153":"San Gabriel Mixtepec","154":"San Ildefonso Amatlán","155":"San Ildefonso Sola","156":"San Ildefonso Villa Alta","157":"San Jacinto Amilpas","158":"San Jacinto Tlacotepec","159":"San Jerónimo Coatlán","160":"San Jerónimo Silacayoapilla","161":"San Jerónimo Sosola","162":"San Jerónimo Taviche","163":"San Jerónimo Tecóatl","164":"San Jorge Nuchita","165":"San José Ayuquila","166":"San José Chiltepec","167":"San José del Peñasco","168":"San José Estancia Grande","169":"San José Independencia","170":"San José Lachiguiri","171":"San José Tenango","172":"San Juan Achiutla","173":"San Juan Atepec","174":"Ánimas Trujano","175":"San Juan Bautista Atatlahuca","176":"San Juan Bautista Coixtlahuaca","177":"San Juan Bautista Cuicatlán","178":"San Juan Bautista Guelache","179":"San Juan Bautista Jayacatlán","180":"San Juan Bautista Lo de Soto","181":"San Juan Bautista Suchitepec","182":"San Juan Bautista Tlacoatzintepec","183":"San Juan Bautista Tlachichilco","184":"San Juan Bautista Tuxtepec","185":"San Juan Cacahuatepec","186":"San Juan Cieneguilla","187":"San Juan Coatzóspam","188":"San Juan Colorado","189":"San Juan Comaltepec","190":"San Juan Cotzocón","191":"San Juan Chicomezúchil","192":"San Juan Chilateca","193":"San Juan del Estado","194":"San Juan del Río","195":"San Juan Diuxi","196":"San Juan Evangelista Analco","197":"San Juan Guelavía","198":"San Juan Guichicovi","199":"San Juan Ihualtepec","200":"San Juan Juquila Mixes","201":"San Juan Juquila Vijanos","202":"San Juan Lachao","203":"San Juan Lachigalla","204":"San Juan Lajarcia","205":"San Juan Lalana","206":"San Juan de los Cués","207":"San Juan Mazatlán","208":"San Juan Mixtepec -Dto. 08 -","209":"San Juan Mixtepec -Dto. 26 -","210":"San Juan Ñumí","211":"San Juan Ozolotepec","212":"San Juan Petlapa","213":"San Juan Quiahije","214":"San Juan Quiotepec","215":"San Juan Sayultepec","216":"San Juan Tabaá","217":"San Juan Tamazola","218":"San Juan Teita","219":"San Juan Teitipac","220":"San Juan Tepeuxila","221":"San Juan Teposcolula","222":"San Juan Yaeé","223":"San Juan Yatzona","224":"San Juan Yucuita","225":"San Lorenzo","226":"San Lorenzo Albarradas","227":"San Lorenzo Cacaotepec","228":"San Lorenzo Cuaunecuiltitla","229":"San Lorenzo Texmelúcan","230":"San Lorenzo Victoria","231":"San Lucas Camotlán","232":"San Lucas Ojitlán","233":"San Lucas Quiaviní","234":"San Lucas Zoquiápam","235":"San Luis Amatlán","236":"San Marcial Ozolotepec","237":"San Marcos Arteaga","238":"San Martín de los Cansecos","239":"San Martín Huamelúlpam","240":"San Martín Itunyoso","241":"San Martín Lachilá","242":"San Martín Peras","243":"San Martín Tilcajete","244":"San Martín Toxpalan","245":"San Martín Zacatepec","246":"San Mateo Cajonos","247":"Capulálpam de Méndez","248":"San Mateo del Mar","249":"San Mateo Yoloxochitlán","250":"San Mateo Etlatongo","251":"San Mateo Nejápam","252":"San Mateo Peñasco","253":"San Mateo Piñas","254":"San Mateo Río Hondo","255":"San Mateo Sindihui","256":"San Mateo Tlapiltepec","257":"San Melchor Betaza","258":"San Miguel Achiutla","259":"San Miguel Ahuehuetitlán","260":"San Miguel Aloápam","261":"San Miguel Amatitlán","262":"San Miguel Amatlán","263":"San Miguel Coatlán","264":"San Miguel Chicahua","265":"San Miguel Chimalapa","266":"San Miguel del Puerto","267":"San Miguel del Río","268":"San Miguel Ejutla","269":"San Miguel el Grande","270":"San Miguel Huautla","271":"San Miguel Mixtepec","272":"San Miguel Panixtlahuaca","273":"San Miguel Peras","274":"San Miguel Piedras","275":"San Miguel Quetzaltepec","276":"San Miguel Santa Flor","277":"Villa Sola de Vega","278":"San Miguel Soyaltepec","279":"San Miguel Suchixtepec","280":"Villa Talea de Castro","281":"San Miguel Tecomatlán","282":"San Miguel Tenango","283":"San Miguel Tequixtepec","284":"San Miguel Tilquiápam","285":"San Miguel Tlacamama","286":"San Miguel Tlacotepec","287":"San Miguel Tulancingo","288":"San Miguel Yotao","289":"San Nicolás","290":"San Nicolás Hidalgo","291":"San Pablo Coatlán","292":"San Pablo Cuatro Venados","293":"San Pablo Etla","294":"San Pablo Huitzo","295":"San Pablo Huixtepec","296":"San Pablo Macuiltianguis","297":"San Pablo Tijaltepec","298":"San Pablo Villa de Mitla","299":"San Pablo Yaganiza","300":"San Pedro Amuzgos","301":"San Pedro Apóstol","302":"San Pedro Atoyac","303":"San Pedro Cajonos","304":"San Pedro Coxcaltepec Cántaros","305":"San Pedro Comitancillo","306":"San Pedro el Alto","307":"San Pedro Huamelula","308":"San Pedro Huilotepec","309":"San Pedro Ixcatlán","310":"San Pedro Ixtlahuaca","311":"San Pedro Jaltepetongo","312":"San Pedro Jicayán","313":"San Pedro Jocotipac","314":"San Pedro Juchatengo","315":"San Pedro Mártir","316":"San Pedro Mártir Quiechapa","317":"San Pedro Mártir Yucuxaco","318":"San Pedro Mixtepec -Dto. 22 -","319":"San Pedro Mixtepec -Dto. 26 -","320":"San Pedro Molinos","321":"San Pedro Nopala","322":"San Pedro Ocopetatillo","323":"San Pedro Ocotepec","324":"San Pedro Pochutla","325":"San Pedro Quiatoni","326":"San Pedro Sochiápam","327":"San Pedro Tapanatepec","328":"San Pedro Taviche","329":"San Pedro Teozacoalco","330":"San Pedro Teutila","331":"San Pedro Tidaá","332":"San Pedro Topiltepec","333":"San Pedro Totolápam","334":"Villa de Tututepec de Melchor Ocampo","335":"San Pedro Yaneri","336":"San Pedro Yólox","337":"San Pedro y San Pablo Ayutla","338":"Villa de Etla","339":"San Pedro y San Pablo Teposcolula","340":"San Pedro y San Pablo Tequixtepec","341":"San Pedro Yucunama","342":"San Raymundo Jalpan","343":"San Sebastián Abasolo","344":"San Sebastián Coatlán","345":"San Sebastián Ixcapa","346":"San Sebastián Nicananduta","347":"San Sebastián Río Hondo","348":"San Sebastián Tecomaxtlahuaca","349":"San Sebastián Teitipac","350":"San Sebastián Tutla","351":"San Simón Almolongas","352":"San Simón Zahuatlán","353":"Santa Ana","354":"Santa Ana Ateixtlahuaca","355":"Santa Ana Cuauhtémoc","356":"Santa Ana del Valle","357":"Santa Ana Tavela","358":"Santa Ana Tlapacoyan","359":"Santa Ana Yareni","360":"Santa Ana Zegache","361":"Santa Catalina Quierí","362":"Santa Catarina Cuixtla","363":"Santa Catarina Ixtepeji","364":"Santa Catarina Juquila","365":"Santa Catarina Lachatao","366":"Santa Catarina Loxicha","367":"Santa Catarina Mechoacán","368":"Santa Catarina Minas","369":"Santa Catarina Quiané","370":"Santa Catarina Tayata","371":"Santa Catarina Ticuá","372":"Santa Catarina Yosonotú","373":"Santa Catarina Zapoquila","374":"Santa Cruz Acatepec","375":"Santa Cruz Amilpas","376":"Santa Cruz de Bravo","377":"Santa Cruz Itundujia","378":"Santa Cruz Mixtepec","379":"Santa Cruz Nundaco","380":"Santa Cruz Papalutla","381":"Santa Cruz Tacache de Mina","382":"Santa Cruz Tacahua","383":"Santa Cruz Tayata","384":"Santa Cruz Xitla","385":"Santa Cruz Xoxocotlán","386":"Santa Cruz Zenzontepec","387":"Santa Gertrudis","388":"Santa Inés del Monte","389":"Santa Inés Yatzeche","390":"Santa Lucía del Camino","391":"Santa Lucía Miahuatlán","392":"Santa Lucía Monteverde","393":"Santa Lucía Ocotlán","394":"Santa María Alotepec","395":"Santa María Apazco","396":"Santa María la Asunción","397":"Heroica Ciudad de Tlaxiaco","398":"Ayoquezco de Aldama","399":"Santa María Atzompa","400":"Santa María Camotlán","401":"Santa María Colotepec","402":"Santa María Cortijo","403":"Santa María Coyotepec","404":"Santa María Chachoápam","405":"Villa de Chilapa de Díaz","406":"Santa María Chilchotla","407":"Santa María Chimalapa","408":"Santa María del Rosario","409":"Santa María del Tule","410":"Santa María Ecatepec","411":"Santa María Guelacé","412":"Santa María Guienagati","413":"Santa María Huatulco","414":"Santa María Huazolotitlán","415":"Santa María Ipalapa","416":"Santa María Ixcatlán","417":"Santa María Jacatepec","418":"Santa María Jalapa del Marqués","419":"Santa María Jaltianguis","420":"Santa María Lachixío","421":"Santa María Mixtequilla","422":"Santa María Nativitas","423":"Santa María Nduayaco","424":"Santa María Ozolotepec","425":"Santa María Pápalo","426":"Santa María Peñoles","427":"Santa María Petapa","428":"Santa María Quiegolani","429":"Santa María Sola","430":"Santa María Tataltepec","431":"Santa María Tecomavaca","432":"Santa María Temaxcalapa","433":"Santa María Temaxcaltepec","434":"Santa María Teopoxco","435":"Santa María Tepantlali","436":"Santa María Texcatitlán","437":"Santa María Tlahuitoltepec","438":"Santa María Tlalixtac","439":"Santa María Tonameca","440":"Santa María Totolapilla","441":"Santa María Xadani","442":"Santa María Yalina","443":"Santa María Yavesía","444":"Santa María Yolotepec","445":"Santa María Yosoyúa","446":"Santa María Yucuhiti","447":"Santa María Zacatepec","448":"Santa María Zaniza","449":"Santa María Zoquitlán","450":"Santiago Amoltepec","451":"Santiago Apoala","452":"Santiago Apóstol","453":"Santiago Astata","454":"Santiago Atitlán","455":"Santiago Ayuquililla","456":"Santiago Cacaloxtepec","457":"Santiago Camotlán","458":"Santiago Comaltepec","459":"Santiago Chazumba","460":"Santiago Choápam","461":"Santiago del Río","462":"Santiago Huajolotitlán","463":"Santiago Huauclilla","464":"Santiago Ihuitlán Plumas","465":"Santiago Ixcuintepec","466":"Santiago Ixtayutla","467":"Santiago Jamiltepec","468":"Santiago Jocotepec","469":"Santiago Juxtlahuaca","470":"Santiago Lachiguiri","471":"Santiago Lalopa","472":"Santiago Laollaga","473":"Santiago Laxopa","474":"Santiago Llano Grande","475":"Santiago Matatlán","476":"Santiago Miltepec","477":"Santiago Minas","478":"Santiago Nacaltepec","479":"Santiago Nejapilla","480":"Santiago Nundiche","481":"Santiago Nuyoó","482":"Santiago Pinotepa Nacional","483":"Santiago Suchilquitongo","484":"Santiago Tamazola","485":"Santiago Tapextla","486":"Villa Tejúpam de la Unión","487":"Santiago Tenango","488":"Santiago Tepetlapa","489":"Santiago Tetepec","490":"Santiago Texcalcingo","491":"Santiago Textitlán","492":"Santiago Tilantongo","493":"Santiago Tillo","494":"Santiago Tlazoyaltepec","495":"Santiago Xanica","496":"Santiago Xiacuí","497":"Santiago Yaitepec","498":"Santiago Yaveo","499":"Santiago Yolomécatl","500":"Santiago Yosondúa","501":"Santiago Yucuyachi","502":"Santiago Zacatepec","503":"Santiago Zoochila","504":"Nuevo Zoquiápam","505":"Santo Domingo Ingenio","506":"Santo Domingo Albarradas","507":"Santo Domingo Armenta","508":"Santo Domingo Chihuitán","509":"Santo Domingo de Morelos","510":"Santo Domingo Ixcatlán","511":"Santo Domingo Nuxaá","512":"Santo Domingo Ozolotepec","513":"Santo Domingo Petapa","514":"Santo Domingo Roayaga","515":"Santo Domingo Tehuantepec","516":"Santo Domingo Teojomulco","517":"Santo Domingo Tepuxtepec","518":"Santo Domingo Tlatayápam","519":"Santo Domingo Tomaltepec","520":"Santo Domingo Tonalá","521":"Santo Domingo Tonaltepec","522":"Santo Domingo Xagacía","523":"Santo Domingo Yanhuitlán","524":"Santo Domingo Yodohino","525":"Santo Domingo Zanatepec","526":"Santos Reyes Nopala","527":"Santos Reyes Pápalo","528":"Santos Reyes Tepejillo","529":"Santos Reyes Yucuná","530":"Santo Tomás Jalieza","531":"Santo Tomás Mazaltepec","532":"Santo Tomás Ocotepec","533":"Santo Tomás Tamazulapan","534":"San Vicente Coatlán","535":"San Vicente Lachixío","536":"San Vicente Nuñú","537":"Silacayoápam","538":"Sitio de Xitlapehua","539":"Soledad Etla","540":"Villa de Tamazulápam del Progreso","541":"Tanetze de Zaragoza","542":"Taniche","543":"Tataltepec de Valdés","544":"Teococuilco de Marcos Pérez","545":"Teotitlán de Flores Magón","546":"Teotitlán del Valle","547":"Teotongo","548":"Tepelmeme Villa de Morelos","549":"Tezoatlán de Segura y Luna","550":"San Jerónimo Tlacochahuaya","551":"Tlacolula de Matamoros","552":"Tlacotepec Plumas","553":"Tlalixtac de Cabrera","554":"Totontepec Villa de Morelos","555":"Trinidad Zaachila","556":"La Trinidad Vista Hermosa","557":"Unión Hidalgo","558":"Valerio Trujano","559":"San Juan Bautista Valle Nacional","560":"Villa Díaz Ordaz","561":"Yaxe","562":"Magdalena Yodocono de Porfirio Díaz","563":"Yogana","564":"Yutanduchi de Guerrero","565":"Villa de Zaachila","566":"San Mateo Yucutindoo","567":"Zapotitlán Lagunas","568":"Zapotitlán Palmas","569":"Santa Inés de Zaragoza","570":"Zimatlán de Álvarez"},"PUE":{"001":"Acajete","002":"Acateno","003":"Acatlán","004":"Acatzingo","005":"Acteopan","006":"Ahuacatlán","007":"Ahuatlán","008":"Ahuazotepec","009":"Ahuehuetitla","010":"Ajalpan","011":"Albino Zertuche","012":"Aljojuca","013":"Altepexi","014":"Amixtlán","015":"Amozoc","016":"Aquixtla","017":"Atempan","018":"Atexcal","019":"Atlixco","020":"Atoyatempan","021":"Atzala","022":"Atzitzihuacán","023":"Atzitzintla","024":"Axutla","025":"Ayotoxco de Guerrero","026":"Calpan","027":"Caltepec","028":"Camocuautla","029":"Caxhuacan","030":"Coatepec","031":"Coatzingo","032":"Cohetzala","033":"Cohuecan","034":"Coronango","035":"Coxcatlán","036":"Coyomeapan","037":"Coyotepec","038":"Cuapiaxtla de Madero","039":"Cuautempan","040":"Cuautinchán","041":"Cuautlancingo","042":"Cuayuca de Andrade","043":"Cuetzalan del Progreso","044":"Cuyoaco","045":"Chalchicomula de Sesma","046":"Chapulco","047":"Chiautla","048":"Chiautzingo","049":"Chiconcuautla","050":"Chichiquila","051":"Chietla","052":"Chigmecatitlán","053":"Chignahuapan","054":"Chignautla","055":"Chila","056":"Chila de la Sal","057":"Honey","058":"Chilchotla","059":"Chinantla","060":"Domingo Arenas","061":"Eloxochitlán","062":"Epatlán","063":"Esperanza","064":"Francisco Z. Mena","065":"General Felipe Ángeles","066":"Guadalupe","067":"Guadalupe Victoria","068":"Hermenegildo Galeana","069":"Huaquechula","070":"Huatlatlauca","071":"Huauchinango","072":"Huehuetla","073":"Huehuetlán el Chico","074":"Huejotzingo","075":"Hueyapan","076":"Hueytamalco","077":"Hueytlalpan","078":"Huitzilan de Serdán","079":"Huitziltepec","080":"Atlequizayan","081":"Ixcamilpa de Guerrero","082":"Ixcaquixtla","083":"Ixtacamaxtitlán","084":"Ixtepec","085":"Izúcar de Matamoros","086":"Jalpan","087":"Jolalpan","088":"Jonotla","089":"Jopala","090":"Juan C. Bonilla","091":"Juan Galindo","092":"Juan N. Méndez","093":"Lafragua","094":"Libres","095":"La Magdalena Tlatlauquitepec","096":"Mazapiltepec de Juárez","097":"Mixtla","098":"Molcaxac","099":"Cañada Morelos","100":"Naupan","101":"Nauzontla","102":"Nealtican","103":"Nicolás Bravo","104":"Nopalucan","105":"Ocotepec","106":"Ocoyucan","107":"Olintla","108":"Oriental","109":"Pahuatlán","110":"Palmar de Bravo","111":"Pantepec","112":"Petlalcingo","113":"Piaxtla","114":"Puebla","115":"Quecholac","116":"Quimixtlán","117":"Rafael Lara Grajales","118":"Los Reyes de Juárez","119":"San Andrés Cholula","120":"San Antonio Cañada","121":"San Diego la Mesa Tochimiltzingo","122":"San Felipe Teotlalcingo","123":"San Felipe Tepatlán","124":"San Gabriel Chilac","125":"San Gregorio Atzompa","126":"San Jerónimo Tecuanipan","127":"San Jerónimo Xayacatlán","128":"San José Chiapa","129":"San José Miahuatlán","130":"San Juan Atenco","131":"San Juan Atzompa","132":"San Martín Texmelucan","133":"San Martín Totoltepec","134":"San Matías Tlalancaleca","135":"San Miguel Ixitlán","136":"San Miguel Xoxtla","137":"San Nicolás Buenos Aires","138":"San Nicolás de los Ranchos","139":"San Pablo Anicano","140":"San Pedro Cholula","141":"San Pedro Yeloixtlahuaca","142":"San Salvador el Seco","143":"San Salvador el Verde","144":"San Salvador Huixcolotla","145":"San Sebastián Tlacotepec","146":"Santa Catarina Tlaltempan","147":"Santa Inés Ahuatempan","148":"Santa Isabel Cholula","149":"Santiago Miahuatlán","150":"Huehuetlán el Grande","151":"Santo Tomás Hueyotlipan","152":"Soltepec","153":"Tecali de Herrera","154":"Tecamachalco","155":"Tecomatlán","156":"Tehuacán","157":"Tehuitzingo","158":"Tenampulco","159":"Teopantlán","160":"Teotlalco","161":"Tepanco de López","162":"Tepango de Rodríguez","163":"Tepatlaxco de Hidalgo","164":"Tepeaca","165":"Tepemaxalco","166":"Tepeojuma","167":"Tepetzintla","168":"Tepexco","169":"Tepexi de Rodríguez","170":"Tepeyahualco","171":"Tepeyahualco de Cuauhtémoc","172":"Tetela de Ocampo","173":"Teteles de Avila Castillo","174":"Teziutlán","175":"Tianguismanalco","176":"Tilapa","177":"Tlacotepec de Benito Juárez","178":"Tlacuilotepec","179":"Tlachichuca","180":"Tlahuapan","181":"Tlaltenango","182":"Tlanepantla","183":"Tlaola","184":"Tlapacoya","185":"Tlapanalá","186":"Tlatlauquitepec","187":"Tlaxco","188":"Tochimilco","189":"Tochtepec","190":"Totoltepec de Guerrero","191":"Tulcingo","192":"Tuzamapan de Galeana","193":"Tzicatlacoyan","194":"Venustiano Carranza","195":"Vicente Guerrero","196":"Xayacatlán de Bravo","197":"Xicotepec","198":"Xicotlán","199":"Xiutetelco","200":"Xochiapulco","201":"Xochiltepec","202":"Xochitlán de Vicente Suárez","203":"Xochitlán Todos Santos","204":"Yaonáhuac","205":"Yehualtepec","206":"Zacapala","207":"Zacapoaxtla","208":"Zacatlán","209":"Zapotitlán","210":"Zapotitlán de Méndez","211":"Zaragoza","212":"Zautla","213":"Zihuateutla","214":"Zinacatepec","215":"Zongozotla","216":"Zoquiapan","217":"Zoquitlán"},"QUE":{"001":"Amealco de Bonfil","002":"Pinal de Amoles","003":"Arroyo Seco","004":"Cadereyta de Montes","005":"Colón","006":"Corregidora","007":"Ezequiel Montes","008":"Huimilpan","009":"Jalpan de Serra","010":"Landa de Matamoros","011":"El Marqués","012":"Pedro Escobedo","013":"Peñamiller","014":"Querétaro","015":"San Joaquín","016":"San Juan del Río","017":"Tequisquiapan","018":"Tolimán"},"ROO":{"001":"Cozumel","002":"Felipe Carrillo Puerto","003":"Isla Mujeres","004":"Othón P. Blanco","005":"Benito Juárez","006":"José María Morelos","007":"Lázaro Cárdenas","008":"Solidaridad","009":"Tulum","010":"Bacalar"},"SIN":{"001":"Ahome","002":"Angostura","003":"Badiraguato","004":"Concordia","005":"Cosalá","006":"Culiacán","007":"Choix","008":"Elota","009":"Escuinapa","010":"El Fuerte","011":"Guasave","012":"Mazatlán","013":"Mocorito","014":"Rosario","015":"Salvador Alvarado","016":"San Ignacio","017":"Sinaloa","018":"Navolato"},"SLP":{"001":"Ahualulco","002":"Alaquines","003":"Aquismón","004":"Armadillo de los Infante","005":"Cárdenas","006":"Catorce","007":"Cedral","008":"Cerritos","009":"Cerro de San Pedro","010":"Ciudad del Maíz","011":"Ciudad Fernández","012":"Tancanhuitz","013":"Ciudad Valles","014":"Coxcatlán","015":"Charcas","016":"Ebano","017":"Guadalcázar","018":"Huehuetlán","019":"Lagunillas","020":"Matehuala","021":"Mexquitic de Carmona","022":"Moctezuma","023":"Rayón","024":"Rioverde","025":"Salinas","026":"San Antonio","027":"San Ciro de Acosta","028":"San Luis Potosí","029":"San Martín Chalchicuautla","030":"San Nicolás Tolentino","031":"Santa Catarina","032":"Santa María del Río","033":"Santo Domingo","034":"San Vicente Tancuayalab","035":"Soledad de Graciano Sánchez","036":"Tamasopo","037":"Tamazunchale","038":"Tampacán","039":"Tampamolón Corona","040":"Tamuín","041":"Tanlajás","042":"Tanquián de Escobedo","043":"Tierra Nueva","044":"Vanegas","045":"Venado","046":"Villa de Arriaga","047":"Villa de Guadalupe","048":"Villa de la Paz","049":"Villa de Ramos","050":"Villa de Reyes","051":"Villa Hidalgo","052":"Villa Juárez","053":"Axtla de Terrazas","054":"Xilitla","055":"Zaragoza","056":"Villa de Arista","057":"Matlapa","058":"El Naranjo"},"SON":{"001":"Aconchi","002":"Agua Prieta","003":"Alamos","004":"Altar","005":"Arivechi","006":"Arizpe","007":"Atil","008":"Bacadéhuachi","009":"Bacanora","010":"Bacerac","011":"Bacoachi","012":"Bácum","013":"Banámichi","014":"Baviácora","015":"Bavispe","016":"Benjamín Hill","017":"Caborca","018":"Cajeme","019":"Cananea","020":"Carbó","021":"La Colorada","022":"Cucurpe","023":"Cumpas","024":"Divisaderos","025":"Empalme","026":"Etchojoa","027":"Fronteras","028":"Granados","029":"Guaymas","030":"Hermosillo","031":"Huachinera","032":"Huásabas","033":"Huatabampo","034":"Huépac","035":"Imuris","036":"Magdalena","037":"Mazatán","038":"Moctezuma","039":"Naco","040":"Nácori Chico","041":"Nacozari de García","042":"Navojoa","043":"Nogales","044":"Onavas","045":"Opodepe","046":"Oquitoa","047":"Pitiquito","048":"Puerto Peñasco","049":"Quiriego","050":"Rayón","051":"Rosario","052":"Sahuaripa","053":"San Felipe de Jesús","054":"San Javier","055":"San Luis Río Colorado","056":"San Miguel de Horcasitas","057":"San Pedro de la Cueva","058":"Santa Ana","059":"Santa Cruz","060":"Sáric","061":"Soyopa","062":"Suaqui Grande","063":"Tepache","064":"Trincheras","065":"Tubutama","066":"Ures","067":"Villa Hidalgo","068":"Villa Pesqueira","069":"Yécora","070":"General Plutarco Elías Calles","071":"Benito Juárez","072":"San Ignacio Río Muerto"},"TAB":{"001":"Balancán","002":"Cárdenas","003":"Centla","004":"Centro","005":"Comalcalco","006":"Cunduacán","007":"Emiliano Zapata","008":"Huimanguillo","009":"Jalapa","010":"Jalpa de Méndez","011":"Jonuta","012":"Macuspana","013":"Nacajuca","014":"Paraíso","015":"Tacotalpa","016":"Teapa","017":"Tenosique"},"TAM":{"001":"Abasolo","002":"Aldama","003":"Altamira","004":"Antiguo Morelos","005":"Burgos","006":"Bustamante","007":"Camargo","008":"Casas","009":"Ciudad Madero","010":"Cruillas","011":"Gómez Farías","012":"González","013":"Güémez","014":"Guerrero","015":"Gustavo Díaz Ordaz","016":"Hidalgo","017":"Jaumave","018":"Jiménez","019":"Llera","020":"Mainero","021":"El Mante","022":"Matamoros","023":"Méndez","024":"Mier","025":"Miguel Alemán","026":"Miquihuana","027":"Nuevo Laredo","028":"Nuevo Morelos","029":"Ocampo","030":"Padilla","031":"Palmillas","032":"Reynosa","033":"Río Bravo","034":"San Carlos","035":"San Fernando","036":"San Nicolás","037":"Soto la Marina","038":"Tampico","039":"Tula","040":"Valle Hermoso","041":"Victoria","042":"Villagrán","043":"Xicoténcatl"},"TLA":{"001":"Amaxac de Guerrero","002":"Apetatitlán de Antonio Carvajal","003":"Atlangatepec","004":"Atltzayanca","005":"Apizaco","006":"Calpulalpan","007":"El Carmen Tequexquitla","008":"Cuapiaxtla","009":"Cuaxomulco","010":"Chiautempan","011":"Muñoz de Domingo Arenas","012":"Españita","013":"Huamantla","014":"Hueyotlipan","015":"Ixtacuixtla de Mariano Matamoros","016":"Ixtenco","017":"Mazatecochco de José María Morelos","018":"Contla de Juan Cuamatzi","019":"Tepetitla de Lardizábal","020":"Sanctórum de Lázaro Cárdenas","021":"Nanacamilpa de Mariano Arista","022":"Acuamanala de Miguel Hidalgo","023":"Natívitas","024":"Panotla","025":"San Pablo del Monte","026":"Santa Cruz Tlaxcala","027":"Tenancingo","028":"Teolocholco","029":"Tepeyanco","030":"Terrenate","031":"Tetla de la Solidaridad","032":"Tetlatlahuca","033":"Tlaxcala","034":"Tlaxco","035":"Tocatlán","036":"Totolac","037":"Ziltlaltépec de Trinidad Sánchez Santos","038":"Tzompantepec","039":"Xaloztoc","040":"Xaltocan","041":"Papalotla de Xicohténcatl","042":"Xicohtzinco","043":"Yauhquemehcan","044":"Zacatelco","045":"Benito Juárez","046":"Emiliano Zapata","047":"Lázaro Cárdenas","048":"La Magdalena Tlaltelulco","049":"San Damián Texóloc","050":"San Francisco Tetlanohcan","051":"San Jerónimo Zacualpan","052":"San José Teacalco","053":"San Juan Huactzinco","054":"San Lorenzo Axocomanitla","055":"San Lucas Tecopilco","056":"Santa Ana Nopalucan","057":"Santa Apolonia Teacalco","058":"Santa Catarina Ayometla","059":"Santa Cruz Quilehtla","060":"Santa Isabel Xiloxoxtla"},"VER":{"001":"Acajete","002":"Acatlán","003":"Acayucan","004":"Actopan","005":"Acula","006":"Acultzingo","007":"Camarón de Tejeda","008":"Alpatláhuac","009":"Alto Lucero de Gutiérrez Barrios","010":"Altotonga","011":"Alvarado","012":"Amatitlán","013":"Naranjos Amatlán","014":"Amatlán de los Reyes","015":"Angel R. Cabada","016":"La Antigua","017":"Apazapan","018":"Aquila","019":"Astacinga","020":"Atlahuilco","021":"Atoyac","022":"Atzacan","023":"Atzalan","024":"Tlaltetela","025":"Ayahualulco","026":"Banderilla","027":"Benito Juárez","028":"Boca del Río","029":"Calcahualco","030":"Camerino Z. Mendoza","031":"Carrillo Puerto","032":"Catemaco","033":"Cazones de Herrera","034":"Cerro Azul","035":"Citlaltépetl","036":"Coacoatzintla","037":"Coahuitlán","038":"Coatepec","039":"Coatzacoalcos","040":"Coatzintla","041":"Coetzala","042":"Colipa","043":"Comapa","044":"Córdoba","045":"Cosamaloapan de Carpio","046":"Cosautlán de Carvajal","047":"Coscomatepec","048":"Cosoleacaque","049":"Cotaxtla","050":"Coxquihui","051":"Coyutla","052":"Cuichapa","053":"Cuitláhuac","054":"Chacaltianguis","055":"Chalma","056":"Chiconamel","057":"Chiconquiaco","058":"Chicontepec","059":"Chinameca","060":"Chinampa de Gorostiza","061":"Las Choapas","062":"Chocamán","063":"Chontla","064":"Chumatlán","065":"Emiliano Zapata","066":"Espinal","067":"Filomeno Mata","068":"Fortín","069":"Gutiérrez Zamora","070":"Hidalgotitlán","071":"Huatusco","072":"Huayacocotla","073":"Hueyapan de Ocampo","074":"Huiloapan de Cuauhtémoc","075":"Ignacio de la Llave","076":"Ilamatlán","077":"Isla","078":"Ixcatepec","079":"Ixhuacán de los Reyes","080":"Ixhuatlán del Café","081":"Ixhuatlancillo","082":"Ixhuatlán del Sureste","083":"Ixhuatlán de Madero","084":"Ixmatlahuacan","085":"Ixtaczoquitlán","086":"Jalacingo","087":"Xalapa","088":"Jalcomulco","089":"Jáltipan","090":"Jamapa","091":"Jesús Carranza","092":"Xico","093":"Jilotepec","094":"Juan Rodríguez Clara","095":"Juchique de Ferrer","096":"Landero y Coss","097":"Lerdo de Tejada","098":"Magdalena","099":"Maltrata","100":"Manlio Fabio Altamirano","101":"Mariano Escobedo","102":"Martínez de la Torre","103":"Mecatlán","104":"Mecayapan","105":"Medellín","106":"Miahuatlán","107":"Las Minas","108":"Minatitlán","109":"Misantla","110":"Mixtla de Altamirano","111":"Moloacán","112":"Naolinco","113":"Naranjal","114":"Nautla","115":"Nogales","116":"Oluta","117":"Omealca","118":"Orizaba","119":"Otatitlán","120":"Oteapan","121":"Ozuluama de Mascareñas","122":"Pajapan","123":"Pánuco","124":"Papantla","125":"Paso del Macho","126":"Paso de Ovejas","127":"La Perla","128":"Perote","129":"Platón Sánchez","130":"Playa Vicente","131":"Poza Rica de Hidalgo","132":"Las Vigas de Ramírez","133":"Pueblo Viejo","134":"Puente Nacional","135":"Rafael Delgado","136":"Rafael Lucio","137":"Los Reyes","138":"Río Blanco","139":"Saltabarranca","140":"San Andrés Tenejapan","141":"San Andrés Tuxtla","142":"San Juan Evangelista","143":"Santiago Tuxtla","144":"Sayula de Alemán","145":"Soconusco","146":"Sochiapa","147":"Soledad Atzompa","148":"Soledad de Doblado","149":"Soteapan","150":"Tamalín","151":"Tamiahua","152":"Tampico Alto","153":"Tancoco","154":"Tantima","155":"Tantoyuca","156":"Tatatila","157":"Castillo de Teayo","158":"Tecolutla","159":"Tehuipango","160":"Álamo Temapache","161":"Tempoal","162":"Tenampa","163":"Tenochtitlán","164":"Teocelo","165":"Tepatlaxco","166":"Tepetlán","167":"Tepetzintla","168":"Tequila","169":"José Azueta","170":"Texcatepec","171":"Texhuacán","172":"Texistepec","173":"Tezonapa","174":"Tierra Blanca","175":"Tihuatlán","176":"Tlacojalpan","177":"Tlacolulan","178":"Tlacotalpan","179":"Tlacotepec de Mejía","180":"Tlachichilco","181":"Tlalixcoyan","182":"Tlalnelhuayocan","183":"Tlapacoyan","184":"Tlaquilpa","185":"Tlilapan","186":"Tomatlán","187":"Tonayán","188":"Totutla","189":"Tuxpan","190":"Tuxtilla","191":"Ursulo Galván","192":"Vega de Alatorre","193":"Veracruz","194":"Villa Aldama","195":"Xoxocotla","196":"Yanga","197":"Yecuatla","198":"Zacualpan","199":"Zaragoza","200":"Zentla","201":"Zongolica","202":"Zontecomatlán de López y Fuentes","203":"Zozocolco de Hidalgo","204":"Agua Dulce","205":"El Higo","206":"Nanchital de Lázaro Cárdenas del Río","207":"Tres Valles","208":"Carlos A. Carrillo","209":"Tatahuicapan de Juárez","210":"Uxpanapa","211":"San Rafael","212":"Santiago Sochiapan"},"YUC":{"001":"Abalá","002":"Acanceh","003":"Akil","004":"Baca","005":"Bokobá","006":"Buctzotz","007":"Cacalchén","008":"Calotmul","009":"Cansahcab","010":"Cantamayec","011":"Celestún","012":"Cenotillo","013":"Conkal","014":"Cuncunul","015":"Cuzamá","016":"Chacsinkín","017":"Chankom","018":"Chapab","019":"Chemax","020":"Chicxulub Pueblo","021":"Chichimilá","022":"Chikindzonot","023":"Chocholá","024":"Chumayel","025":"Dzán","026":"Dzemul","027":"Dzidzantún","028":"Dzilam de Bravo","029":"Dzilam González","030":"Dzitás","031":"Dzoncauich","032":"Espita","033":"Halachó","034":"Hocabá","035":"Hoctún","036":"Homún","037":"Huhí","038":"Hunucmá","039":"Ixil","040":"Izamal","041":"Kanasín","042":"Kantunil","043":"Kaua","044":"Kinchil","045":"Kopomá","046":"Mama","047":"Maní","048":"Maxcanú","049":"Mayapán","050":"Mérida","051":"Mocochá","052":"Motul","053":"Muna","054":"Muxupip","055":"Opichén","056":"Oxkutzcab","057":"Panabá","058":"Peto","059":"Progreso","060":"Quintana Roo","061":"Río Lagartos","062":"Sacalum","063":"Samahil","064":"Sanahcat","065":"San Felipe","066":"Santa Elena","067":"Seyé","068":"Sinanché","069":"Sotuta","070":"Sucilá","071":"Sudzal","072":"Suma","073":"Tahdziú","074":"Tahmek","075":"Teabo","076":"Tecoh","077":"Tekal de Venegas","078":"Tekantó","079":"Tekax","080":"Tekit","081":"Tekom","082":"Telchac Pueblo","083":"Telchac Puerto","084":"Temax","085":"Temozón","086":"Tepakán","087":"Tetiz","088":"Teya","089":"Ticul","090":"Timucuy","091":"Tinum","092":"Tixcacalcupul","093":"Tixkokob","094":"Tixmehuac","095":"Tixpéhual","096":"Tizimín","097":"Tunkás","098":"Tzucacab","099":"Uayma","100":"Ucú","101":"Umán","102":"Valladolid","103":"Xocchel","104":"Yaxcabá","105":"Yaxkukul","106":"Yobaín"},"ZAC":{"001":"Apozol","002":"Apulco","003":"Atolinga","004":"Benito Juárez","005":"Calera","006":"Cañitas de Felipe Pescador","007":"Concepción del Oro","008":"Cuauhtémoc","009":"Chalchihuites","010":"Fresnillo","011":"Trinidad García de la Cadena","012":"Genaro Codina","013":"General Enrique Estrada","014":"General Francisco R. Murguía","015":"El Plateado de Joaquín Amaro","016":"General Pánfilo Natera","017":"Guadalupe","018":"Huanusco","019":"Jalpa","020":"Jerez","021":"Jiménez del Teul","022":"Juan Aldama","023":"Juchipila","024":"Loreto","025":"Luis Moya","026":"Mazapil","027":"Melchor Ocampo","028":"Mezquital del Oro","029":"Miguel Auza","030":"Momax","031":"Monte Escobedo","032":"Morelos","033":"Moyahua de Estrada","034":"Nochistlán de Mejía","035":"Noria de Ángeles","036":"Ojocaliente","037":"Pánuco","038":"Pinos","039":"Río Grande","040":"Sain Alto","041":"El Salvador","042":"Sombrerete","043":"Susticacán","044":"Tabasco","045":"Tepechitlán","046":"Tepetongo","047":"Teúl de González Ortega","048":"Tlaltenango de Sánchez Román","049":"Valparaíso","050":"Vetagrande","051":"Villa de Cos","052":"Villa García","053":"Villa González Ortega","054":"Villa Hidalgo","055":"Villanueva","056":"Zacatecas","057":"Trancoso","058":"Santa María de la Paz"},"DIF":{"002":"Azcapotzalco","003":"Coyoacán","004":"Cuajimalpa de Morelos","005":"Gustavo A. Madero","006":"Iztacalco","007":"Iztapalapa","008":"La Magdalena Contreras","009":"Milpa Alta","010":"Álvaro Obregón","011":"Tláhuac","012":"Tlalpan","013":"Xochimilco","014":"Benito Juárez","015":"Cuauhtémoc","016":"Miguel Hidalgo","017":"Venustiano Carranza"},"CMX":{"002":"Azcapotzalco","003":"Coyoacán","004":"Cuajimalpa de Morelos","005":"Gustavo A. Madero","006":"Iztacalco","007":"Iztapalapa","008":"La Magdalena Contreras","009":"Milpa Alta","010":"Álvaro Obregón","011":"Tláhuac","012":"Tlalpan","013":"Xochimilco","014":"Benito Juárez","015":"Cuauhtémoc","016":"Miguel Hidalgo","017":"Venustiano Carranza"}};
+
+function nombreMunicipio(estado,cod){
+  var est=estado||'';
+  var muns=C_MUNICIPIO[est]||C_MUNICIPIO[est==='CMX'?'DIF':est]||{};
+  var key=String(cod||'').padStart(3,'0');
+  return muns[key]||null;
+}
+function dlBlob(c,n,t){const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([c],{type:t}));a.download=n;a.click();}
+
+let ingresosDB=[];
+let fbReady=false;
+
+function initSelects(){
+  ['ingOp','filtOp'].forEach(id=>{
+    const s=$(id);if(!s)return;
+    while(s.options.length>1)s.remove(1);
+    OPERADORES.forEach(op=>{const o=document.createElement('option');o.value=op.unidad;o.textContent=op.unidad+' · '+op.nombre;s.appendChild(o);});
+  });
+}
+initSelects();
+
+window.onFBReady(async function(){
+  fbReady=true;
+  $('fbStatus').textContent='✅ Conectado';$('fbStatus').className='fb-status fb-ok';
+  const data=await window.FB.get('estado','ingresosDB');
+  if(data&&data.data)ingresosDB=JSON.parse(data.data);
+  renderIngresos();
+  window.FB.listen('estado','ingresosDB',data=>{
+    if(data&&data.data){ingresosDB=JSON.parse(data.data);renderIngresos();}
+  });
+});
+setTimeout(()=>{if(!fbReady){$('fbStatus').textContent='❌ Sin conexión';$('fbStatus').className='fb-status fb-err';}},6000);
+
+function guardar(){if(!fbReady)return;window.FB.set('estado','ingresosDB',{data:JSON.stringify(ingresosDB)});}
+
+function calcTotales(){
+  const sub=parseFloat($('ingSubtotal').value||0);
+  const iva=parseFloat($('ingIva').value||0);
+  const ret=parseFloat($('ingRet').value||0);
+  $('ingTotal').value=(sub+iva-ret).toFixed(2);
+}
+
+function limpiarForm(){
+  ['ingFolio','ingFecha','ingCliente','ingSubtotal','ingIva','ingRet','ingTotal','ingOrigen','ingDestino','ingDistKms'].forEach(id=>{$(id).value='';});
+  $('ingTipo').value='flete_for';$('ingInfo').style.display='none';
+}
+
+// XML
+const dzXML=$('dzXML');
+dzXML.addEventListener('dragover',e=>{e.preventDefault();dzXML.classList.add('drag')});
+dzXML.addEventListener('dragleave',()=>dzXML.classList.remove('drag'));
+dzXML.addEventListener('drop',e=>{e.preventDefault();dzXML.classList.remove('drag');handleXMLFiles(e.dataTransfer.files)});
+$('fXML').addEventListener('change',e=>handleXMLFiles(e.target.files));
+
+function handleXMLFiles(files){
+  const unidad=parseInt($('ingOp').value||0);
+  if(!unidad){alert('Selecciona el operador primero.');return;}
+  lockRequest('Subir XML de viaje/flete — Ingresos', function(){
+    Array.from(files).forEach(f=>{const r=new FileReader();r.onload=e=>parseXML(e.target.result,f.name,unidad);r.readAsText(f,'UTF-8');});
+  });
+}
+
+function parseXML(text,fname,unidad){
+  const doc=new DOMParser().parseFromString(text,'text/xml');
+  const comp=doc.querySelector('Comprobante');
+  if(!comp){alert(fname+': no es CFDI válido.');return;}
+  const serie=comp.getAttribute('Serie')||'';
+  const folio=comp.getAttribute('Folio')||'';
+  const fecha=(comp.getAttribute('Fecha')||'').slice(0,10);
+  const subtotal=parseFloat(comp.getAttribute('SubTotal')||0);
+  let iva=0,ret=0;
+  doc.querySelectorAll('Traslado').forEach(t=>{if(t.getAttribute('Impuesto')==='002')iva+=parseFloat(t.getAttribute('Importe')||0);});
+  doc.querySelectorAll('Retencion').forEach(r=>{if(r.getAttribute('Impuesto')==='002')ret+=parseFloat(r.getAttribute('Importe')||0);});
+  const receptor=doc.querySelector('Receptor');
+  const cliente=receptor?receptor.getAttribute('Nombre'):'';
+  const folioCompleto=serie+'-'+folio;
+  if(ingresosDB.some(v=>v.folio===folioCompleto&&v.unidad===unidad)){
+    alert(fname+': ya está registrado (duplicado).');return;
+  }
+  // Extraer ruta carta porte
+  let ruta=[];
+  const ubics=doc.querySelectorAll('Ubicacion');
+  const cpEl=doc.querySelector('CartaPorte');
+  const distTotal=cpEl?cpEl.getAttribute('TotalDistRec')||'':'';
+  if(ubics.length>=2){
+    let orig=null;
+    ubics.forEach(u=>{
+      const tipo=u.getAttribute('TipoUbicacion')||'';
+      const dom=u.querySelector('Domicilio');
+      const estado=dom?dom.getAttribute('Estado')||'':'';
+      const munCod=dom?dom.getAttribute('Municipio')||'':'';
+      const munNombre=nombreMunicipio(estado,munCod);
+      const label=munNombre?(munNombre+', '+estado):(u.getAttribute('NombreRemitenteDestinatario')||estado||'Punto');
+      const kms=u.getAttribute('DistanciaRecorrida')||'';
+      if(tipo==='Origen'){orig={label,estado};}
+      else if(tipo==='Destino'&&orig){ruta.push({origen:orig.label,destino:label,kms:kms||distTotal});orig={label,estado};}
+    });
+  }
+  ingresosDB.push({id:uid(),unidad,folio:folioCompleto,fecha,cliente,tipo:'flete_for',
+    subtotal,iva,ret,total:parseFloat(comp.getAttribute('Total')||0),
+    estado:'sin_liquidar',liqNum:null,origen:'xml',ruta});
+  guardar();renderIngresos();
+  alert('✅ '+fname+' registrado.'+(ruta.length?' Ruta: '+ruta.length+' tramos.':''));
+}
+
+// PDF via Claude
+const dzPDF=$('dzPDF');
+dzPDF.addEventListener('dragover',e=>{e.preventDefault();dzPDF.classList.add('drag')});
+dzPDF.addEventListener('dragleave',()=>dzPDF.classList.remove('drag'));
+dzPDF.addEventListener('drop',e=>{e.preventDefault();dzPDF.classList.remove('drag');handlePDFFiles(e.dataTransfer.files)});
+$('fPDF').addEventListener('change',e=>handlePDFFiles(e.target.files));
+
+function handlePDFFiles(files){
+  const unidad=parseInt($('ingOp').value||0);
+  if(!unidad){alert('Selecciona el operador primero.');return;}
+  lockRequest('Subir PDF de factura — Ingresos', function(){
+    Array.from(files).forEach(f=>leerPDF(f,unidad));
+  });
+}
+
+function fileToBase64(file){return new Promise((res,rej)=>{const r=new FileReader();r.onload=e=>res(e.target.result.split(',')[1]);r.onerror=rej;r.readAsDataURL(file);});}
+
+async function leerPDF(file,unidad){
+  $('ingInfo').style.display='block';
+  $('ingInfo').innerHTML='<div class="alert alert-info">⏳ Analizando PDF con IA...</div>';
+  try{
+    const base64=await fileToBase64(file);
+    const res=await fetch('https://api.anthropic.com/v1/messages',{
+      method:'POST',
+      headers:{'Content-Type':'application/json','anthropic-dangerous-direct-browser-access':'true'},
+      body:JSON.stringify({model:'claude-sonnet-4-6',max_tokens:500,messages:[{role:'user',content:[
+        {type:'document',source:{type:'base64',media_type:'application/pdf',data:base64}},
+        {type:'text',text:'Factura o documento de viaje. Responde SOLO JSON sin texto ni backticks: {"folio":"string","fecha":"YYYY-MM-DD","cliente":"string","subtotal":numero,"iva":numero,"ret":numero,"total":numero}. Pon null si no existe.'}
+      ]}]})
+    });
+    const data=await res.json();
+    const txt=(data.content||[]).filter(b=>b.type==='text').map(b=>b.text).join('');
+    const d=JSON.parse(txt.replace(/```json|```/g,'').trim());
+    if(d.folio)$('ingFolio').value=d.folio;
+    if(d.fecha)$('ingFecha').value=d.fecha;
+    if(d.cliente)$('ingCliente').value=d.cliente;
+    if(d.subtotal!=null)$('ingSubtotal').value=d.subtotal;
+    if(d.iva!=null)$('ingIva').value=d.iva;
+    if(d.ret!=null)$('ingRet').value=d.ret;
+    calcTotales();
+    $('ingInfo').innerHTML='<div class="alert alert-ok">✅ '+file.name+' — revisa y ajusta si es necesario, luego haz clic en Registrar.</div>';
+  }catch(e){$('ingInfo').innerHTML='<div class="alert alert-warn">⚠️ Error: '+e.message+'. Captura manualmente.</div>';}
+}
+
+function agregarIngresoReal(){
+  const unidad=parseInt($('ingOp').value||0);
+  if(!unidad){alert('Selecciona operador.');return;}
+  const subtotal=parseFloat($('ingSubtotal').value||0);
+  if(!subtotal){alert('Ingresa el subtotal.');return;}
+  const folio=$('ingFolio').value||('MAN-'+uid().slice(0,6).toUpperCase());
+  if(ingresosDB.some(v=>v.folio===folio&&v.unidad===unidad)){alert('Este folio ya está registrado para este operador.');return;}
+  var _origen=($('ingOrigen').value||'').trim();
+  var _destino=($('ingDestino').value||'').trim();
+  var _kms=($('ingDistKms').value||'').trim();
+  var _ruta=(_origen&&_destino)?[{origen:_origen,destino:_destino,kms:_kms}]:[];
+  ingresosDB.push({id:uid(),unidad,folio,fecha:$('ingFecha').value||hoy(),
+    cliente:$('ingCliente').value||'Sin cliente',tipo:$('ingTipo').value,
+    subtotal,iva:parseFloat($('ingIva').value||0),ret:parseFloat($('ingRet').value||0),
+    total:parseFloat($('ingTotal').value||0),estado:'sin_liquidar',liqNum:null,origen:'manual',ruta:_ruta});
+  limpiarForm();guardar();renderIngresos();
+}
+
+function renderIngresos(){
+  const filtOp=parseInt($('filtOp').value||0);
+  const filtDesde=$('filtDesde').value;
+  const filtHasta=$('filtHasta').value;
+  const filtEst=$('filtEst').value;
+  const filtrados=ingresosDB.filter(v=>{
+    if(filtOp&&v.unidad!==filtOp)return false;
+    if(filtDesde&&v.fecha<filtDesde)return false;
+    if(filtHasta&&v.fecha>filtHasta)return false;
+    if(filtEst&&v.estado!==filtEst)return false;
+    return true;
+  }).sort((a,b)=>b.fecha.localeCompare(a.fecha));
+
+  const tb=$('tbIngresos');tb.innerHTML='';
+  if(!filtrados.length){tb.innerHTML='<tr><td colspan="13" style="text-align:center;color:#aaa;padding:20px">Sin viajes registrados</td></tr>';return;}
+
+  let totSub=0,totTot=0;
+  filtrados.forEach(v=>{
+    const op=OPERADORES.find(o=>o.unidad===v.unidad);
+    const tipos={flete_mx:'Flete Mx',flete_for:'Flete For.',maniobra:'Maniobra',otro:'Otro'};
+    totSub+=v.subtotal;totTot+=v.total;
+    tb.innerHTML+=`<tr>
+      <td style="width:32px;text-align:center"><input type="checkbox" class="chkIng" data-id="${v.id}" onchange="actualizarBarraSelIng()"></td>
+      <td class="num">${v.folio}</td><td>${v.fecha}</td>
+      <td style="font-size:11px">${op?op.nombre.split(' ').slice(0,2).join(' '):'?'}</td>
+      <td style="max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px">${v.cliente}</td>
+      <td><span class="badge ${v.tipo==='maniobra'?'bg-purple':v.tipo.includes('for')?'bg-blue':'bg-gray'}">${tipos[v.tipo]||v.tipo}</span></td>
+      <td class="num r">${fmt(v.subtotal)}</td><td class="num r">${fmt(v.iva)}</td>
+      <td class="num r">${fmt(v.ret)}</td><td class="num r">${fmt(v.total)}</td>
+      <td><span class="badge ${v.estado==='sin_liquidar'?'bg-yellow':'bg-green'}">${v.estado==='sin_liquidar'?'Sin liquidar':'Liquidado'}</span></td>
+      <td style="font-size:11px;color:#aaa">${v.liqNum?'Liq.#'+v.liqNum:'—'}</td>
+      <td>${v.estado==='sin_liquidar'?`<button style="background:#fde8e8;color:#9b1c1c;border:none;cursor:pointer;border-radius:4px;padding:3px 8px;font-size:11px" onclick="eliminar('${v.id}')">✕</button>`:'—'}</td>
+    </tr>`;
+  });
+  const sinLiq=filtrados.filter(v=>v.estado==='sin_liquidar').length;
+  $('ingResumen').innerHTML=`<div style="display:flex;gap:16px;flex-wrap:wrap;font-size:12px;color:#555;margin-top:8px">
+    <span>${filtrados.length} viajes · Subtotal: <strong>${fmt(totSub)}</strong> · Total: <strong>${fmt(totTot)}</strong></span>
+    <span style="color:#856404">⏳ Sin liquidar: <strong>${sinLiq}</strong></span>
+  </div>`;
+}
+
+function eliminar(id){
+  lockRequest('Eliminar viaje/ingreso', function(){
+    ingresosDB=ingresosDB.filter(v=>v.id!==id);
+    guardar();renderIngresos();
+  });
+}
+
+function actualizarBarraSelIng(){
+  var chks=document.querySelectorAll('.chkIng:checked');
+  var barra=document.getElementById('barraSelIng');
+  var cnt=document.getElementById('cntSelIng');
+  if(chks.length>0){
+    barra.style.display='flex';
+    cnt.textContent=chks.length+' seleccionado'+(chks.length>1?'s':'');
+  } else {
+    barra.style.display='none';
+  }
+}
+
+function toggleTodosIng(chkHeader){
+  document.querySelectorAll('.chkIng').forEach(function(c){c.checked=chkHeader.checked;});
+  actualizarBarraSelIng();
+}
+
+function eliminarSeleccionadosIng(){
+  var chks=document.querySelectorAll('.chkIng:checked');
+  if(!chks.length){alert('No hay ingresos seleccionados.');return;}
+  var ids=Array.from(chks).map(function(c){return c.dataset.id;});
+  lockRequest('Eliminar '+ids.length+' ingreso(s)', function(){
+    ingresosDB=ingresosDB.filter(function(v){return ids.indexOf(v.id)===-1;});
+    guardar();renderIngresos();
+  });
+}
+
+function limpiarFiltros(){
+  $('filtOp').value='';$('filtDesde').value='';$('filtHasta').value='';$('filtEst').value='';
+  renderIngresos();
+}
+
+function exportarCSV(){
+  let csv='Folio,Fecha,Unidad,Operador,Cliente,Tipo,Subtotal,IVA,Retención,Total,Estatus,Liquidación\n';
+  ingresosDB.forEach(v=>{
+    const op=OPERADORES.find(o=>o.unidad===v.unidad);
+    csv+=`"${v.folio}","${v.fecha}",${v.unidad},"${op?op.nombre:''}", "${v.cliente}","${v.tipo}",${v.subtotal},${v.iva},${v.ret},${v.total},${v.estado},${v.liqNum||''}\n`;
+  });
+  dlBlob(csv,'Ingresos_TML_'+hoy()+'.csv','text/csv');
+}
+
+
+// ── CANDADO RM2026 ──────────────────────────────────────────────────────────
+var _lockCallback = null;
+var LOCK_PASS_ING = 'RM2026';
+
+function lockRequest(desc, callback){
+  _lockCallback = callback;
+  document.getElementById('lockDesc').textContent = desc;
+  document.getElementById('lockPass').value = '';
+  document.getElementById('lockErr').style.display = 'none';
+  document.getElementById('lockModal').style.display = 'flex';
+  setTimeout(function(){ document.getElementById('lockPass').focus(); }, 100);
+}
+function lockConfirm(){
+  if(document.getElementById('lockPass').value === LOCK_PASS_ING){
+    document.getElementById('lockModal').style.display = 'none';
+    if(_lockCallback) _lockCallback();
+    _lockCallback = null;
+  } else {
+    document.getElementById('lockErr').style.display = 'block';
+    document.getElementById('lockPass').value = '';
+    document.getElementById('lockPass').focus();
+  }
+}
+function lockCancel(){
+  document.getElementById('lockModal').style.display = 'none';
+  _lockCallback = null;
+  // Limpiar el file input para que no quede seleccionado
+  var fi = document.getElementById('fXML');
+  if(fi) fi.value = '';
+  var fp = document.getElementById('fPDF');
+  if(fp) fp.value = '';
+}
+
+function agregarIngreso(){
+  lockRequest('Registrar viaje/ingreso manual', function(){ agregarIngresoReal(); });
+}
+</script>
+
+<!-- MODAL CANDADO INGRESOS -->
+<div class="lock-overlay" id="lockModal" style="display:none">
+  <div class="lock-box">
+    <h3>🔒 Autorización requerida</h3>
+    <p id="lockDesc">Ingresa la contraseña para continuar</p>
+    <input type="password" id="lockPass" placeholder="••••••••"
+      onkeydown="if(event.key==='Enter')lockConfirm()">
+    <div class="lock-row">
+      <button class="lock-ok" onclick="lockConfirm()">Confirmar</button>
+      <button class="lock-cancel" onclick="lockCancel()">Cancelar</button>
+    </div>
+    <div class="lock-err" id="lockErr">Contraseña incorrecta</div>
+  </div>
+</div>
+</body>
+</html>
