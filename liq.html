@@ -155,9 +155,9 @@ tr:hover td{background:#fafafa}
       <div class="field"><label>Número de liquidación <span style="color:#e63946">(auto)</span></label><input type="number" id="liqNum" placeholder="Auto" min="1"></div>
       <div class="field"><label>Operador</label><select id="liqOp" onchange="onLiqOpChange()"><option value="">— Selecciona —</option></select></div>
       <div class="field"><label>Unidad</label><input type="text" id="liqUnidad" readonly></div>
-      <div class="field"><label>Clave operador</label><input type="text" id="liqClave" placeholder="Ej: 018"></div>
-      <div class="field"><label>% Comisión fletes</label><input type="number" id="liqComision" value="12" step="1" min="0" max="100"></div>
-      <div class="field"><label>Costo diesel ($/lt)</label><input type="number" id="liqCostoDiesel" value="27.00" step="0.0001"></div>
+      <div class="field"><label>Clave operador</label><input type="text" id="liqClave" readonly style="background:#1a1a2e;color:#aaa;cursor:not-allowed"></div>
+      <div class="field"><label>% Comisión fletes <span id="comisionLock" title="Cambiar comisión" onclick="desbloquearComision()" style="cursor:pointer;font-size:13px">🔒</span></label><input type="number" id="liqComision" value="12" step="1" min="0" max="100" readonly style="background:#1a1a2e;color:#aaa;cursor:not-allowed"></div>
+      <div class="field"><label>Costo diesel ($/lt)</label><input type="number" id="liqCostoDiesel" placeholder="Auto al subir Edenred" step="0.0001"></div>
     </div>
     <div class="sep"></div>
     <div class="card-title" style="margin-bottom:12px">📊 Escaneo de unidad</div>
@@ -455,17 +455,17 @@ window.onFBReady=function(cb){if(window._fbInit)cb();else window._fbCallbacks.pu
 // CATÁLOGO
 // ══════════════════════════════════════════════
 const OPERADORES=[
-  {unidad:4521,nombre:'ALEJANDRO RODRIGUEZ GONZALEZ',comision:12},
-  {unidad:4522,nombre:'ANDRÉS MARÍA RAMOS',comision:12},
-  {unidad:4523,nombre:'ANDRÉS NAVARRO RAMÍREZ',comision:12},
-  {unidad:4524,nombre:'RAFAEL TAPIA CARREÑO',comision:12},
-  {unidad:4526,nombre:'EDUARDO HERNÁNDEZ ACEVES',comision:12},
-  {unidad:529, nombre:'OSCAR ISRAEL RAMOS',comision:12},
-  {unidad:531, nombre:'MARTÍN FLORES LUGO',comision:12},
-  {unidad:532, nombre:'JOSÉ ROLANDO DOMINGUEZ LOPEZ',comision:12},
-  {unidad:533, nombre:'FRANCISCO ARTEMIO PEÑA VAZQUEZ',comision:12},
-  {unidad:534, nombre:'MIGUEL ALONSO CALDERON',comision:12},
-  {unidad:535, nombre:'ISMAEL CONSTANTINO CABRERA',comision:12},
+  {unidad:4521,nombre:'ALEJANDRO RODRIGUEZ GONZALEZ',comision:12,clave:'OPE-001'},
+  {unidad:4522,nombre:'ANDRÉS MARÍA RAMOS',comision:12,clave:'OPE-002'},
+  {unidad:4523,nombre:'ANDRÉS NAVARRO RAMÍREZ',comision:12,clave:'OPE-003'},
+  {unidad:4524,nombre:'RAFAEL TAPIA CARREÑO',comision:12,clave:'OPE-004'},
+  {unidad:4526,nombre:'EDUARDO HERNÁNDEZ ACEVES',comision:12,clave:'OPE-005'},
+  {unidad:529, nombre:'OSCAR ISRAEL RAMOS',comision:12,clave:'OPE-006'},
+  {unidad:531, nombre:'MARTÍN FLORES LUGO',comision:12,clave:'OPE-007'},
+  {unidad:532, nombre:'JOSÉ ROLANDO DOMINGUEZ LOPEZ',comision:12,clave:'OPE-008'},
+  {unidad:533, nombre:'FRANCISCO ARTEMIO PEÑA VAZQUEZ',comision:12,clave:'OPE-009'},
+  {unidad:534, nombre:'MIGUEL ALONSO CALDERON',comision:12,clave:'OPE-010'},
+  {unidad:535, nombre:'ISMAEL CONSTANTINO CABRERA',comision:12,clave:'OPE-011'},
 ];
 
 const SUPERVISOR_PASS='tml2026';
@@ -614,8 +614,11 @@ function restaurarUILiquidacion(){
   if($('liqLitrosECM'))$('liqLitrosECM').value=liq.litrosECM||'';
   if($('liqRend'))$('liqRend').value=liq.rendimiento||'';
   if($('liqComision'))$('liqComision').value=liq.comision||12;
-  if($('liqCostoDiesel'))$('liqCostoDiesel').value=liq.costoDiesel||27;
+  bloquearComision();
+  if($('liqCostoDiesel'))$('liqCostoDiesel').value=liq.costoDiesel||'';
   if($('liqUnidad'))$('liqUnidad').value=liq.unidad||'';
+  var _opRest=OPERADORES.find(function(o){return o.unidad===parseInt(liq.unidad||0);});
+  if($('liqClave'))$('liqClave').value=_opRest?_opRest.clave:'';
   if(liq.gastosXML||liq.gastos) renderGastos();
   if(liq.autopistas&&liq.autopistas.length) renderIAVE();
   if(liq.diesel&&$('kpisDiesel')) calcDiesel();
@@ -982,14 +985,29 @@ function onLiqOpChange(){
   const unidad=parseInt($('liqOp').value||0);
   const op=OPERADORES.find(function(o){return o.unidad===unidad;});
   $('liqUnidad').value=op?op.unidad:'';
+  // Clave: auto-llenar desde OPERADORES (solo lectura)
+  if($('liqClave'))$('liqClave').value=op?op.clave:'';
+  // Comisión: usar valor del operador y re-bloquear
   $('liqComision').value=op?op.comision:12;
+  bloquearComision();
   var arr=arrastres[unidad]||{};
   if(arr.lts!=null&&arr.lts>0)$('dIniLts').value=arr.lts;
   if(arr.precio!=null&&arr.precio>0)$('dIniPrecio').value=arr.precio;
-  // Actualizar número SOLO si no hay liquidación activa — usar refrescarPreview
-  // para NO restaurar liqActiva desde Firebase (evita que liq anterior vuelva al num 1)
   if(!liq)$('liqNum').value=ultimaLiqNum+1;
   if(unidad) refrescarPreview();
+}
+function bloquearComision(){
+  var el=$('liqComision');
+  if(el){el.readOnly=true;el.style.background='#1a1a2e';el.style.color='#aaa';el.style.cursor='not-allowed';}
+  if($('comisionLock'))$('comisionLock').textContent='🔒';
+}
+function desbloquearComision(){
+  var pass=prompt('Contraseña de supervisor para modificar comisión:');
+  if(pass!==SUPERVISOR_PASS){alert('Contraseña incorrecta.');return;}
+  var el=$('liqComision');
+  if(el){el.readOnly=false;el.style.background='';el.style.color='';el.style.cursor='';}
+  if($('comisionLock'))$('comisionLock').textContent='🔓';
+  el.focus();
 }
 
 async function refrescarPreview(){
@@ -1533,7 +1551,7 @@ function generarReporte(){
 
   // Comisión SOLO sobre fletes
   const totComision=totSubFletes*(liq.comision/100);
-  const totGastos1=totSubFletes*0.01;
+  const totGastos1=totSubFletes*0.02;
 
   // Diesel
   const d=liq.diesel||{totLtsCarg:0,pp:0,ltsComprobados:0,importeComprobado:0,ltsNoComprobados:0,importeNoComprobado:0,ltsPend:0,importePend:0,ltsFinal:0,ultimoPrecio:0,ltsPorComprobar:0,ltsECM:0};
@@ -1607,7 +1625,7 @@ function generarReporte(){
   });
   if(gastosXMLTot)gastosHTML+=rr('Gastos facturados (XML)',gastosXMLTot);
   gastosHTML+=rr('Comisión operador ('+liq.comision+'% s/ fletes)',totComision)
-    +rr('1% gastos sin comprobante',totGastos1)
+    +rr('2% gastos sin comprobante',totGastos1)
     +'<div style="height:1px;background:#eee;margin:6px 0"></div>'
     +rr('TOTAL GASTOS',totGastosEmpTotal,null,true);
   $('repGastos').innerHTML=gastosHTML;
@@ -1641,7 +1659,7 @@ function generarReporte(){
 
   $('repAbonos').innerHTML=
     rr('Comisión fletes '+liq.comision+'% (s/ '+fmt(totSubFletes)+')',totComision,'abono')
-    +rr('1% gastos sin comprobante',totGastos1,'abono')
+    +rr('2% gastos sin comprobante',totGastos1,'abono')
     +rr('Diesel comprobado ('+fmtN(d.ltsComprobados||0)+' lts × '+fmt(d.pp||0)+')',dieselComprobado,'abono')
     +(dieselNoComprobado>0?rr('⚠️ Diesel no comprobado ('+fmtN(d.ltsNoComprobados||0)+' lts)',dieselNoComprobado,'cargo'):'')
     +rr('Autopistas pagadas por operador',totAutOp,'abono')

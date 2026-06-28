@@ -151,10 +151,17 @@ tr:hover td{background:#fafafa}
 
   <!-- TABLA -->
   <div class="card">
-    <div class="card-title">📋 Viajes registrados</div>
+    <div class="card-title" style="display:flex;justify-content:space-between;align-items:center">
+      <span>📋 Viajes registrados</span>
+      <div id="barraSelIng" style="display:none;align-items:center;gap:8px">
+        <span id="cntSelIng" style="font-size:12px;color:#aaa"></span>
+        <button class="btn btn-sm" style="background:#e63946;color:#fff;border:none;cursor:pointer;border-radius:5px;padding:5px 12px" onclick="eliminarSeleccionadosIng()">🗑 Eliminar seleccionados</button>
+      </div>
+    </div>
     <div class="tbl-wrap">
       <table>
         <thead><tr>
+          <th style="width:32px"><input type="checkbox" title="Seleccionar todos sin liquidar" onchange="toggleTodosIng(this)"></th>
           <th>Folio</th><th>Fecha</th><th>Operador</th><th>Cliente</th><th>Tipo</th>
           <th class="r">Subtotal</th><th class="r">IVA</th><th class="r">Ret.</th><th class="r">Total</th>
           <th>Estatus</th><th>Liq.</th><th></th>
@@ -396,6 +403,7 @@ function renderIngresos(){
       <td class="num r">${fmt(v.ret)}</td><td class="num r">${fmt(v.total)}</td>
       <td><span class="badge ${v.estado==='sin_liquidar'?'bg-yellow':'bg-green'}">${v.estado==='sin_liquidar'?'Sin liquidar':'Liquidado'}</span></td>
       <td style="font-size:11px;color:#aaa">${v.liqNum?'Liq.#'+v.liqNum:'—'}</td>
+      <td style="width:32px;text-align:center">${v.estado==='sin_liquidar'?`<input type="checkbox" class="chkIng" data-id="${v.id}" onchange="actualizarBarraSelIng()">`:'—'}</td>
       <td>${v.estado==='sin_liquidar'?`<button style="background:#fde8e8;color:#9b1c1c;border:none;cursor:pointer;border-radius:4px;padding:3px 8px;font-size:11px" onclick="eliminar('${v.id}')">✕</button>`:'—'}</td>
     </tr>`;
   });
@@ -409,6 +417,33 @@ function renderIngresos(){
 function eliminar(id){
   lockRequest('Eliminar viaje/ingreso', function(){
     ingresosDB=ingresosDB.filter(v=>v.id!==id);
+    guardar();renderIngresos();
+  });
+}
+
+function actualizarBarraSelIng(){
+  var chks=document.querySelectorAll('.chkIng:checked');
+  var barra=document.getElementById('barraSelIng');
+  var cnt=document.getElementById('cntSelIng');
+  if(chks.length>0){
+    barra.style.display='flex';
+    cnt.textContent=chks.length+' seleccionado'+(chks.length>1?'s':'');
+  } else {
+    barra.style.display='none';
+  }
+}
+
+function toggleTodosIng(chkHeader){
+  document.querySelectorAll('.chkIng').forEach(function(c){c.checked=chkHeader.checked;});
+  actualizarBarraSelIng();
+}
+
+function eliminarSeleccionadosIng(){
+  var chks=document.querySelectorAll('.chkIng:checked');
+  if(!chks.length){alert('No hay ingresos seleccionados.');return;}
+  var ids=Array.from(chks).map(function(c){return c.dataset.id;});
+  lockRequest('Eliminar '+ids.length+' ingreso(s)', function(){
+    ingresosDB=ingresosDB.filter(function(v){return ids.indexOf(v.id)===-1;});
     guardar();renderIngresos();
   });
 }
