@@ -341,7 +341,7 @@ tr:hover td{background:#fafafa}
     </div>
     <div class="card">
       <div class="card-title">📝 Gastos sin factura</div>
-      <div class="alert alert-info" style="margin-bottom:14px">⚠️ Gastos sin comprobante: tope acumulado del <strong>2% sobre el flete</strong> de esta liquidación — <strong id="limiteGastoLabel">$0.00</strong>. Al superarlo se requiere autorización de supervisor. <strong>Maniobras</strong> no cuenta para este tope, pero siempre requiere autorización.</div>
+      <div class="alert alert-info" style="margin-bottom:14px">⚠️ Gastos mayores a $<strong id="limiteGastoLabel">500</strong> sin factura requieren autorización de supervisor.</div>
       <div class="row" style="margin-bottom:12px">
         <div class="field"><label>Concepto</label>
           <select id="gastoConcepto">
@@ -549,6 +549,8 @@ function getConceptoDesc(doc){
   var c=doc.querySelector('Concepto');
   return c?(c.getAttribute('Descripcion')||c.getAttribute('Descripción')||''):'';
 }
+const LIMITE_GASTO_SIN_FACTURA=500;
+document.getElementById('limiteGastoLabel').textContent=LIMITE_GASTO_SIN_FACTURA;
 
 // ══════════════════════════════════════════════
 // ESTADO GLOBAL
@@ -1752,9 +1754,9 @@ function renderIAVE(){
   liq.autopistas.forEach(function(a,i){
     if(a.pagaOp)totOp+=a.importe;else totEmp+=a.importe;
     tb.innerHTML+='<tr><td>'+a.fecha+'</td><td>'+a.hora+'</td><td>'+a.caseta+'</td><td>'+a.carril+'</td><td class="num r">'+fmt(a.importe)+'</td>'
-      +'<td><select class="input-sm" onchange="liq.autopistas['+i+'].pagaOp=this.value===\'si\';renderIAVE()">'
+      +'<td><select class="input-sm" onchange="liq.autopistas['+i+'].pagaOp=this.value===\'si\';renderIAVE();guardarEstado()">'
       +'<option value="no"'+(a.pagaOp?'':' selected')+'>Empresa</option><option value="si"'+(a.pagaOp?' selected':'')+'>Operador</option></select></td>'
-      +'<td><button class="btn btn-sm" style="background:#fde8e8;color:#9b1c1c;border:none;cursor:pointer" onclick="liq.autopistas.splice('+i+',1);renderIAVE()">✕</button></td></tr>';
+      +'<td><button class="btn btn-sm" style="background:#fde8e8;color:#9b1c1c;border:none;cursor:pointer" onclick="liq.autopistas.splice('+i+',1);renderIAVE();guardarEstado()">✕</button></td></tr>';
   });
   $('tfIAVE').innerHTML='<tr style="background:#f5f5f8;font-weight:700"><td colspan="4">TOTAL</td><td class="num r">'+fmt(totEmp+totOp)+'</td><td colspan="2"></td></tr>';
   $('kpisIAVE').innerHTML='<div class="kpi"><div class="v">'+liq.autopistas.length+'</div><div class="k">Cruces</div></div>'
@@ -1841,30 +1843,14 @@ function parseGastoXML(text,fname){
   $('gastoXMLInfo').innerHTML='<div class="alert alert-ok">'+liq.gastosXML.length+' gastos con XML registrados.</div>';
 }
 
-function totFletesLiqActual(){
-  if(!liq)return 0;
-  return ingresosDB.filter(function(v){return parseInt(v.unidad)===parseInt(liq.unidad)&&v.estado==='sin_liquidar';})
-    .reduce(function(s,v){return s+(v.subtFlete!=null?v.subtFlete:((v.tipo==='flete_for'||v.tipo==='flete_mx')?v.subtotal:0));},0);
-}
-function capSinComprobante(){return totFletesLiqActual()*0.02;}
-function acumSinComprobante(){
-  if(!liq)return 0;
-  return liq.gastos.filter(function(g){return g.concepto!=='MANIOBRAS';}).reduce(function(s,g){return s+g.importe;},0);
-}
-
 function agregarGasto(){
   if(!liq)return;
   const importe=parseFloat($('gastoImporte').value||0);
   if(!importe){alert('Ingresa un importe.');return;}
   const pagaOp=$('gastoPagaOp').value==='si';
-  const concepto=$('gastoConcepto').value;
-  const gasto={concepto:concepto,desc:$('gastoDesc').value||'',importe:importe,pagaOp:pagaOp,tipo:'manual',autorizado:false};
-  // Candado: MANIOBRAS siempre requiere autorización. El resto de gastos sin comprobante
-  // se acepta libremente mientras el acumulado de la liquidación no supere el 2% del flete;
-  // al superarlo, requiere autorización de supervisor.
-  const esManiobra=concepto==='MANIOBRAS';
-  const requiereAuth=esManiobra||(acumSinComprobante()+importe>capSinComprobante());
-  if(requiereAuth){
+  const gasto={concepto:$('gastoConcepto').value,desc:$('gastoDesc').value||'',importe:importe,pagaOp:pagaOp,tipo:'manual',autorizado:false};
+  // Candado: si supera límite y no tiene factura, requiere autorización
+  if(importe>LIMITE_GASTO_SIN_FACTURA){
     gastoPendiente=gasto;
     $('authPass').value='';$('authError').style.display='none';
     $('modalAuth').classList.add('open');
@@ -1910,16 +1896,6 @@ function renderGastos(){
   });
   $('tfGastos').innerHTML='<tr style="background:#f5f5f8;font-weight:700"><td colspan="2">TOTALES</td><td class="num r">'+fmt(totOp+totEmp)+'</td>'
     +'<td colspan="2"><span style="color:#0a5233">Op: '+fmt(totOp)+'</span> · <span style="color:#9b1c1c">Emp: '+fmt(totEmp)+'</span></td><td colspan="2"></td></tr>';
-  actualizarLimiteLabel();
-}
-
-function actualizarLimiteLabel(){
-  const lbl=$('limiteGastoLabel');
-  if(!lbl)return;
-  const cap=capSinComprobante(),acum=acumSinComprobante();
-  var txt=fmt(cap)+' (capturado: '+fmt(Math.min(acum,cap))+' de '+fmt(cap)+')';
-  if(acum>cap)txt+=' · '+fmt(acum-cap)+' excedente ya autorizado';
-  lbl.textContent=txt;
 }
 
 function toggleGastoPagaOp(i,val){
@@ -1937,6 +1913,7 @@ function eliminarGasto(i){
   if(g.tipo==='xml'){const xi=liq.gastosXML.indexOf(g);if(xi>=0)liq.gastosXML.splice(xi,1);}
   else{const mi=liq.gastos.indexOf(g);if(mi>=0)liq.gastos.splice(mi,1);}
   renderGastos();
+  guardarEstado();
 }
 
 // ══════════════════════════════════════════════
@@ -1985,17 +1962,7 @@ function generarReporte(){
 
   // Comisión SOLO sobre fletes
   const totComision=totSubFletes*(liq.comision/100);
-  // Tope de gastos sin comprobante = 2% del flete. MANIOBRAS no cuenta para este tope.
-  const capGastoSinComp=totSubFletes*0.02;
-  var totGastosSinCompManual=0,totDentroTope=0,totExcedenteSinComp=0,_acumSinComp=0;
-  liq.gastos.filter(function(g){return g.concepto!=='MANIOBRAS';}).forEach(function(g){
-    totGastosSinCompManual+=g.importe;
-    const dentro=Math.max(0,Math.min(g.importe,capGastoSinComp-_acumSinComp));
-    totDentroTope+=dentro;
-    totExcedenteSinComp+=(g.importe-dentro);
-    _acumSinComp+=g.importe;
-  });
-  const totGastos1=totDentroTope; // sustituye el 2% automático anterior — ahora es lo que el operador realmente capturó, topado al 2%
+  const totGastos1=totSubFletes*0.02;
 
   // Diesel
   const d=liq.diesel||{totLtsCarg:0,pp:0,ltsComprobados:0,importeComprobado:0,ltsNoComprobados:0,importeNoComprobado:0,ltsPend:0,importePend:0,ltsFinal:0,ultimoPrecio:0,ltsPorComprobar:0,ltsECM:0};
@@ -2013,12 +1980,10 @@ function generarReporte(){
   const totGastosOp=todosGastos.filter(function(g){return g.pagaOp;}).reduce(function(s,g){return s+(g.tipo==='xml'?g.total:g.importe);},0);
   const totGastosEmp=todosGastos.filter(function(g){return !g.pagaOp;}).reduce(function(s,g){return s+(g.tipo==='xml'?g.total:g.importe);},0);
 
-  // Desglose gastos por concepto — MANIOBRAS se itemiza aparte (no cuenta para el tope del 2%,
-  // pero siempre requiere autorización). El resto de gastos manuales ("sin comprobante") se
-  // resume abajo bajo el tope del 2% en lugar de listarse por concepto.
+  // Desglose gastos por concepto
   const gastosXMLTot=liq.gastosXML.reduce(function(s,g){return s+g.total;},0);
   const gastosPorConcepto={};
-  liq.gastos.filter(function(g){return g.concepto==='MANIOBRAS';}).forEach(function(g){
+  liq.gastos.forEach(function(g){
     if(!gastosPorConcepto[g.concepto])gastosPorConcepto[g.concepto]=0;
     gastosPorConcepto[g.concepto]+=g.importe;
   });
@@ -2026,15 +1991,12 @@ function generarReporte(){
   // Totales empresa
   // dieselTotal = lo que se cargó a empresa (por comprobar × precio promedio)
   const dieselTotal=(d.ltsPorComprobar||0)*(d.pp||0);
-  // totGastosEmp/totGastosOp ya incluyen el importe real de los gastos sin comprobante
-  // (dentro y fuera del tope), por eso totGastos1 ya NO se suma aparte — se muestra solo
-  // como desglose informativo dentro de "Gastos sin comprobante" en el reporte.
-  const totGastosEmpTotal=dieselComprobado+totAut+totGastosEmp+gastosXMLTot+totComision;
+  const totGastosEmpTotal=dieselComprobado+totAut+totGastosEmp+gastosXMLTot+totComision+totGastos1;
   const utilidad=totIngSubtotal-totGastosEmpTotal;
 
   // Cuenta operador
   const totalCargos=totAnts+dieselNoComprobado;
-  const totalAbonos=totComision+dieselComprobado+totAutOp+totGastosOp;
+  const totalAbonos=totComision+totGastos1+dieselComprobado+totAutOp+totGastosOp;
   const saldo=totalAbonos-totalCargos;
 
   function rr(label,val,cls,sub){
@@ -2070,13 +2032,11 @@ function generarReporte(){
     +rrDetail('Empresa',totAutEmp)
     +rrDetail('Operador (comprueba)',totAutOp);
   Object.keys(gastosPorConcepto).forEach(function(k){
-    gastosHTML+=rr(k+' (requiere autorización)',gastosPorConcepto[k]);
+    gastosHTML+=rr(k,gastosPorConcepto[k]);
   });
   if(gastosXMLTot)gastosHTML+=rr('Gastos facturados (XML)',gastosXMLTot);
   gastosHTML+=rr('Comisión operador ('+liq.comision+'% s/ fletes)',totComision)
-    +rr('Gastos sin comprobante',totGastosSinCompManual)
-    +rrDetail('Dentro de tope 2% s/flete ('+fmt(capGastoSinComp)+')',totDentroTope)
-    +(totExcedenteSinComp>0?rrDetail('⚠️ Excedente autorizado por supervisor',totExcedenteSinComp):'')
+    +rr('2% gastos sin comprobante',totGastos1)
     +'<div style="height:1px;background:#eee;margin:6px 0"></div>'
     +rr('TOTAL GASTOS',totGastosEmpTotal,null,true);
   $('repGastos').innerHTML=gastosHTML;
@@ -2109,7 +2069,7 @@ function generarReporte(){
   const importeNoComprobadoTot=ltsNoCombprobados*(d.pp||0);
 
   const totalCargosReal=totAnts+totalDieselImporte;
-  const totalAbonosReal=totComision+importeComprobadoTot+totAutOp+totGastosOp;
+  const totalAbonosReal=totComision+totGastos1+importeComprobadoTot+totAutOp+totGastosOp;
   const saldoReal=totalAbonosReal-totalCargosReal;
 
   // Detalle informativo de fuentes diesel (solo para desglose)
@@ -2126,6 +2086,7 @@ function generarReporte(){
 
   $('repAbonos').innerHTML=
     rr('Comisión fletes '+liq.comision+'% (s/ '+fmt(totSubFletes)+')',totComision,'abono')
+    +rr('2% gastos sin comprobante',totGastos1,'abono')
     +rr('Diesel comprobado ECM ('+fmtN(ltsComprobadosTot)+' lts × '+fmt(d.pp||0)+')',importeComprobadoTot,'abono')
     +rr('Autopistas pagadas por operador',totAutOp,'abono')
     +rr('Gastos del operador comprobados',totGastosOp,'abono')
@@ -2268,7 +2229,7 @@ function generarReporte(){
   _snap={
     totSubFletes:totSubFletes, totSubManiobras:totSubManiobras, totSubOtros:totSubOtros,
     totIvaTrasl:totIvaTrasl, totRetTotal:totRetTotal, totIngSubtotal:totIngSubtotal,
-    totComision:totComision, totGastos1:totGastos1, totExcedenteSinComp:totExcedenteSinComp, capGastoSinComp:capGastoSinComp,
+    totComision:totComision, totGastos1:totGastos1,
     dieselComprobado:dieselComprobado, dieselNoComprobado:dieselNoComprobado,
     totAut:totAut, totAutOp:totAutOp, totAutEmp:totAutEmp,
     totGastosOp:totGastosOp, totGastosEmp:totGastosEmp,
