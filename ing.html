@@ -301,6 +301,11 @@ function parseXML(text,fname,unidad){
   doc.querySelectorAll('Retencion').forEach(r=>{if(r.getAttribute('Impuesto')==='002')ret+=parseFloat(r.getAttribute('Importe')||0);});
   const receptor=doc.querySelector('Receptor');
   const cliente=receptor?receptor.getAttribute('Nombre'):'';
+  const emisor=doc.querySelector('Emisor');
+  const tfd=doc.querySelector('TimbreFiscalDigital');
+  const uuid=tfd?tfd.getAttribute('UUID')||'':'';
+  const rfcEmisor=emisor?emisor.getAttribute('Rfc')||'':'';
+  const rfcReceptor=receptor?receptor.getAttribute('Rfc')||'':'';
   const folioCompleto=serie+'-'+folio;
   if(ingresosDB.some(v=>v.folio===folioCompleto&&v.unidad===unidad)){
     alert(fname+': ya está registrado (duplicado).');return;
@@ -345,7 +350,8 @@ function parseXML(text,fname,unidad){
   const tipoDerivado=subtManiobras>0&&!subtFlete?'maniobra':subtOtros>0&&!subtFlete&&!subtManiobras?'otro':'flete_for';
   ingresosDB.push({id:uid(),unidad,folio:folioCompleto,fecha,cliente,tipo:tipoDerivado,
     subtotal,subtFlete,subtManiobras,subtOtros,iva,ret,total:parseFloat(comp.getAttribute('Total')||0),
-    estado:'sin_liquidar',liqNum:null,origen:'xml',ruta});
+    estado:'sin_liquidar',liqNum:null,origen:'xml',ruta,
+    uuid,rfcEmisor,rfcReceptor,satEstado:null,satCancelado:false});
   guardar();renderIngresos();
   alert('✅ '+fname+' registrado.'+(ruta.length?' Ruta: '+ruta.length+' tramos.':''));
 }
@@ -460,7 +466,7 @@ function renderIngresos(){
       ${fCell}${mCell}${oCell}
       <td class="num r">${fmt(v.subtotal)}</td><td class="num r">${fmt(v.iva)}</td>
       <td class="num r">${fmt(v.ret)}</td><td class="num r">${fmt(v.total)}</td>
-      <td><span class="badge ${v.estado==='sin_liquidar'?'bg-yellow':'bg-green'}">${v.estado==='sin_liquidar'?'Sin liquidar':'Liquidado'}</span></td>
+      <td><span class="badge ${v.estado==='sin_liquidar'?'bg-yellow':'bg-green'}">${v.estado==='sin_liquidar'?'Sin liquidar':'Liquidado'}</span>${v.satCancelado?' <span class="badge bg-red" style="color:#c1121f" title="Cancelado ante el SAT — se excluyó del cálculo de su liquidación">⚠ CFDI cancelado</span>':(v.satEstado==='Vigente'?' <span class="badge bg-green" title="Verificado vigente ante el SAT">✓ SAT</span>':'')}</td>
       <td style="font-size:11px;color:#aaa">${v.liqNum?'Liq.#'+v.liqNum:'—'}</td>
       <td>${v.estado==='sin_liquidar'?`<button style="background:#fde8e8;color:#9b1c1c;border:none;cursor:pointer;border-radius:4px;padding:3px 8px;font-size:11px" onclick="eliminar('${v.id}')">✕</button>`:'—'}</td>
     </tr>`;
