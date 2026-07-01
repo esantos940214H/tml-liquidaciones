@@ -195,6 +195,10 @@ tr:hover td{background:#fafafa}
     <button class="btn btn-red" onclick="iniciarLiquidacion()">Iniciar liquidación →</button>
   </div>
   <div id="liqInfo" style="display:none"></div>
+  <div id="satValidandoInfo" style="display:none;margin-top:8px"></div>
+  <div id="btnRevalidarSATWrap" style="display:none;margin-top:8px">
+    <button class="btn btn-out btn-sm" onclick="validarCFDIsSATLiquidacion()">🔄 Revalidar CFDIs con el SAT</button>
+  </div>
 
   <!-- Vista previa: anticipos e ingresos que se jalarán -->
   <div id="liqPreview" style="display:none">
@@ -645,6 +649,74 @@ const LIMITE_GASTO_SIN_FACTURA=500;
 document.getElementById('limiteGastoLabel').textContent=LIMITE_GASTO_SIN_FACTURA;
 
 // ══════════════════════════════════════════════
+// VALIDACIÓN DE CFDI VIGENTE ANTE EL SAT
+// El navegador no puede llamar directo al servicio del SAT (bloqueo CORS),
+// así que se usa un Worker propio como intermediario. Reemplaza esta URL
+// por la de tu Worker desplegado (ver sat-cfdi-worker.js en la raíz del repo).
+// ══════════════════════════════════════════════
+const SAT_PROXY_URL='https://sat-cfdi-proxy.TU-USUARIO.workers.dev';
+
+async function consultarEstadoSAT(item){
+  if(!item.uuid)return{estado:'Sin UUID',cancelado:false,error:true};
+  if(SAT_PROXY_URL.indexOf('TU-USUARIO')!==-1)return{estado:'Proxy no configurado',cancelado:false,error:true};
+  try{
+    var res=await fetch(SAT_PROXY_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(item)});
+    var data=await res.json();
+    if(!res.ok)return{estado:data.estado||'No verificado',cancelado:false,error:true,mensaje:data.error};
+    return data;
+  }catch(e){
+    return{estado:'No verificado (sin conexión al proxy)',cancelado:false,error:true,mensaje:e.message};
+  }
+}
+
+// Se ejecuta al abrir la liquidación: valida ingresos (viajes XML) y gastos
+// facturados (XML) de la unidad ante el SAT, y marca/excluye los cancelados.
+// Nunca bloquea la liquidación si el proxy falla — solo avisa que no se pudo verificar.
+async function validarCFDIsSATLiquidacion(){
+  if(!liq)return;
+  var box=$('satValidandoInfo');
+  if(!box)return;
+  var viajesXML=ingresosDB.filter(function(v){return parseInt(v.unidad)===parseInt(liq.unidad)&&v.estado==='sin_liquidar'&&v.origen==='xml'&&v.uuid;});
+  var gastosXMLconUUID=(liq.gastosXML||[]).filter(function(g){return g.uuid;});
+  var total=viajesXML.length+gastosXMLconUUID.length;
+  if(!total)return;
+
+  box.style.display='block';
+  box.innerHTML='<div class="alert alert-info">⏳ Validando '+total+' CFDI ante el SAT (ingresos y gastos)...</div>';
+
+  var nCancelados=0,nErrores=0;
+  for(var i=0;i<viajesXML.length;i++){
+    var v=viajesXML[i];
+    var r=await consultarEstadoSAT({uuid:v.uuid,rfcEmisor:v.rfcEmisor||TML_RFC,rfcReceptor:v.rfcReceptor||'',total:v.total});
+    v.satEstado=r.estado;v.satCancelado=!!r.cancelado;
+    if(r.error)nErrores++;else if(r.cancelado)nCancelados++;
+  }
+  for(var j=0;j<gastosXMLconUUID.length;j++){
+    var g=gastosXMLconUUID[j];
+    var r2=await consultarEstadoSAT({uuid:g.uuid,rfcEmisor:g.rfc||'',rfcReceptor:TML_RFC,total:g.total});
+    g.satEstado=r2.estado;g.satCancelado=!!r2.cancelado;
+    if(r2.error)nErrores++;else if(r2.cancelado)nCancelados++;
+  }
+
+  // ingresosDB es compartido con ant.html/ing.html/hist.html — se guarda completo
+  // (ya sincronizado por el listener en vivo) para reflejar el estado SAT ahí también.
+  if(fbReady)window.FB.set('estado','ingresosDB',{data:JSON.stringify(ingresosDB)});
+  guardarEstado();
+  renderGastos();
+  var tabActivo=document.querySelector('.tab.active');
+  var tabs=document.querySelectorAll('.tab');
+  if(Array.from(tabs).indexOf(tabActivo)===4)generarReporte();
+
+  if(nErrores===total){
+    box.innerHTML='<div class="alert alert-warn">⚠️ No se pudo validar ningún CFDI ante el SAT (revisa que SAT_PROXY_URL esté configurado en liq.html). Los CFDI se consideran vigentes mientras no se puedan verificar.</div>';
+  } else if(nCancelados){
+    box.innerHTML='<div class="alert alert-warn">⚠️ Se encontraron '+nCancelados+' CFDI cancelado(s) ante el SAT — se excluyeron del cálculo de esta liquidación.'+(nErrores?' ('+nErrores+' no se pudieron verificar.)':'')+'</div>';
+  } else {
+    box.innerHTML='<div class="alert alert-ok">✅ CFDI verificados vigentes ante el SAT.'+(nErrores?' ('+nErrores+' no se pudieron verificar.)':'')+'</div>';
+  }
+}
+
+// ══════════════════════════════════════════════
 // ESTADO GLOBAL
 // ══════════════════════════════════════════════
 let opExcluidos=new Set();
@@ -818,6 +890,7 @@ function restaurarUILiquidacion(){
   renderIncidentesLiq();
   if(!liq.casetasNF)liq.casetasNF=[];
   renderCasetasNF();
+  if($('btnRevalidarSATWrap'))$('btnRevalidarSATWrap').style.display='block';
   if(liq.autopistas&&liq.autopistas.length) renderIAVE();
   if(!liq.dieselXML)liq.dieselXML=[];
   renderDieselXML();
@@ -1399,7 +1472,9 @@ function iniciarLiquidacion(){
   renderGastos();
   renderIncidentesLiq();
   renderCasetasNF();
+  if($('btnRevalidarSATWrap'))$('btnRevalidarSATWrap').style.display='block';
   guardarEstado();
+  validarCFDIsSATLiquidacion();
 }
 
 // ══════════════════════════════════════════════
@@ -1944,9 +2019,11 @@ function parseGastoXML(text,fname){
   doc.querySelectorAll('Traslado').forEach(function(t){if(t.getAttribute('Impuesto')==='002')iva+=parseFloat(t.getAttribute('Importe')||0);});
   const emisor=doc.querySelector('Emisor');
   const conceptoDesc=getConceptoDesc(doc);
+  const tfdG=doc.querySelector('TimbreFiscalDigital');
   liq.gastosXML.push({serie:comp.getAttribute('Serie')||'',folio:comp.getAttribute('Folio')||'',
     fecha:(comp.getAttribute('Fecha')||'').slice(0,10),proveedor:emisor?emisor.getAttribute('Nombre'):'',
     rfc:emisor?emisor.getAttribute('Rfc')||'':'',conceptoDesc:conceptoDesc,
+    uuid:tfdG?tfdG.getAttribute('UUID')||'':'',satEstado:null,satCancelado:false,
     subtotal:subtotal,iva:iva,total:parseFloat(comp.getAttribute('Total')||0),
     concepto:'GASTO FACTURADO',desc:conceptoDesc||fname,pagaOp:false,tipo:'xml',autorizado:true});
   renderGastos();
@@ -2187,9 +2264,12 @@ function renderGastos(){
   var totOp=0,totEmp=0;
   todos.forEach(function(g,i){
     const imp=g.tipo==='xml'?g.total:g.importe;
-    if(g.pagaOp)totOp+=imp;else totEmp+=imp;
+    if(!g.satCancelado){if(g.pagaOp)totOp+=imp;else totEmp+=imp;}
     const tituloImp=g.tipo==='xml'?('Subtotal: '+fmt(g.subtotal||0)+' · IVA: '+fmt(g.iva||0)+' · Total: '+fmt(g.total||0)):'';
-    tb.innerHTML+='<tr><td style="font-size:11px">'+(g.fecha||'—')+'</td><td>'+g.concepto+'</td><td>'+(g.desc||g.conceptoDesc||'')+'</td>'
+    const estadoCell=g.satCancelado
+      ?'<span class="badge bg-red" style="color:#c1121f" title="Cancelado ante el SAT — excluido del cálculo">⚠ CANCELADO SAT</span>'
+      :(g.autorizado?'<span class="badge bg-green">✓ OK</span>':'<span class="badge bg-yellow">Pendiente</span>');
+    tb.innerHTML+='<tr'+(g.satCancelado?' style="opacity:.55;text-decoration:line-through"':'')+'><td style="font-size:11px">'+(g.fecha||'—')+'</td><td>'+g.concepto+'</td><td>'+(g.desc||g.conceptoDesc||'')+'</td>'
       +'<td style="font-size:11px" title="'+(g.rfc||'')+'">'+(g.proveedor||g.emisor||'—')+'</td>'
       +'<td class="num r" title="'+tituloImp+'">'+fmt(imp)+'</td>'
       +'<td><span class="badge '+(g.tipo==='xml'?'bg-blue':'bg-gray')+'">'+(g.tipo==='xml'?'XML':'Manual')+'</span></td>'
@@ -2197,7 +2277,7 @@ function renderGastos(){
         +'<option value="no"'+(g.pagaOp?'':' selected')+'>Empresa</option>'
         +'<option value="si"'+(g.pagaOp?' selected':'')+'>Operador</option>'
       +'</select></td>'
-      +'<td>'+(g.autorizado?'<span class="badge bg-green">✓ OK</span>':'<span class="badge bg-yellow">Pendiente</span>')+'</td>'
+      +'<td>'+estadoCell+'</td>'
       +'<td><button class="btn btn-sm" style="background:#fde8e8;color:#9b1c1c;border:none;cursor:pointer" onclick="eliminarGasto('+i+')">✕</button></td></tr>';
   });
   $('tfGastos').innerHTML='<tr style="background:#f5f5f8;font-weight:700"><td colspan="4">TOTALES</td><td class="num r">'+fmt(totOp+totEmp)+'</td>'
@@ -2240,7 +2320,8 @@ function generarReporte(){
   // ── Datos base ─────────────────────────────────────
   const antsPend=(anticiposDB[liq.unidad]||anticiposDB[String(liq.unidad)]||[]).filter(function(a){return a.estado==='pendiente';});
   const totAnts=antsPend.reduce(function(s,a){return s+a.importe;},0);
-  const viajes=ingresosDB.filter(function(v){return parseInt(v.unidad)===parseInt(liq.unidad)&&v.estado==='sin_liquidar';});
+  // Excluye CFDI cancelados ante el SAT (validados al abrir la liquidación) — nunca se consideran.
+  const viajes=ingresosDB.filter(function(v){return parseInt(v.unidad)===parseInt(liq.unidad)&&v.estado==='sin_liquidar'&&!v.satCancelado;});
   console.log('DEBUG liq.unidad:', liq.unidad, typeof liq.unidad);
   console.log('DEBUG ingresosDB total:', ingresosDB.length, 'viajes filtrados:', viajes.length);
   if(ingresosDB.length>0)console.log('DEBUG primer ingreso unidad:', ingresosDB[0].unidad, typeof ingresosDB[0].unidad, 'estado:', ingresosDB[0].estado);
@@ -2282,12 +2363,13 @@ function generarReporte(){
   const totAut=totAutEmp+totAutOp;
 
   // Gastos
-  const todosGastos=liq.gastosXML.concat(liq.gastos);
+  // Excluye gastos XML cancelados ante el SAT — nunca se consideran en los totales.
+  const todosGastos=liq.gastosXML.filter(function(g){return !g.satCancelado;}).concat(liq.gastos);
   const totGastosOp=todosGastos.filter(function(g){return g.pagaOp;}).reduce(function(s,g){return s+(g.tipo==='xml'?g.total:g.importe);},0);
   const totGastosEmp=todosGastos.filter(function(g){return !g.pagaOp;}).reduce(function(s,g){return s+(g.tipo==='xml'?g.total:g.importe);},0);
 
   // Desglose gastos por concepto
-  const gastosXMLTot=liq.gastosXML.reduce(function(s,g){return s+g.total;},0);
+  const gastosXMLTot=liq.gastosXML.filter(function(g){return !g.satCancelado;}).reduce(function(s,g){return s+g.total;},0);
   const gastosPorConcepto={};
   liq.gastos.forEach(function(g){
     if(!gastosPorConcepto[g.concepto])gastosPorConcepto[g.concepto]=0;
@@ -2352,10 +2434,14 @@ function generarReporte(){
   Object.keys(gastosPorConcepto).forEach(function(k){
     gastosHTML+=rr(k,gastosPorConcepto[k]);
   });
-  if(gastosXMLTot){
+  if(gastosXMLTot||liq.gastosXML.some(function(g){return g.satCancelado;})){
     gastosHTML+=rr('Gastos facturados (XML)',gastosXMLTot);
     liq.gastosXML.forEach(function(g){
-      gastosHTML+=rrDetail((g.fecha||'—')+' · '+(g.proveedor||'')+' · '+(g.desc||g.conceptoDesc||''),g.total);
+      if(g.satCancelado){
+        gastosHTML+=rrDetail('⚠️ CANCELADO ante el SAT (no incluido) — '+(g.fecha||'—')+' · '+(g.proveedor||'')+' · '+(g.desc||g.conceptoDesc||''),0);
+      } else {
+        gastosHTML+=rrDetail((g.fecha||'—')+' · '+(g.proveedor||'')+' · '+(g.desc||g.conceptoDesc||''),g.total);
+      }
     });
   }
   gastosHTML+=rr('Comisión operador ('+liq.comision+'% s/ fletes)',totComision)
@@ -2735,6 +2821,8 @@ function cerrarLiquidacion(){
   liq=null;
   cargasOp=[];
   renderIncidentesLiq();
+  if($('btnRevalidarSATWrap'))$('btnRevalidarSATWrap').style.display='none';
+  if($('satValidandoInfo'))$('satValidandoInfo').style.display='none';
   $('headerInfo').textContent='Sin liquidación activa';
   ['1','2','3','4'].forEach(function(i){$('liqReqMsg'+i).style.display='block';$('panel'+i+'Content').style.display='none';});
   // Resetear formulario para siguiente liquidación
