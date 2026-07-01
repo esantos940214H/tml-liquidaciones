@@ -371,7 +371,7 @@ function renderIncidentes(){
         +'<td style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+(a.descripcion||'')+'">'+(a.descripcion||'')+'</td>'
         +'<td style="font-size:11px">'+(a.liqRef||'—')+'</td>'
         +'<td>'+(a.fueraDeTiempo?'<span class="badge bg-red" style="color:#c1121f">⚠ Fuera de tiempo</span>':'')+'</td>'
-        +'<td><span class="badge '+(a.estado==='pendiente'?'bg-yellow':'bg-green')+'">'+(a.estado==='pendiente'?'PENDIENTE':'APLICADO'+(a.liqNum?' #'+a.liqNum:''))+'</span></td>'
+        +'<td><span class="badge '+(a.estado==='pendiente'?'bg-yellow':(a.estado==='descartado'?'bg-red':'bg-green'))+'" '+(a.estado==='descartado'?'style="color:#c1121f" title="Excedió el tope de $1,500 por liquidación — no se pagó"':'')+'>'+(a.estado==='pendiente'?'PENDIENTE':(a.estado==='descartado'?'DESCARTADO (excedió tope)':'APLICADO'+(a.liqNum?' #'+a.liqNum:'')))+'</span></td>'
         +'<td>'+(a.estado==='pendiente'?'<button class="btn-sm" style="background:#fde8e8;color:#9b1c1c;border:none;cursor:pointer;border-radius:4px;padding:3px 8px" onclick="eliminarIncidente('+a.unidad+',\''+a.id+'\')">✕</button>':'—')+'</td>'
         +'</tr>';
     }).join('');
