@@ -529,6 +529,26 @@ const OPERADORES=[
 ];
 
 const SUPERVISOR_PASS='tml2026';
+const TML_RFC='MTM171214PI4';
+function getReceptorRfc(doc){
+  var ns='http://www.sat.gob.mx/cfd/4',ns3='http://www.sat.gob.mx/cfd/3';
+  var receptor=doc.querySelector('Receptor')||doc.getElementsByTagNameNS(ns,'Receptor')[0]||doc.getElementsByTagNameNS(ns3,'Receptor')[0];
+  return receptor?(receptor.getAttribute('Rfc')||''):'';
+}
+// Los XML de gastos (diesel, casetas, gastos generales) son facturas que TML RECIBE —
+// el receptor del CFDI debe ser Mudanzas TML, si no, es una factura equivocada.
+function validarReceptorTML(doc,fname){
+  var rfcReceptor=getReceptorRfc(doc);
+  if((rfcReceptor||'').toUpperCase()!==TML_RFC){
+    alert('⚠️ '+fname+': el receptor del CFDI es "'+(rfcReceptor||'desconocido')+'", no coincide con Mudanzas TML ('+TML_RFC+'). No se puede cargar esta factura.');
+    return false;
+  }
+  return true;
+}
+function getConceptoDesc(doc){
+  var c=doc.querySelector('Concepto');
+  return c?(c.getAttribute('Descripcion')||c.getAttribute('Descripción')||''):'';
+}
 
 // ══════════════════════════════════════════════
 // ESTADO GLOBAL
@@ -1397,6 +1417,7 @@ function handleDieselXMLFiles(files){
         var ns3='http://www.sat.gob.mx/cfd/3';
         var comp=doc.querySelector('Comprobante')||doc.getElementsByTagNameNS(ns,'Comprobante')[0]||doc.getElementsByTagNameNS(ns3,'Comprobante')[0];
         if(!comp){alert('No se reconoció el XML: '+file.name);return;}
+        if(!validarReceptorTML(doc,file.name))return;
         var emisor=doc.querySelector('Emisor')||doc.getElementsByTagNameNS(ns,'Emisor')[0]||doc.getElementsByTagNameNS(ns3,'Emisor')[0];
         var conceptos=doc.querySelectorAll('Concepto');
         if(!conceptos.length){conceptos=doc.getElementsByTagNameNS(ns,'Concepto');if(!conceptos.length)conceptos=doc.getElementsByTagNameNS(ns3,'Concepto');}
@@ -1418,10 +1439,11 @@ function handleDieselXMLFiles(files){
         var folio=comp.getAttribute('Folio')||comp.getAttribute('Serie')||file.name;
         var rfcEmisor=emisor?emisor.getAttribute('Rfc')||'':'';
         var nombreEmisor=emisor?emisor.getAttribute('Nombre')||'':'';
+        var conceptoDesc=getConceptoDesc(doc);
         if(litrosTot<=0){alert('No se encontraron litros en el XML: '+file.name+'\nVerifica que sea una factura de combustible.');return;}
         liq.dieselXML.push({
           id:'dxml-'+Date.now()+'-'+Math.random().toString(36).slice(2),
-          fecha:fecha,folio:folio,rfc:rfcEmisor,emisor:nombreEmisor,
+          fecha:fecha,folio:folio,rfc:rfcEmisor,emisor:nombreEmisor,concepto:conceptoDesc,
           litros:litrosTot,precioUnitario:precioUnitario,
           subtotal:subtotalTot,iva:ivaTot,total:total,
           pagaOp:true // default: pagado por operador — usuario puede cambiar
@@ -1671,17 +1693,22 @@ function parseAutXML(text,fname){
   var doc=new DOMParser().parseFromString(text,'text/xml');
   var comp=doc.querySelector('Comprobante');
   if(!comp){alert(fname+': no es CFDI válido.');return;}
+  if(!validarReceptorTML(doc,fname))return;
   var fecha=(comp.getAttribute('Fecha')||'').slice(0,10);
   var total=parseFloat(comp.getAttribute('Total')||0);
   var emisor=doc.querySelector('Emisor');
-  var caseta=emisor?emisor.getAttribute('Nombre')||'Caseta':'Caseta';
-  // Intentar sacar descripción del concepto
-  var concepto=doc.querySelector('Concepto');
-  var desc=concepto?(concepto.getAttribute('Descripcion')||concepto.getAttribute('Descripción')||''):'';
+  var rfcEmisor=emisor?emisor.getAttribute('Rfc')||'':'';
+  var nombreEmisor=emisor?emisor.getAttribute('Nombre')||'':'';
+  var caseta=nombreEmisor||'Caseta';
+  var desc=getConceptoDesc(doc);
   if(desc&&desc.length<60)caseta=caseta+' — '+desc;
+  var iva=0;
+  doc.querySelectorAll('Traslado').forEach(function(t){iva+=parseFloat(t.getAttribute('Importe')||0);});
+  var subtotal=parseFloat(comp.getAttribute('SubTotal')||0)||(total-iva);
   if(!total){alert(fname+': no se encontró importe.');return;}
   if(!liq.autopistas)liq.autopistas=[];
-  liq.autopistas.push({fecha:fecha,hora:'',caseta:caseta,carril:'XML',importe:total,pagaOp:true});
+  liq.autopistas.push({fecha:fecha,hora:'',caseta:caseta,carril:'XML',importe:total,pagaOp:true,
+    rfc:rfcEmisor,emisor:nombreEmisor,concepto:desc,subtotal:subtotal,iva:iva});
   renderIAVE();
   guardarEstado();
   $('cardAutopistas').style.display='block';
@@ -1765,6 +1792,7 @@ function parseGastoXML(text,fname){
   if(!liq)return;
   const doc=new DOMParser().parseFromString(text,'text/xml');
   const comp=doc.querySelector('Comprobante');if(!comp)return;
+  if(!validarReceptorTML(doc,fname))return;
 
   // Detectar si es factura de combustible → redirigir al módulo diesel XML
   if(esCombustibleXML(doc)){
@@ -1785,6 +1813,7 @@ function parseGastoXML(text,fname){
       folio:(comp.getAttribute('Serie')||'')+(comp.getAttribute('Folio')||fname),
       rfc:emisorD?emisorD.getAttribute('Rfc')||'':'',
       emisor:emisorD?emisorD.getAttribute('Nombre')||'':'',
+      concepto:getConceptoDesc(doc),
       litros:litrosTot,precioUnitario:precioUnitario,
       subtotal:subtotalTot,iva:ivaTot,
       total:parseFloat(comp.getAttribute('Total')||0)||subtotalTot+ivaTot,
@@ -1800,10 +1829,12 @@ function parseGastoXML(text,fname){
   var iva=0;
   doc.querySelectorAll('Traslado').forEach(function(t){if(t.getAttribute('Impuesto')==='002')iva+=parseFloat(t.getAttribute('Importe')||0);});
   const emisor=doc.querySelector('Emisor');
+  const conceptoDesc=getConceptoDesc(doc);
   liq.gastosXML.push({serie:comp.getAttribute('Serie')||'',folio:comp.getAttribute('Folio')||'',
     fecha:(comp.getAttribute('Fecha')||'').slice(0,10),proveedor:emisor?emisor.getAttribute('Nombre'):'',
+    rfc:emisor?emisor.getAttribute('Rfc')||'':'',conceptoDesc:conceptoDesc,
     subtotal:subtotal,iva:iva,total:parseFloat(comp.getAttribute('Total')||0),
-    concepto:'GASTO FACTURADO',desc:fname,pagaOp:false,tipo:'xml',autorizado:true});
+    concepto:'GASTO FACTURADO',desc:conceptoDesc||fname,pagaOp:false,tipo:'xml',autorizado:true});
   renderGastos();
   guardarEstado();
   $('gastoXMLInfo').style.display='block';
