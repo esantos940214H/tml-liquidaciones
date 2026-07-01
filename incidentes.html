@@ -1,0 +1,458 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TML · Incidentes de vialidad</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Segoe UI',Arial,sans-serif;background:#f0f2f5;color:#1a1a2e;min-height:100vh}
+html.in-iframe header{display:none!important}
+header{background:#1a1a2e;color:#fff;padding:14px 24px;display:flex;align-items:center;justify-content:space-between;border-bottom:3px solid #e63946}
+.logo{font-size:18px;font-weight:800}.logo span{color:#e63946}
+.nav{display:flex;gap:8px;flex-wrap:wrap}
+.nav a{color:#aaa;text-decoration:none;font-size:12px;padding:6px 12px;border-radius:5px;border:1px solid #333;transition:all .15s}
+.nav a:hover{color:#fff;border-color:#555}
+.nav a.active{color:#fff;background:#e63946;border-color:#e63946}
+.container{max-width:1200px;margin:0 auto;padding:20px 16px}
+.card{background:#fff;border-radius:10px;box-shadow:0 2px 12px rgba(0,0,0,.07);padding:20px 24px;margin-bottom:16px}
+.card-title{font-size:12px;font-weight:700;color:#1a1a2e;margin-bottom:14px;text-transform:uppercase;letter-spacing:1px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px}
+.field{display:flex;flex-direction:column;gap:4px}
+.field label{font-size:11px;font-weight:700;color:#666;text-transform:uppercase;letter-spacing:.5px}
+.field input,.field select,.field textarea{border:1.5px solid #dde;border-radius:6px;padding:8px 10px;font-size:13px;color:#1a1a2e;background:#fafafa;width:100%;font-family:inherit}
+.field input:focus,.field select:focus,.field textarea:focus{outline:none;border-color:#e63946}
+.field-check{display:flex;align-items:center;gap:8px;padding-top:18px}
+.field-check input{width:auto}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end}
+.btn{padding:8px 18px;border-radius:6px;border:none;font-size:12px;font-weight:700;cursor:pointer;transition:all .15s;text-transform:uppercase;letter-spacing:.5px}
+.btn-red{background:#e63946;color:#fff}.btn-red:hover{background:#c1121f}
+.btn-dark{background:#1a1a2e;color:#fff}.btn-dark:hover{background:#0d0d1a}
+.btn-out{background:#fff;color:#1a1a2e;border:1.5px solid #1a1a2e}.btn-out:hover{background:#f0f2f5}
+.btn-green{background:#2d6a4f;color:#fff}.btn-green:hover{background:#1b4332}
+.btn:disabled{opacity:.35;cursor:not-allowed}
+.btn-sm{padding:5px 11px;font-size:11px}
+.alert{padding:9px 13px;border-radius:7px;font-size:12px;margin-bottom:10px}
+.alert-info{background:#e8f4fd;color:#0369a1;border:1px solid #bae6fd}
+.alert-ok{background:#d1e7dd;color:#0a5233;border:1px solid #a3cfbb}
+.alert-warn{background:#fffbeb;color:#92400e;border:1px solid #fde68a}
+.alert-err{background:#fde8e8;color:#9b1c1c;border:1px solid #f9a8a8}
+.tbl-wrap{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:13px;min-width:700px}
+th{background:#1a1a2e;color:#fff;padding:8px 10px;font-size:11px;text-transform:uppercase;letter-spacing:.7px;text-align:left;font-weight:600}
+th.r{text-align:right}
+td{padding:7px 10px;border-bottom:1px solid #f0f0f0;vertical-align:middle}
+tr:last-child td{border-bottom:none}
+tr:hover td{background:#fafafa}
+.r{text-align:right}.num{font-family:monospace;font-weight:600}
+.badge{display:inline-block;border-radius:4px;padding:2px 8px;font-size:10px;font-weight:700;white-space:nowrap}
+.bg-green{background:#d1e7dd;color:#0a5233;border:1px solid #a3cfbb}
+.bg-yellow{background:#fff3cd;color:#856404;border:1px solid #ffc107}
+.bg-red{background:#fde8e8;color:#9b1c1c;border:1px solid #f9a8a8}
+.bg-gray{background:#f0f2f5;color:#555;border:1px solid #dde}
+.bg-blue{background:#dbeafe;color:#1e40af;border:1px solid #93c5fd}
+.stats{display:flex;gap:14px;flex-wrap:wrap;margin-bottom:14px}
+.stat .n{font-size:20px;font-weight:800;color:#e63946}
+.stat .l{font-size:10px;color:#888;text-transform:uppercase;letter-spacing:1px}
+.op-block{margin-bottom:20px}
+.op-bar{display:flex;justify-content:space-between;align-items:center;background:#1a1a2e;color:#fff;padding:9px 15px;border-radius:8px 8px 0 0;font-weight:700;font-size:13px}
+.op-bar .tot{color:#ffd166}
+.fb-status{font-size:11px;color:#aaa}
+.fb-ok{color:#2d6a4f}.fb-err{color:#e63946}
+.tope-nota{font-size:11px;color:#888;margin-top:4px}
+@media(max-width:700px){.grid2,.grid3{grid-template-columns:1fr}}
+
+/* ── MODAL CANDADO ── */
+.lock-overlay{position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:9999;display:flex;align-items:center;justify-content:center}
+.lock-box{background:#fff;border-radius:12px;padding:30px;width:320px;box-shadow:0 16px 48px rgba(0,0,0,.3);text-align:center}
+.lock-box h3{font-size:15px;font-weight:700;margin-bottom:6px;color:#1a1a2e}
+.lock-box p{font-size:12px;color:#888;margin-bottom:16px}
+.lock-box input{width:100%;border:1.5px solid #dde;border-radius:7px;padding:9px 12px;font-size:14px;text-align:center;letter-spacing:3px;margin-bottom:10px;outline:none}
+.lock-box input:focus{border-color:#e63946}
+.lock-row{display:flex;gap:8px}
+.lock-row button{flex:1;padding:9px;border:none;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer}
+.lock-ok{background:#e63946;color:#fff}.lock-ok:hover{background:#c1121f}
+.lock-cancel{background:#f0f2f5;color:#555}.lock-cancel:hover{background:#e0e2e5}
+.lock-err{color:#e63946;font-size:11px;margin-top:6px;display:none}
+</style>
+<script>if(window!==window.top)document.documentElement.className+=' in-iframe';</script>
+</head>
+<body>
+<header>
+  <div class="logo">MUDANZAS <span>TML</span> <span style="font-size:13px;font-weight:400;color:#aaa;margin-left:8px">· Incidentes de vialidad</span></div>
+  <div style="display:flex;align-items:center;gap:12px">
+    <span class="fb-status" id="fbStatus">⏳ Conectando...</span>
+    <nav class="nav">
+      <a href="ant.html">📋 Anticipos</a>
+      <a href="ing.html">📄 Ingresos</a>
+      <a href="liq.html">🚛 Liquidaciones</a>
+      <a href="incidentes.html" class="active">🚨 Incidentes</a>
+      <a href="casetas.html">🚧 Casetas</a>
+      <a href="hist.html">🗂️ Historial</a>
+    </nav>
+  </div>
+</header>
+
+<div class="container">
+
+  <div class="alert alert-info">🚨 Registra retenes, mordidas o extorsión sufridos por el operador durante el viaje. El monto reconocido se calcula automáticamente según la causa y nunca puede superar <strong>$1,500 MXN</strong>, sin excepción.</div>
+
+  <!-- FORMULARIO -->
+  <div class="card">
+    <div class="card-title">✏️ Registrar incidente</div>
+    <div class="grid3" style="margin-bottom:14px">
+      <div class="field"><label>Unidad / Operador</label>
+        <select id="iUnidad"><option value="">— Selecciona —</option></select>
+      </div>
+      <div class="field"><label>Fecha y hora del evento</label><input type="datetime-local" id="iFechaEvento"></div>
+      <div class="field"><label>Viaje / liquidación asociada</label><input type="text" id="iLiqRef" placeholder="Ej. Liq #45 o folio"></div>
+    </div>
+    <div class="grid3" style="margin-bottom:14px">
+      <div class="field"><label>Causa del incidente</label>
+        <select id="iCausa" onchange="actualizarPreviewMonto()">
+          <option value="ajena">Ajena / arbitraria (retén sin motivo real)</option>
+          <option value="responsabilidad">Responsabilidad de la unidad (documentos, exceso de peso, maniobra, etc.)</option>
+        </select>
+      </div>
+      <div class="field"><label>Monto que pidieron</label><input type="number" id="iMonto" placeholder="0.00" step="0.01" min="0" oninput="actualizarPreviewMonto()"></div>
+      <div class="field-check">
+        <input type="checkbox" id="iNegocio" checked onchange="actualizarPreviewMonto()">
+        <label style="text-transform:none;font-weight:600;color:#1a1a2e">¿Intentó negociar con la autoridad?</label>
+      </div>
+    </div>
+    <div class="field" style="margin-bottom:14px"><label>Descripción breve</label><textarea id="iDesc" rows="2" placeholder="Qué pasó, dónde, quién intervino..."></textarea></div>
+    <div class="alert alert-warn" id="previewMonto" style="margin-bottom:14px">Monto reconocido estimado: $0.00</div>
+    <div class="row">
+      <button class="btn btn-red" onclick="agregarIncidente()">🔒 Registrar incidente</button>
+    </div>
+  </div>
+
+  <!-- RESUMEN STATS -->
+  <div class="card" id="cardStats" style="display:none">
+    <div class="card-title">📊 Resumen general</div>
+    <div class="stats">
+      <div class="stat"><div class="n" id="stTotal">0</div><div class="l">Incidentes</div></div>
+      <div class="stat"><div class="n" id="stReportado">$0</div><div class="l">Suma reportada</div></div>
+      <div class="stat"><div class="n" id="stReconocido">$0</div><div class="l">Suma reconocida</div></div>
+      <div class="stat"><div class="n" id="stAjena">0%</div><div class="l">Ajena / arbitraria</div></div>
+      <div class="stat"><div class="n" id="stResp">0%</div><div class="l">Responsabilidad unidad</div></div>
+      <div class="stat"><div class="n" id="stFuera">0</div><div class="l">Fuera de tiempo</div></div>
+    </div>
+  </div>
+
+  <!-- FILTROS -->
+  <div class="card">
+    <div class="card-title">🔍 Filtros</div>
+    <div class="row">
+      <div class="field"><label>Operador</label>
+        <select id="filtOp" onchange="renderIncidentes()"><option value="">Todos</option></select>
+      </div>
+      <div class="field"><label>Causa</label>
+        <select id="filtCausa" onchange="renderIncidentes()">
+          <option value="">Todas</option>
+          <option value="ajena">Ajena / arbitraria</option>
+          <option value="responsabilidad">Responsabilidad unidad</option>
+        </select>
+      </div>
+      <button class="btn btn-out btn-sm" onclick="limpiarFiltros()">Limpiar</button>
+      <button class="btn btn-dark btn-sm" onclick="exportarCSV()">Exportar CSV</button>
+    </div>
+  </div>
+
+  <!-- TABLA -->
+  <div class="card">
+    <div class="card-title">🚨 Incidentes registrados</div>
+    <div id="bloqueIncidentes"><div style="text-align:center;padding:30px;color:#aaa">Sin incidentes registrados aún.</div></div>
+  </div>
+
+</div>
+
+<!-- Firebase compat -->
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+<script>
+window._fbInit=false;
+window._fbCallbacks=[];
+window.onFBReady=function(cb){if(window._fbInit)cb();else window._fbCallbacks.push(cb);};
+(function(){
+  try{
+    var cfg={apiKey:"AIzaSyDqlhREJFVFLGzz7bVlPcNl1Uba9HI3r8s",authDomain:"tml-liquidaciones.firebaseapp.com",
+      projectId:"tml-liquidaciones",storageBucket:"tml-liquidaciones.firebasestorage.app",
+      messagingSenderId:"268455373953",appId:"1:268455373953:web:ad359c5dbcba9f53557180"};
+    if(!firebase.apps.length)firebase.initializeApp(cfg);
+    var db=firebase.firestore();
+    window.FB={
+      set:function(col,id,data){return db.collection(col).doc(id).set(data);},
+      get:async function(col,id){try{var s=await db.collection(col).doc(id).get();return s.exists?s.data():null;}catch(e){console.error('FB.get:',e);return null;}},
+      del:function(col,id){return db.collection(col).doc(id).delete();},
+      listen:function(col,id,cb){return db.collection(col).doc(id).onSnapshot(function(s){cb(s.exists?s.data():null);});},
+      getAll:async function(col){
+        try{var s=await db.collection(col).get();var r=[];s.forEach(function(d){r.push(Object.assign({id:d.id},d.data()));});return r.sort(function(a,b){return(b.num||0)-(a.num||0);});}
+        catch(e){console.error('FB.getAll:',e);return[];}
+      }
+    };
+    window._fbInit=true;
+    window._fbCallbacks.forEach(function(cb){try{cb();}catch(e){console.error(e);}});
+    window._fbCallbacks=[];
+    setTimeout(function(){window.dispatchEvent(new Event('firebase-ready'));},0);
+  }catch(e){console.error('Firebase init error:',e);}
+})();
+</script>
+
+<script>
+const OPERADORES=[
+  {unidad:4521,nombre:'ALEJANDRO RODRIGUEZ GONZALEZ'},
+  {unidad:4522,nombre:'ANDRÉS MARÍA RAMOS'},
+  {unidad:4523,nombre:'ANDRÉS NAVARRO RAMÍREZ'},
+  {unidad:4524,nombre:'RAFAEL TAPIA CARREÑO'},
+  {unidad:4526,nombre:'EDUARDO HERNÁNDEZ ACEVES'},
+  {unidad:529, nombre:'OSCAR ISRAEL RAMOS'},
+  {unidad:531, nombre:'MARTÍN FLORES LUGO'},
+  {unidad:532, nombre:'JOSÉ ROLANDO DOMINGUEZ LOPEZ'},
+  {unidad:533, nombre:'FRANCISCO ARTEMIO PEÑA VAZQUEZ'},
+  {unidad:534, nombre:'MIGUEL ALONSO CALDERON'},
+  {unidad:535, nombre:'ISMAEL CONSTANTINO CABRERA'},
+];
+
+const $=id=>document.getElementById(id);
+const fmt=(n,d=2)=>'$'+parseFloat(n||0).toLocaleString('es-MX',{minimumFractionDigits:d,maximumFractionDigits:d});
+const hoy=()=>new Date().toISOString().slice(0,10);
+const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2);
+function dlBlob(c,n,t){const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([c],{type:t}));a.download=n;a.click();}
+
+// TOPE MÁXIMO ABSOLUTO — nunca se implementa como validación de formulario, siempre Math.min()
+// a nivel de código. Ningún flujo, botón ni contraseña puede superarlo.
+const TOPE_MAXIMO_INCIDENTE=1500;
+
+function calcularMontoReconocido(montoReportado,causa,negocio){
+  var m=parseFloat(montoReportado||0);
+  if(m<0)m=0;
+  var base = causa==='ajena' ? m : m*0.4;
+  if(!negocio) base = base*0.8;
+  return Math.min(base,TOPE_MAXIMO_INCIDENTE);
+}
+
+let incidentesDB={};
+let fbReady=false;
+
+function initSelects(){
+  ['iUnidad','filtOp'].forEach(function(id){
+    var s=$(id);if(!s)return;
+    while(s.options.length>1)s.remove(1);
+    OPERADORES.forEach(function(op){
+      var o=document.createElement('option');
+      o.value=op.unidad;o.textContent=op.unidad+' · '+op.nombre;
+      s.appendChild(o);
+    });
+  });
+}
+initSelects();
+$('iFechaEvento').value=new Date().toISOString().slice(0,16);
+
+function actualizarPreviewMonto(){
+  var monto=parseFloat($('iMonto').value||0);
+  var causa=$('iCausa').value;
+  var negocio=$('iNegocio').checked;
+  var reconocido=calcularMontoReconocido(monto,causa,negocio);
+  var nota=causa==='ajena'?'100% del monto reportado':'40% del monto reportado (responsabilidad de la unidad)';
+  if(!negocio)nota+=' − 20% adicional por no negociar';
+  $('previewMonto').innerHTML='Monto reconocido estimado: <strong>'+fmt(reconocido)+'</strong> <span class="tope-nota">('+nota+' · tope absoluto '+fmt(TOPE_MAXIMO_INCIDENTE)+')</span>';
+}
+actualizarPreviewMonto();
+
+// Firebase
+window.onFBReady(async function(){
+  fbReady=true;
+  $('fbStatus').textContent='✅ Conectado';
+  $('fbStatus').className='fb-status fb-ok';
+  const data=await window.FB.get('estado','incidentesDB');
+  if(data&&data.data){incidentesDB=JSON.parse(data.data);}
+  renderIncidentes();
+  window.FB.listen('estado','incidentesDB',function(data){
+    if(data&&data.data){incidentesDB=JSON.parse(data.data);renderIncidentes();}
+  });
+});
+setTimeout(function(){
+  if(!fbReady){$('fbStatus').textContent='❌ Sin conexión';$('fbStatus').className='fb-status fb-err';}
+},6000);
+
+function guardar(){
+  if(!fbReady)return;
+  window.FB.set('estado','incidentesDB',{data:JSON.stringify(incidentesDB)});
+}
+
+// ── REGISTRAR ─────────────────────────────────────────────
+function agregarIncidenteReal(){
+  var unidad=parseInt($('iUnidad').value||0);
+  if(!unidad){alert('Selecciona la unidad/operador.');return;}
+  var op=OPERADORES.find(function(o){return o.unidad===unidad;});
+  var fechaEvento=$('iFechaEvento').value;
+  if(!fechaEvento){alert('Captura la fecha y hora del evento.');return;}
+  var causa=$('iCausa').value;
+  var montoReportado=parseFloat($('iMonto').value||0);
+  if(!montoReportado){alert('Ingresa el monto que pidieron.');return;}
+  var negocio=$('iNegocio').checked;
+  var descripcion=$('iDesc').value||'';
+  var liqRef=$('iLiqRef').value||'';
+
+  var montoReconocido=calcularMontoReconocido(montoReportado,causa,negocio);
+
+  var ahora=new Date();
+  var fEvento=new Date(fechaEvento);
+  var horas=(ahora-fEvento)/3600000;
+  var fueraDeTiempo=isNaN(horas)?false:horas>48;
+
+  if(!incidentesDB[unidad])incidentesDB[unidad]=[];
+  incidentesDB[unidad].push({
+    id:uid(), unidad:unidad, operador:op?op.nombre:'',
+    fechaEvento:fechaEvento, fechaCaptura:ahora.toISOString(),
+    liqRef:liqRef, causa:causa, montoReportado:montoReportado,
+    negocio:negocio, montoReconocido:montoReconocido,
+    descripcion:descripcion, fueraDeTiempo:fueraDeTiempo,
+    estado:'pendiente', liqNum:null
+  });
+  guardar();
+  renderIncidentes();
+  $('iMonto').value='';$('iDesc').value='';$('iLiqRef').value='';
+  actualizarPreviewMonto();
+  alert('✅ Incidente registrado.'+(fueraDeTiempo?'\n⚠️ Reportado fuera de tiempo — quedó marcado para revisión manual.':''));
+}
+
+// ── RENDER ───────────────────────────────────────────────
+function renderIncidentes(){
+  var filtOp=parseInt($('filtOp').value||0);
+  var filtCausa=$('filtCausa').value;
+
+  var todos=[];
+  Object.keys(incidentesDB).forEach(function(u){
+    var op=OPERADORES.find(function(o){return o.unidad===parseInt(u);});
+    (incidentesDB[u]||[]).forEach(function(a){
+      if(filtOp&&parseInt(u)!==filtOp)return;
+      if(filtCausa&&a.causa!==filtCausa)return;
+      todos.push(Object.assign({},a,{unidad:parseInt(u),opNombre:op?op.nombre:(a.operador||'?')}));
+    });
+  });
+  todos.sort(function(a,b){return(b.fechaEvento||'').localeCompare(a.fechaEvento||'');});
+
+  var totReportado=todos.reduce(function(s,a){return s+(a.montoReportado||0);},0);
+  var totReconocido=todos.reduce(function(s,a){return s+(a.montoReconocido||0);},0);
+  var nAjena=todos.filter(function(a){return a.causa==='ajena';}).length;
+  var nResp=todos.filter(function(a){return a.causa==='responsabilidad';}).length;
+  var nFuera=todos.filter(function(a){return a.fueraDeTiempo;}).length;
+  $('stTotal').textContent=todos.length;
+  $('stReportado').textContent=fmt(totReportado);
+  $('stReconocido').textContent=fmt(totReconocido);
+  $('stAjena').textContent=todos.length?Math.round(nAjena/todos.length*100)+'%':'0%';
+  $('stResp').textContent=todos.length?Math.round(nResp/todos.length*100)+'%':'0%';
+  $('stFuera').textContent=nFuera;
+  $('cardStats').style.display=todos.length?'block':'none';
+
+  var porOp={};
+  todos.forEach(function(a){
+    if(!porOp[a.unidad])porOp[a.unidad]={nombre:a.opNombre,unidad:a.unidad,items:[]};
+    porOp[a.unidad].items.push(a);
+  });
+
+  var cont=$('bloqueIncidentes');
+  if(!todos.length){cont.innerHTML='<div style="text-align:center;padding:30px;color:#aaa">Sin incidentes que coincidan con los filtros.</div>';return;}
+
+  cont.innerHTML='';
+  Object.values(porOp).sort(function(a,b){return a.unidad-b.unidad;}).forEach(function(grp){
+    var totRep=grp.items.reduce(function(s,a){return s+(a.montoReportado||0);},0);
+    var totRec=grp.items.reduce(function(s,a){return s+(a.montoReconocido||0);},0);
+    var div=document.createElement('div');div.className='op-block';
+    var rows=grp.items.map(function(a){
+      return '<tr>'
+        +'<td style="font-size:11px">'+(a.fechaEvento||'').replace('T',' ')+'</td>'
+        +'<td><span class="badge '+(a.causa==='ajena'?'bg-green':'bg-yellow')+'">'+(a.causa==='ajena'?'Ajena':'Responsab. unidad')+'</span></td>'
+        +'<td class="num r">'+fmt(a.montoReportado)+'</td>'
+        +'<td class="num r"><strong>'+fmt(a.montoReconocido)+'</strong></td>'
+        +'<td style="text-align:center">'+(a.negocio?'Sí':'No')+'</td>'
+        +'<td style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+(a.descripcion||'')+'">'+(a.descripcion||'')+'</td>'
+        +'<td style="font-size:11px">'+(a.liqRef||'—')+'</td>'
+        +'<td>'+(a.fueraDeTiempo?'<span class="badge bg-red" style="color:#c1121f">⚠ Fuera de tiempo</span>':'')+'</td>'
+        +'<td><span class="badge '+(a.estado==='pendiente'?'bg-yellow':'bg-green')+'">'+(a.estado==='pendiente'?'PENDIENTE':'APLICADO'+(a.liqNum?' #'+a.liqNum:''))+'</span></td>'
+        +'<td>'+(a.estado==='pendiente'?'<button class="btn-sm" style="background:#fde8e8;color:#9b1c1c;border:none;cursor:pointer;border-radius:4px;padding:3px 8px" onclick="eliminarIncidente('+a.unidad+',\''+a.id+'\')">✕</button>':'—')+'</td>'
+        +'</tr>';
+    }).join('');
+    div.innerHTML='<div class="op-bar"><span>Unidad '+grp.unidad+' · '+grp.nombre+'</span><span class="tot">Reportado '+fmt(totRep)+' · Reconocido '+fmt(totRec)+'</span></div>'
+      +'<div class="tbl-wrap"><table>'
+      +'<thead><tr><th>Fecha evento</th><th>Causa</th><th class="r">Reportado</th><th class="r">Reconocido</th><th>¿Negoció?</th><th>Descripción</th><th>Viaje/Liq.</th><th></th><th>Estado</th><th></th></tr></thead>'
+      +'<tbody>'+rows+'</tbody></table></div>';
+    cont.appendChild(div);
+  });
+}
+
+function eliminarIncidente(unidad,id){
+  lockRequest('Eliminar incidente', function(){
+    if(incidentesDB[unidad])incidentesDB[unidad]=incidentesDB[unidad].filter(function(a){return a.id!==id;});
+    guardar();renderIncidentes();
+  });
+}
+
+function limpiarFiltros(){
+  $('filtOp').value='';$('filtCausa').value='';
+  renderIncidentes();
+}
+
+function exportarCSV(){
+  var csv='Unidad,Operador,Fecha evento,Causa,Monto reportado,Monto reconocido,Negoció,Fuera de tiempo,Descripción,Viaje/Liq,Estado,Liquidación\n';
+  Object.keys(incidentesDB).forEach(function(u){
+    var op=OPERADORES.find(function(o){return o.unidad===parseInt(u);});
+    (incidentesDB[u]||[]).forEach(function(a){
+      csv+=u+',"'+(op?op.nombre:'')+'","'+(a.fechaEvento||'')+'",'+a.causa+','+a.montoReportado+','+a.montoReconocido+','+(a.negocio?'SI':'NO')+','+(a.fueraDeTiempo?'SI':'NO')+',"'+(a.descripcion||'').replace(/"/g,'""')+'","'+(a.liqRef||'')+'",'+a.estado+','+(a.liqNum||'')+'\n';
+    });
+  });
+  dlBlob(csv,'Incidentes_TML_'+hoy()+'.csv','text/csv');
+}
+
+// ── CANDADO INC2026 ──────────────────────────────────────
+var _lockCallback=null;
+var LOCK_PASS_INC='INC2026';
+
+function lockRequest(desc,callback){
+  _lockCallback=callback;
+  $('lockDesc').textContent=desc;
+  $('lockPass').value='';
+  $('lockErr').style.display='none';
+  $('lockModal').style.display='flex';
+  setTimeout(function(){$('lockPass').focus();},100);
+}
+function lockConfirm(){
+  if($('lockPass').value===LOCK_PASS_INC){
+    $('lockModal').style.display='none';
+    if(_lockCallback)_lockCallback();
+    _lockCallback=null;
+  } else {
+    $('lockErr').style.display='block';
+    $('lockPass').value='';
+    $('lockPass').focus();
+  }
+}
+function lockCancel(){
+  $('lockModal').style.display='none';
+  _lockCallback=null;
+}
+
+function agregarIncidente(){
+  lockRequest('Registrar incidente de vialidad', function(){ agregarIncidenteReal(); });
+}
+</script>
+
+<!-- MODAL CANDADO INCIDENTES -->
+<div class="lock-overlay" id="lockModal" style="display:none">
+  <div class="lock-box">
+    <h3>🔒 Autorización requerida</h3>
+    <p id="lockDesc">Ingresa la contraseña para continuar</p>
+    <input type="password" id="lockPass" placeholder="••••••••"
+      onkeydown="if(event.key==='Enter')lockConfirm()">
+    <div class="lock-row">
+      <button class="lock-ok" onclick="lockConfirm()">Confirmar</button>
+      <button class="lock-cancel" onclick="lockCancel()">Cancelar</button>
+    </div>
+    <div class="lock-err" id="lockErr">Contraseña incorrecta</div>
+  </div>
+</div>
+</body>
+</html>
