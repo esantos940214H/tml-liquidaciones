@@ -47,7 +47,6 @@ iframe.visible{display:block}
     <a href="?m=ing" id="navIng">📄 Ingresos</a>
     <a href="?m=liq" id="navLiq">🚛 Liquidaciones</a>
     <a href="?m=inc" id="navInc">🚨 Incidentes</a>
-    <a href="?m=cas" id="navCas">🚧 Casetas</a>
     <a href="?m=hist" id="navHist">🗂️ Historial</a>
   </nav>
 </header>
@@ -58,14 +57,13 @@ iframe.visible{display:block}
   <iframe id="fr-ing" src="ing.html" title="Ingresos"></iframe>
   <iframe id="fr-liq" src="liq.html" title="Liquidaciones"></iframe>
   <iframe id="fr-inc" src="incidentes.html" title="Incidentes"></iframe>
-  <iframe id="fr-cas" src="casetas.html" title="Casetas"></iframe>
   <iframe id="fr-hist" src="hist.html" title="Historial"></iframe>
 </div>
 
 <script>
-var NOMBRES = {ant:'· Anticipos', ing:'· Ingresos', liq:'· Liquidaciones', inc:'· Incidentes', cas:'· Casetas', hist:'· Historial'};
+var NOMBRES = {ant:'· Anticipos', ing:'· Ingresos', liq:'· Liquidaciones', inc:'· Incidentes', hist:'· Historial'};
 var modActual = (new URLSearchParams(window.location.search).get('m')) || 'liq';
-var mods = ['ant','ing','liq','inc','cas','hist'];
+var mods = ['ant','ing','liq','inc','hist'];
 if (!NOMBRES[modActual]) modActual = 'liq';
 
 // Mostrar directamente — el candado está en las acciones de cada módulo
