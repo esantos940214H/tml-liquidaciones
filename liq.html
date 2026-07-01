@@ -411,7 +411,7 @@ tr:hover td{background:#fafafa}
     </div>
     <div class="card" id="cardIncidentesLiq" style="display:none">
       <div class="card-title">🚨 Incidentes de vialidad pendientes de esta unidad</div>
-      <div class="alert alert-info" style="margin-bottom:10px">Se registran en el módulo <strong>Incidentes</strong> en el momento que ocurren — no se asocian manualmente aquí. Los "pendiente" de esta unidad se incluyen automáticamente al cerrar la liquidación, con un <strong>tope de $1,500 en total por liquidación</strong>: si juntos superan ese monto, el excedente pasa a la siguiente liquidación.</div>
+      <div class="alert alert-info" style="margin-bottom:10px">Se registran en el módulo <strong>Incidentes</strong> en el momento que ocurren — no se asocian manualmente aquí. Los "pendiente" de esta unidad se incluyen automáticamente al cerrar la liquidación, con un <strong>tope de $1,500 en total por liquidación</strong>: si juntos superan ese monto, el excedente se descarta y no se paga (no se traslada a otra liquidación).</div>
       <div class="tbl-wrap"><table>
         <thead><tr><th>Fecha evento</th><th>Causa</th><th class="r">Reconocido</th><th>Se aplica en esta liquidación</th></tr></thead>
         <tbody id="tbIncidentesLiq"></tbody><tfoot id="tfIncidentesLiq"></tfoot>
@@ -2035,7 +2035,7 @@ function renderIncidentesLiq(){
     return '<tr><td style="font-size:11px">'+(a.fechaEvento||'').replace('T',' ')+'</td>'
       +'<td><span class="badge '+(a.causa==='ajena'?'bg-green':'bg-yellow')+'">'+(a.causa==='ajena'?'Ajena':'Responsab. unidad')+'</span>'+(a.fueraDeTiempo?' <span class="badge bg-red" style="color:#c1121f">⚠ fuera de tiempo</span>':'')+'</td>'
       +'<td class="num r">'+fmt(a.montoReconocido)+'</td>'
-      +'<td style="text-align:center">'+(seAplica?'<span class="badge bg-green">✓ Sí</span>':'<span class="badge bg-yellow">Excede tope — pasa a la siguiente</span>')+'</td></tr>';
+      +'<td style="text-align:center">'+(seAplica?'<span class="badge bg-green">✓ Sí</span>':'<span class="badge bg-red" style="color:#c1121f">✕ Excede tope — se descarta, no se paga</span>')+'</td></tr>';
   }).join('');
   $('tfIncidentesLiq').innerHTML='<tr style="background:#f5f5f8;font-weight:700"><td colspan="2">TOTAL A APLICAR (tope '+fmt(TOPE_INCIDENTES_POR_LIQUIDACION)+')</td><td class="num r">'+fmt(res.totAplicado)+'</td><td></td></tr>';
 }
@@ -2630,18 +2630,26 @@ function cerrarLiquidacion(){
   });
 
   // Marcar como "aplicado" solo los incidentes que entraron dentro del tope de
-  // $1,500 por liquidación — el excedente se queda "pendiente" para la siguiente.
+  // $1,500 por liquidación. El excedente NO se traslada a otra liquidación:
+  // se marca "descartado" (no se paga), conservando el registro para auditoría.
   var _incTopeCierre=incidentesConTope();
   var _idsIncAplicar={};
   _incTopeCierre.aplicar.forEach(function(a){_idsIncAplicar[a.id]=true;});
-  var nIMarcados=0;
+  var _idsIncExcedente={};
+  _incTopeCierre.excedente.forEach(function(a){_idsIncExcedente[a.id]=true;});
+  var nIMarcados=0,nIDescartados=0;
   Object.keys(incidentesDB).forEach(function(key){
     if(parseInt(key)===parseInt(liqCopia.unidad)){
       (incidentesDB[key]||[]).forEach(function(a){
-        if(a.estado==='pendiente'&&_idsIncAplicar[a.id]){
+        if(a.estado!=='pendiente')return;
+        if(_idsIncAplicar[a.id]){
           a.estado='aplicado';
           a.liqNum=liqCopia.num;
           nIMarcados++;
+        } else if(_idsIncExcedente[a.id]){
+          a.estado='descartado';
+          a.liqNum=liqCopia.num;
+          nIDescartados++;
         }
       });
     }
@@ -2722,7 +2730,7 @@ function cerrarLiquidacion(){
     });
   }
 
-  alert('✅ Liquidación #'+liqCopia.num+' cerrada.\n'+nAMarcados+' anticipos, '+nVMarcados+' viajes'+(nIMarcados?', '+nIMarcados+' incidente(s) de vialidad':'')+(nCMarcados?' y '+nCMarcados+' caseta(s) sin comprobante':'')+' incluidos.');
+  alert('✅ Liquidación #'+liqCopia.num+' cerrada.\n'+nAMarcados+' anticipos, '+nVMarcados+' viajes'+(nIMarcados?', '+nIMarcados+' incidente(s) de vialidad':'')+(nCMarcados?' y '+nCMarcados+' caseta(s) sin comprobante':'')+' incluidos.'+(nIDescartados?'\n⚠️ '+nIDescartados+' incidente(s) excedieron el tope de $1,500 de esta liquidación y se descartaron (no se pagan).':''));
 
   liq=null;
   cargasOp=[];
