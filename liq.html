@@ -135,7 +135,6 @@ tr:hover td{background:#fafafa}
       <a href="ing.html" style="color:#aaa;text-decoration:none;font-size:11px;padding:5px 10px;border-radius:5px;border:1px solid #333">📄 Ingresos</a>
       <a href="liq.html" style="color:#fff;text-decoration:none;font-size:11px;padding:5px 10px;border-radius:5px;background:#e63946;border:1px solid #e63946">🚛 Liquidaciones</a>
       <a href="incidentes.html" style="color:#aaa;text-decoration:none;font-size:11px;padding:5px 10px;border-radius:5px;border:1px solid #333">🚨 Incidentes</a>
-      <a href="casetas.html" style="color:#aaa;text-decoration:none;font-size:11px;padding:5px 10px;border-radius:5px;border:1px solid #333">🚧 Casetas</a>
       <a href="hist.html" style="color:#aaa;text-decoration:none;font-size:11px;padding:5px 10px;border-radius:5px;border:1px solid #333">🗂️ Historial</a>
     </nav>
   </div>
@@ -313,6 +312,53 @@ tr:hover td{background:#fafafa}
         </div>
       </div>
     </div>
+    <div class="card">
+      <div class="card-title">🚧 Caseta sin comprobante (con evidencia)</div>
+      <div class="alert alert-info" style="margin-bottom:10px">Costo operativo real, sin tope. Requiere foto del ticket (o justificación si no hay) y contraseña de autorización.</div>
+      <div class="row" style="gap:8px;flex-wrap:wrap;align-items:flex-end;margin-bottom:12px">
+        <div class="field" style="min-width:130px"><label>Fecha</label><input type="date" id="cnfFecha"></div>
+        <div class="field" style="flex:2;min-width:160px"><label>Caseta / ubicación</label><input type="text" id="cnfCaseta" placeholder="Ej. Tequisquiapan-Querétaro"></div>
+        <div class="field" style="min-width:110px"><label>Monto</label><input type="number" id="cnfMonto" placeholder="0.00" step="0.01" min="0"></div>
+        <div class="field" style="min-width:120px"><label>¿Quién paga?</label>
+          <select id="cnfPagaOp"><option value="si">Operador</option><option value="no">Empresa</option></select>
+        </div>
+        <div class="field" style="min-width:200px"><label>Motivo por el que no se facturó</label>
+          <select id="cnfMotivo" onchange="toggleCNFMotivoOtro()">
+            <option value="no_facturable">Emisor ya no permite facturar (mes anterior)</option>
+            <option value="efectivo">Pago en efectivo sin comprobante</option>
+            <option value="otro">Otro</option>
+          </select>
+        </div>
+      </div>
+      <div class="field" id="fieldCNFMotivoOtro" style="display:none;margin-bottom:12px"><label>Especifica el motivo</label><input type="text" id="cnfMotivoOtro"></div>
+      <div class="row" style="gap:14px;flex-wrap:wrap;align-items:flex-start;margin-bottom:12px">
+        <div class="field" style="min-width:200px">
+          <label>📷 Foto del ticket</label>
+          <div class="upload-zone" id="dzCNFEvid" onclick="document.getElementById('fCNFEvid').click()" style="padding:12px">
+            <div class="icon" style="font-size:20px">📷</div>
+            <p style="font-size:12px"><strong>Sube o toma foto</strong></p>
+            <img id="cnfPreviewImg" style="display:none;max-height:80px;border-radius:6px;margin-top:6px">
+          </div>
+          <input type="file" id="fCNFEvid" accept="image/*" capture="environment" style="display:none" onchange="previewCNFEvidencia()">
+        </div>
+        <div class="field" style="min-width:220px">
+          <div class="row" style="align-items:center;gap:8px">
+            <input type="checkbox" id="cnfSinFoto" style="width:auto" onchange="toggleCNFSinFoto()">
+            <label style="text-transform:none;font-weight:600;color:#1a1a2e;font-size:12px">Sin foto disponible (caso extremo)</label>
+          </div>
+          <div id="fieldCNFJustificacion" style="display:none;margin-top:8px">
+            <label>Justificación (obligatoria)</label>
+            <textarea id="cnfJustificacion" rows="2" style="width:100%;border:1.5px solid #dde;border-radius:6px;padding:8px 10px;font-size:13px;font-family:inherit"></textarea>
+          </div>
+        </div>
+      </div>
+      <button class="btn btn-red" id="btnAgregarCNF" onclick="agregarCasetaSinComprobante()">🔒 Registrar caseta sin comprobante</button>
+      <div id="cnfUploadStatus" style="margin-top:10px"></div>
+      <div class="tbl-wrap" style="margin-top:14px"><table>
+        <thead><tr><th>Fecha</th><th>Caseta</th><th class="r">Monto</th><th>Motivo</th><th>¿Op. paga?</th><th>Evidencia</th><th></th></tr></thead>
+        <tbody id="tbCasetasNF"></tbody><tfoot id="tfCasetasNF"></tfoot>
+      </table></div>
+    </div>
     <div class="card" id="cardAutopistas" style="display:none">
       <div class="card-title" style="cursor:pointer;user-select:none" onclick="toggleIAVE()">
         🛣️ Cruces — <span id="iaveOpNombre"></span>
@@ -365,18 +411,10 @@ tr:hover td{background:#fafafa}
     </div>
     <div class="card" id="cardIncidentesLiq" style="display:none">
       <div class="card-title">🚨 Incidentes de vialidad pendientes de esta unidad</div>
-      <div class="alert alert-info" style="margin-bottom:10px">Se registran en el módulo <strong>Incidentes</strong>. Los que están "pendiente" para esta unidad se incluyen automáticamente como gasto de esta liquidación al cerrarla — no se editan aquí.</div>
+      <div class="alert alert-info" style="margin-bottom:10px">Se registran en el módulo <strong>Incidentes</strong> en el momento que ocurren — no se asocian manualmente aquí. Los "pendiente" de esta unidad se incluyen automáticamente al cerrar la liquidación, con un <strong>tope de $1,500 en total por liquidación</strong>: si juntos superan ese monto, el excedente pasa a la siguiente liquidación.</div>
       <div class="tbl-wrap"><table>
-        <thead><tr><th>Fecha evento</th><th>Causa</th><th class="r">Reconocido</th><th></th></tr></thead>
+        <thead><tr><th>Fecha evento</th><th>Causa</th><th class="r">Reconocido</th><th>Se aplica en esta liquidación</th></tr></thead>
         <tbody id="tbIncidentesLiq"></tbody><tfoot id="tfIncidentesLiq"></tfoot>
-      </table></div>
-    </div>
-    <div class="card" id="cardCasetasNFLiq" style="display:none">
-      <div class="card-title">🚧 Casetas sin comprobante pendientes de esta unidad</div>
-      <div class="alert alert-info" style="margin-bottom:10px">Se registran en el módulo <strong>Casetas</strong>. Las que están "pendiente" para esta unidad se incluyen automáticamente como gasto de esta liquidación al cerrarla — no se editan aquí.</div>
-      <div class="tbl-wrap"><table>
-        <thead><tr><th>Fecha</th><th>Caseta</th><th class="r">Monto</th><th>Evidencia</th></tr></thead>
-        <tbody id="tbCasetasNFLiq"></tbody><tfoot id="tfCasetasNFLiq"></tfoot>
       </table></div>
     </div>
   </div>
@@ -496,9 +534,24 @@ tr:hover td{background:#fafafa}
   </div>
 </div>
 
+<!-- MODAL CANDADO CASETA SIN COMPROBANTE (CAS2026) -->
+<div class="modal-overlay" id="modalCasetaAuth">
+  <div class="modal">
+    <h3>🔒 Autorización — Caseta sin comprobante</h3>
+    <p style="font-size:13px;color:#666;margin-bottom:16px">Ingresa la contraseña del módulo de Casetas para registrar este gasto.</p>
+    <div class="field"><label>Contraseña</label><input type="password" id="casAuthPass" placeholder="••••••••" onkeydown="if(event.key==='Enter')verificarCasAuth()"></div>
+    <div id="casAuthError" style="display:none;margin-top:8px" class="alert alert-err">Contraseña incorrecta.</div>
+    <div class="modal-actions">
+      <button class="btn btn-out btn-sm" onclick="cerrarModalCaseta()">Cancelar</button>
+      <button class="btn btn-red" onclick="verificarCasAuth()">Confirmar</button>
+    </div>
+  </div>
+</div>
+
 <!-- Firebase compat -->
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-storage-compat.js"></script>
 <script>
 window._fbInit=false;
 window._fbCallbacks=[];
@@ -510,10 +563,16 @@ window.onFBReady=function(cb){if(window._fbInit)cb();else window._fbCallbacks.pu
       messagingSenderId:"268455373953",appId:"1:268455373953:web:ad359c5dbcba9f53557180"};
     if(!firebase.apps.length)firebase.initializeApp(cfg);
     var db=firebase.firestore();
+    var storage=firebase.storage();
     window.FB={
       set:function(col,id,data){return db.collection(col).doc(id).set(data);},
       get:async function(col,id){try{var s=await db.collection(col).doc(id).get();return s.exists?s.data():null;}catch(e){console.error('FB.get:',e);return null;}},
       del:function(col,id){return db.collection(col).doc(id).delete();},
+      uploadFile:async function(path,file){
+        var ref=storage.ref().child(path);
+        await ref.put(file);
+        return await ref.getDownloadURL();
+      },
       listen:function(col,id,cb){return db.collection(col).doc(id).onSnapshot(function(s){cb(s.exists?s.data():null);});},
       getAll:async function(col){
         try{var s=await db.collection(col).get();var r=[];s.forEach(function(d){r.push(Object.assign({id:d.id},d.data()));});return r.sort(function(a,b){return(b.num||0)-(a.num||0);});}
@@ -592,8 +651,7 @@ let opExcluidos=new Set();
 let csvRows=[];
 let anticiposDB={};   // {unidad:[{...anticipo,estado,liqNum}]}
 let ingresosDB=[];    // [{id,unidad,folio,fecha,cliente,tipo,subtotal,iva,ret,total,estado,liqNum,origen}]
-let incidentesDB={};  // {unidad:[{...incidente,montoReconocido,estado,liqNum}]} — módulo incidentes.html
-let casetasNoFactDB={}; // {unidad:[{...caseta,monto,estado,liqNum}]} — módulo casetas.html
+let incidentesDB={};  // {unidad:[{...incidente,montoReconocido,estado,liqNum}]} — módulo incidentes.html (independiente)
 let liq=null;
 let arrastres={};
 let cargasEdenred=[];
@@ -689,24 +747,14 @@ async function cargarEstado(){
         if(idxTab===4) generarReporte();
       }
     });
-    // incidentesDB y casetasNoFactDB: SOLO lectura desde liq.html — los módulos
-    // incidentes.html/casetas.html son dueños de la captura. liq.html solo lee los
-    // pendientes de la unidad activa y, al cerrar la liquidación, marca los aplicados.
+    // incidentesDB: SOLO lectura desde liq.html — incidentes.html es dueño de la captura.
+    // liq.html solo lee los "pendiente" de la unidad activa y, al cerrar la liquidación,
+    // marca como aplicados los que entraron dentro del tope de $1,500 por liquidación.
     window.FB.listen('estado','incidentesDB', function(data){
       if(data&&data.data){
         var _li=JSON.parse(data.data);
         incidentesDB=Array.isArray(_li)?{}:_li;
-        renderIncidentesCasetasLiq();
-        var tabActivo=document.querySelector('.tab.active');
-        var tabs=document.querySelectorAll('.tab');
-        if(Array.from(tabs).indexOf(tabActivo)===4) generarReporte();
-      }
-    });
-    window.FB.listen('estado','casetasNoFactDB', function(data){
-      if(data&&data.data){
-        var _lc=JSON.parse(data.data);
-        casetasNoFactDB=Array.isArray(_lc)?{}:_lc;
-        renderIncidentesCasetasLiq();
+        renderIncidentesLiq();
         var tabActivo=document.querySelector('.tab.active');
         var tabs=document.querySelectorAll('.tab');
         if(Array.from(tabs).indexOf(tabActivo)===4) generarReporte();
@@ -767,7 +815,9 @@ function restaurarUILiquidacion(){
   var _opRest=OPERADORES.find(function(o){return o.unidad===parseInt(liq.unidad||0);});
   if($('liqClave'))$('liqClave').value=_opRest?_opRest.clave:'';
   if(liq.gastosXML||liq.gastos) renderGastos();
-  renderIncidentesCasetasLiq();
+  renderIncidentesLiq();
+  if(!liq.casetasNF)liq.casetasNF=[];
+  renderCasetasNF();
   if(liq.autopistas&&liq.autopistas.length) renderIAVE();
   if(!liq.dieselXML)liq.dieselXML=[];
   renderDieselXML();
@@ -1332,7 +1382,7 @@ function iniciarLiquidacion(){
     kms:parseFloat($('liqKms').value||0),litrosECM:parseFloat($('liqLitrosECM').value||0),
     rendimiento:parseFloat($('liqRend').value||4),dieselIniTanque:parseFloat($('liqDieselIni').value||0),
     costoDiesel:parseFloat($('liqCostoDiesel').value||27),comision:parseFloat($('liqComision').value||12),
-    diesel:null,autopistas:[],gastos:[],gastosXML:[],dieselXML:[],viajeVacio:{origen:'',destino:'',kms:''}};
+    diesel:null,autopistas:[],gastos:[],gastosXML:[],dieselXML:[],casetasNF:[],viajeVacio:{origen:'',destino:'',kms:''}};
   $('liqInfo').style.display='block';
   $('liqInfo').innerHTML='<div class="alert alert-ok">✅ Liquidación <strong>#'+num+'</strong> — <strong>'+op.nombre+'</strong> · Unidad '+op.unidad+' · '+liq.salida+' al '+liq.llegada+(liq.kms?' · '+liq.kms.toLocaleString('es-MX')+' km':'')+(liq.rendimiento?' · '+liq.rendimiento+' km/L':'')+'</div>';
   ['1','2','3','4'].forEach(function(i){$('liqReqMsg'+i).style.display='none';$('panel'+i+'Content').style.display='block';});
@@ -1347,7 +1397,8 @@ function iniciarLiquidacion(){
   }
   mostrarPreviewLiq(unidad);
   renderGastos();
-  renderIncidentesCasetasLiq();
+  renderIncidentesLiq();
+  renderCasetasNF();
   guardarEstado();
 }
 
@@ -1939,49 +1990,194 @@ function verificarAuth(){
 function cerrarModal(){$('modalAuth').classList.remove('open');gastoPendiente=null;}
 
 // ══════════════════════════════════════════════
-// INCIDENTES DE VIALIDAD Y CASETAS SIN COMPROBANTE
-// (capturados en incidentes.html / casetas.html — liq.html solo lee los
-// "pendiente" de la unidad activa y los aplica al cerrar la liquidación)
+// INCIDENTES DE VIALIDAD
+// (se capturan en incidentes.html en el momento del evento — nunca se
+// asocian manualmente aquí. liq.html solo lee los "pendiente" de la
+// unidad activa y los aplica al cerrar la liquidación, con un tope
+// de $1,500 EN TOTAL por liquidación — no por incidente individual)
 // ══════════════════════════════════════════════
+const TOPE_INCIDENTES_POR_LIQUIDACION=1500;
+
 function incidentesPendientesLiq(){
   if(!liq)return[];
   return(incidentesDB[liq.unidad]||incidentesDB[String(liq.unidad)]||[]).filter(function(a){return a.estado==='pendiente';});
 }
-function casetasNFPendientesLiq(){
-  if(!liq)return[];
-  return(casetasNoFactDB[liq.unidad]||casetasNoFactDB[String(liq.unidad)]||[]).filter(function(a){return a.estado==='pendiente';});
+// Reparte el tope de $1,500 por liquidación entre los incidentes pendientes
+// (en el orden en que se capturaron). Lo que no cabe en el tope se queda
+// pendiente para la siguiente liquidación de esa unidad.
+function incidentesConTope(){
+  var pend=incidentesPendientesLiq();
+  var acumulado=0,aplicar=[],excedente=[];
+  pend.forEach(function(a){
+    var monto=a.montoReconocido||0;
+    if(acumulado+monto<=TOPE_INCIDENTES_POR_LIQUIDACION+1e-9){
+      aplicar.push(a);
+      acumulado+=monto;
+    } else {
+      excedente.push(a);
+    }
+  });
+  return{aplicar:aplicar,excedente:excedente,totAplicado:acumulado};
 }
 
-function renderIncidentesCasetasLiq(){
+function renderIncidentesLiq(){
   if(!liq){
     if($('cardIncidentesLiq'))$('cardIncidentesLiq').style.display='none';
-    if($('cardCasetasNFLiq'))$('cardCasetasNFLiq').style.display='none';
     return;
   }
-  var incs=incidentesPendientesLiq();
+  var res=incidentesConTope();
   var cardI=$('cardIncidentesLiq');
-  if(cardI){
-    cardI.style.display=incs.length?'block':'none';
-    var totI=incs.reduce(function(s,a){return s+(a.montoReconocido||0);},0);
-    $('tbIncidentesLiq').innerHTML=incs.map(function(a){
-      return '<tr><td style="font-size:11px">'+(a.fechaEvento||'').replace('T',' ')+'</td>'
-        +'<td><span class="badge '+(a.causa==='ajena'?'bg-green':'bg-yellow')+'">'+(a.causa==='ajena'?'Ajena':'Responsab. unidad')+'</span>'+(a.fueraDeTiempo?' <span class="badge bg-red" style="color:#c1121f">⚠ fuera de tiempo</span>':'')+'</td>'
-        +'<td class="num r">'+fmt(a.montoReconocido)+'</td><td></td></tr>';
-    }).join('');
-    $('tfIncidentesLiq').innerHTML='<tr style="background:#f5f5f8;font-weight:700"><td colspan="2">TOTAL A APLICAR</td><td class="num r">'+fmt(totI)+'</td><td></td></tr>';
+  if(!cardI)return;
+  var todos=res.aplicar.concat(res.excedente);
+  cardI.style.display=todos.length?'block':'none';
+  $('tbIncidentesLiq').innerHTML=todos.map(function(a){
+    var seAplica=res.aplicar.indexOf(a)!==-1;
+    return '<tr><td style="font-size:11px">'+(a.fechaEvento||'').replace('T',' ')+'</td>'
+      +'<td><span class="badge '+(a.causa==='ajena'?'bg-green':'bg-yellow')+'">'+(a.causa==='ajena'?'Ajena':'Responsab. unidad')+'</span>'+(a.fueraDeTiempo?' <span class="badge bg-red" style="color:#c1121f">⚠ fuera de tiempo</span>':'')+'</td>'
+      +'<td class="num r">'+fmt(a.montoReconocido)+'</td>'
+      +'<td style="text-align:center">'+(seAplica?'<span class="badge bg-green">✓ Sí</span>':'<span class="badge bg-yellow">Excede tope — pasa a la siguiente</span>')+'</td></tr>';
+  }).join('');
+  $('tfIncidentesLiq').innerHTML='<tr style="background:#f5f5f8;font-weight:700"><td colspan="2">TOTAL A APLICAR (tope '+fmt(TOPE_INCIDENTES_POR_LIQUIDACION)+')</td><td class="num r">'+fmt(res.totAplicado)+'</td><td></td></tr>';
+}
+
+// ══════════════════════════════════════════════
+// CASETAS SIN COMPROBANTE
+// (se capturan aquí mismo, dentro de la liquidación activa — viven en
+// liq.casetasNF, igual que liq.autopistas. No hay colección global de
+// pendientes entre liquidaciones: cada caseta pertenece a la liquidación
+// en la que se registró)
+// ══════════════════════════════════════════════
+function toggleCNFMotivoOtro(){
+  $('fieldCNFMotivoOtro').style.display=$('cnfMotivo').value==='otro'?'block':'none';
+}
+function toggleCNFSinFoto(){
+  var sinFoto=$('cnfSinFoto').checked;
+  $('fieldCNFJustificacion').style.display=sinFoto?'block':'none';
+  $('dzCNFEvid').style.opacity=sinFoto?'.4':'1';
+  $('dzCNFEvid').style.pointerEvents=sinFoto?'none':'auto';
+  if(sinFoto){$('fCNFEvid').value='';$('cnfPreviewImg').style.display='none';}
+}
+function previewCNFEvidencia(){
+  var f=$('fCNFEvid').files[0];
+  if(!f)return;
+  var img=$('cnfPreviewImg');
+  img.src=URL.createObjectURL(f);
+  img.style.display='block';
+}
+
+function motivoLabelCNF(m,otro){
+  if(m==='no_facturable')return 'Emisor no permite facturar (mes anterior)';
+  if(m==='efectivo')return 'Pago en efectivo sin comprobante';
+  return 'Otro'+(otro?': '+otro:'');
+}
+
+function agregarCasetaSinComprobante(){
+  if(!liq)return;
+  var fecha=$('cnfFecha').value||hoy();
+  var caseta=$('cnfCaseta').value||'';
+  if(!caseta.trim()){alert('Indica la caseta/ubicación.');return;}
+  var monto=parseFloat($('cnfMonto').value||0);
+  if(!monto){alert('Ingresa el monto pagado.');return;}
+  var pagaOp=$('cnfPagaOp').value==='si';
+  var motivo=$('cnfMotivo').value;
+  var motivoOtro=$('cnfMotivoOtro').value||'';
+  if(motivo==='otro'&&!motivoOtro.trim()){alert('Especifica el motivo.');return;}
+  var sinFoto=$('cnfSinFoto').checked;
+  var justificacion=$('cnfJustificacion').value||'';
+  var file=$('fCNFEvid').files[0];
+  if(!sinFoto&&!file){alert('Adjunta la foto del ticket, o marca "Sin foto disponible" con justificación.');return;}
+  if(sinFoto&&!justificacion.trim()){alert('Si no hay foto, debes justificar por qué.');return;}
+
+  lockRequestCaseta('Registrar caseta sin comprobante', function(){
+    guardarCasetaSinComprobanteReal(fecha,caseta,monto,pagaOp,motivo,motivoOtro,sinFoto,justificacion,file);
+  });
+}
+
+async function guardarCasetaSinComprobanteReal(fecha,caseta,monto,pagaOp,motivo,motivoOtro,sinFoto,justificacion,file){
+  var id=uid();
+  var evidenciaURL=null;
+  var btn=$('btnAgregarCNF');
+  if(!sinFoto&&file){
+    btn.disabled=true;
+    $('cnfUploadStatus').innerHTML='<div class="alert alert-info">⏳ Subiendo foto del ticket...</div>';
+    try{
+      var path='casetas/'+liq.unidad+'/'+id+'-'+file.name.replace(/[^a-zA-Z0-9._-]/g,'_');
+      evidenciaURL=await window.FB.uploadFile(path,file);
+    }catch(e){
+      console.error(e);
+      $('cnfUploadStatus').innerHTML='<div class="alert alert-err">⚠️ Error al subir la foto: '+e.message+'. Verifica que Firebase Storage esté habilitado en el proyecto e intenta de nuevo.</div>';
+      btn.disabled=false;
+      return;
+    }
   }
-  var cas=casetasNFPendientesLiq();
-  var cardC=$('cardCasetasNFLiq');
-  if(cardC){
-    cardC.style.display=cas.length?'block':'none';
-    var totC=cas.reduce(function(s,a){return s+(a.monto||0);},0);
-    $('tbCasetasNFLiq').innerHTML=cas.map(function(a){
-      return '<tr><td style="font-size:11px">'+(a.fecha||'')+'</td><td>'+(a.caseta||'')+'</td>'
-        +'<td class="num r">'+fmt(a.monto)+'</td>'
-        +'<td style="text-align:center">'+(a.sinFoto?'<span class="badge bg-red" style="color:#c1121f">⚠ Sin foto</span>':(a.evidenciaURL?'✅':'—'))+'</td></tr>';
-    }).join('');
-    $('tfCasetasNFLiq').innerHTML='<tr style="background:#f5f5f8;font-weight:700"><td colspan="2">TOTAL A APLICAR</td><td class="num r">'+fmt(totC)+'</td><td></td></tr>';
+  if(!liq.casetasNF)liq.casetasNF=[];
+  liq.casetasNF.push({
+    id:id, fecha:fecha, caseta:caseta, monto:monto, pagaOp:pagaOp,
+    motivo:motivo, motivoOtro:motivo==='otro'?motivoOtro:'',
+    evidenciaURL:evidenciaURL, sinFoto:sinFoto, justificacionSinFoto:sinFoto?justificacion:''
+  });
+  renderCasetasNF();
+  guardarEstado();
+  btn.disabled=false;
+  $('cnfUploadStatus').innerHTML='<div class="alert alert-ok">✅ Caseta registrada'+(evidenciaURL?' con evidencia adjunta.':'.')+'</div>';
+  $('cnfCaseta').value='';$('cnfMonto').value='';$('cnfMotivoOtro').value='';
+  $('cnfSinFoto').checked=false;$('cnfJustificacion').value='';
+  $('fCNFEvid').value='';$('cnfPreviewImg').style.display='none';
+  toggleCNFSinFoto();toggleCNFMotivoOtro();
+}
+
+function renderCasetasNF(){
+  if(!liq)return;
+  var lista=liq.casetasNF||[];
+  var tb=$('tbCasetasNF');if(!tb)return;
+  var totOp=0,totEmp=0;
+  tb.innerHTML=lista.map(function(a,i){
+    if(a.pagaOp)totOp+=a.monto;else totEmp+=a.monto;
+    var evid=a.sinFoto
+      ?'<span class="badge bg-red" style="color:#c1121f" title="'+(a.justificacionSinFoto||'').replace(/"/g,'&quot;')+'">⚠ Sin foto</span>'
+      :(a.evidenciaURL?'<a href="'+a.evidenciaURL+'" target="_blank"><img src="'+a.evidenciaURL+'" style="width:36px;height:36px;object-fit:cover;border-radius:5px;border:1px solid #dde"></a>':'—');
+    return '<tr><td style="font-size:11px">'+(a.fecha||'')+'</td><td>'+(a.caseta||'')+'</td>'
+      +'<td class="num r">'+fmt(a.monto)+'</td>'
+      +'<td style="font-size:11px">'+motivoLabelCNF(a.motivo,a.motivoOtro)+'</td>'
+      +'<td>'+(a.pagaOp?'Operador':'Empresa')+'</td>'
+      +'<td style="text-align:center">'+evid+'</td>'
+      +'<td><button class="btn btn-sm" style="background:#fde8e8;color:#9b1c1c;border:none;cursor:pointer" onclick="eliminarCasetaNF('+i+')">✕</button></td></tr>';
+  }).join('');
+  $('tfCasetasNF').innerHTML='<tr style="background:#f5f5f8;font-weight:700"><td colspan="2">TOTALES</td><td class="num r">'+fmt(totOp+totEmp)+'</td>'
+    +'<td colspan="2"><span style="color:#0a5233">Op: '+fmt(totOp)+'</span> · <span style="color:#9b1c1c">Emp: '+fmt(totEmp)+'</span></td><td colspan="2"></td></tr>';
+}
+
+function eliminarCasetaNF(i){
+  if(!liq)return;
+  lockRequestCaseta('Eliminar caseta sin comprobante', function(){
+    liq.casetasNF.splice(i,1);
+    renderCasetasNF();
+    guardarEstado();
+  });
+}
+
+// ── CANDADO CAS2026 (caseta sin comprobante) ─────────────────────────────
+var _lockCasCallback=null;
+var CAS_PASS='CAS2026';
+function lockRequestCaseta(desc,callback){
+  _lockCasCallback=callback;
+  $('casAuthError').style.display='none';
+  $('casAuthPass').value='';
+  $('modalCasetaAuth').classList.add('open');
+  setTimeout(function(){$('casAuthPass').focus();},100);
+}
+function verificarCasAuth(){
+  if($('casAuthPass').value===CAS_PASS){
+    $('modalCasetaAuth').classList.remove('open');
+    if(_lockCasCallback)_lockCasCallback();
+    _lockCasCallback=null;
+  } else {
+    $('casAuthError').style.display='block';
   }
+}
+function cerrarModalCaseta(){
+  $('modalCasetaAuth').classList.remove('open');
+  _lockCasCallback=null;
 }
 
 function renderGastos(){
@@ -2098,12 +2294,17 @@ function generarReporte(){
     gastosPorConcepto[g.concepto]+=g.importe;
   });
 
-  // Incidentes de vialidad y casetas sin comprobante (módulos incidentes.html/casetas.html).
-  // Conceptos de gasto separados, independientes del 2% sin comprobante (totGastos1).
-  const incidentesAplicar=incidentesPendientesLiq();
-  const casetasNFAplicar=casetasNFPendientesLiq();
-  const totIncidentes=incidentesAplicar.reduce(function(s,a){return s+(a.montoReconocido||0);},0);
-  const totCasetasNF=casetasNFAplicar.reduce(function(s,a){return s+(a.monto||0);},0);
+  // Incidentes de vialidad (módulo incidentes.html, independiente) — tope de $1,500
+  // EN TOTAL por liquidación, no por incidente. El excedente queda pendiente.
+  const _incTope=incidentesConTope();
+  const incidentesAplicar=_incTope.aplicar;
+  const totIncidentes=_incTope.totAplicado;
+  // Casetas sin comprobante — se capturan dentro de esta misma liquidación (liq.casetasNF),
+  // igual que autopistas. Conceptos de gasto separados, independientes del 2% (totGastos1).
+  const casetasNFAplicar=liq.casetasNF||[];
+  const totCasetasNFOp=casetasNFAplicar.filter(function(a){return a.pagaOp;}).reduce(function(s,a){return s+a.monto;},0);
+  const totCasetasNFEmp=casetasNFAplicar.filter(function(a){return !a.pagaOp;}).reduce(function(s,a){return s+a.monto;},0);
+  const totCasetasNF=totCasetasNFOp+totCasetasNFEmp;
 
   // Totales empresa
   // dieselTotal = lo que se cargó a empresa (por comprobar × precio promedio)
@@ -2113,7 +2314,7 @@ function generarReporte(){
 
   // Cuenta operador
   const totalCargos=totAnts+dieselNoComprobado;
-  const totalAbonos=totComision+totGastos1+dieselComprobado+totAutOp+totGastosOp+totIncidentes+totCasetasNF;
+  const totalAbonos=totComision+totGastos1+dieselComprobado+totAutOp+totGastosOp+totIncidentes+totCasetasNFOp;
   const saldo=totalAbonos-totalCargos;
 
   function rr(label,val,cls,sub){
@@ -2203,7 +2404,7 @@ function generarReporte(){
   const importeNoComprobadoTot=ltsNoCombprobados*(d.pp||0);
 
   const totalCargosReal=totAnts+totalDieselImporte;
-  const totalAbonosReal=totComision+totGastos1+importeComprobadoTot+totAutOp+totGastosOp+totIncidentes+totCasetasNF;
+  const totalAbonosReal=totComision+totGastos1+importeComprobadoTot+totAutOp+totGastosOp+totIncidentes+totCasetasNFOp;
   const saldoReal=totalAbonosReal-totalCargosReal;
 
   // Detalle informativo de fuentes diesel (solo para desglose)
@@ -2225,7 +2426,7 @@ function generarReporte(){
     +rr('Autopistas pagadas por operador',totAutOp,'abono')
     +rr('Gastos del operador comprobados',totGastosOp,'abono')
     +(totIncidentes?rr('Incidentes de vialidad',totIncidentes,'abono'):'')
-    +(totCasetasNF?rr('Casetas sin comprobante',totCasetasNF,'abono'):'')
+    +(totCasetasNFOp?rr('Casetas sin comprobante (operador)',totCasetasNFOp,'abono'):'')
     +'<div class="rep-row subtotal abono"><span>TOTAL ABONOS</span><span class="num">'+fmt(totalAbonosReal)+'</span></div>';
 
   $('repSaldo').innerHTML='<div class="saldo-box '+(saldoReal>=0?'saldo-fav':'saldo-con')+'">'
@@ -2428,13 +2629,16 @@ function cerrarLiquidacion(){
     }
   });
 
-  // Marcar incidentes de vialidad y casetas sin comprobante aplicados a esta liquidación
-  // (los mismos que se mostraron como "pendiente" de esta unidad en el panel de Gastos)
+  // Marcar como "aplicado" solo los incidentes que entraron dentro del tope de
+  // $1,500 por liquidación — el excedente se queda "pendiente" para la siguiente.
+  var _incTopeCierre=incidentesConTope();
+  var _idsIncAplicar={};
+  _incTopeCierre.aplicar.forEach(function(a){_idsIncAplicar[a.id]=true;});
   var nIMarcados=0;
   Object.keys(incidentesDB).forEach(function(key){
     if(parseInt(key)===parseInt(liqCopia.unidad)){
       (incidentesDB[key]||[]).forEach(function(a){
-        if(a.estado==='pendiente'){
+        if(a.estado==='pendiente'&&_idsIncAplicar[a.id]){
           a.estado='aplicado';
           a.liqNum=liqCopia.num;
           nIMarcados++;
@@ -2442,18 +2646,9 @@ function cerrarLiquidacion(){
       });
     }
   });
-  var nCMarcados=0;
-  Object.keys(casetasNoFactDB).forEach(function(key){
-    if(parseInt(key)===parseInt(liqCopia.unidad)){
-      (casetasNoFactDB[key]||[]).forEach(function(a){
-        if(a.estado==='pendiente'){
-          a.estado='aplicado';
-          a.liqNum=liqCopia.num;
-          nCMarcados++;
-        }
-      });
-    }
-  });
+  // Las casetas sin comprobante viven dentro de liq.casetasNF (se capturaron en esta
+  // misma liquidación) — no hay nada que marcar en una colección externa.
+  var nCMarcados=(liqCopia.casetasNF||[]).length;
 
   // Registrar gastos de este período para evitar duplicados en liquidaciones futuras
   var _unidadNum=parseInt(liqCopia.unidad);
@@ -2507,12 +2702,11 @@ function cerrarLiquidacion(){
     });
   }
 
-  // Guardar a Firebase: anticipos, ingresos, incidentes, casetas y eliminar liqActiva de forma explícita
+  // Guardar a Firebase: anticipos, ingresos, incidentes y eliminar liqActiva de forma explícita
   if(fbReady){
     window.FB.set('estado','anticiposDB',{data: JSON.stringify(anticiposDB)});
     window.FB.set('estado','ingresosDB',{data: JSON.stringify(ingresosDB)});
     window.FB.set('estado','incidentesDB',{data: JSON.stringify(incidentesDB)});
-    window.FB.set('estado','casetasNoFactDB',{data: JSON.stringify(casetasNoFactDB)});
     window.FB.del('estado','liqActiva'); // eliminar ANTES del alert para que persista
   }
 
@@ -2528,11 +2722,11 @@ function cerrarLiquidacion(){
     });
   }
 
-  alert('✅ Liquidación #'+liqCopia.num+' cerrada.\n'+nAMarcados+' anticipos, '+nVMarcados+' viajes'+(nIMarcados?', '+nIMarcados+' incidente(s) de vialidad':'')+(nCMarcados?', '+nCMarcados+' caseta(s) sin comprobante':'')+' marcados como liquidados/aplicados.');
+  alert('✅ Liquidación #'+liqCopia.num+' cerrada.\n'+nAMarcados+' anticipos, '+nVMarcados+' viajes'+(nIMarcados?', '+nIMarcados+' incidente(s) de vialidad':'')+(nCMarcados?' y '+nCMarcados+' caseta(s) sin comprobante':'')+' incluidos.');
 
   liq=null;
   cargasOp=[];
-  renderIncidentesCasetasLiq();
+  renderIncidentesLiq();
   $('headerInfo').textContent='Sin liquidación activa';
   ['1','2','3','4'].forEach(function(i){$('liqReqMsg'+i).style.display='block';$('panel'+i+'Content').style.display='none';});
   // Resetear formulario para siguiente liquidación
