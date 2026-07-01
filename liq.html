@@ -672,47 +672,56 @@ async function consultarEstadoSAT(item){
 // Se ejecuta al abrir la liquidación: valida ingresos (viajes XML) y gastos
 // facturados (XML) de la unidad ante el SAT, y marca/excluye los cancelados.
 // Nunca bloquea la liquidación si el proxy falla — solo avisa que no se pudo verificar.
+async function validarUnaLista(lista,mapRfcEmisor,mapRfcReceptor,mapTotal,contadores){
+  for(var i=0;i<lista.length;i++){
+    var item=lista[i];
+    var r=await consultarEstadoSAT({uuid:item.uuid,rfcEmisor:mapRfcEmisor(item),rfcReceptor:mapRfcReceptor(item),total:mapTotal(item)});
+    item.satEstado=r.estado;item.satCancelado=!!r.cancelado;
+    if(r.error)contadores.nErrores++;else if(r.cancelado)contadores.nCancelados++;
+  }
+}
+
 async function validarCFDIsSATLiquidacion(){
   if(!liq)return;
   var box=$('satValidandoInfo');
   if(!box)return;
   var viajesXML=ingresosDB.filter(function(v){return parseInt(v.unidad)===parseInt(liq.unidad)&&v.estado==='sin_liquidar'&&v.origen==='xml'&&v.uuid;});
   var gastosXMLconUUID=(liq.gastosXML||[]).filter(function(g){return g.uuid;});
-  var total=viajesXML.length+gastosXMLconUUID.length;
+  var dieselXMLconUUID=(liq.dieselXML||[]).filter(function(g){return g.uuid;});
+  var autopistasXMLconUUID=(liq.autopistas||[]).filter(function(a){return a.uuid;});
+  var total=viajesXML.length+gastosXMLconUUID.length+dieselXMLconUUID.length+autopistasXMLconUUID.length;
   if(!total)return;
 
   box.style.display='block';
-  box.innerHTML='<div class="alert alert-info">⏳ Validando '+total+' CFDI ante el SAT (ingresos y gastos)...</div>';
+  box.innerHTML='<div class="alert alert-info">⏳ Validando '+total+' CFDI ante el SAT (ingresos, gastos, diesel y casetas)...</div>';
 
-  var nCancelados=0,nErrores=0;
-  for(var i=0;i<viajesXML.length;i++){
-    var v=viajesXML[i];
-    var r=await consultarEstadoSAT({uuid:v.uuid,rfcEmisor:v.rfcEmisor||TML_RFC,rfcReceptor:v.rfcReceptor||'',total:v.total});
-    v.satEstado=r.estado;v.satCancelado=!!r.cancelado;
-    if(r.error)nErrores++;else if(r.cancelado)nCancelados++;
-  }
-  for(var j=0;j<gastosXMLconUUID.length;j++){
-    var g=gastosXMLconUUID[j];
-    var r2=await consultarEstadoSAT({uuid:g.uuid,rfcEmisor:g.rfc||'',rfcReceptor:TML_RFC,total:g.total});
-    g.satEstado=r2.estado;g.satCancelado=!!r2.cancelado;
-    if(r2.error)nErrores++;else if(r2.cancelado)nCancelados++;
-  }
+  var c={nCancelados:0,nErrores:0};
+  await validarUnaLista(viajesXML,
+    function(v){return v.rfcEmisor||TML_RFC;},function(v){return v.rfcReceptor||'';},function(v){return v.total;},c);
+  await validarUnaLista(gastosXMLconUUID,
+    function(g){return g.rfc||'';},function(){return TML_RFC;},function(g){return g.total;},c);
+  await validarUnaLista(dieselXMLconUUID,
+    function(g){return g.rfc||'';},function(){return TML_RFC;},function(g){return g.total;},c);
+  await validarUnaLista(autopistasXMLconUUID,
+    function(a){return a.rfc||'';},function(){return TML_RFC;},function(a){return a.importe;},c);
 
   // ingresosDB es compartido con ant.html/ing.html/hist.html — se guarda completo
   // (ya sincronizado por el listener en vivo) para reflejar el estado SAT ahí también.
   if(fbReady)window.FB.set('estado','ingresosDB',{data:JSON.stringify(ingresosDB)});
   guardarEstado();
   renderGastos();
+  renderDieselXML();calcDiesel();
+  renderIAVE();
   var tabActivo=document.querySelector('.tab.active');
   var tabs=document.querySelectorAll('.tab');
   if(Array.from(tabs).indexOf(tabActivo)===4)generarReporte();
 
-  if(nErrores===total){
+  if(c.nErrores===total){
     box.innerHTML='<div class="alert alert-warn">⚠️ No se pudo validar ningún CFDI ante el SAT (revisa que SAT_PROXY_URL esté configurado en liq.html). Los CFDI se consideran vigentes mientras no se puedan verificar.</div>';
-  } else if(nCancelados){
-    box.innerHTML='<div class="alert alert-warn">⚠️ Se encontraron '+nCancelados+' CFDI cancelado(s) ante el SAT — se excluyeron del cálculo de esta liquidación.'+(nErrores?' ('+nErrores+' no se pudieron verificar.)':'')+'</div>';
+  } else if(c.nCancelados){
+    box.innerHTML='<div class="alert alert-warn">⚠️ Se encontraron '+c.nCancelados+' CFDI cancelado(s) ante el SAT — se excluyeron del cálculo de esta liquidación.'+(c.nErrores?' ('+c.nErrores+' no se pudieron verificar.)':'')+'</div>';
   } else {
-    box.innerHTML='<div class="alert alert-ok">✅ CFDI verificados vigentes ante el SAT.'+(nErrores?' ('+nErrores+' no se pudieron verificar.)':'')+'</div>';
+    box.innerHTML='<div class="alert alert-ok">✅ CFDI verificados vigentes ante el SAT.'+(c.nErrores?' ('+c.nErrores+' no se pudieron verificar.)':'')+'</div>';
   }
 }
 
@@ -1628,10 +1637,12 @@ function handleDieselXMLFiles(files){
         var rfcEmisor=emisor?emisor.getAttribute('Rfc')||'':'';
         var nombreEmisor=emisor?emisor.getAttribute('Nombre')||'':'';
         var conceptoDesc=getConceptoDesc(doc);
+        var tfdD=doc.querySelector('TimbreFiscalDigital')||doc.getElementsByTagNameNS(ns,'TimbreFiscalDigital')[0]||doc.getElementsByTagNameNS(ns3,'TimbreFiscalDigital')[0];
         if(litrosTot<=0){alert('No se encontraron litros en el XML: '+file.name+'\nVerifica que sea una factura de combustible.');return;}
         liq.dieselXML.push({
           id:'dxml-'+Date.now()+'-'+Math.random().toString(36).slice(2),
           fecha:fecha,folio:folio,rfc:rfcEmisor,emisor:nombreEmisor,concepto:conceptoDesc,
+          uuid:tfdD?tfdD.getAttribute('UUID')||'':'',satEstado:null,satCancelado:false,
           litros:litrosTot,precioUnitario:precioUnitario,
           subtotal:subtotalTot,iva:ivaTot,total:total,
           pagaOp:true // default: pagado por operador — usuario puede cambiar
@@ -1651,8 +1662,8 @@ function renderDieselXML(){
   var lista=(liq&&liq.dieselXML)||[];
   if(!lista.length){cont.innerHTML='<p style="font-size:12px;color:#aaa;text-align:center;padding:8px">Sin facturas de combustible agregadas.</p>';return;}
   var totLtsOp=0,totLtsEmp=0,totImpOp=0,totImpEmp=0;
-  lista.forEach(function(x){if(x.pagaOp){totLtsOp+=x.litros;totImpOp+=x.total;}else{totLtsEmp+=x.litros;totImpEmp+=x.total;}});
-  var rows=lista.map(function(x,i){return`<tr>
+  lista.forEach(function(x){if(x.satCancelado)return;if(x.pagaOp){totLtsOp+=x.litros;totImpOp+=x.total;}else{totLtsEmp+=x.litros;totImpEmp+=x.total;}});
+  var rows=lista.map(function(x,i){return`<tr${x.satCancelado?' style="opacity:.55;text-decoration:line-through"':''}>
     <td style="font-size:11px">${x.fecha}</td>
     <td style="font-size:11px;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${x.emisor}">${x.emisor||x.rfc}</td>
     <td style="font-size:11px">${x.folio}</td>
@@ -1665,10 +1676,11 @@ function renderDieselXML(){
         <option value="emp" ${!x.pagaOp?'selected':''}>Paga empresa</option>
       </select>
     </td>
+    <td>${x.satCancelado?'<span class="badge bg-red" style="color:#c1121f" title="Cancelado ante el SAT — excluido del cálculo">⚠ CANCELADO SAT</span>':''}</td>
     <td><button style="background:#fde8e8;color:#9b1c1c;border:none;cursor:pointer;border-radius:4px;padding:2px 8px;font-size:11px" onclick="eliminarDieselXML(${i})">✕</button></td>
   </tr>`;}).join('');
   cont.innerHTML=`<div class="tbl-wrap"><table>
-    <thead><tr><th>Fecha</th><th>Gasolinera</th><th>Folio</th><th class="r">Litros</th><th class="r">$/lt</th><th class="r">Total</th><th>¿Quién paga?</th><th></th></tr></thead>
+    <thead><tr><th>Fecha</th><th>Gasolinera</th><th>Folio</th><th class="r">Litros</th><th class="r">$/lt</th><th class="r">Total</th><th>¿Quién paga?</th><th>Estado SAT</th><th></th></tr></thead>
     <tbody>${rows}</tbody>
   </table></div>
   <div style="display:flex;gap:16px;font-size:12px;margin-top:6px;flex-wrap:wrap">
@@ -1727,8 +1739,8 @@ function calcDiesel(){
     if(rw)rw.style.background=dejo>0?'#fffbeb':'';
   });
 
-  // ── XML de combustible (facturas) ──────────────────────────────────────────
-  var dXML=(liq&&liq.dieselXML)||[];
+  // ── XML de combustible (facturas) — excluye CFDI cancelados ante el SAT ─────
+  var dXML=((liq&&liq.dieselXML)||[]).filter(function(x){return !x.satCancelado;});
   var ltsXmlOp=0,impXmlOp=0,ltsXmlEmp=0,impXmlEmp=0;
   dXML.forEach(function(x){
     if(x.pagaOp){ltsXmlOp+=x.litros;impXmlOp+=x.total;}
@@ -1894,9 +1906,11 @@ function parseAutXML(text,fname){
   doc.querySelectorAll('Traslado').forEach(function(t){iva+=parseFloat(t.getAttribute('Importe')||0);});
   var subtotal=parseFloat(comp.getAttribute('SubTotal')||0)||(total-iva);
   if(!total){alert(fname+': no se encontró importe.');return;}
+  var tfdA=doc.querySelector('TimbreFiscalDigital');
   if(!liq.autopistas)liq.autopistas=[];
   liq.autopistas.push({fecha:fecha,hora:'',caseta:caseta,carril:'XML',importe:total,pagaOp:true,
-    rfc:rfcEmisor,emisor:nombreEmisor,concepto:desc,subtotal:subtotal,iva:iva});
+    rfc:rfcEmisor,emisor:nombreEmisor,concepto:desc,subtotal:subtotal,iva:iva,
+    uuid:tfdA?tfdA.getAttribute('UUID')||'':'',satEstado:null,satCancelado:false});
   renderIAVE();
   guardarEstado();
   $('cardAutopistas').style.display='block';
@@ -1938,8 +1952,8 @@ function renderIAVE(){
   const tb=$('tbIAVE');tb.innerHTML='';
   var totEmp=0,totOp=0;
   liq.autopistas.forEach(function(a,i){
-    if(a.pagaOp)totOp+=a.importe;else totEmp+=a.importe;
-    tb.innerHTML+='<tr><td>'+a.fecha+'</td><td>'+a.hora+'</td><td>'+a.caseta+'</td><td>'+a.carril+'</td><td class="num r">'+fmt(a.importe)+'</td>'
+    if(!a.satCancelado){if(a.pagaOp)totOp+=a.importe;else totEmp+=a.importe;}
+    tb.innerHTML+='<tr'+(a.satCancelado?' style="opacity:.55;text-decoration:line-through"':'')+'><td>'+a.fecha+'</td><td>'+a.hora+'</td><td>'+a.caseta+(a.satCancelado?' <span class="badge bg-red" style="color:#c1121f" title="Cancelado ante el SAT — excluido del cálculo">⚠ CANCELADO SAT</span>':'')+'</td><td>'+a.carril+'</td><td class="num r">'+fmt(a.importe)+'</td>'
       +'<td><select class="input-sm" onchange="liq.autopistas['+i+'].pagaOp=this.value===\'si\';renderIAVE();guardarEstado()">'
       +'<option value="no"'+(a.pagaOp?'':' selected')+'>Empresa</option><option value="si"'+(a.pagaOp?' selected':'')+'>Operador</option></select></td>'
       +'<td><button class="btn btn-sm" style="background:#fde8e8;color:#9b1c1c;border:none;cursor:pointer" onclick="liq.autopistas.splice('+i+',1);renderIAVE();guardarEstado()">✕</button></td></tr>';
@@ -2003,6 +2017,8 @@ function parseGastoXML(text,fname){
       rfc:emisorD?emisorD.getAttribute('Rfc')||'':'',
       emisor:emisorD?emisorD.getAttribute('Nombre')||'':'',
       concepto:getConceptoDesc(doc),
+      uuid:(function(){var t=doc.querySelector('TimbreFiscalDigital');return t?t.getAttribute('UUID')||'':'';})(),
+      satEstado:null,satCancelado:false,
       litros:litrosTot,precioUnitario:precioUnitario,
       subtotal:subtotalTot,iva:ivaTot,
       total:parseFloat(comp.getAttribute('Total')||0)||subtotalTot+ivaTot,
@@ -2356,10 +2372,11 @@ function generarReporte(){
   const dieselComprobado=d.importeComprobado||0;
   const dieselNoComprobado=d.importeNoComprobado||0;
 
-  // Autopistas
+  // Autopistas — excluye casetas XML canceladas ante el SAT
   console.log('DEBUG autopistas:', liq.autopistas?liq.autopistas.length:0, JSON.stringify(liq.autopistas||[]));
-  const totAutEmp=liq.autopistas.filter(function(a){return !a.pagaOp;}).reduce(function(s,a){return s+a.importe;},0);
-  const totAutOp=liq.autopistas.filter(function(a){return a.pagaOp;}).reduce(function(s,a){return s+a.importe;},0);
+  const autopistasVigentes=liq.autopistas.filter(function(a){return !a.satCancelado;});
+  const totAutEmp=autopistasVigentes.filter(function(a){return !a.pagaOp;}).reduce(function(s,a){return s+a.importe;},0);
+  const totAutOp=autopistasVigentes.filter(function(a){return a.pagaOp;}).reduce(function(s,a){return s+a.importe;},0);
   const totAut=totAutEmp+totAutOp;
 
   // Gastos
@@ -2428,9 +2445,15 @@ function generarReporte(){
     rr('Diesel ('+fmtN(d.ltsComprobados||0)+' lts comprobados × '+fmt(d.pp||0)+')',dieselComprobado)
     +(d.ltsNoComprobados>0?rrDetail('⚠️ '+fmtN(d.ltsNoComprobados||0)+' lts no comprobados — cargo al operador',0):'')
     +rrDetail('Arrastre próx. liq. ('+fmtN(d.ltsFinal||0)+' lts × '+fmt(d.ultimoPrecio||0)+')',d.importePend||0)
+    +(liq.dieselXML||[]).filter(function(x){return x.satCancelado;}).map(function(x){
+      return rrDetail('⚠️ Factura diesel CANCELADA ante el SAT (no incluida) — '+(x.fecha||'—')+' · '+(x.emisor||''),0);
+    }).join('')
     +rr('Autopistas',totAut)
     +rrDetail('Empresa',totAutEmp)
-    +rrDetail('Operador (comprueba)',totAutOp);
+    +rrDetail('Operador (comprueba)',totAutOp)
+    +liq.autopistas.filter(function(a){return a.satCancelado;}).map(function(a){
+      return rrDetail('⚠️ CANCELADO ante el SAT (no incluido) — '+(a.fecha||'—')+' · '+(a.caseta||''),0);
+    }).join('');
   Object.keys(gastosPorConcepto).forEach(function(k){
     gastosHTML+=rr(k,gastosPorConcepto[k]);
   });
