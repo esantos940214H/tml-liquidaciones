@@ -365,8 +365,7 @@ function verDetalle(id){
     +dr('Autopistas',snap.totAut||0)
     +dr('Maniobras y otros gastos',snap.totGastosOp||0)
     +dr('Comisión operador ('+l.comision+'%)',snap.totComision||0)
-    +dr('Gastos sin comprobante (dentro de tope 2%)',snap.totGastos1||0)
-    +(snap.totExcedenteSinComp?dr('Excedente autorizado sin comprobante',snap.totExcedenteSinComp||0):'')
+    +dr('1% gastos sin comprobante',snap.totGastos1||0)
     +`<div class="det-row subtotal"><span>TOTAL GASTOS</span><span class="num">${fmt(snap.totGastosEmpTotal||0)}</span></div>`;
 
   // Resultado empresa
@@ -389,6 +388,7 @@ function verDetalle(id){
 
   $('detAbonos').innerHTML=
     dr('Comisión fletes '+l.comision+'%',snap.totComision||0,'abono')
+    +dr('1% gastos sin comprobante',snap.totGastos1||0,'abono')
     +dr('Diesel comprobado',snap.dieselComprobado||0,'abono')
     +dr('Autopistas op.',snap.totAutOp||0,'abono')
     +dr('Gastos del operador',snap.totGastosOp||0,'abono')
