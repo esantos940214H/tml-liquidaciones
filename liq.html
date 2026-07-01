@@ -357,7 +357,7 @@ tr:hover td{background:#fafafa}
         <button class="btn btn-red" style="align-self:flex-end" onclick="agregarGasto()">+ Agregar</button>
       </div>
       <div class="tbl-wrap"><table>
-        <thead><tr><th>Concepto</th><th>Descripción</th><th class="r">Importe</th><th>Tipo</th><th>¿Op. comprueba?</th><th>Estado</th><th></th></tr></thead>
+        <thead><tr><th>Fecha</th><th>Concepto</th><th>Descripción</th><th>Emisor</th><th class="r">Importe</th><th>Tipo</th><th>¿Op. comprueba?</th><th>Estado</th><th></th></tr></thead>
         <tbody id="tbGastos"></tbody><tfoot id="tfGastos"></tfoot>
       </table></div>
     </div>
@@ -548,6 +548,21 @@ function validarReceptorTML(doc,fname){
 function getConceptoDesc(doc){
   var c=doc.querySelector('Concepto');
   return c?(c.getAttribute('Descripcion')||c.getAttribute('Descripción')||''):'';
+}
+// Valida que la fecha del CFDI caiga dentro del periodo de la liquidación activa
+function fechaEnPeriodoLiq(fechaISO){
+  if(!liq||!liq.salida||!liq.llegada||!fechaISO)return true;
+  var f=new Date(fechaISO.slice(0,10)+'T12:00:00');
+  var dSal=new Date(liq.salida+'T00:00:00'),dLleg=new Date(liq.llegada+'T23:59:59');
+  return f>=dSal&&f<=dLleg;
+}
+function validarPeriodoXML(comp,fname){
+  var fechaCFDI=(comp.getAttribute('Fecha')||'').slice(0,10);
+  if(!fechaEnPeriodoLiq(fechaCFDI)){
+    alert('⚠️ '+fname+': la fecha del CFDI ('+fechaCFDI+') está fuera del periodo de esta liquidación ('+liq.salida+' al '+liq.llegada+'). No se puede registrar.');
+    return false;
+  }
+  return true;
 }
 const LIMITE_GASTO_SIN_FACTURA=500;
 document.getElementById('limiteGastoLabel').textContent=LIMITE_GASTO_SIN_FACTURA;
@@ -1795,6 +1810,7 @@ function parseGastoXML(text,fname){
   const doc=new DOMParser().parseFromString(text,'text/xml');
   const comp=doc.querySelector('Comprobante');if(!comp)return;
   if(!validarReceptorTML(doc,fname))return;
+  if(!validarPeriodoXML(comp,fname))return;
 
   // Detectar si es factura de combustible → redirigir al módulo diesel XML
   if(esCombustibleXML(doc)){
@@ -1885,7 +1901,10 @@ function renderGastos(){
   todos.forEach(function(g,i){
     const imp=g.tipo==='xml'?g.total:g.importe;
     if(g.pagaOp)totOp+=imp;else totEmp+=imp;
-    tb.innerHTML+='<tr><td>'+g.concepto+'</td><td>'+(g.desc||g.proveedor||'')+'</td><td class="num r">'+fmt(imp)+'</td>'
+    const tituloImp=g.tipo==='xml'?('Subtotal: '+fmt(g.subtotal||0)+' · IVA: '+fmt(g.iva||0)+' · Total: '+fmt(g.total||0)):'';
+    tb.innerHTML+='<tr><td style="font-size:11px">'+(g.fecha||'—')+'</td><td>'+g.concepto+'</td><td>'+(g.desc||g.conceptoDesc||'')+'</td>'
+      +'<td style="font-size:11px" title="'+(g.rfc||'')+'">'+(g.proveedor||g.emisor||'—')+'</td>'
+      +'<td class="num r" title="'+tituloImp+'">'+fmt(imp)+'</td>'
       +'<td><span class="badge '+(g.tipo==='xml'?'bg-blue':'bg-gray')+'">'+(g.tipo==='xml'?'XML':'Manual')+'</span></td>'
       +'<td><select class="input-sm" onchange="toggleGastoPagaOp('+i+',this.value)">'
         +'<option value="no"'+(g.pagaOp?'':' selected')+'>Empresa</option>'
@@ -1894,7 +1913,7 @@ function renderGastos(){
       +'<td>'+(g.autorizado?'<span class="badge bg-green">✓ OK</span>':'<span class="badge bg-yellow">Pendiente</span>')+'</td>'
       +'<td><button class="btn btn-sm" style="background:#fde8e8;color:#9b1c1c;border:none;cursor:pointer" onclick="eliminarGasto('+i+')">✕</button></td></tr>';
   });
-  $('tfGastos').innerHTML='<tr style="background:#f5f5f8;font-weight:700"><td colspan="2">TOTALES</td><td class="num r">'+fmt(totOp+totEmp)+'</td>'
+  $('tfGastos').innerHTML='<tr style="background:#f5f5f8;font-weight:700"><td colspan="4">TOTALES</td><td class="num r">'+fmt(totOp+totEmp)+'</td>'
     +'<td colspan="2"><span style="color:#0a5233">Op: '+fmt(totOp)+'</span> · <span style="color:#9b1c1c">Emp: '+fmt(totEmp)+'</span></td><td colspan="2"></td></tr>';
 }
 
@@ -2034,7 +2053,12 @@ function generarReporte(){
   Object.keys(gastosPorConcepto).forEach(function(k){
     gastosHTML+=rr(k,gastosPorConcepto[k]);
   });
-  if(gastosXMLTot)gastosHTML+=rr('Gastos facturados (XML)',gastosXMLTot);
+  if(gastosXMLTot){
+    gastosHTML+=rr('Gastos facturados (XML)',gastosXMLTot);
+    liq.gastosXML.forEach(function(g){
+      gastosHTML+=rrDetail((g.fecha||'—')+' · '+(g.proveedor||'')+' · '+(g.desc||g.conceptoDesc||''),g.total);
+    });
+  }
   gastosHTML+=rr('Comisión operador ('+liq.comision+'% s/ fletes)',totComision)
     +rr('2% gastos sin comprobante',totGastos1)
     +'<div style="height:1px;background:#eee;margin:6px 0"></div>'
