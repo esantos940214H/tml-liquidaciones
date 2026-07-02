@@ -1,0 +1,328 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TML · Usuarios</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Segoe UI',Arial,sans-serif;background:#f0f2f5;color:#1a1a2e;min-height:100vh}
+html.in-iframe header{display:none!important}
+header{background:#1a1a2e;color:#fff;padding:14px 24px;display:flex;align-items:center;justify-content:space-between;border-bottom:3px solid #e63946}
+.logo{font-size:18px;font-weight:800}.logo span{color:#e63946}
+.nav{display:flex;gap:8px;flex-wrap:wrap}
+.nav a{color:#aaa;text-decoration:none;font-size:12px;padding:6px 12px;border-radius:5px;border:1px solid #333;transition:all .15s}
+.nav a:hover{color:#fff;border-color:#555}
+.nav a.active{color:#fff;background:#e63946;border-color:#e63946}
+.container{max-width:1100px;margin:0 auto;padding:20px 16px}
+.card{background:#fff;border-radius:10px;box-shadow:0 2px 12px rgba(0,0,0,.07);padding:20px 24px;margin-bottom:16px}
+.card-title{font-size:12px;font-weight:700;color:#1a1a2e;margin-bottom:14px;text-transform:uppercase;letter-spacing:1px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px}
+.grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px}
+.field{display:flex;flex-direction:column;gap:4px}
+.field label{font-size:11px;font-weight:700;color:#666;text-transform:uppercase;letter-spacing:.5px}
+.field input,.field select{border:1.5px solid #dde;border-radius:6px;padding:8px 10px;font-size:13px;color:#1a1a2e;background:#fafafa;width:100%}
+.field input:focus,.field select:focus{outline:none;border-color:#e63946}
+.field-check{display:flex;align-items:center;gap:6px}
+.field-check input{width:auto}
+.permisos-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin-top:6px}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end}
+.btn{padding:8px 18px;border-radius:6px;border:none;font-size:12px;font-weight:700;cursor:pointer;transition:all .15s;text-transform:uppercase;letter-spacing:.5px}
+.btn-red{background:#e63946;color:#fff}.btn-red:hover{background:#c1121f}
+.btn-dark{background:#1a1a2e;color:#fff}.btn-dark:hover{background:#0d0d1a}
+.btn-out{background:#fff;color:#1a1a2e;border:1.5px solid #1a1a2e}.btn-out:hover{background:#f0f2f5}
+.btn-green{background:#2d6a4f;color:#fff}.btn-green:hover{background:#1b4332}
+.btn-sm{padding:5px 11px;font-size:11px}
+.alert{padding:9px 13px;border-radius:7px;font-size:12px;margin-bottom:10px}
+.alert-info{background:#e8f4fd;color:#0369a1;border:1px solid #bae6fd}
+.alert-ok{background:#d1e7dd;color:#0a5233;border:1px solid #a3cfbb}
+.alert-warn{background:#fffbeb;color:#92400e;border:1px solid #fde68a}
+.alert-err{background:#fde8e8;color:#9b1c1c;border:1px solid #f9a8a8}
+.tbl-wrap{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:13px;min-width:700px}
+th{background:#1a1a2e;color:#fff;padding:8px 10px;font-size:11px;text-transform:uppercase;letter-spacing:.7px;text-align:left;font-weight:600}
+td{padding:7px 10px;border-bottom:1px solid #f0f0f0;vertical-align:middle}
+tr:last-child td{border-bottom:none}
+tr:hover td{background:#fafafa}
+.badge{display:inline-block;border-radius:4px;padding:2px 8px;font-size:10px;font-weight:700;white-space:nowrap;margin:1px}
+.bg-green{background:#d1e7dd;color:#0a5233;border:1px solid #a3cfbb}
+.bg-yellow{background:#fff3cd;color:#856404;border:1px solid #ffc107}
+.bg-red{background:#fde8e8;color:#9b1c1c;border:1px solid #f9a8a8}
+.bg-gray{background:#f0f2f5;color:#555;border:1px solid #dde}
+.fb-status{font-size:11px;color:#aaa}
+.fb-ok{color:#2d6a4f}.fb-err{color:#e63946}
+@media(max-width:700px){.grid3{grid-template-columns:1fr}}
+
+/* ── MODAL CANDADO ── */
+.lock-overlay{position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:9999;display:flex;align-items:center;justify-content:center}
+.lock-box{background:#fff;border-radius:12px;padding:30px;width:320px;box-shadow:0 16px 48px rgba(0,0,0,.3);text-align:center}
+.lock-box h3{font-size:15px;font-weight:700;margin-bottom:6px;color:#1a1a2e}
+.lock-box p{font-size:12px;color:#888;margin-bottom:16px}
+.lock-box input{width:100%;border:1.5px solid #dde;border-radius:7px;padding:9px 12px;font-size:14px;text-align:center;letter-spacing:3px;margin-bottom:10px;outline:none}
+.lock-box input:focus{border-color:#e63946}
+.lock-row{display:flex;gap:8px}
+.lock-row button{flex:1;padding:9px;border:none;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer}
+.lock-ok{background:#e63946;color:#fff}.lock-ok:hover{background:#c1121f}
+.lock-cancel{background:#f0f2f5;color:#555}.lock-cancel:hover{background:#e0e2e5}
+.lock-err{color:#e63946;font-size:11px;margin-top:6px;display:none}
+</style>
+<script>if(window!==window.top)document.documentElement.className+=' in-iframe';</script>
+</head>
+<body>
+<header>
+  <div class="logo">MUDANZAS <span>TML</span> <span style="font-size:13px;font-weight:400;color:#aaa;margin-left:8px">· Usuarios</span></div>
+  <div style="display:flex;align-items:center;gap:12px">
+    <span class="fb-status" id="fbStatus">⏳ Conectando...</span>
+    <nav class="nav">
+      <a href="ant.html">📋 Anticipos</a>
+      <a href="ing.html">📄 Ingresos</a>
+      <a href="liq.html">🚛 Liquidaciones</a>
+      <a href="incidentes.html">🚨 Incidentes</a>
+      <a href="hist.html">🗂️ Historial</a>
+      <a href="usuarios.html" class="active">👤 Usuarios</a>
+    </nav>
+  </div>
+</header>
+
+<div class="container" id="cAcceso" style="display:none">
+  <div class="alert alert-warn">🔒 Este módulo requiere la contraseña de administrador. <button class="btn btn-red btn-sm" onclick="pedirAcceso()">Ingresar</button></div>
+</div>
+
+<div class="container" id="cContenido" style="display:none">
+
+  <div class="alert alert-info">👤 Da de alta usuarios y decide a qué módulos puede entrar cada uno. Esto controla quién puede <strong>ver</strong> cada módulo — los candados de acción (guardar/editar/borrar dentro de cada uno) siguen pidiéndose aparte, sin cambios.</div>
+
+  <!-- FORMULARIO -->
+  <div class="card">
+    <div class="card-title" id="formTitle">✏️ Registrar usuario</div>
+    <div class="grid3" style="margin-bottom:14px">
+      <div class="field"><label>Usuario (para iniciar sesión)</label><input type="text" id="uUsuario" placeholder="ej. jperez" autocomplete="off"></div>
+      <div class="field"><label>Nombre completo</label><input type="text" id="uNombre" placeholder="Ej. Juan Pérez"></div>
+      <div class="field"><label>Contraseña</label><input type="text" id="uPassword" placeholder="Contraseña de acceso" autocomplete="off"></div>
+    </div>
+    <div style="font-size:11px;color:#888;margin:-8px 0 14px">La contraseña se guarda con hash (no en texto plano). Al editar un usuario, déjala en blanco para no cambiarla.</div>
+    <div class="field" style="margin-bottom:14px">
+      <label>¿A qué módulos puede entrar?</label>
+      <div class="permisos-grid">
+        <div class="field-check"><input type="checkbox" id="pAnt"><label style="text-transform:none;font-weight:600;color:#1a1a2e">📋 Anticipos</label></div>
+        <div class="field-check"><input type="checkbox" id="pIng"><label style="text-transform:none;font-weight:600;color:#1a1a2e">📄 Ingresos</label></div>
+        <div class="field-check"><input type="checkbox" id="pLiq"><label style="text-transform:none;font-weight:600;color:#1a1a2e">🚛 Liquidaciones</label></div>
+        <div class="field-check"><input type="checkbox" id="pInc"><label style="text-transform:none;font-weight:600;color:#1a1a2e">🚨 Incidentes</label></div>
+        <div class="field-check"><input type="checkbox" id="pHist"><label style="text-transform:none;font-weight:600;color:#1a1a2e">🗂️ Historial</label></div>
+      </div>
+    </div>
+    <div class="row">
+      <div class="field-check"><input type="checkbox" id="uActivo" checked><label style="text-transform:none;font-weight:600;color:#1a1a2e">Usuario activo</label></div>
+      <div class="field-check"><input type="checkbox" id="uEsAdmin"><label style="text-transform:none;font-weight:600;color:#1a1a2e">👑 Administrador (ve todos los módulos y puede entrar aquí)</label></div>
+      <button class="btn btn-red" onclick="guardarUsuario()">💾 Guardar usuario</button>
+      <button class="btn btn-out btn-sm" id="btnCancelarEdicion" onclick="cancelarEdicion()" style="display:none">Cancelar edición</button>
+    </div>
+  </div>
+
+  <!-- TABLA -->
+  <div class="card">
+    <div class="card-title">👥 Usuarios registrados</div>
+    <div id="bloqueUsuarios"><div style="text-align:center;padding:30px;color:#aaa">Sin usuarios registrados aún.</div></div>
+  </div>
+
+</div>
+
+<!-- Firebase compat -->
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+<script>
+window._fbInit=false;
+window._fbCallbacks=[];
+window.onFBReady=function(cb){if(window._fbInit)cb();else window._fbCallbacks.push(cb);};
+(function(){
+  try{
+    var cfg={apiKey:"AIzaSyDqlhREJFVFLGzz7bVlPcNl1Uba9HI3r8s",authDomain:"tml-liquidaciones.firebaseapp.com",
+      projectId:"tml-liquidaciones",storageBucket:"tml-liquidaciones.firebasestorage.app",
+      messagingSenderId:"268455373953",appId:"1:268455373953:web:ad359c5dbcba9f53557180"};
+    if(!firebase.apps.length)firebase.initializeApp(cfg);
+    var db=firebase.firestore();
+    window.FB={
+      set:function(col,id,data){return db.collection(col).doc(id).set(data);},
+      get:async function(col,id){try{var s=await db.collection(col).doc(id).get();return s.exists?s.data():null;}catch(e){console.error('FB.get:',e);return null;}},
+      del:function(col,id){return db.collection(col).doc(id).delete();},
+      listen:function(col,id,cb){return db.collection(col).doc(id).onSnapshot(function(s){cb(s.exists?s.data():null);});},
+      getAll:async function(col){
+        try{var s=await db.collection(col).get();var r=[];s.forEach(function(d){r.push(Object.assign({id:d.id},d.data()));});return r.sort(function(a,b){return(b.num||0)-(a.num||0);});}
+        catch(e){console.error('FB.getAll:',e);return[];}
+      }
+    };
+    window._fbInit=true;
+    window._fbCallbacks.forEach(function(cb){try{cb();}catch(e){console.error(e);}});
+    window._fbCallbacks=[];
+    setTimeout(function(){window.dispatchEvent(new Event('firebase-ready'));},0);
+  }catch(e){console.error('Firebase init error:',e);}
+})();
+</script>
+
+<script>
+const $=id=>document.getElementById(id);
+const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2);
+
+let usuariosDB=[];
+let fbReady=false;
+let editandoId=null;
+
+// ── CANDADO ADMIN2026 (acceso al módulo completo) ────────────────────────
+const ADMIN_PASS='ADMIN2026';
+function pedirAcceso(){
+  lockRequest('Acceso al módulo de Usuarios', function(){
+    sessionStorage.setItem('tml_admin_ok','1');
+    $('cAcceso').style.display='none';
+    $('cContenido').style.display='block';
+  });
+}
+if(sessionStorage.getItem('tml_admin_ok')==='1'){
+  $('cAcceso').style.display='none';
+  $('cContenido').style.display='block';
+} else {
+  $('cAcceso').style.display='block';
+}
+
+window.onFBReady(async function(){
+  fbReady=true;
+  $('fbStatus').textContent='✅ Conectado';
+  $('fbStatus').className='fb-status fb-ok';
+  await cargarUsuarios();
+});
+setTimeout(function(){
+  if(!fbReady){$('fbStatus').textContent='❌ Sin conexión';$('fbStatus').className='fb-status fb-err';}
+},6000);
+
+async function cargarUsuarios(){
+  usuariosDB=await window.FB.getAll('usuarios');
+  renderUsuarios();
+}
+
+function leerPermisosForm(){
+  return{ant:$('pAnt').checked,ing:$('pIng').checked,liq:$('pLiq').checked,inc:$('pInc').checked,hist:$('pHist').checked};
+}
+
+// Hash SHA-256 de la contraseña — no se guarda en texto plano en Firestore.
+async function sha256Hex(texto){
+  var buf=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(texto));
+  return Array.from(new Uint8Array(buf)).map(function(b){return b.toString(16).padStart(2,'0');}).join('');
+}
+
+$('uEsAdmin').addEventListener('change',function(){
+  if(this.checked)['pAnt','pIng','pLiq','pInc','pHist'].forEach(function(id){$(id).checked=true;});
+});
+
+async function guardarUsuario(){
+  var usuario=($('uUsuario').value||'').trim();
+  var nombre=($('uNombre').value||'').trim();
+  var passwordNueva=$('uPassword').value||'';
+  if(!usuario||!nombre){alert('Completa usuario y nombre.');return;}
+  var dup=usuariosDB.find(function(u){return u.usuario.toLowerCase()===usuario.toLowerCase()&&u.id!==editandoId;});
+  if(dup){alert('Ya existe un usuario con ese nombre de acceso.');return;}
+  var existente=editandoId?usuariosDB.find(function(u){return u.id===editandoId;}):null;
+  if(!editandoId&&!passwordNueva){alert('Ingresa una contraseña para el usuario nuevo.');return;}
+  var passwordHash=passwordNueva?await sha256Hex(passwordNueva):(existente?existente.passwordHash:'');
+  var id=editandoId||uid();
+  var registro={id:id,usuario:usuario,nombre:nombre,passwordHash:passwordHash,permisos:leerPermisosForm(),activo:$('uActivo').checked,esAdmin:$('uEsAdmin').checked};
+  await window.FB.set('usuarios',id,registro);
+  await cargarUsuarios();
+  cancelarEdicion();
+  alert('✅ Usuario guardado.');
+}
+
+function editarUsuario(id){
+  var u=usuariosDB.find(function(x){return x.id===id;});
+  if(!u)return;
+  editandoId=id;
+  $('uUsuario').value=u.usuario;$('uNombre').value=u.nombre;$('uPassword').value='';
+  $('uPassword').placeholder='(sin cambios — deja en blanco)';
+  $('uActivo').checked=u.activo!==false;
+  $('uEsAdmin').checked=!!u.esAdmin;
+  var p=u.permisos||{};
+  $('pAnt').checked=!!p.ant;$('pIng').checked=!!p.ing;$('pLiq').checked=!!p.liq;$('pInc').checked=!!p.inc;$('pHist').checked=!!p.hist;
+  $('formTitle').textContent='✏️ Editando: '+u.nombre;
+  $('btnCancelarEdicion').style.display='inline-block';
+  window.scrollTo({top:0,behavior:'smooth'});
+}
+
+function cancelarEdicion(){
+  editandoId=null;
+  $('uUsuario').value='';$('uNombre').value='';$('uPassword').value='';
+  $('uPassword').placeholder='Contraseña de acceso';
+  $('uActivo').checked=true;$('uEsAdmin').checked=false;
+  ['pAnt','pIng','pLiq','pInc','pHist'].forEach(function(id){$(id).checked=false;});
+  $('formTitle').textContent='✏️ Registrar usuario';
+  $('btnCancelarEdicion').style.display='none';
+}
+
+async function eliminarUsuario(id){
+  var u=usuariosDB.find(function(x){return x.id===id;});
+  if(!u)return;
+  if(!confirm('¿Eliminar el usuario "'+u.nombre+'"? Ya no podrá iniciar sesión.'))return;
+  await window.FB.del('usuarios',id);
+  await cargarUsuarios();
+}
+
+function badgePermiso(activo,label){
+  return '<span class="badge '+(activo?'bg-green':'bg-gray')+'">'+label+'</span>';
+}
+
+function renderUsuarios(){
+  var cont=$('bloqueUsuarios');
+  if(!usuariosDB.length){cont.innerHTML='<div style="text-align:center;padding:30px;color:#aaa">Sin usuarios registrados aún.</div>';return;}
+  var rows=usuariosDB.map(function(u){
+    var p=u.permisos||{};
+    return '<tr'+(u.activo===false?' style="opacity:.5"':'')+'>'
+      +'<td><strong>'+u.usuario+'</strong></td>'
+      +'<td>'+u.nombre+(u.esAdmin?' <span class="badge bg-yellow">👑 Admin</span>':'')+'</td>'
+      +'<td>'+(u.esAdmin?'<span class="badge bg-green">Todos los módulos</span>':badgePermiso(p.ant,'Anticipos')+badgePermiso(p.ing,'Ingresos')+badgePermiso(p.liq,'Liquidaciones')+badgePermiso(p.inc,'Incidentes')+badgePermiso(p.hist,'Historial'))+'</td>'
+      +'<td>'+(u.activo===false?'<span class="badge bg-red">Inactivo</span>':'<span class="badge bg-green">Activo</span>')+'</td>'
+      +'<td><button class="btn-sm" style="background:#f0f2f5;border:none;cursor:pointer;border-radius:4px;padding:3px 8px;margin-right:4px" onclick="editarUsuario(\''+u.id+'\')">✏️ Editar</button>'
+      +'<button class="btn-sm" style="background:#fde8e8;color:#9b1c1c;border:none;cursor:pointer;border-radius:4px;padding:3px 8px" onclick="eliminarUsuario(\''+u.id+'\')">✕ Eliminar</button></td>'
+      +'</tr>';
+  }).join('');
+  cont.innerHTML='<div class="tbl-wrap"><table><thead><tr><th>Usuario</th><th>Nombre</th><th>Módulos permitidos</th><th>Estado</th><th></th></tr></thead><tbody>'+rows+'</tbody></table></div>';
+}
+
+// ── CANDADO genérico (mismo patrón que ant.html) ─────────────────────────
+var _lockCallback=null;
+function lockRequest(desc,callback){
+  _lockCallback=callback;
+  $('lockDesc').textContent=desc;
+  $('lockPass').value='';
+  $('lockErr').style.display='none';
+  $('lockModal').style.display='flex';
+  setTimeout(function(){$('lockPass').focus();},100);
+}
+function lockConfirm(){
+  if($('lockPass').value===ADMIN_PASS){
+    $('lockModal').style.display='none';
+    if(_lockCallback)_lockCallback();
+    _lockCallback=null;
+  } else {
+    $('lockErr').style.display='block';
+    $('lockPass').value='';
+    $('lockPass').focus();
+  }
+}
+function lockCancel(){
+  $('lockModal').style.display='none';
+  _lockCallback=null;
+}
+</script>
+
+<!-- MODAL CANDADO ADMIN -->
+<div class="lock-overlay" id="lockModal" style="display:none">
+  <div class="lock-box">
+    <h3>🔒 Acceso de administrador</h3>
+    <p id="lockDesc">Ingresa la contraseña para continuar</p>
+    <input type="password" id="lockPass" placeholder="••••••••"
+      onkeydown="if(event.key==='Enter')lockConfirm()">
+    <div class="lock-row">
+      <button class="lock-ok" onclick="lockConfirm()">Confirmar</button>
+      <button class="lock-cancel" onclick="lockCancel()">Cancelar</button>
+    </div>
+    <div class="lock-err" id="lockErr">Contraseña incorrecta</div>
+  </div>
+</div>
+</body>
+</html>

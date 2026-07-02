@@ -62,16 +62,34 @@ iframe.visible{display:block}
 
 <script>
 var NOMBRES = {ant:'· Anticipos', ing:'· Ingresos', liq:'· Liquidaciones', inc:'· Incidentes', hist:'· Historial'};
-var modActual = (new URLSearchParams(window.location.search).get('m')) || 'liq';
 var mods = ['ant','ing','liq','inc','hist'];
-if (!NOMBRES[modActual]) modActual = 'liq';
 
-// Mostrar directamente — el candado está en las acciones de cada módulo
+// Sesión: cada módulo pide su propio login/permiso al cargarse en el iframe,
+// pero aquí filtramos el menú y elegimos a dónde aterrizar según lo que ya
+// sabemos de la sesión guardada (sessionStorage, la llena el login del módulo).
+function usuarioSesionRouter(){
+  try{return JSON.parse(sessionStorage.getItem('tml_user')||'null');}catch(e){return null;}
+}
+var _u=usuarioSesionRouter();
+var modsPermitidos=mods;
+if(_u && !_u.esAdmin){
+  modsPermitidos=mods.filter(function(m){return _u.permisos&&_u.permisos[m];});
+}
+
+var modActual = (new URLSearchParams(window.location.search).get('m')) || (modsPermitidos[0]||'liq');
+if (!NOMBRES[modActual]) modActual = modsPermitidos[0]||'liq';
+if(_u && !_u.esAdmin && modsPermitidos.length && modsPermitidos.indexOf(modActual)===-1){
+  modActual = modsPermitidos[0];
+}
+
 document.getElementById('mainHeader').style.display = 'flex';
 document.getElementById('moduloLabel').textContent = NOMBRES[modActual] || '';
 mods.forEach(function(m) {
   var el = document.getElementById('nav' + m.charAt(0).toUpperCase() + m.slice(1));
-  if (el) el.className = m === modActual ? 'active' : '';
+  if (el) {
+    el.className = m === modActual ? 'active' : '';
+    if(_u && !_u.esAdmin && (!_u.permisos || !_u.permisos[m])) el.style.display = 'none';
+  }
 });
 document.querySelectorAll('#app iframe').forEach(function(fr) {
   fr.classList.remove('visible');
