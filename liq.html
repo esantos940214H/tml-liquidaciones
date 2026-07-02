@@ -1601,7 +1601,7 @@ function iniciarLiquidacion(){
   liq={num:num,op:op,unidad:unidad,clave:$('liqClave').value,
     salida:$('liqSalida').value,llegada:$('liqLlegada').value,duracion:$('liqDuracion').value,
     kms:parseFloat($('liqKms').value||0),litrosECM:parseFloat($('liqLitrosECM').value||0),
-    rendimiento:parseFloat($('liqRend').value||4),dieselIniTanque:parseFloat($('liqDieselIni').value||0),
+    rendimiento:parseFloat($('liqRend').value||4),
     costoDiesel:parseFloat($('liqCostoDiesel').value||27),comision:parseFloat($('liqComision').value||12),
     diesel:null,autopistas:[],gastos:[],gastosXML:[],dieselXML:[],casetasNF:[],viajeVacio:{origen:'',destino:'',kms:''}};
   $('liqInfo').style.display='block';
