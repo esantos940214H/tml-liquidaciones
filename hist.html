@@ -262,8 +262,9 @@ tr:hover td{background:#fafafa}
         <div id="detFirma"></div>
       </div>
 
-      <div style="margin-top:16px">
+      <div style="margin-top:16px;display:flex;gap:8px;align-items:center">
         <button class="btn btn-dark btn-sm" onclick="window.print()">🖨️ Imprimir</button>
+        <button class="btn btn-out btn-sm" id="btnReabrirLiq" style="display:none;border-color:#e63946;color:#e63946" onclick="reabrirLiquidacion()">🔓 Reabrir liquidación (admin)</button>
       </div>
     </div>
   </div>
@@ -474,15 +475,36 @@ async function recargarHistorial(){
   buscar();
 }
 
+let _detalleActual=null;
+
 function verDetalle(id){
   const l=historialDB.find(x=>x.id===id);
   if(!l)return;
+  _detalleActual=l;
   const snap=l.snapshot||{};
   const op=OPERADORES.find(o=>o.unidad===parseInt(l.unidad));
 
   $('cardLista').style.display='none';
   $('cardDetalle').style.display='block';
   $('detLiqNum').textContent='#'+l.num;
+
+  // Botón de reabrir: solo admin, y solo si no existe una liquidación
+  // posterior (mismo operador) ya cerrada o abierta — para no romper la
+  // cadena de arrastres (anticipos, diesel, etc.) que ya la usaron.
+  var _uReab=usuarioSesion();
+  var _hayPosterior=historialDB.some(function(h){return parseInt(h.unidad)===parseInt(l.unidad)&&h.num>l.num;});
+  var btnReab=$('btnReabrirLiq');
+  if(btnReab){
+    if(_uReab&&_uReab.esAdmin&&!_hayPosterior){
+      btnReab.style.display='inline-block';
+      btnReab.disabled=false;
+      btnReab.title='';
+    } else {
+      btnReab.style.display=(_uReab&&_uReab.esAdmin)?'inline-block':'none';
+      btnReab.disabled=true;
+      btnReab.title=_hayPosterior?'No se puede reabrir: ya existe una liquidación posterior de este operador.':'';
+    }
+  }
 
   // Encabezado
   $('detEncabezado').innerHTML=`<div style="display:flex;gap:20px;flex-wrap:wrap">
@@ -620,6 +642,126 @@ function verDetalle(id){
 function cerrarDetalle(){
   $('cardDetalle').style.display='none';
   $('cardLista').style.display='block';
+}
+
+// Reabre una liquidación YA CERRADA para poder modificarla, solo para
+// administradores, y solo si no existe una liquidación posterior (mismo
+// operador) que ya haya arrastrado sus anticipos/diesel/etc. — evita romper
+// esa cadena. Libera de vuelta los anticipos, viajes e incidentes que se
+// habían marcado como usados por esta liquidación, reconstruye un objeto de
+// liquidación editable a partir del snapshot guardado, y lo deja como la
+// liquidación activa del sistema para seguir trabajando en el módulo de
+// Liquidaciones.
+async function reabrirLiquidacion(){
+  const u=usuarioSesion();
+  if(!u||!u.esAdmin){alert('Solo un administrador puede reabrir una liquidación.');return;}
+  const l=_detalleActual;
+  if(!l){alert('Selecciona primero una liquidación.');return;}
+  if(!window.FB){alert('Sin conexión a Firebase.');return;}
+
+  // Revalidar en vivo (no confiar solo en lo que ya se cargó en esta pestaña)
+  const histFresco=await window.FB.getAll('historial');
+  const hayPosterior=histFresco.some(function(h){return parseInt(h.unidad)===parseInt(l.unidad)&&h.num>l.num;});
+  if(hayPosterior){alert('No se puede reabrir: ya existe una liquidación posterior de este operador. Reabrir esta rompería el arrastre de anticipos/diesel que la posterior ya usó.');return;}
+
+  const activaData=await window.FB.get('estado','liqActiva');
+  let activaActual=null;
+  if(activaData&&activaData.data){try{activaActual=JSON.parse(activaData.data);}catch(e){}}
+  if(activaActual&&parseInt(activaActual.unidad)===parseInt(l.unidad)&&activaActual.num>l.num){
+    alert('No se puede reabrir: hay una liquidación #'+activaActual.num+' de este mismo operador actualmente abierta y es más reciente.');
+    return;
+  }
+
+  let msgConfirm='¿REABRIR la liquidación #'+l.num+' (unidad '+l.unidad+') para modificarla?\n\nSus anticipos, viajes e incidentes quedarán "pendientes" otra vez hasta que se vuelva a cerrar.';
+  if(activaActual&&!(parseInt(activaActual.unidad)===parseInt(l.unidad)&&activaActual.num===l.num)){
+    msgConfirm+='\n\n⚠️ ATENCIÓN: ahora mismo hay OTRA liquidación abierta (#'+activaActual.num+', unidad '+activaActual.unidad+') sin cerrar. Solo puede haber una liquidación activa a la vez — al reabrir esta se REEMPLAZA esa otra en el sistema (su progreso ya guardado en Firebase no se borra hasta que la cierres o la elimines, pero deja de ser "la liquidación activa"). ¿Seguro que ya la cerraste o no importa?';
+  }
+  if(!confirm(msgConfirm))return;
+  if(prompt('Para confirmar, escribe el número de liquidación (#'+l.num+'):')!==String(l.num)){alert('No coincide el número. No se reabrió nada.');return;}
+
+  try{
+    const snap=l.snapshot||{};
+    const op=OPERADORES.find(function(o){return o.unidad===parseInt(l.unidad);})||{unidad:l.unidad,nombre:'',clave:''};
+
+    // Reconstruir un objeto de liquidación editable a partir del snapshot
+    const gastosXML=(snap.gastosList||[]).filter(function(g){return g.tipo==='xml';}).map(function(g){
+      return{serie:'',folio:'',fecha:g.fecha||'',proveedor:g.proveedor||'',rfc:g.rfc||'',conceptoDesc:g.concepto||'',
+        uuid:g.uuid||'',satEstado:null,satCancelado:!!g.satCancelado,subtotal:g.subtotal||0,iva:g.iva||0,total:g.total||0,
+        concepto:'GASTO FACTURADO',desc:g.concepto||'',pagaOp:!!g.pagaOp,tipo:'xml',autorizado:true};
+    });
+    const gastos=(snap.gastosList||[]).filter(function(g){return g.tipo==='manual';}).map(function(g){
+      return{concepto:g.concepto||'',desc:g.concepto||'',importe:g.total||0,pagaOp:!!g.pagaOp,tipo:'manual',autorizado:true};
+    });
+    const dieselXML=(snap.dieselXML||[]).map(function(x){
+      return{id:'dxml-reab-'+Date.now()+'-'+Math.random().toString(36).slice(2),fecha:x.fecha||'',folio:x.folio||'',
+        rfc:x.rfc||'',emisor:x.emisor||'',concepto:'',uuid:x.uuid||'',satEstado:null,satCancelado:!!x.satCancelado,
+        litros:x.litros||0,precioUnitario:x.precioUnitario||0,subtotal:x.subtotal||0,iva:x.iva||0,total:x.total||0,pagaOp:!!x.pagaOp};
+    });
+    const autopistas=(snap.autopistasList||[]).map(function(a){
+      return{fecha:a.fecha||'',hora:'',caseta:a.caseta||'',carril:'XML',importe:a.subtotal!=null?(a.subtotal+(a.iva||0)):0,
+        pagaOp:!!a.pagaOp,rfc:a.rfc||'',emisor:a.caseta||'',concepto:a.concepto||'',subtotal:a.subtotal||0,iva:a.iva||0,
+        uuid:a.uuid||'',satEstado:null,satCancelado:false};
+    });
+    const casetasNF=(snap.casetasNFList||[]).map(function(c){
+      return{id:c.id||('cnf-reab-'+Date.now()+'-'+Math.random().toString(36).slice(2)),fecha:c.fecha||'',caseta:c.caseta||'',
+        monto:c.monto||0,motivo:c.motivo||'',motivoOtro:'',pagaOp:true,evidenciaURL:c.evidenciaURL||null,
+        sinFoto:!!c.sinFoto,justificacionSinFoto:''};
+    });
+
+    const liqReab={
+      num:l.num,op:op,unidad:l.unidad,clave:op.clave||'',
+      salida:l.salida,llegada:l.llegada,duracion:l.duracion,
+      kms:l.kms||0,litrosECM:0,rendimiento:l.rendimiento||0,
+      costoDiesel:(snap.diesel&&snap.diesel.pp)||27,comision:l.comision||12,
+      diesel:snap.diesel||null,autopistas:autopistas,gastos:gastos,gastosXML:gastosXML,
+      dieselXML:dieselXML,casetasNF:casetasNF,viajeVacio:{origen:'',destino:'',kms:''},
+      cargasEdenred:snap.cargasDiesel||[]
+    };
+
+    // Liberar anticipos, viajes e incidentes que esta liquidación había marcado
+    const [aRes,iRes,incRes]=await Promise.all([
+      window.FB.get('estado','anticiposDB'),
+      window.FB.get('estado','ingresosDB'),
+      window.FB.get('estado','incidentesDB'),
+    ]);
+    let antDB=(aRes&&aRes.data)?JSON.parse(aRes.data):{};
+    if(Array.isArray(antDB))antDB={};
+    let ingDB=(iRes&&iRes.data)?JSON.parse(iRes.data):[];
+    let incDB=(incRes&&incRes.data)?JSON.parse(incRes.data):{};
+    if(Array.isArray(incDB))incDB={};
+
+    let nA=0,nV=0,nI=0;
+    Object.keys(antDB).forEach(function(key){
+      if(parseInt(key)===parseInt(l.unidad)){
+        (antDB[key]||[]).forEach(function(a){
+          if(a.liqNum===l.num){a.estado='pendiente';a.liqNum=null;nA++;}
+        });
+      }
+    });
+    ingDB.forEach(function(v){
+      if(parseInt(v.unidad)===parseInt(l.unidad)&&v.liqNum===l.num){v.estado='sin_liquidar';v.liqNum=null;nV++;}
+    });
+    Object.keys(incDB).forEach(function(key){
+      if(parseInt(key)===parseInt(l.unidad)){
+        (incDB[key]||[]).forEach(function(a){
+          if(a.liqNum===l.num){a.estado='pendiente';a.liqNum=null;nI++;}
+        });
+      }
+    });
+
+    await Promise.all([
+      window.FB.set('estado','anticiposDB',{data:JSON.stringify(antDB)}),
+      window.FB.set('estado','ingresosDB',{data:JSON.stringify(ingDB)}),
+      window.FB.set('estado','incidentesDB',{data:JSON.stringify(incDB)}),
+      window.FB.set('estado','liqActiva',{data:JSON.stringify(liqReab)}),
+    ]);
+
+    alert('🔓 Liquidación #'+l.num+' reabierta.\n'+nA+' anticipo(s), '+nV+' viaje(s)'+(nI?' y '+nI+' incidente(s)':'')+' quedaron pendientes otra vez.\n\nAbriendo el módulo de Liquidaciones para editarla...');
+    location.href='liq.html';
+  }catch(e){
+    console.error('reabrirLiquidacion:',e);
+    alert('⚠️ Error al reabrir la liquidación: '+e.message);
+  }
 }
 
 // ══════════════════════════════════════════════
