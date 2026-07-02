@@ -2115,6 +2115,22 @@ function esCombustibleXML(doc){
   return false;
 }
 
+// Detecta si el XML corresponde a una factura de caseta/autopista/peaje
+// (por nombre del emisor o descripción del concepto) para redirigirlo
+// automáticamente al módulo de Autopistas en vez de registrarlo como gasto general.
+var PALABRAS_CASETA=['PEAJE','CASETA','AUTOPISTA','CAPUFE','VIADUCTO','TELEPEAJE','TAG','IAVE','PASE','CUOTA DE PEAJE','TRANSITO VEHICULAR','CONCESIONARIA','VIA CORTA','LIBRAMIENTO'];
+function esCasetaXML(doc){
+  var emisor=doc.querySelector('Emisor');
+  var nombreEmisor=(emisor?emisor.getAttribute('Nombre')||'':'').toUpperCase();
+  if(PALABRAS_CASETA.some(function(p){return nombreEmisor.indexOf(p)!==-1;}))return true;
+  var conceptos=doc.querySelectorAll('Concepto');
+  for(var i=0;i<conceptos.length;i++){
+    var desc=(conceptos[i].getAttribute('Descripcion')||conceptos[i].getAttribute('Descripción')||'').toUpperCase();
+    if(PALABRAS_CASETA.some(function(p){return desc.indexOf(p)!==-1;}))return true;
+  }
+  return false;
+}
+
 async function parseGastoXML(text,fname){
   if(!liq)return;
   const doc=new DOMParser().parseFromString(text,'text/xml');
@@ -2165,6 +2181,30 @@ async function parseGastoXML(text,fname){
     validarCFDIsSATLiquidacion(true);
     $('gastoXMLInfo').style.display='block';
     $('gastoXMLInfo').innerHTML='<div class="alert alert-warn">⛽ XML de combustible detectado — agregado al módulo <strong>Diesel</strong> (tab Diesel) con '+fmtN(litrosTot)+' lts. Ajusta ahí si pagó el operador o la empresa.</div>';
+    return;
+  }
+
+  // Detectar si es factura de caseta/autopista/peaje → redirigir al módulo Autopistas
+  if(esCasetaXML(doc)){
+    var emisorC=doc.querySelector('Emisor');
+    var rfcEmisorC=emisorC?emisorC.getAttribute('Rfc')||'':'';
+    var nombreEmisorC=emisorC?emisorC.getAttribute('Nombre')||'':'';
+    var casetaNombre=nombreEmisorC||'Caseta';
+    var descC=getConceptoDesc(doc);
+    if(descC&&descC.length<60)casetaNombre=casetaNombre+' — '+descC;
+    var ivaC=0;
+    doc.querySelectorAll('Traslado').forEach(function(t){ivaC+=parseFloat(t.getAttribute('Importe')||0);});
+    var totalC=parseFloat(comp.getAttribute('Total')||0);
+    var subtotalC=parseFloat(comp.getAttribute('SubTotal')||0)||(totalC-ivaC);
+    if(!liq.autopistas)liq.autopistas=[];
+    liq.autopistas.push({fecha:(comp.getAttribute('Fecha')||'').slice(0,10),hora:'',caseta:casetaNombre,carril:'XML',importe:totalC,pagaOp:true,
+      rfc:rfcEmisorC,emisor:nombreEmisorC,concepto:descC,subtotal:subtotalC,iva:ivaC,
+      uuid:uuidChk,satEstado:null,satCancelado:false});
+    renderIAVE();guardarEstado();
+    validarCFDIsSATLiquidacion(true);
+    $('cardAutopistas').style.display='block';
+    $('gastoXMLInfo').style.display='block';
+    $('gastoXMLInfo').innerHTML='<div class="alert alert-warn">🚧 XML de caseta/autopista detectado — agregado al módulo <strong>Autopistas</strong> con '+fmt(totalC)+'. Ajusta ahí si pagó el operador o la empresa.</div>';
     return;
   }
 
