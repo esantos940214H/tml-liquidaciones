@@ -1577,6 +1577,7 @@ function aplicarDatosDDEC(datos,fname){
 }
 
 function iniciarLiquidacion(){
+ try{
   const unidad=parseInt($('liqOp').value||0);
   const op=OPERADORES.find(function(o){return o.unidad===unidad;});
   if(!op||!$('liqSalida').value||!$('liqLlegada').value){alert('Completa operador y fechas.');return;}
@@ -1614,6 +1615,10 @@ function iniciarLiquidacion(){
   if($('btnRevalidarSATWrap'))$('btnRevalidarSATWrap').style.display='block';
   guardarEstado();
   validarCFDIsSATLiquidacion();
+ }catch(e){
+  console.error('iniciarLiquidacion error:',e);
+  alert('⚠️ No se pudo iniciar la liquidación. Error técnico: '+e.message+'\n\nToma captura de este mensaje y repórtalo — así podemos corregirlo rápido.');
+ }
 }
 
 // ══════════════════════════════════════════════
