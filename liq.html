@@ -2126,7 +2126,7 @@ function renderIncidentesLiq(){
   $('tbIncidentesLiq').innerHTML=todos.map(function(a){
     var seAplica=res.aplicar.indexOf(a)!==-1;
     return '<tr><td style="font-size:11px">'+(a.fechaEvento||'').replace('T',' ')+'</td>'
-      +'<td><span class="badge '+(a.causa==='ajena'?'bg-green':'bg-yellow')+'">'+(a.causa==='ajena'?'Ajena':'Responsab. unidad')+'</span>'+(a.fueraDeTiempo?' <span class="badge bg-red" style="color:#c1121f">⚠ fuera de tiempo</span>':'')+'</td>'
+      +'<td><span class="badge '+(a.causa==='ajena'?'bg-green':'bg-yellow')+'">'+(a.causa==='ajena'?'Ajena':'Responsab. operador')+'</span>'+(a.fueraDeTiempo?' <span class="badge bg-red" style="color:#c1121f">⚠ fuera de tiempo</span>':'')+'</td>'
       +'<td class="num r">'+fmt(a.montoReconocido)+'</td>'
       +'<td style="text-align:center">'+(seAplica?'<span class="badge bg-green">✓ Sí</span>':'<span class="badge bg-red" style="color:#c1121f">✕ Excede tope — se descarta, no se paga</span>')+'</td></tr>';
   }).join('');
@@ -2472,7 +2472,7 @@ function generarReporte(){
   if(totIncidentes){
     gastosHTML+=rr('Incidentes de vialidad',totIncidentes);
     incidentesAplicar.forEach(function(a){
-      gastosHTML+=rrDetail('Incidente vialidad #'+a.id+' · '+(a.fechaEvento||'').replace('T',' ')+' · '+(a.causa==='ajena'?'Ajena':'Responsab. unidad'),a.montoReconocido);
+      gastosHTML+=rrDetail('Incidente vialidad #'+a.id+' · '+(a.fechaEvento||'').replace('T',' ')+' · '+(a.causa==='ajena'?'Ajena':'Responsab. operador'),a.montoReconocido);
     });
   }
   if(totCasetasNF){

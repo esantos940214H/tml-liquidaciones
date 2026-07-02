@@ -111,7 +111,7 @@ tr:hover td{background:#fafafa}
       <div class="field"><label>Causa del incidente</label>
         <select id="iCausa" onchange="actualizarPreviewMonto()">
           <option value="ajena">Ajena / arbitraria (retén sin motivo real)</option>
-          <option value="responsabilidad">Responsabilidad de la unidad (documentos, exceso de peso, maniobra, etc.)</option>
+          <option value="responsabilidad">Responsabilidad del operador (documentos, exceso de peso, maniobra, etc.)</option>
         </select>
       </div>
       <div class="field"><label>Monto que pidieron</label><input type="number" id="iMonto" placeholder="0.00" step="0.01" min="0" oninput="actualizarPreviewMonto()"></div>
@@ -135,7 +135,7 @@ tr:hover td{background:#fafafa}
       <div class="stat"><div class="n" id="stReportado">$0</div><div class="l">Suma reportada</div></div>
       <div class="stat"><div class="n" id="stReconocido">$0</div><div class="l">Suma reconocida</div></div>
       <div class="stat"><div class="n" id="stAjena">0%</div><div class="l">Ajena / arbitraria</div></div>
-      <div class="stat"><div class="n" id="stResp">0%</div><div class="l">Responsabilidad unidad</div></div>
+      <div class="stat"><div class="n" id="stResp">0%</div><div class="l">Responsabilidad del operador</div></div>
       <div class="stat"><div class="n" id="stFuera">0</div><div class="l">Fuera de tiempo</div></div>
     </div>
   </div>
@@ -151,7 +151,7 @@ tr:hover td{background:#fafafa}
         <select id="filtCausa" onchange="renderIncidentes()">
           <option value="">Todas</option>
           <option value="ajena">Ajena / arbitraria</option>
-          <option value="responsabilidad">Responsabilidad unidad</option>
+          <option value="responsabilidad">Responsabilidad del operador</option>
         </select>
       </div>
       <button class="btn btn-out btn-sm" onclick="limpiarFiltros()">Limpiar</button>
@@ -254,7 +254,7 @@ function actualizarPreviewMonto(){
   var causa=$('iCausa').value;
   var negocio=$('iNegocio').checked;
   var reconocido=calcularMontoReconocido(monto,causa,negocio);
-  var nota=causa==='ajena'?'100% del monto reportado':'40% del monto reportado (responsabilidad de la unidad)';
+  var nota=causa==='ajena'?'100% del monto reportado':'40% del monto reportado (responsabilidad del operador)';
   if(!negocio)nota+=' − 20% adicional por no negociar';
   $('previewMonto').innerHTML='Monto reconocido estimado: <strong>'+fmt(reconocido)+'</strong> <span class="tope-nota">('+nota+' · tope absoluto '+fmt(TOPE_MAXIMO_INCIDENTE)+')</span>';
 }
@@ -364,7 +364,7 @@ function renderIncidentes(){
     var rows=grp.items.map(function(a){
       return '<tr>'
         +'<td style="font-size:11px">'+(a.fechaEvento||'').replace('T',' ')+'</td>'
-        +'<td><span class="badge '+(a.causa==='ajena'?'bg-green':'bg-yellow')+'">'+(a.causa==='ajena'?'Ajena':'Responsab. unidad')+'</span></td>'
+        +'<td><span class="badge '+(a.causa==='ajena'?'bg-green':'bg-yellow')+'">'+(a.causa==='ajena'?'Ajena':'Responsab. operador')+'</span></td>'
         +'<td class="num r">'+fmt(a.montoReportado)+'</td>'
         +'<td class="num r"><strong>'+fmt(a.montoReconocido)+'</strong></td>'
         +'<td style="text-align:center">'+(a.negocio?'Sí':'No')+'</td>'
