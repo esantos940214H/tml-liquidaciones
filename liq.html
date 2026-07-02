@@ -782,7 +782,7 @@ async function validarCFDIsSATLiquidacion(soloNuevos){
 // para poder diagnosticarlo sin necesitar abrir la consola del navegador.
 window.addEventListener('error',function(e){
   console.error('Error no capturado:',e.error||e.message);
-  alert('⚠️ Ocurrió un error inesperado: '+(e.message||'desconocido')+'\n(línea '+(e.lineno||'?')+')\nToma una captura de este mensaje y repórtalo.');
+  alert('⚠️ Ocurrió un error inesperado: '+(e.message||'desconocido')+'\n(línea '+(e.lineno||'?')+', columna '+(e.colno||'?')+')\nToma una captura de este mensaje y repórtalo.');
 });
 
 // ══════════════════════════════════════════════
@@ -1625,7 +1625,8 @@ function iniciarLiquidacion(){
   validarCFDIsSATLiquidacion();
  }catch(e){
   console.error('iniciarLiquidacion error:',e);
-  alert('⚠️ No se pudo iniciar la liquidación. Error técnico: '+e.message+'\n\nToma captura de este mensaje y repórtalo — así podemos corregirlo rápido.');
+  var _detalle=(e.stack||'').split('\n').slice(0,4).join('\n');
+  alert('⚠️ No se pudo iniciar la liquidación. Error técnico: '+e.message+'\n\n'+_detalle+'\n\nToma captura de este mensaje y repórtalo — así podemos corregirlo rápido.');
  }
 }
 
