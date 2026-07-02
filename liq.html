@@ -239,6 +239,9 @@ tr:hover td{background:#fafafa}
   <div id="btnRevalidarSATWrap" style="display:none;margin-top:8px">
     <button class="btn btn-out btn-sm" onclick="validarCFDIsSATLiquidacion()">🔄 Revalidar CFDIs con el SAT</button>
   </div>
+  <div id="btnEliminarLiqWrap" style="display:none;margin-top:8px">
+    <button class="btn btn-out btn-sm" style="border-color:#e63946;color:#e63946" onclick="eliminarLiquidacionActual()">🗑️ Eliminar esta liquidación (admin)</button>
+  </div>
 
   <!-- Vista previa: anticipos e ingresos que se jalarán -->
   <div id="liqPreview" style="display:none">
@@ -944,6 +947,7 @@ function mostrarSesionEnHeader(){
   if($('sesionUsuarioLabel'))$('sesionUsuarioLabel').textContent='👤 '+(u.nombre||u.usuario)+(u.esAdmin?' (admin)':'');
   if($('btnCerrarSesion'))$('btnCerrarSesion').style.display='inline';
   aplicarPermisosNav(u);
+  actualizarBotonEliminarLiq();
 }
 function verificarSesionModulo(){
   var u=usuarioSesion();
@@ -1064,6 +1068,7 @@ function restaurarUILiquidacion(){
     if(rm)rm.style.display='none';
     if(pc)pc.style.display='block';
   });
+  actualizarBotonEliminarLiq();
   if($('dOpNombre'))$('dOpNombre').textContent=liq.op.nombre;
   if($('iaveOpNombre'))$('iaveOpNombre').textContent=liq.op.nombre;
   if($('liqInfo')){
@@ -1102,6 +1107,7 @@ function restaurarUILiquidacion(){
   if(!liq.casetasNF)liq.casetasNF=[];
   renderCasetasNF();
   if($('btnRevalidarSATWrap'))$('btnRevalidarSATWrap').style.display='block';
+  actualizarBotonEliminarLiq();
   if(liq.autopistas&&liq.autopistas.length) renderIAVE();
   if(!liq.dieselXML)liq.dieselXML=[];
   renderDieselXML();
@@ -1508,9 +1514,11 @@ function onLiqOpChange(){
   // Comisión: usar valor del operador y re-bloquear
   $('liqComision').value=op?op.comision:12;
   bloquearComision();
-  var arr=arrastres[unidad]||{};
-  if(arr.lts!=null&&arr.lts>0)$('dIniLts').value=arr.lts;
-  if(arr.precio!=null&&arr.precio>0)$('dIniPrecio').value=arr.precio;
+  // Siempre reasignar (no solo cuando hay arrastre) para que al cambiar de
+  // operador no se quede pegado el arrastre del operador anterior mostrado.
+  var arr=arrastres[unidad]||arrastres[String(unidad)]||{};
+  if($('dIniLts'))$('dIniLts').value=arr.lts||0;
+  if($('dIniPrecio'))$('dIniPrecio').value=arr.precio||0;
   if(!liq)$('liqNum').value=ultimaLiqNum+1;
   if(unidad) refrescarPreview();
 }
@@ -1685,6 +1693,7 @@ function iniciarLiquidacion(){
   renderIncidentesLiq();
   renderCasetasNF();
   if($('btnRevalidarSATWrap'))$('btnRevalidarSATWrap').style.display='block';
+  actualizarBotonEliminarLiq();
   guardarEstado();
   validarCFDIsSATLiquidacion();
  }catch(e){
@@ -1692,6 +1701,59 @@ function iniciarLiquidacion(){
   var _detalle=(e.stack||'').split('\n').slice(0,4).join('\n');
   alert('⚠️ No se pudo iniciar la liquidación. Error técnico: '+e.message+'\n\n'+_detalle+'\n\nToma captura de este mensaje y repórtalo — así podemos corregirlo rápido.');
  }
+}
+
+// Muestra el botón de eliminar liquidación SOLO si hay una liquidación abierta
+// (no cerrada) y el usuario en sesión es administrador.
+function actualizarBotonEliminarLiq(){
+  var wrap=$('btnEliminarLiqWrap');
+  if(!wrap)return;
+  var u=usuarioSesion();
+  wrap.style.display=(liq&&u&&u.esAdmin)?'block':'none';
+}
+
+// Elimina (descarta) la liquidación actualmente ABIERTA, sin cerrarla.
+// Como los anticipos y viajes NO se marcan como "liquidado" hasta que la
+// liquidación se cierra (eso pasa en cerrarLiquidacion), simplemente al
+// descartar el objeto liq ya quedan libres — no hace falta tocar
+// anticiposDB ni ingresosDB. Lo único que sí hay que revertir es el
+// registro global de facturas usadas (UUIDs de gastos/diesel/casetas que
+// se hayan subido dentro de esta misma liquidación antes de eliminarla),
+// para que esos CFDI no queden bloqueados sin liquidación real que los use.
+function eliminarLiquidacionActual(){
+  var u=usuarioSesion();
+  if(!u||!u.esAdmin){alert('Solo un administrador puede eliminar una liquidación.');return;}
+  if(!liq){alert('No hay ninguna liquidación abierta.');return;}
+  var num=liq.num,opNombre=liq.op?liq.op.nombre:'',unidad=liq.unidad;
+  if(!confirm('¿ELIMINAR la liquidación #'+num+' de '+opNombre+' (unidad '+unidad+')?\n\nEsto NO se puede deshacer. Los anticipos e ingresos de este operador quedarán libres para la próxima vez que se abra su liquidación.'))return;
+  if(prompt('Para confirmar, escribe el número de liquidación (#'+num+'):')!==String(num)){alert('No coincide el número. No se eliminó nada.');return;}
+
+  // Liberar del registro global cualquier CFDI que se haya subido dentro de esta liquidación
+  [].concat(liq.gastosXML||[],liq.dieselXML||[],liq.autopistas||[]).forEach(function(item){
+    if(item.uuid)liberarFacturaUsada(item.uuid);
+  });
+
+  if(fbReady&&window.FB)window.FB.del('estado','liqActiva');
+  liq=null;
+  cargasOp=[];
+  renderIncidentesLiq();
+  if($('btnRevalidarSATWrap'))$('btnRevalidarSATWrap').style.display='none';
+  if($('btnEliminarLiqWrap'))$('btnEliminarLiqWrap').style.display='none';
+  if($('satValidandoInfo'))$('satValidandoInfo').style.display='none';
+  $('headerInfo').textContent='Sin liquidación activa';
+  ['1','2','3','4'].forEach(function(i){if($('liqReqMsg'+i))$('liqReqMsg'+i).style.display='block';if($('panel'+i+'Content'))$('panel'+i+'Content').style.display='none';});
+  if($('liqOp'))$('liqOp').value='';
+  if($('liqUnidad'))$('liqUnidad').value='';
+  if($('liqSalida'))$('liqSalida').value='';
+  if($('liqLlegada'))$('liqLlegada').value='';
+  if($('liqDuracion'))$('liqDuracion').value='';
+  if($('liqKms'))$('liqKms').value='';
+  if($('liqLitrosECM'))$('liqLitrosECM').value='';
+  if($('liqRend'))$('liqRend').value='';
+  if($('liqInfo')){$('liqInfo').style.display='none';$('liqInfo').innerHTML='';}
+  if($('liqPreview'))$('liqPreview').style.display='none';
+  guardarEstado();
+  alert('🗑️ Liquidación #'+num+' eliminada. Los anticipos e ingresos de '+opNombre+' quedaron libres.');
 }
 
 // ══════════════════════════════════════════════
@@ -3121,6 +3183,7 @@ function cerrarLiquidacion(){
   cargasOp=[];
   renderIncidentesLiq();
   if($('btnRevalidarSATWrap'))$('btnRevalidarSATWrap').style.display='none';
+  if($('btnEliminarLiqWrap'))$('btnEliminarLiqWrap').style.display='none';
   if($('satValidandoInfo'))$('satValidandoInfo').style.display='none';
   $('headerInfo').textContent='Sin liquidación activa';
   ['1','2','3','4'].forEach(function(i){$('liqReqMsg'+i).style.display='block';$('panel'+i+'Content').style.display='none';});
