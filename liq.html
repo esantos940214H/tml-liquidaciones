@@ -654,7 +654,7 @@ document.getElementById('limiteGastoLabel').textContent=LIMITE_GASTO_SIN_FACTURA
 // así que se usa un Worker propio como intermediario. Reemplaza esta URL
 // por la de tu Worker desplegado (ver sat-cfdi-worker.js en la raíz del repo).
 // ══════════════════════════════════════════════
-const SAT_PROXY_URL='https://sat-cfdi-proxy.TU-USUARIO.workers.dev';
+const SAT_PROXY_URL='https://sat-cfdi-proxy.tml-liquidaciones.workers.dev';
 
 async function consultarEstadoSAT(item){
   if(!item.uuid)return{estado:'Sin UUID',cancelado:false,error:true};
