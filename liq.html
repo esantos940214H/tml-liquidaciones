@@ -243,6 +243,24 @@ tr:hover td{background:#fafafa}
     <button class="btn btn-out btn-sm" style="border-color:#e63946;color:#e63946" onclick="eliminarLiquidacionActual()">🗑️ Eliminar esta liquidación (admin)</button>
   </div>
 
+  <!-- Registrar CFDI de una liquidación histórica en el bloqueo de duplicados (admin) -->
+  <div id="cardBackfillWrap" style="display:none;margin-top:16px">
+    <div class="card">
+      <div class="card-title">🔒 Marcar CFDI como ya usado (admin)</div>
+      <div style="font-size:12px;color:#666;margin-bottom:10px">
+        Para facturas que ya se usaron en una liquidación cerrada ANTES de que existiera este bloqueo automático
+        (por eso no se detectan solas). Sube el mismo XML aquí — <strong>no se agrega a ninguna liquidación</strong>,
+        solo se marca su UUID como usado para que ya no se pueda volver a subir en ningún operador.
+      </div>
+      <div class="row">
+        <div class="field"><label>No. de liquidación</label><input type="number" id="bfLiqNum" placeholder="Ej: 3" style="width:120px"></div>
+        <div class="field"><label>Unidad</label><input type="number" id="bfUnidad" placeholder="Ej: 529" style="width:120px"></div>
+        <div class="field"><label>XML del CFDI</label><input type="file" id="bfXML" accept=".xml"></div>
+      </div>
+      <div id="bfInfo" style="margin-top:8px"></div>
+    </div>
+  </div>
+
   <!-- Vista previa: anticipos e ingresos que se jalarán -->
   <div id="liqPreview" style="display:none">
     <div class="card">
@@ -966,6 +984,7 @@ function mostrarSesionEnHeader(){
   if($('btnCerrarSesion'))$('btnCerrarSesion').style.display='inline';
   aplicarPermisosNav(u);
   actualizarBotonEliminarLiq();
+  if($('cardBackfillWrap'))$('cardBackfillWrap').style.display=(u&&u.esAdmin)?'block':'none';
 }
 function verificarSesionModulo(){
   var u=usuarioSesion();
@@ -2273,6 +2292,38 @@ dzGX.addEventListener('drop',function(e){e.preventDefault();dzGX.classList.remov
 if($('fGastoXML'))$('fGastoXML').addEventListener('change',function(e){handleGastoXMLFiles(e.target.files);});
 }
 
+// Backfill admin: marcar CFDI de una liquidación histórica como ya usado, sin
+// agregarlo a ninguna liquidación — solo actualiza el registro global.
+if($('bfXML'))$('bfXML').addEventListener('change',function(e){
+  var file=e.target.files[0];
+  if(!file)return;
+  var liqNum=parseInt($('bfLiqNum').value||0);
+  var unidad=parseInt($('bfUnidad').value||0);
+  if(!liqNum||!unidad){
+    alert('Escribe el número de liquidación y la unidad antes de subir el XML.');
+    e.target.value='';
+    return;
+  }
+  var r=new FileReader();
+  r.onload=function(ev){
+    try{
+      var doc=new DOMParser().parseFromString(ev.target.result,'text/xml');
+      var tfd=doc.querySelector('TimbreFiscalDigital');
+      var uuid=tfd?tfd.getAttribute('UUID')||'':'';
+      if(!uuid){
+        $('bfInfo').innerHTML='<div class="alert alert-warn">⚠️ '+file.name+': no se encontró UUID en el XML.</div>';
+        return;
+      }
+      registrarFacturaUsada(uuid,liqNum,unidad,'backfill-manual');
+      $('bfInfo').innerHTML='<div class="alert alert-ok">✅ '+file.name+' — UUID marcado como usado en la liquidación #'+liqNum+' (unidad '+unidad+'). Ya no se podrá volver a subir en ninguna liquidación.</div>';
+      e.target.value='';
+    }catch(err){
+      $('bfInfo').innerHTML='<div class="alert alert-warn">⚠️ Error leyendo el XML: '+err.message+'</div>';
+    }
+  };
+  r.readAsText(file,'UTF-8');
+});
+
 function handleGastoXMLFiles(files){Array.from(files).forEach(function(f){const r=new FileReader();r.onload=function(e){parseGastoXML(e.target.result,f.name);};r.readAsText(f,'UTF-8');});}
 
 var CLAVES_SAT_COMBUSTIBLE=['15101503','15101504','15101505','15101506','15101507','15111510'];
@@ -2290,7 +2341,7 @@ function esCombustibleXML(doc){
 // Detecta si el XML corresponde a una factura de caseta/autopista/peaje
 // (por nombre del emisor o descripción del concepto) para redirigirlo
 // automáticamente al módulo de Autopistas en vez de registrarlo como gasto general.
-var PALABRAS_CASETA=['PEAJE','CASETA','AUTOPISTA','CAPUFE','VIADUCTO','TELEPEAJE','TAG','IAVE','PASE','CUOTA DE PEAJE','TRANSITO VEHICULAR','CONCESIONARIA','VIA CORTA','LIBRAMIENTO'];
+var PALABRAS_CASETA=['PEAJE','CASETA','AUTOPISTA','CAPUFE','VIADUCTO','TELEPEAJE','TAG','IAVE','PASE','CUOTA DE PEAJE','TRANSITO VEHICULAR','CONCESIONARIA','VIA CORTA','LIBRAMIENTO','FONDO NACIONAL DE INFRAESTRUCTURA','FONADIN','INFRAESTRUCTURA CARRETERA','RED VIAL','CARRETERO'];
 function esCasetaXML(doc){
   var emisor=doc.querySelector('Emisor');
   var nombreEmisor=(emisor?emisor.getAttribute('Nombre')||'':'').toUpperCase();
