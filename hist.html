@@ -148,6 +148,38 @@ tr:hover td{background:#fafafa}
     </div>
   </div>
 
+  <!-- REPORTES -->
+  <div class="card" id="cardReportes">
+    <div class="card-title">📊 Reportes</div>
+    <div class="row">
+      <div class="field" style="min-width:220px"><label>Tipo de reporte</label>
+        <select id="repTipo" onchange="cambiarTipoReporte()">
+          <option value="liqOp">Liquidaciones por operador</option>
+          <option value="antOp">Anticipos por operador</option>
+          <option value="gastosLiq">Gastos por liquidación</option>
+          <option value="ingresosLiq">Ingresos por liquidación</option>
+          <option value="ivaResumen">Resumen de IVA por periodo</option>
+        </select>
+      </div>
+      <div class="field" id="fieldRepOp"><label>Operador</label>
+        <select id="repOp"><option value="">Todos</option></select>
+      </div>
+      <div class="field" id="fieldRepNum" style="display:none"><label>No. Liquidación</label>
+        <input type="number" id="repNum" placeholder="Ej: 3">
+      </div>
+      <div class="field"><label>Desde</label>
+        <input type="date" id="repDesde">
+      </div>
+      <div class="field"><label>Hasta</label>
+        <input type="date" id="repHasta">
+      </div>
+      <button class="btn btn-red btn-sm" onclick="generarReporte2()">📊 Generar</button>
+      <button class="btn btn-out btn-sm" id="btnExportRep" onclick="exportarReporteCSV()" style="display:none">⬇️ Exportar CSV</button>
+    </div>
+    <div id="repResumen" style="margin-top:14px"></div>
+    <div class="tbl-wrap" id="repTablaWrap" style="margin-top:10px"></div>
+  </div>
+
   <!-- LISTA DE LIQUIDACIONES -->
   <div class="card" id="cardLista">
     <div class="card-title">📋 Liquidaciones cerradas <span id="countLiq" style="font-size:11px;font-weight:400;color:#aaa"></span></div>
@@ -366,6 +398,8 @@ window.onFBReady(verificarSesionModulo);
 // Init selects
 const s=$('busOp');
 OPERADORES.forEach(op=>{const o=document.createElement('option');o.value=op.unidad;o.textContent=op.unidad+' · '+op.nombre;s.appendChild(o);});
+const sRep=$('repOp');
+OPERADORES.forEach(op=>{const o=document.createElement('option');o.value=op.unidad;o.textContent=op.unidad+' · '+op.nombre;sRep.appendChild(o);});
 
 window.onFBReady(async function(){
   $('fbStatus').textContent='✅ Conectado';$('fbStatus').className='fb-status fb-ok';
@@ -586,6 +620,175 @@ function verDetalle(id){
 function cerrarDetalle(){
   $('cardDetalle').style.display='none';
   $('cardLista').style.display='block';
+}
+
+// ══════════════════════════════════════════════
+// REPORTES
+// ══════════════════════════════════════════════
+let repDatosActuales=null; // {headers:[...], rows:[[...]]} para exportar CSV
+let repNombreActual='reporte';
+
+function cambiarTipoReporte(){
+  const t=$('repTipo').value;
+  $('fieldRepOp').style.display=(t==='gastosLiq'||t==='ingresosLiq')?'none':'flex';
+  $('fieldRepNum').style.display=(t==='gastosLiq'||t==='ingresosLiq')?'flex':'none';
+  $('repResumen').innerHTML='';
+  $('repTablaWrap').innerHTML='';
+  $('btnExportRep').style.display='none';
+}
+
+function opNombre(unidad){
+  const op=OPERADORES.find(o=>parseInt(o.unidad)===parseInt(unidad));
+  return op?op.nombre:('Unidad '+unidad);
+}
+
+function liqsFiltradas(){
+  const filtOp=parseInt($('repOp').value||0);
+  const filtDesde=$('repDesde').value;
+  const filtHasta=$('repHasta').value;
+  return historialDB.filter(l=>{
+    if(filtOp&&parseInt(l.unidad)!==filtOp)return false;
+    if(filtDesde&&l.salida<filtDesde)return false;
+    if(filtHasta&&l.llegada>filtHasta)return false;
+    return true;
+  });
+}
+
+function dlBlobCSV(nombre,headers,rows){
+  let csv=headers.join(',')+'\n';
+  rows.forEach(r=>{csv+=r.map(v=>{
+    v=(v===null||v===undefined)?'':String(v);
+    if(v.indexOf(',')>=0||v.indexOf('"')>=0||v.indexOf('\n')>=0)v='"'+v.replace(/"/g,'""')+'"';
+    return v;
+  }).join(',')+'\n';});
+  const blob=new Blob(['﻿'+csv],{type:'text/csv;charset=utf-8'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');
+  a.href=url;a.download=nombre+'.csv';
+  document.body.appendChild(a);a.click();document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+function exportarReporteCSV(){
+  if(!repDatosActuales){alert('Genera un reporte primero.');return;}
+  dlBlobCSV(repNombreActual,repDatosActuales.headers,repDatosActuales.rows);
+}
+
+function tablaHTML(headers,rows,totales){
+  let h='<table><thead><tr>'+headers.map(x=>'<th class="r">'+x+'</th>').join('')+'</tr></thead><tbody>';
+  if(!rows.length){h+='<tr><td colspan="'+headers.length+'" style="text-align:center;color:#aaa;padding:16px">Sin datos para los filtros seleccionados.</td></tr>';}
+  rows.forEach(r=>{h+='<tr>'+r.map(x=>'<td class="r">'+x+'</td>').join('')+'</tr>';});
+  h+='</tbody>';
+  if(totales){h+='<tfoot><tr style="font-weight:700;background:#f5f5f8">'+totales.map(x=>'<td class="r">'+x+'</td>').join('')+'</tr></tfoot>';}
+  h+='</table>';
+  return h;
+}
+
+function generarReporte2(){
+  const t=$('repTipo').value;
+  if(t==='liqOp')return repLiqOp();
+  if(t==='antOp')return repAntOp();
+  if(t==='gastosLiq')return repGastosLiq();
+  if(t==='ingresosLiq')return repIngresosLiq();
+  if(t==='ivaResumen')return repIvaResumen();
+}
+
+function repLiqOp(){
+  const liqs=liqsFiltradas().sort((a,b)=>(a.unidad-b.unidad)||(a.num-b.num));
+  const headers=['#Liq','Operador','Unidad','Salida','Llegada','Ingresos','Gastos','Saldo Op.','Resultado'];
+  const rows=liqs.map(l=>{
+    const snap=l.snapshot||{};
+    const saldo=snap.saldoReal||0;
+    return ['#'+l.num,opNombre(l.unidad),l.unidad,l.salida||'',l.llegada||'',
+      fmt(snap.totIngSubtotal||0),fmt(snap.totGastosEmpTotal||0),fmt(Math.abs(saldo)),
+      saldo>=0?'A favor op.':'En contra op.'];
+  });
+  const totIng=liqs.reduce((s,l)=>s+((l.snapshot||{}).totIngSubtotal||0),0);
+  const totGas=liqs.reduce((s,l)=>s+((l.snapshot||{}).totGastosEmpTotal||0),0);
+  $('repResumen').innerHTML='<div class="kpis"><div class="kpi"><div class="v">'+liqs.length+'</div><div class="k">Liquidaciones</div></div>'
+    +'<div class="kpi"><div class="v">'+fmt(totIng)+'</div><div class="k">Ingresos totales</div></div>'
+    +'<div class="kpi"><div class="v red">'+fmt(totGas)+'</div><div class="k">Gastos totales</div></div></div>';
+  $('repTablaWrap').innerHTML=tablaHTML(headers,rows);
+  repDatosActuales={headers,rows};
+  repNombreActual='liquidaciones_por_operador';
+  $('btnExportRep').style.display='inline-block';
+}
+
+function repAntOp(){
+  const liqs=liqsFiltradas();
+  const headers=['#Liq','Operador','Unidad','Fecha','Concepto','Importe'];
+  const rows=[];
+  liqs.forEach(l=>{
+    const lista=(l.snapshot||{}).antsList||[];
+    lista.forEach(a=>{rows.push(['#'+l.num,opNombre(l.unidad),l.unidad,a.fecha||'',a.concepto||'',fmt(a.importe||0)]);});
+  });
+  const totAnt=rows.reduce((s,r)=>s+parseFloat((r[5]||'0').replace(/[^0-9.\-]/g,'')||0),0);
+  $('repResumen').innerHTML='<div class="kpis"><div class="kpi"><div class="v">'+rows.length+'</div><div class="k">Anticipos</div></div>'
+    +'<div class="kpi"><div class="v">'+fmt(totAnt)+'</div><div class="k">Total anticipos</div></div></div>';
+  $('repTablaWrap').innerHTML=tablaHTML(headers,rows);
+  repDatosActuales={headers,rows};
+  repNombreActual='anticipos_por_operador';
+  $('btnExportRep').style.display='inline-block';
+}
+
+function repGastosLiq(){
+  const num=parseInt($('repNum').value||0);
+  if(!num){alert('Ingresa el número de liquidación.');return;}
+  const l=historialDB.find(x=>x.num===num);
+  if(!l){alert('No se encontró la liquidación #'+num+' en el historial.');return;}
+  const snap=l.snapshot||{};
+  const headers=['Tipo','Fecha','Proveedor/Caseta','RFC','Concepto','Subtotal','IVA','Total','Pagó'];
+  const gastos=(snap.gastosList||[]).map(g=>['Gasto '+(g.tipo==='xml'?'facturado':'manual'),g.fecha||'',g.proveedor||'',g.rfc||'',g.concepto||'',fmt(g.subtotal||0),fmt(g.iva||0),fmt(g.total||0),g.pagaOp?'Operador':'Empresa']);
+  const casetas=(snap.autopistasList||[]).map(a=>['Caseta (XML)',a.fecha||'',a.caseta||'',a.rfc||'',a.concepto||'',fmt(a.subtotal||0),fmt(a.iva||0),fmt(a.importe||0),a.pagaOp?'Operador':'Empresa']);
+  const casetasNF=(snap.casetasNFList||[]).map(c=>['Caseta sin comprobante',c.fecha||'',c.caseta||'',c.motivo||'',c.motivo||'','—','—',fmt(c.monto||0),'Operador']);
+  const dieselXML=(snap.dieselXML||[]).map(x=>['Diesel (XML)',x.fecha||'',x.emisor||'',x.rfc||'',x.folio||'',fmt(x.subtotal||0),fmt(x.iva||0),fmt(x.total||0),x.pagaOp?'Operador':'Empresa']);
+  const rows=gastos.concat(casetas,casetasNF,dieselXML);
+  const totGeneral=rows.reduce((s,r)=>{const v=parseFloat((r[7]||'0').replace(/[^0-9.\-]/g,'')||0);return s+v;},0);
+  $('repResumen').innerHTML='<div class="kpis"><div class="kpi"><div class="v">'+rows.length+'</div><div class="k">Registros de gasto</div></div>'
+    +'<div class="kpi"><div class="v red">'+fmt(totGeneral)+'</div><div class="k">Total gastos (suma de líneas)</div></div>'
+    +'<div class="kpi"><div class="v">'+fmt(snap.totGastosEmpTotal||0)+'</div><div class="k">Total gastos oficial de la liquidación</div></div></div>';
+  $('repTablaWrap').innerHTML=tablaHTML(headers,rows);
+  repDatosActuales={headers,rows};
+  repNombreActual='gastos_liquidacion_'+num;
+  $('btnExportRep').style.display='inline-block';
+}
+
+function repIngresosLiq(){
+  const num=parseInt($('repNum').value||0);
+  if(!num){alert('Ingresa el número de liquidación.');return;}
+  const l=historialDB.find(x=>x.num===num);
+  if(!l){alert('No se encontró la liquidación #'+num+' en el historial.');return;}
+  const snap=l.snapshot||{};
+  const headers=['Folio','Fecha','Cliente','UUID','Subtotal','IVA','Retención','Total'];
+  const rows=(snap.viajesList||[]).map(v=>[v.folio||'—',v.fecha||'',v.cliente||'',v.uuid||'',fmt(v.subtotal||0),fmt(v.iva||0),fmt(v.ret||0),fmt(v.total||0)]);
+  const totIng=(snap.viajesList||[]).reduce((s,v)=>s+parseFloat(v.total||0),0);
+  $('repResumen').innerHTML='<div class="kpis"><div class="kpi"><div class="v">'+rows.length+'</div><div class="k">Viajes/facturas</div></div>'
+    +'<div class="kpi"><div class="v green">'+fmt(totIng)+'</div><div class="k">Total ingresos</div></div></div>';
+  $('repTablaWrap').innerHTML=tablaHTML(headers,rows);
+  repDatosActuales={headers,rows};
+  repNombreActual='ingresos_liquidacion_'+num;
+  $('btnExportRep').style.display='inline-block';
+}
+
+function repIvaResumen(){
+  const liqs=liqsFiltradas().sort((a,b)=>(a.unidad-b.unidad)||(a.num-b.num));
+  const headers=['#Liq','Operador','Unidad','Salida','IVA trasladado (ingresos)','IVA retenido','IVA acreditable (gastos)'];
+  const rows=liqs.map(l=>{
+    const snap=l.snapshot||{};
+    const ivaGastos=(snap.gastosList||[]).reduce((s,g)=>s+parseFloat(g.iva||0),0)
+      +(snap.autopistasList||[]).reduce((s,a)=>s+parseFloat(a.iva||0),0)
+      +(snap.dieselXML||[]).reduce((s,x)=>s+parseFloat(x.iva||0),0);
+    return ['#'+l.num,opNombre(l.unidad),l.unidad,l.salida||'',fmt(snap.totIvaTrasl||0),fmt(snap.totRetTotal||0),fmt(ivaGastos)];
+  });
+  const totTrasl=liqs.reduce((s,l)=>s+((l.snapshot||{}).totIvaTrasl||0),0);
+  const totRet=liqs.reduce((s,l)=>s+((l.snapshot||{}).totRetTotal||0),0);
+  $('repResumen').innerHTML='<div class="kpis"><div class="kpi"><div class="v">'+liqs.length+'</div><div class="k">Liquidaciones</div></div>'
+    +'<div class="kpi"><div class="v">'+fmt(totTrasl)+'</div><div class="k">IVA trasladado total</div></div>'
+    +'<div class="kpi"><div class="v red">'+fmt(totRet)+'</div><div class="k">IVA retenido total</div></div></div>';
+  $('repTablaWrap').innerHTML=tablaHTML(headers,rows);
+  repDatosActuales={headers,rows};
+  repNombreActual='resumen_iva';
+  $('btnExportRep').style.display='inline-block';
 }
 </script>
 </body>

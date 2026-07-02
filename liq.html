@@ -2775,9 +2775,12 @@ function generarReporte(){
     totAnts:totAnts, totalCargosReal:totalCargosReal, totalAbonosReal:totalAbonosReal,
     saldoReal:saldoReal, diesel:liq.diesel||{},
     antsList:antsPendRep.map(function(a){return{fecha:a.fecha||a.fechaStr||'',concepto:a.concepto,importe:a.importe};}),
-    viajesList:viajes.map(function(v){return{folio:v.folio,fecha:v.fecha,cliente:v.cliente,subtotal:v.subtotal,iva:v.iva,ret:v.ret,total:v.total};}),
+    viajesList:viajes.map(function(v){return{folio:v.folio,fecha:v.fecha,cliente:v.cliente,subtotal:v.subtotal,iva:v.iva,ret:v.ret,total:v.total,uuid:v.uuid||'',rfcEmisor:v.rfcEmisor||'',rfcReceptor:v.rfcReceptor||'',satCancelado:!!v.satCancelado};}),
     cargasDiesel:cargasOp.filter(function(c){return!c.yaLiquidada;}).map(function(c){return{fecha:c.fecha,hora:c.hora||'',estacion:c.estacion,litros:c.litros,precio:c.precio,importe:c.importe};}),
-    dieselXML:(liq.dieselXML||[]).map(function(x){return{fecha:x.fecha,folio:x.folio,emisor:x.emisor,litros:x.litros,precioUnitario:x.precioUnitario,total:x.total,pagaOp:x.pagaOp};}),
+    dieselXML:(liq.dieselXML||[]).map(function(x){return{fecha:x.fecha,folio:x.folio,emisor:x.emisor,rfc:x.rfc||'',uuid:x.uuid||'',litros:x.litros,precioUnitario:x.precioUnitario,subtotal:x.subtotal||0,iva:x.iva||0,total:x.total,pagaOp:x.pagaOp,satCancelado:!!x.satCancelado};}),
+    gastosList:(liq.gastosXML||[]).filter(function(g){return!g.satCancelado;}).map(function(g){return{tipo:'xml',fecha:g.fecha||'',proveedor:g.proveedor||'',rfc:g.rfc||'',concepto:g.conceptoDesc||g.desc||'',uuid:g.uuid||'',subtotal:g.subtotal||0,iva:g.iva||0,total:g.total||0,pagaOp:!!g.pagaOp};})
+      .concat((liq.gastos||[]).map(function(g){return{tipo:'manual',fecha:g.fecha||'',proveedor:g.proveedor||'',rfc:'',concepto:g.concepto||g.desc||'',uuid:'',subtotal:g.total||g.importe||0,iva:0,total:g.total||g.importe||0,pagaOp:!!g.pagaOp};})),
+    autopistasList:(liq.autopistas||[]).filter(function(a){return!a.satCancelado;}).map(function(a){return{fecha:a.fecha||'',caseta:a.caseta||'',rfc:a.rfc||'',concepto:a.concepto||'',uuid:a.uuid||'',subtotal:a.subtotal||0,iva:a.iva||0,importe:a.importe||0,pagaOp:!!a.pagaOp};}),
     totIncidentes:totIncidentes, totCasetasNF:totCasetasNF,
     incidentesList:incidentesAplicar.map(function(a){return{id:a.id,fechaEvento:a.fechaEvento,causa:a.causa,montoReportado:a.montoReportado,montoReconocido:a.montoReconocido,fueraDeTiempo:!!a.fueraDeTiempo};}),
     casetasNFList:casetasNFAplicar.map(function(a){return{id:a.id,fecha:a.fecha,caseta:a.caseta,monto:a.monto,motivo:a.motivo,evidenciaURL:a.evidenciaURL||null,sinFoto:!!a.sinFoto};})
