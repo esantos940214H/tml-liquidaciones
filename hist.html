@@ -488,11 +488,13 @@ function verDetalle(id){
   $('cardDetalle').style.display='block';
   $('detLiqNum').textContent='#'+l.num;
 
-  // Botón de reabrir: solo admin, y solo si no existe una liquidación
-  // posterior (mismo operador) ya cerrada o abierta — para no romper la
-  // cadena de arrastres (anticipos, diesel, etc.) que ya la usaron.
+  // Botón de reabrir: solo admin, y solo si no existe NINGUNA liquidación
+  // posterior (de cualquier operador) ya cerrada — el número de liquidación
+  // es un folio único y secuencial para todo el sistema, no por operador,
+  // así que reabrir una con folio menor mientras ya existe uno mayor podría
+  // romper la cadena de arrastres (anticipos, diesel, etc.) de en medio.
   var _uReab=usuarioSesion();
-  var _hayPosterior=historialDB.some(function(h){return parseInt(h.unidad)===parseInt(l.unidad)&&h.num>l.num;});
+  var _hayPosterior=historialDB.some(function(h){return h.num>l.num;});
   var btnReab=$('btnReabrirLiq');
   if(btnReab){
     if(_uReab&&_uReab.esAdmin&&!_hayPosterior){
@@ -502,7 +504,7 @@ function verDetalle(id){
     } else {
       btnReab.style.display=(_uReab&&_uReab.esAdmin)?'inline-block':'none';
       btnReab.disabled=true;
-      btnReab.title=_hayPosterior?'No se puede reabrir: ya existe una liquidación posterior de este operador.':'';
+      btnReab.title=_hayPosterior?'No se puede reabrir: ya existe una liquidación #'+l.num+' o posterior ya cerrada en el sistema.':'';
     }
   }
 
@@ -661,14 +663,14 @@ async function reabrirLiquidacion(){
 
   // Revalidar en vivo (no confiar solo en lo que ya se cargó en esta pestaña)
   const histFresco=await window.FB.getAll('historial');
-  const hayPosterior=histFresco.some(function(h){return parseInt(h.unidad)===parseInt(l.unidad)&&h.num>l.num;});
-  if(hayPosterior){alert('No se puede reabrir: ya existe una liquidación posterior de este operador. Reabrir esta rompería el arrastre de anticipos/diesel que la posterior ya usó.');return;}
+  const hayPosterior=histFresco.some(function(h){return h.num>l.num;});
+  if(hayPosterior){alert('No se puede reabrir: ya existe una liquidación #'+l.num+' o posterior ya cerrada en el sistema. Reabrir esta rompería la cadena de arrastres (anticipos/diesel) de en medio.');return;}
 
   const activaData=await window.FB.get('estado','liqActiva');
   let activaActual=null;
   if(activaData&&activaData.data){try{activaActual=JSON.parse(activaData.data);}catch(e){}}
-  if(activaActual&&parseInt(activaActual.unidad)===parseInt(l.unidad)&&activaActual.num>l.num){
-    alert('No se puede reabrir: hay una liquidación #'+activaActual.num+' de este mismo operador actualmente abierta y es más reciente.');
+  if(activaActual&&activaActual.num>l.num){
+    alert('No se puede reabrir: hay una liquidación #'+activaActual.num+' actualmente abierta y es más reciente.');
     return;
   }
 
@@ -757,10 +759,39 @@ async function reabrirLiquidacion(){
     liqReab.anticiposIncluidos=idsAntLiberados;
     liqReab.viajesIncluidos=idsViajesLiberados;
 
+    // Quitar del arrastre de diesel/casetas las claves que esta misma
+    // liquidación agregó al cerrarse originalmente, para que sus propias
+    // cargas/cruces no salgan marcados como "ya liquidado" (de otra
+    // liquidación) al volver a editarla y recalcular su diesel.
+    const arrRes=await window.FB.get('estado','arrastres');
+    let arrDB=(arrRes&&arrRes.data)?JSON.parse(arrRes.data):{};
+    const arrU=arrDB[l.unidad]||arrDB[String(l.unidad)];
+    if(arrU){
+      const cargasD=snap.cargasDiesel||[];
+      if(arrU.cargasYaLiquidadas&&cargasD.length){
+        const keysEstaLiq=[];
+        cargasD.forEach(function(c){
+          keysEstaLiq.push((c.fecha||'')+'|'+(c.hora||''));
+          keysEstaLiq.push((c.fecha||'')+'|'+(c.estacion||'')+'|'+Math.round((c.litros||0)*100));
+          keysEstaLiq.push((c.fecha||'')+'|'+(c.hora||'')+'|'+Math.round((c.litros||0)*100));
+        });
+        arrU.cargasYaLiquidadas=arrU.cargasYaLiquidadas.filter(function(k){return keysEstaLiq.indexOf(k)===-1;});
+      }
+      const autopistasL=snap.autopistasList||[];
+      if(arrU.iaveYaLiquidadas&&autopistasL.length){
+        const keysIaveEstaLiq=autopistasL.map(function(a){
+          return (a.fecha||'')+'|'+(a.hora||'')+'|'+(a.caseta||'')+'|'+Math.round((((a.subtotal||0)+(a.iva||0)))*100);
+        });
+        arrU.iaveYaLiquidadas=arrU.iaveYaLiquidadas.filter(function(k){return keysIaveEstaLiq.indexOf(k)===-1;});
+      }
+      arrDB[l.unidad]=arrU;
+    }
+
     await Promise.all([
       window.FB.set('estado','anticiposDB',{data:JSON.stringify(antDB)}),
       window.FB.set('estado','ingresosDB',{data:JSON.stringify(ingDB)}),
       window.FB.set('estado','incidentesDB',{data:JSON.stringify(incDB)}),
+      window.FB.set('estado','arrastres',{data:JSON.stringify(arrDB)}),
       window.FB.set('estado','liqActiva',{data:JSON.stringify(liqReab)}),
     ]);
 

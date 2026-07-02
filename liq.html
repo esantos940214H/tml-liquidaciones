@@ -1859,6 +1859,10 @@ async function obtenerClavesHistorialDiesel(unidad){
   var claves=[];
   historial.forEach(function(h){
     if(parseInt(h.unidad)!==parseInt(unidad))return;
+    // Si estamos editando una liquidación reabierta, no cuentes su propio
+    // historial guardado como "ya liquidado en otra liquidación" — es la
+    // misma que se está editando ahora mismo.
+    if(liq&&liq.reabierta&&h.num===liq.num)return;
     var diesel=(h.snapshot&&h.snapshot.cargasDiesel)||[];
     diesel.forEach(function(c){
       // Clave A — fecha+hora (registros nuevos con hora guardada)
