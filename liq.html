@@ -668,18 +668,72 @@ function validarPeriodoXML(comp,fname){
   }
   return true;
 }
-// Evita registrar el mismo CFDI (misma UUID) dos veces: revisa tanto las
-// liquidaciones ya cerradas (Firestore: historial) como los gastos/diesel/casetas
-// ya cargados en la liquidación actualmente abierta (aún no cerrada).
+// ══════════════════════════════════════════════
+// REGISTRO GLOBAL DE FACTURAS YA USADAS (anti-duplicados entre operadores)
+// Se guarda en Firestore (estado/facturasUsadas) apenas se agrega un XML a
+// CUALQUIER liquidación (abierta o cerrada, de cualquier operador), en vez de
+// depender solo del snapshot que se guarda al cerrar — así un CFDI queda
+// bloqueado de inmediato aunque la liquidación donde se usó siga abierta o
+// se haya cerrado antes de que existiera este registro.
+// ══════════════════════════════════════════════
+let facturasUsadas={}; // {uuid: {liqNum, unidad, tipo}}
+
+function guardarFacturasUsadas(){
+  if(fbReady&&window.FB)window.FB.set('estado','facturasUsadas',{data:JSON.stringify(facturasUsadas)});
+}
+function registrarFacturaUsada(uuid,liqNum,unidad,tipo){
+  if(!uuid)return;
+  facturasUsadas[uuid.toUpperCase()]={liqNum:liqNum,unidad:unidad,tipo:tipo||''};
+  guardarFacturasUsadas();
+}
+function liberarFacturaUsada(uuid){
+  if(!uuid)return;
+  delete facturasUsadas[uuid.toUpperCase()];
+  guardarFacturasUsadas();
+}
+// Reconstruye el registro a partir del historial (liquidaciones cerradas) y de
+// la liquidación actualmente abierta, por si el registro en Firestore quedó
+// incompleto (ej. liquidaciones cerradas antes de que existiera este mecanismo).
+async function reconstruirFacturasUsadas(){
+  if(!fbReady||!window.FB)return;
+  try{
+    var historial=await window.FB.getAll('historial');
+    historial.forEach(function(h){
+      var snap=h.snapshot||{};
+      [].concat(snap.gastosList||[],snap.dieselXML||[],snap.autopistasList||[]).forEach(function(item){
+        if(item.uuid&&!facturasUsadas[item.uuid.toUpperCase()]){
+          facturasUsadas[item.uuid.toUpperCase()]={liqNum:h.num,unidad:h.unidad,tipo:'historial'};
+        }
+      });
+    });
+    if(liq){
+      [].concat(liq.gastosXML||[],liq.dieselXML||[],liq.autopistas||[]).forEach(function(item){
+        if(item.uuid&&!facturasUsadas[item.uuid.toUpperCase()]){
+          facturasUsadas[item.uuid.toUpperCase()]={liqNum:liq.num,unidad:liq.unidad,tipo:'actual'};
+        }
+      });
+    }
+    guardarFacturasUsadas();
+  }catch(e){console.error('reconstruirFacturasUsadas:',e);}
+}
+
+// Evita registrar el mismo CFDI (misma UUID) dos veces en NINGUNA liquidación,
+// de NINGÚN operador — revisa primero el registro global (siempre al día) y,
+// como respaldo, la liquidación actualmente abierta y el historial completo.
 async function buscarUUIDDuplicado(uuid){
   if(!uuid)return null;
   uuid=uuid.toUpperCase();
-  // 1) Dentro de la liquidación actual (mismo XML subido dos veces antes de cerrar)
+  // 1) Registro global (cubre cualquier operador, abierta o cerrada)
+  if(facturasUsadas[uuid]){
+    var reg=facturasUsadas[uuid];
+    return{liqNum:reg.liqNum,actual:!!(liq&&reg.liqNum===liq.num&&reg.unidad===liq.unidad)};
+  }
+  // 2) Dentro de la liquidación actual (por si el registro global no cargó a tiempo)
   var enActual=(liq.gastosXML||[]).some(function(g){return(g.uuid||'').toUpperCase()===uuid;})
     ||(liq.dieselXML||[]).some(function(x){return(x.uuid||'').toUpperCase()===uuid;})
     ||(liq.autopistas||[]).some(function(a){return(a.uuid||'').toUpperCase()===uuid;});
   if(enActual)return{liqNum:liq.num,actual:true};
-  // 2) En liquidaciones ya cerradas
+  // 3) En liquidaciones ya cerradas (respaldo si el registro global no lo tenía)
   if(!fbReady||!window.FB)return null;
   try{
     var historial=await window.FB.getAll('historial');
@@ -918,14 +972,16 @@ async function cargarEstado(){
     if($('headerInfo'))$('headerInfo').textContent='Cargando datos...';
 
     // Cargar datos que NO cambian frecuentemente con get() directo
-    const [ar,cfg,l] = await Promise.all([
+    const [ar,cfg,l,fu] = await Promise.all([
       window.FB.get('estado','arrastres'),
       window.FB.get('estado','config'),
       window.FB.get('estado','liqActiva'),
+      window.FB.get('estado','facturasUsadas'),
     ]);
 
     if(ar&&ar.data) arrastres=JSON.parse(ar.data);
     if(cfg&&cfg.ultimaLiqNum) ultimaLiqNum=cfg.ultimaLiqNum;
+    if(fu&&fu.data) facturasUsadas=JSON.parse(fu.data);
 
     if(l&&l.data){
       liq=JSON.parse(l.data);
@@ -933,6 +989,14 @@ async function cargarEstado(){
     }
 
     if($('headerInfo'))$('headerInfo').textContent=liq?'Liq. #'+liq.num+' · '+liq.op.nombre:'Sin liquidación activa';
+
+    // Completar el registro global de facturas usadas con lo que falte del
+    // historial y de la liquidación abierta (cubre liquidaciones cerradas
+    // antes de que existiera este registro).
+    reconstruirFacturasUsadas();
+    window.FB.listen('estado','facturasUsadas', function(data){
+      if(data&&data.data)facturasUsadas=JSON.parse(data.data);
+    });
 
     // anticiposDB e ingresosDB: SOLO via listeners (onSnapshot dispara inmediatamente con datos actuales)
     window.FB.listen('estado','anticiposDB', function(data){
@@ -1841,6 +1905,8 @@ function toggleDieselXMLPagaOp(i,val){
 }
 function eliminarDieselXML(i){
   if(!liq||!liq.dieselXML)return;
+  var _rem=liq.dieselXML[i];
+  if(_rem&&_rem.uuid)liberarFacturaUsada(_rem.uuid);
   liq.dieselXML.splice(i,1);
   renderDieselXML();calcDiesel();guardarEstado();
 }
@@ -2049,6 +2115,7 @@ async function parseAutXML(text,fname){
   liq.autopistas.push({fecha:fecha,hora:'',caseta:caseta,carril:'XML',importe:total,pagaOp:true,
     rfc:rfcEmisor,emisor:nombreEmisor,concepto:desc,subtotal:subtotal,iva:iva,
     uuid:uuidA,satEstado:null,satCancelado:false});
+  registrarFacturaUsada(uuidA,liq.num,liq.unidad,'caseta');
   renderIAVE();
   guardarEstado();
   validarCFDIsSATLiquidacion(true);
@@ -2086,6 +2153,15 @@ function parseIAVE(text,fname){
   $('iaveInfo').innerHTML='<div class="alert alert-ok">'+fname+' — '+liq.autopistas.length+' cruces para unidad '+liq.unidad+'.'+(nIaveSkip?' <strong>'+nIaveSkip+' ya liquidados excluidos.</strong>':'')+'</div>';
 }
 
+function eliminarAutopista(i){
+  if(!liq||!liq.autopistas)return;
+  var _rem=liq.autopistas[i];
+  if(_rem&&_rem.uuid)liberarFacturaUsada(_rem.uuid);
+  liq.autopistas.splice(i,1);
+  renderIAVE();
+  guardarEstado();
+}
+
 function renderIAVE(){
   if(!liq)return;
   const tb=$('tbIAVE');tb.innerHTML='';
@@ -2095,7 +2171,7 @@ function renderIAVE(){
     tb.innerHTML+='<tr'+(a.satCancelado?' style="opacity:.55;text-decoration:line-through"':'')+'><td>'+a.fecha+'</td><td>'+a.hora+'</td><td>'+a.caseta+(a.satCancelado?' <span class="badge bg-red" style="color:#c1121f" title="Cancelado ante el SAT — excluido del cálculo">⚠ CANCELADO SAT</span>':'')+'</td><td>'+a.carril+'</td><td class="num r">'+fmt(a.importe)+'</td>'
       +'<td><select class="input-sm" onchange="liq.autopistas['+i+'].pagaOp=this.value===\'si\';renderIAVE();guardarEstado()">'
       +'<option value="no"'+(a.pagaOp?'':' selected')+'>Empresa</option><option value="si"'+(a.pagaOp?' selected':'')+'>Operador</option></select></td>'
-      +'<td><button class="btn btn-sm" style="background:#fde8e8;color:#9b1c1c;border:none;cursor:pointer" onclick="liq.autopistas.splice('+i+',1);renderIAVE();guardarEstado()">✕</button></td></tr>';
+      +'<td><button class="btn btn-sm" style="background:#fde8e8;color:#9b1c1c;border:none;cursor:pointer" onclick="eliminarAutopista('+i+')">✕</button></td></tr>';
   });
   $('tfIAVE').innerHTML='<tr style="background:#f5f5f8;font-weight:700"><td colspan="4">TOTAL</td><td class="num r">'+fmt(totEmp+totOp)+'</td><td colspan="2"></td></tr>';
   $('kpisIAVE').innerHTML='<div class="kpi"><div class="v">'+liq.autopistas.length+'</div><div class="k">Cruces</div></div>'
@@ -2191,6 +2267,7 @@ async function parseGastoXML(text,fname){
       total:parseFloat(comp.getAttribute('Total')||0)||subtotalTot+ivaTot,
       pagaOp:true
     });
+    registrarFacturaUsada(uuidChk,liq.num,liq.unidad,'diesel');
     renderDieselXML();calcDiesel();guardarEstado();
     validarCFDIsSATLiquidacion(true);
     $('gastoXMLInfo').style.display='block';
@@ -2214,6 +2291,7 @@ async function parseGastoXML(text,fname){
     liq.autopistas.push({fecha:(comp.getAttribute('Fecha')||'').slice(0,10),hora:'',caseta:casetaNombre,carril:'XML',importe:totalC,pagaOp:true,
       rfc:rfcEmisorC,emisor:nombreEmisorC,concepto:descC,subtotal:subtotalC,iva:ivaC,
       uuid:uuidChk,satEstado:null,satCancelado:false});
+    registrarFacturaUsada(uuidChk,liq.num,liq.unidad,'caseta');
     renderIAVE();guardarEstado();
     validarCFDIsSATLiquidacion(true);
     $('cardAutopistas').style.display='block';
@@ -2234,6 +2312,7 @@ async function parseGastoXML(text,fname){
     uuid:tfdG?tfdG.getAttribute('UUID')||'':'',satEstado:null,satCancelado:false,
     subtotal:subtotal,iva:iva,total:parseFloat(comp.getAttribute('Total')||0),
     concepto:'GASTO FACTURADO',desc:conceptoDesc||fname,pagaOp:false,tipo:'xml',autorizado:true});
+  registrarFacturaUsada(tfdG?tfdG.getAttribute('UUID')||'':'',liq.num,liq.unidad,'gasto');
   renderGastos();
   guardarEstado();
   validarCFDIsSATLiquidacion(true);
@@ -2505,6 +2584,7 @@ function eliminarGasto(i){
   if(!liq)return;
   const todos=liq.gastosXML.concat(liq.gastos);
   const g=todos[i];
+  if(g.tipo==='xml'&&g.uuid)liberarFacturaUsada(g.uuid);
   if(g.tipo==='xml'){const xi=liq.gastosXML.indexOf(g);if(xi>=0)liq.gastosXML.splice(xi,1);}
   else{const mi=liq.gastos.indexOf(g);if(mi>=0)liq.gastos.splice(mi,1);}
   renderGastos();
