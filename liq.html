@@ -1610,32 +1610,84 @@ async function refrescarPreview(){
   console.log('Recargado desde Firebase - anticipos:',Object.keys(anticiposDB),'ingresos:',ingresosDB.length);
 }
 
+// En una liquidación REABIERTA, los anticipos/viajes que ya traía al momento
+// de reabrirla quedan marcados en liq.anticiposIncluidos/viajesIncluidos.
+// Cualquier anticipo o viaje "pendiente"/"sin_liquidar" que NO esté en esa
+// lista es nuevo (se registró después de que se cerró originalmente) y NO se
+// jala automáticamente — hay que insertarlo a propósito con el botón
+// correspondiente. En una liquidación normal (no reabierta) no aplica este
+// filtro: se sigue jalando todo lo pendiente, como siempre.
+function anticipoIncluido(a){
+  if(!liq||!liq.reabierta||!liq.anticiposIncluidos)return true;
+  return liq.anticiposIncluidos.indexOf(a.id)!==-1;
+}
+function viajeIncluido(v){
+  if(!liq||!liq.reabierta||!liq.viajesIncluidos)return true;
+  return liq.viajesIncluidos.indexOf(v.id)!==-1;
+}
+function insertarAnticipo(id){
+  if(!liq)return;
+  if(!liq.anticiposIncluidos)liq.anticiposIncluidos=[];
+  if(liq.anticiposIncluidos.indexOf(id)===-1)liq.anticiposIncluidos.push(id);
+  guardarEstado();
+  mostrarPreviewLiq(liq.unidad);
+  generarReporte();
+}
+function insertarViaje(id){
+  if(!liq)return;
+  if(!liq.viajesIncluidos)liq.viajesIncluidos=[];
+  if(liq.viajesIncluidos.indexOf(id)===-1)liq.viajesIncluidos.push(id);
+  guardarEstado();
+  mostrarPreviewLiq(liq.unidad);
+  generarReporte();
+}
+
 function mostrarPreviewLiq(unidad){
   // Buscar anticipos por unidad (puede ser string o número en Firebase)
-  const ants=(anticiposDB[unidad]||anticiposDB[String(unidad)]||anticiposDB[parseInt(unidad)]||[]).filter(function(a){return a.estado==='pendiente';});
-  const viajes=ingresosDB.filter(function(v){return parseInt(v.unidad)===parseInt(unidad)&&v.estado==='sin_liquidar';});
+  const todosAnts=(anticiposDB[unidad]||anticiposDB[String(unidad)]||anticiposDB[parseInt(unidad)]||[]).filter(function(a){return a.estado==='pendiente';});
+  const todosViajes=ingresosDB.filter(function(v){return parseInt(v.unidad)===parseInt(unidad)&&v.estado==='sin_liquidar';});
+  const ants=todosAnts.filter(anticipoIncluido);
+  const antsNuevos=todosAnts.filter(function(a){return!anticipoIncluido(a);});
+  const viajes=todosViajes.filter(viajeIncluido);
+  const viajesNuevos=todosViajes.filter(function(v){return!viajeIncluido(v);});
   console.log('Preview - unidad:',unidad,'ants:',ants.length,'viajes:',viajes.length,'anticiposDB keys:',Object.keys(anticiposDB),'ingresosDB:',ingresosDB.length);
   // Anticipos
   const pA=$('prevAnticipos');
+  let htmlA='';
   if(ants.length){
     const tot=ants.reduce(function(s,a){return s+a.importe;},0);
-    pA.innerHTML='<div class="tbl-wrap"><table><thead><tr><th>Fecha</th><th>Concepto</th><th class="r">Importe</th></tr></thead><tbody>'
+    htmlA+='<div class="tbl-wrap"><table><thead><tr><th>Fecha</th><th>Concepto</th><th class="r">Importe</th></tr></thead><tbody>'
       +ants.map(function(a){return '<tr><td>'+(a.fecha||a.fechaStr||'')+'</td><td>'+a.concepto+'</td><td class="num r">'+fmt(a.importe)+'</td></tr>';}).join('')
       +'</tbody><tfoot><tr style="font-weight:700;background:#f5f5f8"><td colspan="2">Total</td><td class="num r">'+fmt(tot)+'</td></tr></tfoot></table></div>';
   } else {
-    pA.innerHTML='<div style="color:#aaa;font-size:13px;padding:10px">Sin anticipos pendientes para este operador.</div>';
+    htmlA+='<div style="color:#aaa;font-size:13px;padding:10px">Sin anticipos pendientes para este operador.</div>';
   }
+  if(antsNuevos.length){
+    htmlA+='<div class="alert alert-warn" style="margin-top:10px">⚠️ Hay '+antsNuevos.length+' anticipo(s) nuevo(s) registrado(s) DESPUÉS de que se cerró originalmente esta liquidación reabierta. No se incluyen a menos que los insertes:</div>'
+      +'<div class="tbl-wrap"><table><thead><tr><th>Fecha</th><th>Concepto</th><th class="r">Importe</th><th></th></tr></thead><tbody>'
+      +antsNuevos.map(function(a){return '<tr><td>'+(a.fecha||a.fechaStr||'')+'</td><td>'+a.concepto+'</td><td class="num r">'+fmt(a.importe)+'</td><td><button class="btn btn-sm btn-dark" onclick="insertarAnticipo(\''+a.id+'\')">➕ Insertar anticipo</button></td></tr>';}).join('')
+      +'</tbody></table></div>';
+  }
+  pA.innerHTML=htmlA;
   // Viajes
   const pI=$('prevIngresos'),pIA=$('prevIngAlerta');
+  let htmlI='';
   if(viajes.length){
-    pI.innerHTML='<div class="tbl-wrap"><table><thead><tr><th>Folio</th><th>Fecha</th><th>Cliente</th><th class="r">Subtotal</th><th class="r">Total</th><th>Origen</th><th>Estado SAT</th></tr></thead><tbody>'
+    htmlI+='<div class="tbl-wrap"><table><thead><tr><th>Folio</th><th>Fecha</th><th>Cliente</th><th class="r">Subtotal</th><th class="r">Total</th><th>Origen</th><th>Estado SAT</th></tr></thead><tbody>'
       +viajes.map(function(v){return '<tr'+(v.satCancelado?' style="opacity:.55;text-decoration:line-through"':'')+'><td class="num">'+v.folio+'</td><td>'+v.fecha+'</td><td style="font-size:11px">'+v.cliente+'</td><td class="num r">'+fmt(v.subtotal)+'</td><td class="num r">'+fmt(v.total)+'</td><td><span class="badge '+(v.origen==='xml'?'bg-blue':'bg-purple')+'">'+v.origen.toUpperCase()+'</span></td><td>'+(v.satCancelado?'<span class="badge bg-red" style="color:#c1121f">⚠ CANCELADO SAT — excluido</span>':(v.satEstado==='Vigente'?'<span class="badge bg-green">✓ Vigente</span>':'<span class="badge bg-gray">Sin verificar</span>'))+'</td></tr>';}).join('')
       +'</tbody></table></div>';
     pIA.innerHTML=viajes.some(function(v){return v.satCancelado;})?'<div class="alert alert-warn">⚠️ Hay viajes con CFDI cancelado ante el SAT en esta lista — se excluyen automáticamente del cálculo de la liquidación, pero siguen apareciendo aquí para que sepas que existen. Necesitas volver a facturarlos con el cliente.</div>':'';
   } else {
-    pI.innerHTML='<div style="color:#aaa;font-size:13px;padding:10px">Sin viajes sin liquidar para este operador.</div>';
+    htmlI+='<div style="color:#aaa;font-size:13px;padding:10px">Sin viajes sin liquidar para este operador.</div>';
     pIA.innerHTML='<div class="alert alert-warn">⚠️ Este operador no tiene viajes registrados en Ingresos. Regresa al módulo de Ingresos a registrarlos antes de continuar.</div>';
   }
+  if(viajesNuevos.length){
+    htmlI+='<div class="alert alert-warn" style="margin-top:10px">⚠️ Hay '+viajesNuevos.length+' viaje(s) nuevo(s) registrado(s) DESPUÉS de que se cerró originalmente esta liquidación reabierta. No se incluyen a menos que los insertes:</div>'
+      +'<div class="tbl-wrap"><table><thead><tr><th>Folio</th><th>Fecha</th><th>Cliente</th><th class="r">Total</th><th></th></tr></thead><tbody>'
+      +viajesNuevos.map(function(v){return '<tr><td class="num">'+v.folio+'</td><td>'+v.fecha+'</td><td style="font-size:11px">'+v.cliente+'</td><td class="num r">'+fmt(v.total)+'</td><td><button class="btn btn-sm btn-dark" onclick="insertarViaje(\''+v.id+'\')">➕ Insertar ingreso</button></td></tr>';}).join('')
+      +'</tbody></table></div>';
+  }
+  pI.innerHTML=htmlI;
   $('liqPreview').style.display='block';
 }
 
@@ -2740,10 +2792,12 @@ function generarReporte(){
     +(liq.rendimiento?' · '+liq.rendimiento+' km/L':'');
 
   // ── Datos base ─────────────────────────────────────
-  const antsPend=(anticiposDB[liq.unidad]||anticiposDB[String(liq.unidad)]||[]).filter(function(a){return a.estado==='pendiente';});
+  // (en una liquidación reabierta, solo se cuentan los anticipos/viajes
+  // marcados como "incluidos" — los nuevos requieren insertarse a propósito)
+  const antsPend=(anticiposDB[liq.unidad]||anticiposDB[String(liq.unidad)]||[]).filter(function(a){return a.estado==='pendiente';}).filter(anticipoIncluido);
   const totAnts=antsPend.reduce(function(s,a){return s+a.importe;},0);
   // Excluye CFDI cancelados ante el SAT (validados al abrir la liquidación) — nunca se consideran.
-  const viajes=ingresosDB.filter(function(v){return parseInt(v.unidad)===parseInt(liq.unidad)&&v.estado==='sin_liquidar'&&!v.satCancelado;});
+  const viajes=ingresosDB.filter(function(v){return parseInt(v.unidad)===parseInt(liq.unidad)&&v.estado==='sin_liquidar'&&!v.satCancelado;}).filter(viajeIncluido);
   console.log('DEBUG liq.unidad:', liq.unidad, typeof liq.unidad);
   console.log('DEBUG ingresosDB total:', ingresosDB.length, 'viajes filtrados:', viajes.length);
   if(ingresosDB.length>0)console.log('DEBUG primer ingreso unidad:', ingresosDB[0].unidad, typeof ingresosDB[0].unidad, 'estado:', ingresosDB[0].estado);
@@ -3022,7 +3076,7 @@ function generarReporte(){
   if($('repEncabezado2')) $('repEncabezado2').innerHTML=$('repEncabezado').innerHTML;
 
   // ── ANTICIPOS en reporte ───────────────────────────
-  var antsPendRep=(anticiposDB[liq.unidad]||anticiposDB[String(liq.unidad)]||[]).filter(function(a){return a.estado==='pendiente';});
+  var antsPendRep=(anticiposDB[liq.unidad]||anticiposDB[String(liq.unidad)]||[]).filter(function(a){return a.estado==='pendiente';}).filter(anticipoIncluido);
   if($('repAnticipos')){
     if(antsPendRep.length){
       var totA=0;
@@ -3128,7 +3182,7 @@ function cerrarLiquidacion(){
   Object.keys(anticiposDB).forEach(function(key){
     if(parseInt(key)===parseInt(liqCopia.unidad)){
       (anticiposDB[key]||[]).forEach(function(a){
-        if(a.estado==='pendiente'){
+        if(a.estado==='pendiente'&&anticipoIncluido(a)){
           a.estado='liquidado';
           a.liqNum=liqCopia.num;
           nAMarcados++;
@@ -3140,7 +3194,7 @@ function cerrarLiquidacion(){
   // Marcar viajes: forEach directo para modificar en sitio
   var nVMarcados=0;
   ingresosDB.forEach(function(v){
-    if(parseInt(v.unidad)===parseInt(liqCopia.unidad)&&v.estado==='sin_liquidar'){
+    if(parseInt(v.unidad)===parseInt(liqCopia.unidad)&&v.estado==='sin_liquidar'&&viajeIncluido(v)){
       v.estado='liquidado';
       v.liqNum=liqCopia.num;
       nVMarcados++;

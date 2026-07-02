@@ -730,16 +730,21 @@ async function reabrirLiquidacion(){
     let incDB=(incRes&&incRes.data)?JSON.parse(incRes.data):{};
     if(Array.isArray(incDB))incDB={};
 
+    // Se guarda el id de cada anticipo/viaje liberado en liq.anticiposIncluidos/
+    // viajesIncluidos: liq.html usa esa lista para NO jalar automáticamente
+    // ningún anticipo o viaje nuevo que se haya registrado después de que esta
+    // liquidación se cerró originalmente — hay que insertarlo a propósito.
     let nA=0,nV=0,nI=0;
+    var idsAntLiberados=[],idsViajesLiberados=[];
     Object.keys(antDB).forEach(function(key){
       if(parseInt(key)===parseInt(l.unidad)){
         (antDB[key]||[]).forEach(function(a){
-          if(a.liqNum===l.num){a.estado='pendiente';a.liqNum=null;nA++;}
+          if(a.liqNum===l.num){a.estado='pendiente';a.liqNum=null;nA++;idsAntLiberados.push(a.id);}
         });
       }
     });
     ingDB.forEach(function(v){
-      if(parseInt(v.unidad)===parseInt(l.unidad)&&v.liqNum===l.num){v.estado='sin_liquidar';v.liqNum=null;nV++;}
+      if(parseInt(v.unidad)===parseInt(l.unidad)&&v.liqNum===l.num){v.estado='sin_liquidar';v.liqNum=null;nV++;idsViajesLiberados.push(v.id);}
     });
     Object.keys(incDB).forEach(function(key){
       if(parseInt(key)===parseInt(l.unidad)){
@@ -748,6 +753,9 @@ async function reabrirLiquidacion(){
         });
       }
     });
+    liqReab.reabierta=true;
+    liqReab.anticiposIncluidos=idsAntLiberados;
+    liqReab.viajesIncluidos=idsViajesLiberados;
 
     await Promise.all([
       window.FB.set('estado','anticiposDB',{data:JSON.stringify(antDB)}),
@@ -756,7 +764,7 @@ async function reabrirLiquidacion(){
       window.FB.set('estado','liqActiva',{data:JSON.stringify(liqReab)}),
     ]);
 
-    alert('🔓 Liquidación #'+l.num+' reabierta.\n'+nA+' anticipo(s), '+nV+' viaje(s)'+(nI?' y '+nI+' incidente(s)':'')+' quedaron pendientes otra vez.\n\nAbriendo el módulo de Liquidaciones para editarla...');
+    alert('🔓 Liquidación #'+l.num+' reabierta.\n'+nA+' anticipo(s), '+nV+' viaje(s)'+(nI?' y '+nI+' incidente(s)':'')+' quedaron pendientes otra vez e incluidos en la liquidación.\n\nSi hay anticipos o viajes NUEVOS registrados después del cierre original, no se van a jalar solos — vas a poder insertarlos a propósito con un botón dentro del módulo de Liquidaciones.\n\nAbriendo el módulo de Liquidaciones para editarla...');
     location.href='liq.html';
   }catch(e){
     console.error('reabrirLiquidacion:',e);
