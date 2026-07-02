@@ -736,6 +736,24 @@ async function buscarUUIDDuplicado(uuid){
     ||(liq.dieselXML||[]).some(function(x){return(x.uuid||'').toUpperCase()===uuid;})
     ||(liq.autopistas||[]).some(function(a){return(a.uuid||'').toUpperCase()===uuid;});
   if(enActual)return{liqNum:liq.num,actual:true};
+  // 2.5) Leer directo de Firestore la liquidación activa GLOBAL (por si en otra
+  // pestaña/sesión quedó otra liquidación abierta distinta a la de esta pestaña —
+  // solo puede haber una liquidación abierta a la vez en todo el sistema, así
+  // que si esta pestaña no la refleja, puede estar desactualizada).
+  if(fbReady&&window.FB){
+    try{
+      var liqActivaRemota=await window.FB.get('estado','liqActiva');
+      if(liqActivaRemota&&liqActivaRemota.data){
+        var liqR=JSON.parse(liqActivaRemota.data);
+        if(liqR&&!(liq&&liqR.num===liq.num&&liqR.unidad===liq.unidad)){
+          var enRemota=(liqR.gastosXML||[]).some(function(g){return(g.uuid||'').toUpperCase()===uuid;})
+            ||(liqR.dieselXML||[]).some(function(x){return(x.uuid||'').toUpperCase()===uuid;})
+            ||(liqR.autopistas||[]).some(function(a){return(a.uuid||'').toUpperCase()===uuid;});
+          if(enRemota)return{liqNum:liqR.num,actual:false};
+        }
+      }
+    }catch(e){console.error('buscarUUIDDuplicado (liqActiva remota):',e);}
+  }
   // 3) En liquidaciones ya cerradas (respaldo si el registro global no lo tenía)
   if(!fbReady||!window.FB)return null;
   try{
@@ -996,8 +1014,10 @@ async function cargarEstado(){
 
     // Completar el registro global de facturas usadas con lo que falte del
     // historial y de la liquidación abierta (cubre liquidaciones cerradas
-    // antes de que existiera este registro).
-    reconstruirFacturasUsadas();
+    // antes de que existiera este registro). Se espera a que termine antes
+    // de seguir, para no dejar una ventana donde se pueda subir un XML
+    // duplicado mientras el registro todavía se está reconstruyendo.
+    await reconstruirFacturasUsadas();
     window.FB.listen('estado','facturasUsadas', function(data){
       if(data&&data.data)facturasUsadas=JSON.parse(data.data);
     });
