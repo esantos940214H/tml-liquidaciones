@@ -300,23 +300,6 @@ tr:hover td{background:#fafafa}
       <div id="autXMLInfo" style="display:none;margin-top:8px"></div>
     </div>
     <div class="card">
-      <div class="card-title">✏️ Registro manual de caseta</div>
-      <div class="row" style="gap:8px;flex-wrap:wrap;align-items:flex-end">
-        <div class="field" style="min-width:130px"><label>Fecha</label><input type="date" id="autFecha"></div>
-        <div class="field" style="flex:2;min-width:160px"><label>Caseta / descripción</label><input type="text" id="autCaseta" placeholder="Ej. Tequisquiapan-Querétaro"></div>
-        <div class="field" style="min-width:110px"><label>Importe</label><input type="number" id="autImporte" placeholder="0.00" step="0.01"></div>
-        <div class="field" style="min-width:120px"><label>¿Quién paga?</label>
-          <select id="autPagaOp">
-            <option value="si">Operador</option>
-            <option value="no">Empresa</option>
-          </select>
-        </div>
-        <div class="field" style="min-width:80px;padding-top:18px">
-          <button class="btn btn-red" onclick="agregarCasetaManual()">+ Agregar</button>
-        </div>
-      </div>
-    </div>
-    <div class="card">
       <div class="card-title">🚧 Caseta sin comprobante (con evidencia)</div>
       <div class="alert alert-info" style="margin-bottom:10px">Costo operativo real, sin tope. Requiere foto del ticket (o justificación si no hay) y contraseña de autorización.</div>
       <div class="row" style="gap:8px;flex-wrap:wrap;align-items:flex-end;margin-bottom:12px">
@@ -1869,23 +1852,6 @@ function handleAutXMLFiles(files){
     r.onload=function(e){parseAutXML(e.target.result,f.name);};
     r.readAsText(f,'UTF-8');
   });
-}
-
-function agregarCasetaManual(){
-  if(!liq)return;
-  var importe=parseFloat($('autImporte').value||0);
-  if(!importe){alert('Ingresa el importe.');return;}
-  var caseta=($('autCaseta').value||'').trim();
-  if(!caseta){alert('Ingresa la descripción de la caseta.');return;}
-  if(!liq.autopistas)liq.autopistas=[];
-  liq.autopistas.push({
-    fecha:$('autFecha').value||new Date().toISOString().slice(0,10),
-    hora:'',caseta:caseta,carril:'Manual',
-    importe:importe,pagaOp:$('autPagaOp').value==='si'
-  });
-  $('autImporte').value='';$('autCaseta').value='';
-  renderIAVE();guardarEstado();
-  $('cardAutopistas').style.display='block';
 }
 
 var _iaveCollapsed=false;
