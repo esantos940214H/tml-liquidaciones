@@ -777,6 +777,14 @@ async function validarCFDIsSATLiquidacion(soloNuevos){
   }
 }
 
+// Captura cualquier error de JS que se escape sin manejar (ej. botón que
+// "no hace nada"): en vez de fallar en silencio, avisa con el mensaje técnico
+// para poder diagnosticarlo sin necesitar abrir la consola del navegador.
+window.addEventListener('error',function(e){
+  console.error('Error no capturado:',e.error||e.message);
+  alert('⚠️ Ocurrió un error inesperado: '+(e.message||'desconocido')+'\n(línea '+(e.lineno||'?')+')\nToma una captura de este mensaje y repórtalo.');
+});
+
 // ══════════════════════════════════════════════
 // ESTADO GLOBAL
 // ══════════════════════════════════════════════
