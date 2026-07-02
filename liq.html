@@ -681,14 +681,18 @@ async function validarUnaLista(lista,mapRfcEmisor,mapRfcReceptor,mapTotal,contad
   }
 }
 
-async function validarCFDIsSATLiquidacion(){
+// soloNuevos=true → solo valida CFDI que nunca se han checado (satEstado null), para
+// poder llamarse automáticamente cada vez que se sube un XML nuevo sin repetir consultas.
+// soloNuevos=false (default) → revalida TODO, incluso lo ya marcado vigente (por si se
+// canceló después) — se usa al abrir la liquidación y en el botón "Revalidar".
+async function validarCFDIsSATLiquidacion(soloNuevos){
   if(!liq)return;
   var box=$('satValidandoInfo');
   if(!box)return;
-  var viajesXML=ingresosDB.filter(function(v){return parseInt(v.unidad)===parseInt(liq.unidad)&&v.estado==='sin_liquidar'&&v.origen==='xml'&&v.uuid;});
-  var gastosXMLconUUID=(liq.gastosXML||[]).filter(function(g){return g.uuid;});
-  var dieselXMLconUUID=(liq.dieselXML||[]).filter(function(g){return g.uuid;});
-  var autopistasXMLconUUID=(liq.autopistas||[]).filter(function(a){return a.uuid;});
+  var viajesXML=ingresosDB.filter(function(v){return parseInt(v.unidad)===parseInt(liq.unidad)&&v.estado==='sin_liquidar'&&v.origen==='xml'&&v.uuid&&(!soloNuevos||v.satEstado==null);});
+  var gastosXMLconUUID=(liq.gastosXML||[]).filter(function(g){return g.uuid&&(!soloNuevos||g.satEstado==null);});
+  var dieselXMLconUUID=(liq.dieselXML||[]).filter(function(g){return g.uuid&&(!soloNuevos||g.satEstado==null);});
+  var autopistasXMLconUUID=(liq.autopistas||[]).filter(function(a){return a.uuid&&(!soloNuevos||a.satEstado==null);});
   var total=viajesXML.length+gastosXMLconUUID.length+dieselXMLconUUID.length+autopistasXMLconUUID.length;
   if(!total)return;
 
@@ -826,6 +830,10 @@ async function cargarEstado(){
         var tabs=document.querySelectorAll('.tab');
         var idxTab=Array.from(tabs).indexOf(tabActivo);
         if(idxTab===4) generarReporte();
+        // Si llegó un ingreso XML nuevo mientras la liquidación ya estaba abierta
+        // (ej. se subió en ing.html después de iniciar), validarlo contra el SAT
+        // sin esperar a que se reabra la liquidación.
+        if(liq) validarCFDIsSATLiquidacion(true);
       }
     });
     // incidentesDB: SOLO lectura desde liq.html — incidentes.html es dueño de la captura.
@@ -1379,10 +1387,10 @@ function mostrarPreviewLiq(unidad){
   // Viajes
   const pI=$('prevIngresos'),pIA=$('prevIngAlerta');
   if(viajes.length){
-    pI.innerHTML='<div class="tbl-wrap"><table><thead><tr><th>Folio</th><th>Fecha</th><th>Cliente</th><th class="r">Subtotal</th><th class="r">Total</th><th>Origen</th></tr></thead><tbody>'
-      +viajes.map(function(v){return '<tr><td class="num">'+v.folio+'</td><td>'+v.fecha+'</td><td style="font-size:11px">'+v.cliente+'</td><td class="num r">'+fmt(v.subtotal)+'</td><td class="num r">'+fmt(v.total)+'</td><td><span class="badge '+(v.origen==='xml'?'bg-blue':'bg-purple')+'">'+v.origen.toUpperCase()+'</span></td></tr>';}).join('')
+    pI.innerHTML='<div class="tbl-wrap"><table><thead><tr><th>Folio</th><th>Fecha</th><th>Cliente</th><th class="r">Subtotal</th><th class="r">Total</th><th>Origen</th><th>Estado SAT</th></tr></thead><tbody>'
+      +viajes.map(function(v){return '<tr'+(v.satCancelado?' style="opacity:.55;text-decoration:line-through"':'')+'><td class="num">'+v.folio+'</td><td>'+v.fecha+'</td><td style="font-size:11px">'+v.cliente+'</td><td class="num r">'+fmt(v.subtotal)+'</td><td class="num r">'+fmt(v.total)+'</td><td><span class="badge '+(v.origen==='xml'?'bg-blue':'bg-purple')+'">'+v.origen.toUpperCase()+'</span></td><td>'+(v.satCancelado?'<span class="badge bg-red" style="color:#c1121f">⚠ CANCELADO SAT — excluido</span>':(v.satEstado==='Vigente'?'<span class="badge bg-green">✓ Vigente</span>':'<span class="badge bg-gray">Sin verificar</span>'))+'</td></tr>';}).join('')
       +'</tbody></table></div>';
-    pIA.innerHTML='';
+    pIA.innerHTML=viajes.some(function(v){return v.satCancelado;})?'<div class="alert alert-warn">⚠️ Hay viajes con CFDI cancelado ante el SAT en esta lista — se excluyen automáticamente del cálculo de la liquidación, pero siguen apareciendo aquí para que sepas que existen. Necesitas volver a facturarlos con el cliente.</div>':'';
   } else {
     pI.innerHTML='<div style="color:#aaa;font-size:13px;padding:10px">Sin viajes sin liquidar para este operador.</div>';
     pIA.innerHTML='<div class="alert alert-warn">⚠️ Este operador no tiene viajes registrados en Ingresos. Regresa al módulo de Ingresos a registrarlos antes de continuar.</div>';
@@ -1650,6 +1658,7 @@ function handleDieselXMLFiles(files){
         renderDieselXML();
         calcDiesel();
         guardarEstado();
+        validarCFDIsSATLiquidacion(true);
       }catch(err){alert('Error al parsear XML: '+file.name+'\n'+err.message);}
     };
     reader.readAsText(file,'UTF-8');
@@ -1913,6 +1922,7 @@ function parseAutXML(text,fname){
     uuid:tfdA?tfdA.getAttribute('UUID')||'':'',satEstado:null,satCancelado:false});
   renderIAVE();
   guardarEstado();
+  validarCFDIsSATLiquidacion(true);
   $('cardAutopistas').style.display='block';
   $('autXMLInfo').style.display='block';
   $('autXMLInfo').innerHTML='<div class="alert alert-ok">✅ '+fname+' — '+fmt(total)+' agregado. Verifica quién pagó en la tabla.</div>';
@@ -2025,6 +2035,7 @@ function parseGastoXML(text,fname){
       pagaOp:true
     });
     renderDieselXML();calcDiesel();guardarEstado();
+    validarCFDIsSATLiquidacion(true);
     $('gastoXMLInfo').style.display='block';
     $('gastoXMLInfo').innerHTML='<div class="alert alert-warn">⛽ XML de combustible detectado — agregado al módulo <strong>Diesel</strong> (tab Diesel) con '+fmtN(litrosTot)+' lts. Ajusta ahí si pagó el operador o la empresa.</div>';
     return;
@@ -2044,6 +2055,7 @@ function parseGastoXML(text,fname){
     concepto:'GASTO FACTURADO',desc:conceptoDesc||fname,pagaOp:false,tipo:'xml',autorizado:true});
   renderGastos();
   guardarEstado();
+  validarCFDIsSATLiquidacion(true);
   $('gastoXMLInfo').style.display='block';
   $('gastoXMLInfo').innerHTML='<div class="alert alert-ok">'+liq.gastosXML.length+' gastos con XML registrados.</div>';
 }
