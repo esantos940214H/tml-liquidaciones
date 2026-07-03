@@ -940,10 +940,23 @@ function palabras(s){return norm(s).split(' ').filter(w=>w.length>2);}
 function matchScore(c,n){const cW=palabras(c),oW=palabras(n);if(!oW.length)return 0;return oW.filter(w=>cW.some(x=>x.includes(w)||w.includes(x))).length/oW.length;}
 function esSaldo(c){const n=norm(c);return n.includes('SALDO')||n.includes('LIQUIDACION')||/^LIQ\b/.test(n);}
 function normUnidad(u){
-  // Mapa de placas a número económico
-  const PLACAS={'42BC9V':529};
+  // Mapa de tarjeta de diesel (o placa) a número económico real — el archivo
+  // de Edenred trae el número de TARJETA en la columna "No. Económico", que
+  // no siempre coincide con el número económico real de la unidad.
+  const TARJETAS={
+    '42BC9V':529,
+    '00002':4521,
+    '00004':4523,
+    '00008':527,
+    '00010':4522,
+    '00100':4526,
+    '00531':531,
+    '00532':532,
+    '00533':533,
+    '00534':534
+  };
   const str=(u||'').toString().trim().toUpperCase();
-  if(PLACAS[str])return PLACAS[str];
+  if(TARJETAS[str])return TARJETAS[str];
   return parseInt(str.replace(/\D/g,''),10)||0;
 }
 function parseDate(str){if(!str)return null;const s=str.toString().replace(/\D/g,'');if(s.length===8){const d=new Date(s.slice(4)+'-'+s.slice(2,4)+'-'+s.slice(0,2));return isNaN(d)?null:d;}const d=new Date(str);return isNaN(d)?null:d;}
