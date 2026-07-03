@@ -728,7 +728,7 @@ async function reabrirLiquidacion(){
       diesel:snap.diesel||null,autopistas:autopistas,gastos:gastos,gastosXML:gastosXML,
       dieselXML:dieselXML,casetasNF:casetasNF,viajeVacio:{origen:'',destino:'',kms:''},
       cargasEdenred:snap.cargasDiesel||[],
-      fechaApertura:new Date().toISOString().slice(0,10),advertenciasFecha:(snap.advertenciasFecha||[]).slice()
+      fechaApertura:(function(){var d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');})(),advertenciasFecha:(snap.advertenciasFecha||[]).slice()
     };
 
     // Liberar anticipos, viajes e incidentes que esta liquidación había marcado

@@ -917,7 +917,10 @@ let _snap={}; // snapshot del último reporte generado
 const $=id=>document.getElementById(id);
 const fmt=(n,d=2)=>'$'+parseFloat(n||0).toLocaleString('es-MX',{minimumFractionDigits:d,maximumFractionDigits:d});
 const fmtN=(n,d=2)=>parseFloat(n||0).toLocaleString('es-MX',{minimumFractionDigits:d,maximumFractionDigits:d});
-const hoy=()=>new Date().toISOString().slice(0,10);
+// Fecha LOCAL de hoy (no UTC): toISOString() se adelanta un día por la
+// tarde/noche en zonas horarias detrás de UTC (México es UTC-6), lo que
+// causaba que fechaApertura y otras fechas "de hoy" quedaran mal por horas.
+const hoy=()=>{var d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');};
 function dlBlob(c,n,t){const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([c],{type:t}));a.download=n;a.click();}
 function norm(s){return(s||'').toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^A-Z0-9 ]/g,' ').replace(/\s+/g,' ').trim();}
 function palabras(s){return norm(s).split(' ').filter(w=>w.length>2);}
@@ -1154,6 +1157,10 @@ async function cargarEstado(){
 function restaurarUILiquidacion(){
   if(!liq)return;
   if(!liq.fechaApertura)liq.fechaApertura=hoy();
+  // Autocorrección: liquidaciones guardadas mientras hoy() calculaba en UTC
+  // pudieron quedar con fechaApertura un día adelantada. Si quedó en el
+  // futuro respecto a la fecha local real, se corrige a hoy.
+  else if(liq.fechaApertura>hoy())liq.fechaApertura=hoy();
   if(!liq.advertenciasFecha)liq.advertenciasFecha=[];
   renderAdvertenciasFecha();
   ['1','2','3','4'].forEach(function(i){
