@@ -186,6 +186,7 @@ tr:hover td{background:#fafafa}
   <div class="tab" onclick="showTab(2)">🛣️ Autopistas</div>
   <div class="tab" onclick="showTab(3)">🧾 Gastos</div>
   <div class="tab" onclick="showTab(4)">💰 Reporte</div>
+  <div class="tab" onclick="showTab(5)">📋 Recibos de Nómina</div>
 </div>
 
 <!-- ══════════════════════════════════════════════
@@ -273,6 +274,10 @@ tr:hover td{background:#fafafa}
       <div class="card-title">📄 Viajes sin liquidar del operador</div>
       <div id="prevIngresos"></div>
       <div id="prevIngAlerta" style="margin-top:8px"></div>
+    </div>
+    <div class="card">
+      <div class="card-title">📋 Deducciones de nómina pendientes del operador</div>
+      <div id="prevNomina"></div>
     </div>
   </div>
 </div></div>
@@ -569,6 +574,29 @@ tr:hover td{background:#fafafa}
   </div>
 </div></div>
 
+<!-- ══════════════════════════════════════════════
+     7: RECIBOS DE NÓMINA
+══════════════════════════════════════════════ -->
+<div id="panel-5" class="panel"><div class="container">
+  <div class="card">
+    <div class="card-title">📋 Recibos de nómina (deducciones)</div>
+    <div class="alert alert-info" style="margin-bottom:14px">Sube el XML del recibo de nómina (CFDI tipo N) de cada operador. Se toma el <strong>Total de Deducciones</strong> del complemento de nómina y se descuenta de su saldo al abrir/liquidar su siguiente liquidación.</div>
+    <div class="row" style="margin-bottom:12px">
+      <div class="field"><label>Operador</label><select id="nomOp" onchange="renderNomina()"><option value="">— Selecciona —</option></select></div>
+    </div>
+    <div class="upload-zone" id="dzNomina" onclick="document.getElementById('fNomina').click()"><div class="icon">📋</div><p><strong>Arrastra XML de nómina</strong></p></div>
+    <input type="file" id="fNomina" accept=".xml" multiple style="display:none">
+    <div id="nominaXMLInfo" style="display:none;margin-top:10px"></div>
+  </div>
+  <div class="card">
+    <div class="card-title">🧾 Recibos registrados</div>
+    <div class="tbl-wrap"><table>
+      <thead><tr><th>Fecha pago</th><th>Periodo</th><th>Folio</th><th class="r">Percepciones</th><th class="r">Deducciones</th><th>Estado</th><th></th></tr></thead>
+      <tbody id="tbNomina"></tbody><tfoot id="tfNomina"></tfoot>
+    </table></div>
+  </div>
+</div></div>
+
 <!-- MODAL AUTORIZACIÓN SUPERVISOR -->
 <div class="modal-overlay" id="modalAuth">
   <div class="modal">
@@ -667,6 +695,17 @@ function validarReceptorTML(doc,fname){
   var rfcReceptor=getReceptorRfc(doc);
   if((rfcReceptor||'').toUpperCase()!==TML_RFC){
     alert('⚠️ '+fname+': el receptor del CFDI es "'+(rfcReceptor||'desconocido')+'", no coincide con Mudanzas TML ('+TML_RFC+'). No se puede cargar esta factura.');
+    return false;
+  }
+  return true;
+}
+// Los XML de nómina son facturas que TML EMITE al operador — el emisor del
+// CFDI debe ser Mudanzas TML (al revés que los gastos, donde TML es receptor).
+function validarEmisorTML(doc,fname){
+  var emisor=doc.querySelector('Emisor');
+  var rfcEmisor=emisor?emisor.getAttribute('Rfc')||'':'';
+  if((rfcEmisor||'').toUpperCase()!==TML_RFC){
+    alert('⚠️ '+fname+': el emisor del CFDI es "'+(rfcEmisor||'desconocido')+'", no coincide con Mudanzas TML ('+TML_RFC+'). No se puede cargar este recibo.');
     return false;
   }
   return true;
@@ -773,9 +812,10 @@ async function buscarUUIDDuplicado(uuid){
     return{liqNum:reg.liqNum,actual:!!(liq&&reg.liqNum===liq.num&&reg.unidad===liq.unidad)};
   }
   // 2) Dentro de la liquidación actual (por si el registro global no cargó a tiempo)
-  var enActual=(liq.gastosXML||[]).some(function(g){return(g.uuid||'').toUpperCase()===uuid;})
+  // liq puede ser null (ej. subiendo un recibo de nómina sin liquidación abierta).
+  var enActual=liq&&((liq.gastosXML||[]).some(function(g){return(g.uuid||'').toUpperCase()===uuid;})
     ||(liq.dieselXML||[]).some(function(x){return(x.uuid||'').toUpperCase()===uuid;})
-    ||(liq.autopistas||[]).some(function(a){return(a.uuid||'').toUpperCase()===uuid;});
+    ||(liq.autopistas||[]).some(function(a){return(a.uuid||'').toUpperCase()===uuid;}));
   if(enActual)return{liqNum:liq.num,actual:true};
   // 2.5) Leer directo de Firestore la liquidación activa GLOBAL (por si en otra
   // pestaña/sesión quedó otra liquidación abierta distinta a la de esta pestaña —
@@ -909,6 +949,7 @@ let csvRows=[];
 let anticiposDB={};   // {unidad:[{...anticipo,estado,liqNum}]}
 let ingresosDB=[];    // [{id,unidad,folio,fecha,cliente,tipo,subtotal,iva,ret,total,estado,liqNum,origen}]
 let incidentesDB={};  // {unidad:[{...incidente,montoReconocido,estado,liqNum}]} — módulo incidentes.html (independiente)
+let nominaDB={};       // {unidad:[{id,uuid,folio,fecha,periodoIni,periodoFin,totalPercepciones,totalDeducciones,estado,liqNum}]}
 let liq=null;
 let arrastres={};
 let cargasEdenred=[];
@@ -1077,10 +1118,20 @@ async function cargarEstado(){
               var _ingDBChk=(_iChk&&_iChk.data)?JSON.parse(_iChk.data):[];
               var _idsV=[];
               _ingDBChk.forEach(function(v){if(parseInt(v.unidad)===parseInt(liq.unidad)&&v.liqNum===liq.num)_idsV.push(v.id);});
+              var _nChk=await window.FB.get('estado','nominaDB');
+              var _nomDBChk=(_nChk&&_nChk.data)?JSON.parse(_nChk.data):{};
+              if(Array.isArray(_nomDBChk))_nomDBChk={};
+              var _idsN=[];
+              Object.keys(_nomDBChk).forEach(function(k){
+                if(parseInt(k)===parseInt(liq.unidad)){
+                  (_nomDBChk[k]||[]).forEach(function(n){if(n.liqNum===liq.num)_idsN.push(n.id);});
+                }
+              });
               liq.reabierta=true;
               liq.anticiposIncluidos=_idsA;
               liq.viajesIncluidos=_idsV;
-              console.warn('liq.reabierta auto-reparado: '+_idsA.length+' anticipos y '+_idsV.length+' viajes marcados como incluidos.');
+              liq.nominaIncluidos=_idsN;
+              console.warn('liq.reabierta auto-reparado: '+_idsA.length+' anticipos, '+_idsV.length+' viajes y '+_idsN.length+' recibos de nómina marcados como incluidos.');
               guardarEstado();
             }
           }catch(e){console.error('Auto-reparación de liq.reabierta:',e);}
@@ -1133,6 +1184,19 @@ async function cargarEstado(){
         if(liq) validarCFDIsSATLiquidacion(true);
       }
     });
+    window.FB.listen('estado','nominaDB', function(data){
+      if(data&&data.data){
+        var _ln=JSON.parse(data.data);
+        nominaDB=Array.isArray(_ln)?{}:_ln;
+        var op=parseInt($('liqOp')?$('liqOp').value||0:0);
+        if(!op && liq) op=liq.unidad;
+        if(op) mostrarPreviewLiq(op);
+        renderNomina();
+        var tabActivo=document.querySelector('.tab.active');
+        var tabs=document.querySelectorAll('.tab');
+        if(Array.from(tabs).indexOf(tabActivo)===4) generarReporte();
+      }
+    });
     // incidentesDB: SOLO lectura desde liq.html — incidentes.html es dueño de la captura.
     // liq.html solo lee los "pendiente" de la unidad activa y, al cerrar la liquidación,
     // marca como aplicados los que entraron dentro del tope de $1,500 por liquidación.
@@ -1177,6 +1241,7 @@ function restaurarUILiquidacion(){
   actualizarBotonEliminarLiq();
   if($('dOpNombre'))$('dOpNombre').textContent=liq.op.nombre;
   if($('iaveOpNombre'))$('iaveOpNombre').textContent=liq.op.nombre;
+  if($('nomOp')){$('nomOp').value=liq.unidad;renderNomina();}
   if($('liqInfo')){
     $('liqInfo').style.display='block';
     $('liqInfo').innerHTML='<div class="alert alert-ok">✅ Liquidación <strong>#'+liq.num+'</strong> restaurada — <strong>'+liq.op.nombre+'</strong> · Unidad '+liq.unidad+'</div>';
@@ -1260,14 +1325,14 @@ function showTab(i){
   document.querySelectorAll('.panel').forEach((p,j)=>p.classList.toggle('active',j===i));
   document.querySelectorAll('.tab').forEach((t,j)=>t.classList.toggle('active',j===i));
   if(i===4)generarReporte();
-  
+  if(i===5)renderNomina();
 }
 
 // ══════════════════════════════════════════════
 // INIT SELECTS & TAGS
 // ══════════════════════════════════════════════
 function initSelects(){
-  ['liqOp','ingOp','filtroIngOp'].forEach(function(id){
+  ['liqOp','ingOp','filtroIngOp','nomOp'].forEach(function(id){
     const s=$(id);if(!s)return;
     OPERADORES.forEach(function(op){
       const o=document.createElement('option');
@@ -1703,6 +1768,18 @@ function viajeIncluido(v){
   if(!liq||!liq.reabierta||!liq.viajesIncluidos)return true;
   return liq.viajesIncluidos.indexOf(v.id)!==-1;
 }
+function nominaIncluida(n){
+  if(!liq||!liq.reabierta||!liq.nominaIncluidos)return true;
+  return liq.nominaIncluidos.indexOf(n.id)!==-1;
+}
+function insertarNomina(id){
+  if(!liq)return;
+  if(!liq.nominaIncluidos)liq.nominaIncluidos=[];
+  if(liq.nominaIncluidos.indexOf(id)===-1)liq.nominaIncluidos.push(id);
+  guardarEstado();
+  mostrarPreviewLiq(liq.unidad);
+  generarReporte();
+}
 function insertarAnticipo(id){
   if(!liq)return;
   if(!liq.anticiposIncluidos)liq.anticiposIncluidos=[];
@@ -1766,6 +1843,29 @@ function mostrarPreviewLiq(unidad){
       +'</tbody></table></div>';
   }
   pI.innerHTML=htmlI;
+  // Deducciones de nómina
+  const todosNom=(nominaDB[unidad]||nominaDB[String(unidad)]||[]).filter(function(n){return n.estado==='pendiente';});
+  const nom=todosNom.filter(nominaIncluida);
+  const nomNuevos=todosNom.filter(function(n){return!nominaIncluida(n);});
+  const pN=$('prevNomina');
+  if(pN){
+    let htmlN='';
+    if(nom.length){
+      const totN=nom.reduce(function(s,n){return s+(n.totalDeducciones||0);},0);
+      htmlN+='<div class="tbl-wrap"><table><thead><tr><th>Periodo</th><th class="r">Deducciones</th></tr></thead><tbody>'
+        +nom.map(function(n){return '<tr><td>'+(n.periodoIni||'?')+' al '+(n.periodoFin||'?')+'</td><td class="num r" style="color:#9b1c1c">'+fmt(n.totalDeducciones||0)+'</td></tr>';}).join('')
+        +'</tbody><tfoot><tr style="font-weight:700;background:#f5f5f8"><td>Total</td><td class="num r">'+fmt(totN)+'</td></tr></tfoot></table></div>';
+    } else {
+      htmlN+='<div style="color:#aaa;font-size:13px;padding:10px">Sin deducciones de nómina pendientes para este operador.</div>';
+    }
+    if(nomNuevos.length){
+      htmlN+='<div class="alert alert-warn" style="margin-top:10px">⚠️ Hay '+nomNuevos.length+' recibo(s) de nómina nuevo(s) registrado(s) DESPUÉS de que se cerró originalmente esta liquidación reabierta. No se incluyen a menos que los insertes:</div>'
+        +'<div class="tbl-wrap"><table><thead><tr><th>Periodo</th><th class="r">Deducciones</th><th></th></tr></thead><tbody>'
+        +nomNuevos.map(function(n){return '<tr><td>'+(n.periodoIni||'?')+' al '+(n.periodoFin||'?')+'</td><td class="num r">'+fmt(n.totalDeducciones||0)+'</td><td><button class="btn btn-sm btn-dark" onclick="insertarNomina(\''+n.id+'\')">➕ Insertar nómina</button></td></tr>';}).join('')
+        +'</tbody></table></div>';
+    }
+    pN.innerHTML=htmlN;
+  }
   $('liqPreview').style.display='block';
 }
 
@@ -1862,6 +1962,7 @@ function iniciarLiquidacion(){
   renderGastos();
   renderIncidentesLiq();
   renderCasetasNF();
+  if($('nomOp')){$('nomOp').value=unidad;renderNomina();}
   if($('btnRevalidarSATWrap'))$('btnRevalidarSATWrap').style.display='block';
   actualizarBotonEliminarLiq();
   guardarEstado();
@@ -2899,6 +3000,121 @@ function eliminarGasto(i){
 }
 
 // ══════════════════════════════════════════════
+// 7: RECIBOS DE NÓMINA
+// nominaDB se guarda y lee igual que anticiposDB: objeto {unidad:[...]},
+// independiente de si hay una liquidación abierta — se registra en cuanto
+// se sube el XML y se "jala" (como deuda del operador) cuando se abre/
+// liquida la liquidación de esa unidad, igual que un anticipo.
+// ══════════════════════════════════════════════
+function guardarNominaDB(){
+  if(fbReady&&window.FB)window.FB.set('estado','nominaDB',{data:JSON.stringify(nominaDB)});
+}
+
+const dzNomina=$('dzNomina'); if(dzNomina){
+dzNomina.addEventListener('dragover',function(e){e.preventDefault();dzNomina.classList.add('drag');});
+dzNomina.addEventListener('dragleave',function(){dzNomina.classList.remove('drag');});
+dzNomina.addEventListener('drop',function(e){e.preventDefault();dzNomina.classList.remove('drag');handleNominaXMLFiles(e.dataTransfer.files);});
+if($('fNomina'))$('fNomina').addEventListener('change',function(e){handleNominaXMLFiles(e.target.files);});
+}
+
+function handleNominaXMLFiles(files){Array.from(files).forEach(function(f){const r=new FileReader();r.onload=function(e){parseNominaXML(e.target.result,f.name);};r.readAsText(f,'UTF-8');});}
+
+// Busca el complemento de nómina por namespace, no por el prefijo literal
+// (nomina12:), ya que distintos emisores pueden declarar otro prefijo para
+// el mismo namespace del SAT. Si por alguna razón el XML no trae el
+// namespace bien declarado, cae de respaldo al nombre de tag literal.
+function getNominaComplemento(doc){
+  var els=doc.getElementsByTagNameNS('http://www.sat.gob.mx/nomina12','Nomina');
+  if(els.length)return els[0];
+  els=doc.getElementsByTagName('nomina12:Nomina');
+  return els.length?els[0]:null;
+}
+
+async function parseNominaXML(text,fname){
+  var unidad=parseInt($('nomOp')?$('nomOp').value||0:0);
+  if(!unidad){alert('Selecciona primero el operador al que corresponde este recibo de nómina.');return;}
+  var doc=new DOMParser().parseFromString(text,'text/xml');
+  var comp=doc.querySelector('Comprobante');
+  if(!comp){alert(fname+': no es CFDI válido.');return;}
+  if((comp.getAttribute('TipoDeComprobante')||'')!=='N'){alert(fname+': este CFDI no es de tipo Nómina (N). No se puede registrar aquí.');return;}
+  if(!validarEmisorTML(doc,fname))return;
+  var nomina=getNominaComplemento(doc);
+  if(!nomina){alert(fname+': no se encontró el complemento de nómina en este XML.');return;}
+  var tfd=doc.querySelector('TimbreFiscalDigital');
+  var uuid=tfd?tfd.getAttribute('UUID')||'':'';
+  if(uuid){
+    var dup=await buscarUUIDDuplicado(uuid);
+    if(dup){
+      alert('🚫 '+fname+': este recibo ya fue registrado. No se puede subir el mismo CFDI dos veces.');
+      $('nominaXMLInfo').style.display='block';
+      $('nominaXMLInfo').innerHTML='<div class="alert alert-warn">🚫 '+fname+' — CFDI duplicado. No se agregó.</div>';
+      return;
+    }
+  }
+  var receptor=doc.querySelector('Receptor');
+  var totalDeducciones=parseFloat(nomina.getAttribute('TotalDeducciones')||0);
+  var totalPercepciones=parseFloat(nomina.getAttribute('TotalPercepciones')||0);
+  if(!nominaDB[unidad])nominaDB[unidad]=[];
+  nominaDB[unidad].push({
+    id:'nom-'+Date.now()+'-'+Math.random().toString(36).slice(2),
+    uuid:uuid,
+    folio:(comp.getAttribute('Serie')||'')+(comp.getAttribute('Folio')||''),
+    fecha:(comp.getAttribute('Fecha')||'').slice(0,10),
+    periodoIni:nomina.getAttribute('FechaInicialPago')||'',
+    periodoFin:nomina.getAttribute('FechaFinalPago')||'',
+    totalPercepciones:totalPercepciones,
+    totalDeducciones:totalDeducciones,
+    receptorNombre:receptor?receptor.getAttribute('Nombre')||'':'',
+    receptorRfc:receptor?receptor.getAttribute('Rfc')||'':'',
+    estado:'pendiente',
+    liqNum:null
+  });
+  registrarFacturaUsada(uuid,null,unidad,'nomina');
+  guardarNominaDB();
+  renderNomina();
+  var opU=OPERADORES.find(function(o){return o.unidad===unidad;});
+  $('nominaXMLInfo').style.display='block';
+  $('nominaXMLInfo').innerHTML='<div class="alert alert-ok">✅ '+fname+' — deducciones de '+fmt(totalDeducciones)+' registradas para '+(opU?opU.nombre:unidad)+'.</div>';
+  if(liq&&liq.unidad===unidad)mostrarPreviewLiq(unidad);
+}
+
+function eliminarNomina(id){
+  var unidad=parseInt($('nomOp')?$('nomOp').value||0:0);
+  if(!unidad||!nominaDB[unidad])return;
+  var n=nominaDB[unidad].find(function(x){return x.id===id;});
+  if(!n||n.estado!=='pendiente')return;
+  if(!confirm('¿Eliminar este recibo de nómina ('+fmt(n.totalDeducciones)+')?'))return;
+  if(n.uuid)liberarFacturaUsada(n.uuid);
+  nominaDB[unidad]=nominaDB[unidad].filter(function(x){return x.id!==id;});
+  guardarNominaDB();
+  renderNomina();
+}
+
+function renderNomina(){
+  var tb=$('tbNomina'),tf=$('tfNomina');
+  if(!tb)return;
+  var unidad=parseInt($('nomOp')?$('nomOp').value||0:0);
+  tb.innerHTML='';
+  if(!unidad){if(tf)tf.innerHTML='';return;}
+  var lista=(nominaDB[unidad]||nominaDB[String(unidad)]||[]).slice().sort(function(a,b){return(a.fecha||'').localeCompare(b.fecha||'');});
+  var totPerc=0,totDed=0;
+  lista.forEach(function(n){
+    totPerc+=n.totalPercepciones||0;totDed+=n.totalDeducciones||0;
+    var estadoCell=n.estado==='liquidado'
+      ?'<span class="badge bg-green">✓ Liquidado #'+n.liqNum+'</span>'
+      :'<span class="badge bg-yellow">Pendiente</span>';
+    tb.innerHTML+='<tr><td style="font-size:11px">'+(n.fecha||'—')+'</td>'
+      +'<td style="font-size:11px">'+(n.periodoIni||'?')+' al '+(n.periodoFin||'?')+'</td>'
+      +'<td style="font-size:11px">'+(n.folio||'—')+'</td>'
+      +'<td class="num r">'+fmt(n.totalPercepciones||0)+'</td>'
+      +'<td class="num r" style="color:#9b1c1c;font-weight:700">'+fmt(n.totalDeducciones||0)+'</td>'
+      +'<td>'+estadoCell+'</td>'
+      +'<td>'+(n.estado==='pendiente'?'<button class="btn btn-sm" style="background:#fde8e8;color:#9b1c1c;border:none;cursor:pointer" onclick="eliminarNomina(\''+n.id+'\')">✕</button>':'')+'</td></tr>';
+  });
+  if(tf)tf.innerHTML='<tr style="background:#f5f5f8;font-weight:700"><td colspan="3">TOTALES</td><td class="num r">'+fmt(totPerc)+'</td><td class="num r" style="color:#9b1c1c">'+fmt(totDed)+'</td><td colspan="2"></td></tr>';
+}
+
+// ══════════════════════════════════════════════
 // 6: REPORTE
 // ══════════════════════════════════════════════
 function generarReporte(){
@@ -2924,8 +3140,11 @@ function generarReporte(){
   // cerrar la liquidación se marquen "liquidado" justo estos mismos — sin
   // volver a filtrar por separado, así nunca puede haber diferencia entre lo
   // que se reportó/cobró y lo que realmente se marca como usado.
+  const nomPend=(nominaDB[liq.unidad]||nominaDB[String(liq.unidad)]||[]).filter(function(n){return n.estado==='pendiente';}).filter(nominaIncluida);
+  const totNomina=nomPend.reduce(function(s,n){return s+(n.totalDeducciones||0);},0);
   window._idsAntsReporte=antsPend.map(function(a){return a.id;});
   window._idsViajesReporte=viajes.map(function(v){return v.id;});
+  window._idsNominaReporte=nomPend.map(function(n){return n.id;});
   console.log('DEBUG liq.unidad:', liq.unidad, typeof liq.unidad);
   console.log('DEBUG ingresosDB total:', ingresosDB.length, 'viajes filtrados:', viajes.length);
   if(ingresosDB.length>0)console.log('DEBUG primer ingreso unidad:', ingresosDB[0].unidad, typeof ingresosDB[0].unidad, 'estado:', ingresosDB[0].estado);
@@ -3100,7 +3319,7 @@ function generarReporte(){
   const ltsNoCombprobados=Math.max(0,totalDieselLts-ltsECMRep);
   const importeNoComprobadoTot=ltsNoCombprobados*(d.pp||0);
 
-  const totalCargosReal=totAnts+totalDieselImporte;
+  const totalCargosReal=totAnts+totalDieselImporte+totNomina;
   const totalAbonosReal=totComision+totGastos1+importeComprobadoTot+totAutOp+totGastosOp+totIncidentes+totCasetasNFOp;
   const saldoReal=totalAbonosReal-totalCargosReal;
 
@@ -3114,6 +3333,7 @@ function generarReporte(){
     +rr('Diesel total adelantado ('+fmtN(totalDieselLts)+' lts × '+fmt(d.pp||0)+')',totalDieselImporte,'cargo')
     +(ltsXmlTodos>0?rrDetail('  Edenred: '+fmtN(Math.max(0,(d.ltsIni||0)+(d.totLtsCarg||0)-(d.ltsFinal||0)))+' lts',0):'')
     +detalleXml
+    +(totNomina?rr('Deducciones de nómina (IMSS, ISR, etc.)',totNomina,'cargo'):'')
     +'<div class="rep-row subtotal cargo"><span>TOTAL CARGOS</span><span class="num">'+fmt(totalCargosReal)+'</span></div>';
 
   $('repAbonos').innerHTML=
@@ -3268,9 +3488,10 @@ function generarReporte(){
     totAut:totAut, totAutOp:totAutOp, totAutEmp:totAutEmp,
     totGastosOp:totGastosOp, totGastosEmp:totGastosEmp,
     totGastosEmpTotal:totGastosEmpTotal,
-    totAnts:totAnts, totalCargosReal:totalCargosReal, totalAbonosReal:totalAbonosReal,
+    totAnts:totAnts, totNomina:totNomina, totalCargosReal:totalCargosReal, totalAbonosReal:totalAbonosReal,
     saldoReal:saldoReal, diesel:liq.diesel||{},
     antsList:antsPendRep.map(function(a){return{fecha:a.fecha||a.fechaStr||'',concepto:a.concepto,importe:a.importe};}),
+    nominaList:nomPend.map(function(n){return{fecha:n.fecha||'',periodoIni:n.periodoIni||'',periodoFin:n.periodoFin||'',folio:n.folio||'',totalPercepciones:n.totalPercepciones||0,totalDeducciones:n.totalDeducciones||0,uuid:n.uuid||''};}),
     viajesList:viajes.map(function(v){return{folio:v.folio,fecha:v.fecha,cliente:v.cliente,subtotal:v.subtotal,iva:v.iva,ret:v.ret,total:v.total,uuid:v.uuid||'',rfcEmisor:v.rfcEmisor||'',rfcReceptor:v.rfcReceptor||'',satCancelado:!!v.satCancelado};}),
     cargasDiesel:cargasOp.filter(function(c){return!c.yaLiquidada;}).map(function(c){return{fecha:c.fecha,hora:c.hora||'',estacion:c.estacion,litros:c.litros,precio:c.precio,importe:c.importe};}),
     dieselXML:(liq.dieselXML||[]).map(function(x){return{fecha:x.fecha,folio:x.folio,emisor:x.emisor,rfc:x.rfc||'',uuid:x.uuid||'',litros:x.litros,precioUnitario:x.precioUnitario,subtotal:x.subtotal||0,iva:x.iva||0,total:x.total,pagaOp:x.pagaOp,satCancelado:!!x.satCancelado};}),
@@ -3359,6 +3580,21 @@ function cerrarLiquidacion(){
       });
     }
   });
+  // Marcar recibos de nómina: idem, exactamente los ids ya contados en el reporte
+  var idsNominaCerrar=window._idsNominaReporte||[];
+  var nNMarcados=0;
+  Object.keys(nominaDB).forEach(function(key){
+    if(parseInt(key)===parseInt(liqCopia.unidad)){
+      (nominaDB[key]||[]).forEach(function(n){
+        if(n.estado==='pendiente'&&idsNominaCerrar.indexOf(n.id)!==-1){
+          n.estado='liquidado';
+          n.liqNum=liqCopia.num;
+          nNMarcados++;
+        }
+      });
+    }
+  });
+
   // Las casetas sin comprobante viven dentro de liq.casetasNF (se capturaron en esta
   // misma liquidación) — no hay nada que marcar en una colección externa.
   var nCMarcados=(liqCopia.casetasNF||[]).length;
@@ -3415,11 +3651,12 @@ function cerrarLiquidacion(){
     });
   }
 
-  // Guardar a Firebase: anticipos, ingresos, incidentes y eliminar liqActiva de forma explícita
+  // Guardar a Firebase: anticipos, ingresos, incidentes, nómina y eliminar liqActiva de forma explícita
   if(fbReady){
     window.FB.set('estado','anticiposDB',{data: JSON.stringify(anticiposDB)});
     window.FB.set('estado','ingresosDB',{data: JSON.stringify(ingresosDB)});
     window.FB.set('estado','incidentesDB',{data: JSON.stringify(incidentesDB)});
+    window.FB.set('estado','nominaDB',{data: JSON.stringify(nominaDB)});
     window.FB.del('estado','liqActiva'); // eliminar ANTES del alert para que persista
   }
 
@@ -3435,7 +3672,7 @@ function cerrarLiquidacion(){
     });
   }
 
-  alert('✅ Liquidación #'+liqCopia.num+' cerrada.\n'+nAMarcados+' anticipos, '+nVMarcados+' viajes'+(nIMarcados?', '+nIMarcados+' incidente(s) de vialidad':'')+(nCMarcados?' y '+nCMarcados+' caseta(s) sin comprobante':'')+' incluidos.'+(nIDescartados?'\n⚠️ '+nIDescartados+' incidente(s) excedieron el tope de $1,500 de esta liquidación y se descartaron (no se pagan).':''));
+  alert('✅ Liquidación #'+liqCopia.num+' cerrada.\n'+nAMarcados+' anticipos, '+nVMarcados+' viajes'+(nNMarcados?', '+nNMarcados+' recibo(s) de nómina':'')+(nIMarcados?', '+nIMarcados+' incidente(s) de vialidad':'')+(nCMarcados?' y '+nCMarcados+' caseta(s) sin comprobante':'')+' incluidos.'+(nIDescartados?'\n⚠️ '+nIDescartados+' incidente(s) excedieron el tope de $1,500 de esta liquidación y se descartaron (no se pagan).':''));
 
   liq=null;
   cargasOp=[];

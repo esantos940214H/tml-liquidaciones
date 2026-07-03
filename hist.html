@@ -731,17 +731,20 @@ async function reabrirLiquidacion(){
       fechaApertura:(function(){var d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');})(),advertenciasFecha:(snap.advertenciasFecha||[]).slice()
     };
 
-    // Liberar anticipos, viajes e incidentes que esta liquidación había marcado
-    const [aRes,iRes,incRes]=await Promise.all([
+    // Liberar anticipos, viajes, incidentes y recibos de nómina que esta liquidación había marcado
+    const [aRes,iRes,incRes,nomRes]=await Promise.all([
       window.FB.get('estado','anticiposDB'),
       window.FB.get('estado','ingresosDB'),
       window.FB.get('estado','incidentesDB'),
+      window.FB.get('estado','nominaDB'),
     ]);
     let antDB=(aRes&&aRes.data)?JSON.parse(aRes.data):{};
     if(Array.isArray(antDB))antDB={};
     let ingDB=(iRes&&iRes.data)?JSON.parse(iRes.data):[];
     let incDB=(incRes&&incRes.data)?JSON.parse(incRes.data):{};
     if(Array.isArray(incDB))incDB={};
+    let nomDB=(nomRes&&nomRes.data)?JSON.parse(nomRes.data):{};
+    if(Array.isArray(nomDB))nomDB={};
 
     // Se guarda el id de cada anticipo/viaje liberado en liq.anticiposIncluidos/
     // viajesIncluidos: liq.html usa esa lista para NO jalar automáticamente
@@ -766,9 +769,18 @@ async function reabrirLiquidacion(){
         });
       }
     });
+    var nN=0,idsNominaLiberados=[];
+    Object.keys(nomDB).forEach(function(key){
+      if(parseInt(key)===parseInt(l.unidad)){
+        (nomDB[key]||[]).forEach(function(n){
+          if(n.liqNum===l.num){n.estado='pendiente';n.liqNum=null;nN++;idsNominaLiberados.push(n.id);}
+        });
+      }
+    });
     liqReab.reabierta=true;
     liqReab.anticiposIncluidos=idsAntLiberados;
     liqReab.viajesIncluidos=idsViajesLiberados;
+    liqReab.nominaIncluidos=idsNominaLiberados;
 
     // Quitar del arrastre de diesel/casetas las claves que esta misma
     // liquidación agregó al cerrarse originalmente, para que sus propias
@@ -802,11 +814,12 @@ async function reabrirLiquidacion(){
       window.FB.set('estado','anticiposDB',{data:JSON.stringify(antDB)}),
       window.FB.set('estado','ingresosDB',{data:JSON.stringify(ingDB)}),
       window.FB.set('estado','incidentesDB',{data:JSON.stringify(incDB)}),
+      window.FB.set('estado','nominaDB',{data:JSON.stringify(nomDB)}),
       window.FB.set('estado','arrastres',{data:JSON.stringify(arrDB)}),
       window.FB.set('estado','liqActiva',{data:JSON.stringify(liqReab)}),
     ]);
 
-    alert('🔓 Liquidación #'+l.num+' reabierta.\n'+nA+' anticipo(s), '+nV+' viaje(s)'+(nI?' y '+nI+' incidente(s)':'')+' quedaron pendientes otra vez e incluidos en la liquidación.\n\nSi hay anticipos o viajes NUEVOS registrados después del cierre original, no se van a jalar solos — vas a poder insertarlos a propósito con un botón dentro del módulo de Liquidaciones.\n\nAbriendo el módulo de Liquidaciones para editarla...');
+    alert('🔓 Liquidación #'+l.num+' reabierta.\n'+nA+' anticipo(s), '+nV+' viaje(s)'+(nN?', '+nN+' recibo(s) de nómina':'')+(nI?' y '+nI+' incidente(s)':'')+' quedaron pendientes otra vez e incluidos en la liquidación.\n\nSi hay anticipos, viajes o recibos de nómina NUEVOS registrados después del cierre original, no se van a jalar solos — vas a poder insertarlos a propósito con un botón dentro del módulo de Liquidaciones.\n\nAbriendo el módulo de Liquidaciones para editarla...');
     location.href='liq.html';
   }catch(e){
     console.error('reabrirLiquidacion:',e);
