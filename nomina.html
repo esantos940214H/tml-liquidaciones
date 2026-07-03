@@ -1,0 +1,439 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TML · Nómina</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Segoe UI',Arial,sans-serif;background:#f0f2f5;color:#1a1a2e;min-height:100vh}
+html.in-iframe header{display:none!important}
+header{background:#1a1a2e;color:#fff;padding:14px 24px;display:flex;align-items:center;justify-content:space-between;border-bottom:3px solid #e63946}
+.logo{font-size:18px;font-weight:800}.logo span{color:#e63946}
+.nav{display:flex;gap:8px;flex-wrap:wrap}
+.nav a{color:#aaa;text-decoration:none;font-size:12px;padding:6px 12px;border-radius:5px;border:1px solid #333;transition:all .15s}
+.nav a:hover{color:#fff;border-color:#555}
+.nav a.active{color:#fff;background:#e63946;border-color:#e63946}
+.container{max-width:1100px;margin:0 auto;padding:20px 16px}
+.card{background:#fff;border-radius:10px;box-shadow:0 2px 12px rgba(0,0,0,.07);padding:20px 24px;margin-bottom:16px}
+.card-title{font-size:12px;font-weight:700;color:#1a1a2e;margin-bottom:14px;text-transform:uppercase;letter-spacing:1px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px}
+.field{display:flex;flex-direction:column;gap:4px}
+.field label{font-size:11px;font-weight:700;color:#666;text-transform:uppercase;letter-spacing:.5px}
+.field input,.field select{border:1.5px solid #dde;border-radius:6px;padding:8px 10px;font-size:13px;color:#1a1a2e;background:#fafafa;width:100%}
+.field input:focus,.field select:focus{outline:none;border-color:#e63946}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end}
+.btn{padding:8px 18px;border-radius:6px;border:none;font-size:12px;font-weight:700;cursor:pointer;transition:all .15s;text-transform:uppercase;letter-spacing:.5px}
+.btn-red{background:#e63946;color:#fff}.btn-red:hover{background:#c1121f}
+.btn-dark{background:#1a1a2e;color:#fff}.btn-dark:hover{background:#0d0d1a}
+.btn-out{background:#fff;color:#1a1a2e;border:1.5px solid #1a1a2e}.btn-out:hover{background:#f0f2f5}
+.btn-sm{padding:5px 11px;font-size:11px}
+.upload-zone{border:2px dashed #c0c4cc;border-radius:8px;padding:20px;text-align:center;cursor:pointer;transition:all .2s;background:#fafafa}
+.upload-zone:hover,.upload-zone.drag{border-color:#e63946;background:#fff5f5}
+.upload-zone .icon{font-size:24px;margin-bottom:5px}
+.upload-zone p{color:#666;font-size:12px}
+.alert{padding:9px 13px;border-radius:7px;font-size:12px;margin-bottom:10px}
+.alert-info{background:#e8f4fd;color:#0369a1;border:1px solid #bae6fd}
+.alert-ok{background:#d1e7dd;color:#0a5233;border:1px solid #a3cfbb}
+.alert-warn{background:#fffbeb;color:#92400e;border:1px solid #fde68a}
+.tbl-wrap{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:13px;min-width:700px}
+th{background:#1a1a2e;color:#fff;padding:8px 10px;font-size:11px;text-transform:uppercase;letter-spacing:.7px;text-align:left;font-weight:600}
+th.r{text-align:right}
+td{padding:7px 10px;border-bottom:1px solid #f0f0f0;vertical-align:middle}
+tr:last-child td{border-bottom:none}
+tr:hover td{background:#fafafa}
+.r{text-align:right}.num{font-family:monospace;font-weight:600}
+.badge{display:inline-block;border-radius:4px;padding:2px 8px;font-size:10px;font-weight:700;white-space:nowrap}
+.bg-green{background:#d1e7dd;color:#0a5233;border:1px solid #a3cfbb}
+.bg-yellow{background:#fff3cd;color:#856404;border:1px solid #ffc107}
+.bg-gray{background:#f0f2f5;color:#555;border:1px solid #dde}
+.fb-status{font-size:11px;color:#aaa}
+.fb-ok{color:#2d6a4f}.fb-err{color:#e63946}
+@media(max-width:600px){.row{flex-direction:column;align-items:stretch}}
+
+/* ── SESIÓN (login por módulo) ── */
+.session-overlay{position:fixed;inset:0;background:#1a1a2e;z-index:999999;display:none;align-items:center;justify-content:center}
+.session-overlay.show{display:flex}
+.session-box{background:#fff;border-radius:14px;padding:36px;width:320px;box-shadow:0 20px 60px rgba(0,0,0,.4);text-align:center}
+.session-logo{font-size:20px;font-weight:800;margin-bottom:4px;color:#1a1a2e}
+.session-logo span{color:#e63946}
+.session-modulo{font-size:13px;color:#666;margin-bottom:18px;font-weight:700}
+.session-input{width:100%;border:1.5px solid #dde;border-radius:8px;padding:10px 14px;font-size:14px;margin-bottom:10px;outline:none}
+.session-input:focus{border-color:#e63946}
+.session-btn{width:100%;padding:11px;background:#e63946;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer}
+.session-btn:hover{background:#c1121f}
+.session-err{color:#e63946;font-size:12px;margin-top:8px}
+.session-user-label{font-size:11px;color:#aaa}
+.session-logout{font-size:11px;color:#aaa;text-decoration:underline;cursor:pointer;background:none;border:none}
+.session-logout:hover{color:#fff}
+</style>
+<script>if(window!==window.top)document.documentElement.className+=' in-iframe';</script>
+</head>
+<body>
+
+<!-- OVERLAY DE SESIÓN -->
+<div class="session-overlay" id="sessionOverlay">
+  <div class="session-box">
+    <div class="session-logo">MUDANZAS <span>TML</span></div>
+    <div class="session-modulo" id="sessionModuloLabel">Iniciar sesión — Nómina</div>
+    <input type="text" id="sessionUser" class="session-input" placeholder="Usuario" autocomplete="username" onkeydown="if(event.key==='Enter')document.getElementById('sessionPass').focus()">
+    <input type="password" id="sessionPass" class="session-input" placeholder="Contraseña" autocomplete="current-password" onkeydown="if(event.key==='Enter')intentarLogin()">
+    <button class="session-btn" onclick="intentarLogin()">Entrar</button>
+    <div class="session-err" id="sessionErr" style="display:none"></div>
+  </div>
+</div>
+<div class="session-overlay" id="sessionDenied">
+  <div class="session-box">
+    <div class="session-logo">MUDANZAS <span>TML</span></div>
+    <div class="session-modulo">⛔ Tu usuario no tiene permiso para entrar a este módulo.</div>
+    <div style="font-size:12px;color:#888;margin-bottom:16px">Sesión iniciada como <strong id="sessionDeniedUser"></strong></div>
+    <button class="session-btn" onclick="cerrarSesionTML()">Cerrar sesión</button>
+  </div>
+</div>
+
+<header>
+  <div class="logo">MUDANZAS <span>TML</span> <span style="font-size:13px;font-weight:400;color:#aaa;margin-left:8px">· Nómina</span></div>
+  <div style="display:flex;align-items:center;gap:12px">
+    <span class="session-user-label" id="sesionUsuarioLabel"></span>
+    <button class="session-logout" id="btnCerrarSesion" onclick="cerrarSesionTML()" style="display:none">Cerrar sesión</button>
+    <span class="fb-status" id="fbStatus">⏳ Conectando...</span>
+    <nav class="nav">
+      <a href="ant.html">📋 Anticipos</a>
+      <a href="ing.html">📄 Ingresos</a>
+      <a href="liq.html">🚛 Liquidaciones</a>
+      <a href="nomina.html" class="active">🧾 Nómina</a>
+      <a href="incidentes.html">🚨 Incidentes</a>
+      <a href="hist.html">🗂️ Historial</a>
+      <a href="usuarios.html">👤 Usuarios</a>
+    </nav>
+  </div>
+</header>
+
+<div class="container">
+
+  <div class="alert alert-info">🧾 Sube aquí el XML del recibo de nómina (CFDI tipo N) de cada operador. Se toma el <strong>Total de Deducciones</strong> del complemento de nómina y queda pendiente para ese operador. Cuando se abra o liquide su siguiente liquidación, esa deducción se descuenta automáticamente de su saldo — una sola vez, hasta que subas otro recibo.</div>
+
+  <!-- REGISTRO -->
+  <div class="card">
+    <div class="card-title">📋 Subir recibo de nómina</div>
+    <div class="row" style="margin-bottom:12px">
+      <div class="field"><label>Operador</label><select id="nomOp" onchange="renderNomina()"><option value="">— Selecciona —</option></select></div>
+    </div>
+    <div class="upload-zone" id="dzNomina" onclick="document.getElementById('fNomina').click()"><div class="icon">🧾</div><p><strong>Arrastra XML de nómina</strong></p></div>
+    <input type="file" id="fNomina" accept=".xml" multiple style="display:none">
+    <div id="nominaXMLInfo" style="display:none;margin-top:10px"></div>
+  </div>
+
+  <!-- FILTROS -->
+  <div class="card">
+    <div class="card-title">🔍 Filtros</div>
+    <div class="row">
+      <div class="field"><label>Operador</label><select id="filtNomOp" onchange="renderNomina()"><option value="">Todos</option></select></div>
+      <div class="field"><label>Estatus</label>
+        <select id="filtNomEst" onchange="renderNomina()">
+          <option value="">Todos</option>
+          <option value="pendiente">Pendiente</option>
+          <option value="liquidado">Liquidado</option>
+        </select>
+      </div>
+      <button class="btn btn-out btn-sm" onclick="$('filtNomOp').value='';$('filtNomEst').value='';renderNomina();">Limpiar</button>
+    </div>
+  </div>
+
+  <!-- TABLA -->
+  <div class="card">
+    <div class="card-title">🧾 Recibos registrados</div>
+    <div class="tbl-wrap"><table>
+      <thead><tr><th>Operador</th><th>Fecha pago</th><th>Periodo</th><th>Folio</th><th class="r">Percepciones</th><th class="r">Deducciones</th><th>Estado</th><th></th></tr></thead>
+      <tbody id="tbNomina"></tbody><tfoot id="tfNomina"></tfoot>
+    </table></div>
+  </div>
+
+</div>
+
+<!-- Firebase compat -->
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+<script>
+window._fbInit=false;
+window._fbCallbacks=[];
+window.onFBReady=function(cb){if(window._fbInit)cb();else window._fbCallbacks.push(cb);};
+(function(){
+  try{
+    var cfg={apiKey:"AIzaSyDqlhREJFVFLGzz7bVlPcNl1Uba9HI3r8s",authDomain:"tml-liquidaciones.firebaseapp.com",
+      projectId:"tml-liquidaciones",storageBucket:"tml-liquidaciones.firebasestorage.app",
+      messagingSenderId:"268455373953",appId:"1:268455373953:web:ad359c5dbcba9f53557180"};
+    if(!firebase.apps.length)firebase.initializeApp(cfg);
+    var db=firebase.firestore();
+    window.FB={
+      set:function(col,id,data){return db.collection(col).doc(id).set(data);},
+      get:async function(col,id){try{var s=await db.collection(col).doc(id).get();return s.exists?s.data():null;}catch(e){console.error('FB.get:',e);return null;}},
+      del:function(col,id){return db.collection(col).doc(id).delete();},
+      listen:function(col,id,cb){return db.collection(col).doc(id).onSnapshot(function(s){cb(s.exists?s.data():null);});},
+      getAll:async function(col){
+        try{var s=await db.collection(col).get();var r=[];s.forEach(function(d){r.push(Object.assign({id:d.id},d.data()));});return r.sort(function(a,b){return(b.num||0)-(a.num||0);});}
+        catch(e){console.error('FB.getAll:',e);return[];}
+      }
+    };
+    window._fbInit=true;
+    window._fbCallbacks.forEach(function(cb){try{cb();}catch(e){console.error(e);}});
+    window._fbCallbacks=[];
+    setTimeout(function(){window.dispatchEvent(new Event('firebase-ready'));},0);
+  }catch(e){console.error('Firebase init error:',e);}
+})();
+</script>
+
+<script>
+const OPERADORES=[
+  {unidad:4521,nombre:'ALEJANDRO RODRIGUEZ GONZALEZ'},{unidad:4522,nombre:'ANDRÉS MARÍA RAMOS'},
+  {unidad:4523,nombre:'ANDRÉS NAVARRO RAMÍREZ'},{unidad:4524,nombre:'RAFAEL TAPIA CARREÑO'},
+  {unidad:4526,nombre:'EDUARDO HERNÁNDEZ ACEVES'},{unidad:529,nombre:'OSCAR ISRAEL RAMOS'},
+  {unidad:531,nombre:'MARTÍN FLORES LUGO'},{unidad:532,nombre:'JOSÉ ROLANDO DOMINGUEZ LOPEZ'},
+  {unidad:533,nombre:'FRANCISCO ARTEMIO PEÑA VAZQUEZ'},{unidad:534,nombre:'MIGUEL ALONSO CALDERON'},
+  {unidad:535,nombre:'ISMAEL CONSTANTINO CABRERA'},
+];
+const $=id=>document.getElementById(id);
+const fmt=(n,d=2)=>'$'+parseFloat(n||0).toLocaleString('es-MX',{minimumFractionDigits:d,maximumFractionDigits:d});
+const hoy=()=>{var d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');};
+const TML_RFC='MTM171214PI4';
+let fbReady=false;
+let nominaDB={}; // {unidad:[{id,uuid,folio,fecha,periodoIni,periodoFin,totalPercepciones,totalDeducciones,estado,liqNum}]}
+
+// ══════════════════════════════════════════════
+// SESIÓN (login general con permisos por módulo)
+// ══════════════════════════════════════════════
+const MODULO_ACTUAL='nom';
+const NOMBRES_MODULO={ant:'Anticipos',ing:'Ingresos',liq:'Liquidaciones',nom:'Nómina',inc:'Incidentes',hist:'Historial'};
+
+function usuarioSesion(){
+  try{return JSON.parse(sessionStorage.getItem('tml_user')||'null');}catch(e){return null;}
+}
+function cerrarSesionTML(){
+  sessionStorage.removeItem('tml_user');
+  location.reload();
+}
+function mostrarLoginModulo(){
+  $('sessionModuloLabel').textContent='Iniciar sesión — '+NOMBRES_MODULO[MODULO_ACTUAL];
+  $('sessionOverlay').classList.add('show');
+  setTimeout(function(){$('sessionUser').focus();},100);
+}
+async function sha256Hex(texto){
+  var buf=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(texto));
+  return Array.from(new Uint8Array(buf)).map(function(b){return b.toString(16).padStart(2,'0');}).join('');
+}
+async function intentarLogin(){
+  var usuario=($('sessionUser').value||'').trim();
+  var pass=$('sessionPass').value||'';
+  var err=$('sessionErr');
+  err.style.display='none';
+  if(!usuario||!pass){err.textContent='Ingresa usuario y contraseña.';err.style.display='block';return;}
+  if(!fbReady){err.textContent='Sin conexión aún, espera un momento e intenta de nuevo.';err.style.display='block';return;}
+  try{
+    var hash=await sha256Hex(pass);
+    var usuarios=await window.FB.getAll('usuarios');
+    var match=usuarios.find(function(u){return (u.usuario||'').toLowerCase()===usuario.toLowerCase()&&u.passwordHash===hash&&u.activo!==false;});
+    if(!match){err.textContent='Usuario o contraseña incorrectos.';err.style.display='block';return;}
+    if(!match.esAdmin&&(!match.permisos||!match.permisos[MODULO_ACTUAL])){
+      err.textContent='Tu usuario no tiene permiso para entrar a '+NOMBRES_MODULO[MODULO_ACTUAL]+'.';err.style.display='block';return;
+    }
+    sessionStorage.setItem('tml_user',JSON.stringify({id:match.id,usuario:match.usuario,nombre:match.nombre,permisos:match.permisos,esAdmin:!!match.esAdmin}));
+    $('sessionOverlay').classList.remove('show');
+    mostrarSesionEnHeader();
+  }catch(e){
+    err.textContent='Error de conexión: '+e.message;err.style.display='block';
+  }
+}
+function aplicarPermisosNav(u){
+  if(!u||u.esAdmin)return;
+  var mapa={ant:'ant.html',ing:'ing.html',liq:'liq.html',nom:'nomina.html',inc:'incidentes.html',hist:'hist.html'};
+  Object.keys(mapa).forEach(function(mod){
+    if(!u.permisos||!u.permisos[mod]){
+      document.querySelectorAll('nav a[href="'+mapa[mod]+'"]').forEach(function(el){el.style.display='none';});
+    }
+  });
+  var usuariosLink=document.querySelector('nav a[href="usuarios.html"]');
+  if(usuariosLink)usuariosLink.style.display='none';
+}
+function mostrarSesionEnHeader(){
+  var u=usuarioSesion();
+  if(!u)return;
+  if($('sesionUsuarioLabel'))$('sesionUsuarioLabel').textContent='👤 '+(u.nombre||u.usuario)+(u.esAdmin?' (admin)':'');
+  if($('btnCerrarSesion'))$('btnCerrarSesion').style.display='inline';
+  aplicarPermisosNav(u);
+}
+function verificarSesionModulo(){
+  var u=usuarioSesion();
+  if(!u){mostrarLoginModulo();return;}
+  if(!u.esAdmin&&(!u.permisos||!u.permisos[MODULO_ACTUAL])){
+    $('sessionDeniedUser').textContent=u.nombre||u.usuario;
+    $('sessionDenied').classList.add('show');
+    return;
+  }
+  mostrarSesionEnHeader();
+}
+window.onFBReady(verificarSesionModulo);
+
+function initSelects(){
+  ['nomOp','filtNomOp'].forEach(function(id){
+    var s=$(id);if(!s)return;
+    OPERADORES.forEach(function(op){
+      var o=document.createElement('option');
+      o.value=op.unidad;o.textContent=op.unidad+' · '+op.nombre;
+      s.appendChild(o);
+    });
+  });
+}
+initSelects();
+
+window.onFBReady(async function(){
+  fbReady=true;
+  $('fbStatus').textContent='✅ Conectado';$('fbStatus').className='fb-status fb-ok';
+  var data=await window.FB.get('estado','nominaDB');
+  if(data&&data.data){var _ln=JSON.parse(data.data);nominaDB=Array.isArray(_ln)?{}:_ln;}
+  renderNomina();
+  window.FB.listen('estado','nominaDB',function(data){
+    if(data&&data.data){var _ln2=JSON.parse(data.data);nominaDB=Array.isArray(_ln2)?{}:_ln2;renderNomina();}
+  });
+});
+setTimeout(function(){if(!fbReady){$('fbStatus').textContent='❌ Sin conexión';$('fbStatus').className='fb-status fb-err';}},6000);
+
+function guardarNominaDB(){
+  if(fbReady&&window.FB)window.FB.set('estado','nominaDB',{data:JSON.stringify(nominaDB)});
+}
+
+// Los XML de nómina son facturas que TML EMITE al operador — el emisor del
+// CFDI debe ser Mudanzas TML (al revés que una factura de gasto, donde TML
+// es receptor).
+function validarEmisorTML(doc,fname){
+  var emisor=doc.querySelector('Emisor');
+  var rfcEmisor=emisor?emisor.getAttribute('Rfc')||'':'';
+  if((rfcEmisor||'').toUpperCase()!==TML_RFC){
+    alert('⚠️ '+fname+': el emisor del CFDI es "'+(rfcEmisor||'desconocido')+'", no coincide con Mudanzas TML ('+TML_RFC+'). No se puede cargar este recibo.');
+    return false;
+  }
+  return true;
+}
+// Busca el complemento de nómina por namespace, no por el prefijo literal
+// (nomina12:), ya que distintos emisores pueden declarar otro prefijo para
+// el mismo namespace del SAT. Si por alguna razón el XML no trae el
+// namespace bien declarado, cae de respaldo al nombre de tag literal.
+function getNominaComplemento(doc){
+  var els=doc.getElementsByTagNameNS('http://www.sat.gob.mx/nomina12','Nomina');
+  if(els.length)return els[0];
+  els=doc.getElementsByTagName('nomina12:Nomina');
+  return els.length?els[0]:null;
+}
+// Duplicado: se busca el mismo UUID ya registrado en nominaDB, sin importar
+// el operador (evita subir el mismo recibo dos veces por error).
+function buscarNominaDuplicada(uuid){
+  if(!uuid)return null;
+  uuid=uuid.toUpperCase();
+  for(var key in nominaDB){
+    var enc=(nominaDB[key]||[]).find(function(n){return(n.uuid||'').toUpperCase()===uuid;});
+    if(enc)return{unidad:key,liqNum:enc.liqNum};
+  }
+  return null;
+}
+
+const dzNomina=$('dzNomina');
+dzNomina.addEventListener('dragover',function(e){e.preventDefault();dzNomina.classList.add('drag');});
+dzNomina.addEventListener('dragleave',function(){dzNomina.classList.remove('drag');});
+dzNomina.addEventListener('drop',function(e){e.preventDefault();dzNomina.classList.remove('drag');handleNominaXMLFiles(e.dataTransfer.files);});
+$('fNomina').addEventListener('change',function(e){handleNominaXMLFiles(e.target.files);});
+
+function handleNominaXMLFiles(files){Array.from(files).forEach(function(f){const r=new FileReader();r.onload=function(e){parseNominaXML(e.target.result,f.name);};r.readAsText(f,'UTF-8');});}
+
+function parseNominaXML(text,fname){
+  var unidad=parseInt($('nomOp').value||0);
+  if(!unidad){alert('Selecciona primero el operador al que corresponde este recibo de nómina.');return;}
+  var doc=new DOMParser().parseFromString(text,'text/xml');
+  var comp=doc.querySelector('Comprobante');
+  if(!comp){alert(fname+': no es CFDI válido.');return;}
+  if((comp.getAttribute('TipoDeComprobante')||'')!=='N'){alert(fname+': este CFDI no es de tipo Nómina (N). No se puede registrar aquí.');return;}
+  if(!validarEmisorTML(doc,fname))return;
+  var nomina=getNominaComplemento(doc);
+  if(!nomina){alert(fname+': no se encontró el complemento de nómina en este XML.');return;}
+  var tfd=doc.querySelector('TimbreFiscalDigital');
+  var uuid=tfd?tfd.getAttribute('UUID')||'':'';
+  if(uuid){
+    var dup=buscarNominaDuplicada(uuid);
+    if(dup){
+      alert('🚫 '+fname+': este recibo ya fue registrado (unidad '+dup.unidad+'). No se puede subir el mismo CFDI dos veces.');
+      $('nominaXMLInfo').style.display='block';
+      $('nominaXMLInfo').innerHTML='<div class="alert alert-warn">🚫 '+fname+' — CFDI duplicado. No se agregó.</div>';
+      return;
+    }
+  }
+  var receptor=doc.querySelector('Receptor');
+  var totalDeducciones=parseFloat(nomina.getAttribute('TotalDeducciones')||0);
+  var totalPercepciones=parseFloat(nomina.getAttribute('TotalPercepciones')||0);
+  if(!nominaDB[unidad])nominaDB[unidad]=[];
+  nominaDB[unidad].push({
+    id:'nom-'+Date.now()+'-'+Math.random().toString(36).slice(2),
+    uuid:uuid,
+    folio:(comp.getAttribute('Serie')||'')+(comp.getAttribute('Folio')||''),
+    fecha:(comp.getAttribute('Fecha')||'').slice(0,10),
+    periodoIni:nomina.getAttribute('FechaInicialPago')||'',
+    periodoFin:nomina.getAttribute('FechaFinalPago')||'',
+    totalPercepciones:totalPercepciones,
+    totalDeducciones:totalDeducciones,
+    receptorNombre:receptor?receptor.getAttribute('Nombre')||'':'',
+    receptorRfc:receptor?receptor.getAttribute('Rfc')||'':'',
+    estado:'pendiente',
+    liqNum:null
+  });
+  guardarNominaDB();
+  renderNomina();
+  var opU=OPERADORES.find(function(o){return o.unidad===unidad;});
+  $('nominaXMLInfo').style.display='block';
+  $('nominaXMLInfo').innerHTML='<div class="alert alert-ok">✅ '+fname+' — deducciones de '+fmt(totalDeducciones)+' registradas para '+(opU?opU.nombre:unidad)+'.</div>';
+}
+
+function eliminarNomina(unidad,id){
+  if(!nominaDB[unidad])return;
+  var n=nominaDB[unidad].find(function(x){return x.id===id;});
+  if(!n||n.estado!=='pendiente')return;
+  if(!confirm('¿Eliminar este recibo de nómina ('+fmt(n.totalDeducciones)+')?'))return;
+  nominaDB[unidad]=nominaDB[unidad].filter(function(x){return x.id!==id;});
+  guardarNominaDB();
+  renderNomina();
+}
+
+function renderNomina(){
+  var tb=$('tbNomina'),tf=$('tfNomina');
+  if(!tb)return;
+  var filtroOp=parseInt($('filtNomOp').value||0);
+  var filtroEst=$('filtNomEst').value||'';
+  var filas=[];
+  Object.keys(nominaDB).forEach(function(key){
+    var unidad=parseInt(key);
+    if(filtroOp&&unidad!==filtroOp)return;
+    (nominaDB[key]||[]).forEach(function(n){
+      if(filtroEst&&n.estado!==filtroEst)return;
+      filas.push(Object.assign({unidad:unidad},n));
+    });
+  });
+  filas.sort(function(a,b){return(b.fecha||'').localeCompare(a.fecha||'');});
+  tb.innerHTML='';
+  var totPerc=0,totDed=0;
+  filas.forEach(function(n){
+    totPerc+=n.totalPercepciones||0;totDed+=n.totalDeducciones||0;
+    var op=OPERADORES.find(function(o){return o.unidad===n.unidad;});
+    var estadoCell=n.estado==='liquidado'
+      ?'<span class="badge bg-green">✓ Liquidado #'+n.liqNum+'</span>'
+      :'<span class="badge bg-yellow">Pendiente</span>';
+    tb.innerHTML+='<tr><td style="font-size:12px">'+(op?op.nombre:n.unidad)+'</td>'
+      +'<td style="font-size:11px">'+(n.fecha||'—')+'</td>'
+      +'<td style="font-size:11px">'+(n.periodoIni||'?')+' al '+(n.periodoFin||'?')+'</td>'
+      +'<td style="font-size:11px">'+(n.folio||'—')+'</td>'
+      +'<td class="num r">'+fmt(n.totalPercepciones||0)+'</td>'
+      +'<td class="num r" style="color:#9b1c1c;font-weight:700">'+fmt(n.totalDeducciones||0)+'</td>'
+      +'<td>'+estadoCell+'</td>'
+      +'<td>'+(n.estado==='pendiente'?'<button class="btn btn-sm" style="background:#fde8e8;color:#9b1c1c;border:none;cursor:pointer" onclick="eliminarNomina('+n.unidad+',\''+n.id+'\')">✕</button>':'')+'</td></tr>';
+  });
+  if(!filas.length)tb.innerHTML='<tr><td colspan="8" style="text-align:center;color:#aaa;padding:20px">Sin recibos de nómina registrados.</td></tr>';
+  tf.innerHTML='<tr style="background:#f5f5f8;font-weight:700"><td colspan="4">TOTALES</td><td class="num r">'+fmt(totPerc)+'</td><td class="num r" style="color:#9b1c1c">'+fmt(totDed)+'</td><td colspan="2"></td></tr>';
+}
+</script>
+</body>
+</html>
