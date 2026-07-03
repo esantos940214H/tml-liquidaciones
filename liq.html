@@ -2802,6 +2802,12 @@ function generarReporte(){
   const totAnts=antsPend.reduce(function(s,a){return s+a.importe;},0);
   // Excluye CFDI cancelados ante el SAT (validados al abrir la liquidación) — nunca se consideran.
   const viajes=ingresosDB.filter(function(v){return parseInt(v.unidad)===parseInt(liq.unidad)&&v.estado==='sin_liquidar'&&!v.satCancelado;}).filter(viajeIncluido);
+  // Guardar EXACTAMENTE cuáles anticipos/viajes se contaron aquí, para que al
+  // cerrar la liquidación se marquen "liquidado" justo estos mismos — sin
+  // volver a filtrar por separado, así nunca puede haber diferencia entre lo
+  // que se reportó/cobró y lo que realmente se marca como usado.
+  window._idsAntsReporte=antsPend.map(function(a){return a.id;});
+  window._idsViajesReporte=viajes.map(function(v){return v.id;});
   console.log('DEBUG liq.unidad:', liq.unidad, typeof liq.unidad);
   console.log('DEBUG ingresosDB total:', ingresosDB.length, 'viajes filtrados:', viajes.length);
   if(ingresosDB.length>0)console.log('DEBUG primer ingreso unidad:', ingresosDB[0].unidad, typeof ingresosDB[0].unidad, 'estado:', ingresosDB[0].estado);
@@ -3181,12 +3187,15 @@ function cerrarLiquidacion(){
   // Capturar copia de liq ANTES de anularlo
   var liqCopia=JSON.parse(JSON.stringify(liq));
 
-  // Marcar anticipos: iterar todas las claves para evitar problemas de tipo number vs string
+  // Marcar anticipos: exactamente los mismos ids que generarReporte() acaba de
+  // contar (window._idsAntsReporte), no un filtro nuevo — evita cualquier
+  // posibilidad de que lo reportado y lo marcado como usado no coincidan.
+  var idsAntsCerrar=window._idsAntsReporte||[];
   var nAMarcados=0;
   Object.keys(anticiposDB).forEach(function(key){
     if(parseInt(key)===parseInt(liqCopia.unidad)){
       (anticiposDB[key]||[]).forEach(function(a){
-        if(a.estado==='pendiente'&&anticipoIncluido(a)){
+        if(a.estado==='pendiente'&&idsAntsCerrar.indexOf(a.id)!==-1){
           a.estado='liquidado';
           a.liqNum=liqCopia.num;
           nAMarcados++;
@@ -3195,10 +3204,11 @@ function cerrarLiquidacion(){
     }
   });
 
-  // Marcar viajes: forEach directo para modificar en sitio
+  // Marcar viajes: idem, exactamente los ids que ya se contaron en el reporte
+  var idsViajesCerrar=window._idsViajesReporte||[];
   var nVMarcados=0;
   ingresosDB.forEach(function(v){
-    if(parseInt(v.unidad)===parseInt(liqCopia.unidad)&&v.estado==='sin_liquidar'&&viajeIncluido(v)){
+    if(parseInt(v.unidad)===parseInt(liqCopia.unidad)&&v.estado==='sin_liquidar'&&idsViajesCerrar.indexOf(v.id)!==-1){
       v.estado='liquidado';
       v.liqNum=liqCopia.num;
       nVMarcados++;
