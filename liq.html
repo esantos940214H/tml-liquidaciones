@@ -690,7 +690,13 @@ function fechaEnPeriodoLiq(fechaISO){
 function fechaEnPeriodoApertura(fechaISO){
   if(!liq||!liq.fechaApertura||!fechaISO)return false;
   var f=new Date(fechaISO.slice(0,10)+'T12:00:00');
+  // Margen de 1 día hacia atrás sobre la apertura: cubre desfases de horario
+  // (el CFDI se facturó la noche anterior al día en que se abrió la
+  // liquidación) sin abrir la puerta a fechas arbitrariamente viejas. Hacia
+  // adelante NO hay margen — una factura fechada después de hoy es del
+  // futuro y se sigue rechazando.
   var dApert=new Date(liq.fechaApertura+'T00:00:00');
+  dApert.setDate(dApert.getDate()-1);
   var dHoy=new Date(hoy()+'T23:59:59');
   return f>=dApert&&f<=dHoy;
 }
