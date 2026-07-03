@@ -144,6 +144,28 @@ tr:hover td{background:#fafafa}
       </div>
       <input type="file" id="fPDF" accept=".pdf" multiple style="display:none">
     </div>
+    <label style="display:flex;align-items:center;gap:8px;font-size:12px;font-weight:700;color:#5b21b6;cursor:pointer;margin-bottom:12px">
+      <input type="checkbox" id="chkMultiOp" onchange="toggleMultiOp()" style="width:auto">
+      🧩 Factura multi-operador (un solo CFDI con maniobras de VARIOS operadores — desglose manual)
+    </label>
+    <div id="cardDesglose" style="display:none;background:#f5f0ff;border:1.5px solid #c4b5fd;border-radius:8px;padding:14px;margin-bottom:14px">
+      <div style="font-size:11px;font-weight:700;text-transform:uppercase;color:#5b21b6;margin-bottom:10px">🧩 Desglose de factura consolidada</div>
+      <div id="dgSinXML" class="alert alert-info">Sube arriba el XML del CFDI consolidado (con el modo multi-operador activado) para empezar a desglosarlo. No hace falta seleccionar operador — se asigna renglón por renglón aquí abajo.</div>
+      <div id="dgContenido" style="display:none">
+        <div id="dgResumenXML" style="background:#fff;border-radius:6px;padding:10px;font-size:12px;margin-bottom:10px"></div>
+        <div id="dgContadores" style="display:flex;gap:14px;flex-wrap:wrap;margin-bottom:10px"></div>
+        <div class="tbl-wrap"><table style="min-width:640px">
+          <thead><tr><th>Operador</th><th class="r">Monto (sin IVA)</th><th>Destino</th><th>Pedido/ref.</th><th></th></tr></thead>
+          <tbody id="tbDgRows"></tbody>
+        </table></div>
+        <button class="btn btn-out btn-sm" style="margin:8px 0" onclick="dgAgregarRenglon()">+ Agregar renglón</button>
+        <div id="dgPreviewWrap" style="margin-top:6px"></div>
+        <div style="margin-top:10px;display:flex;gap:8px">
+          <button class="btn btn-red" id="btnGuardarDesglose" disabled onclick="guardarDesglose()">💾 Guardar desglose</button>
+          <button class="btn btn-out btn-sm" onclick="cancelarDesglose(true)">Cancelar</button>
+        </div>
+      </div>
+    </div>
     <div style="background:#f5f5f8;border-radius:8px;padding:14px">
       <div style="font-size:11px;font-weight:700;text-transform:uppercase;color:#888;margin-bottom:10px">Captura manual / ajuste</div>
       <div class="grid4" style="margin-bottom:10px">
@@ -396,6 +418,17 @@ dzXML.addEventListener('drop',e=>{e.preventDefault();dzXML.classList.remove('dra
 $('fXML').addEventListener('change',e=>handleXMLFiles(e.target.files));
 
 function handleXMLFiles(files){
+  // Modo multi-operador: el XML se desglosa manualmente entre operadores,
+  // no se asigna a uno solo. No requiere operador seleccionado.
+  if($('chkMultiOp')&&$('chkMultiOp').checked){
+    if(!files.length)return;
+    if(files.length>1)alert('En modo multi-operador sube UN XML a la vez. Solo se procesará el primero.');
+    const f=files[0];
+    lockRequest('Subir XML multi-operador — Ingresos', function(){
+      const r=new FileReader();r.onload=e=>parseXMLMultiOp(e.target.result,f.name);r.readAsText(f,'UTF-8');
+    });
+    return;
+  }
   const unidad=parseInt($('ingOp').value||0);
   if(!unidad){alert('Selecciona el operador primero.');return;}
   lockRequest('Subir XML de viaje/flete — Ingresos', function(){
@@ -403,30 +436,11 @@ function handleXMLFiles(files){
   });
 }
 
-function parseXML(text,fname,unidad){
-  const doc=new DOMParser().parseFromString(text,'text/xml');
-  const comp=doc.querySelector('Comprobante');
-  if(!comp){alert(fname+': no es CFDI válido.');return;}
-  const serie=comp.getAttribute('Serie')||'';
-  const folio=comp.getAttribute('Folio')||'';
-  const fecha=(comp.getAttribute('Fecha')||'').slice(0,10);
-  const subtotal=parseFloat(comp.getAttribute('SubTotal')||0);
-  let iva=0,ret=0;
-  doc.querySelectorAll('Traslado').forEach(t=>{if(t.getAttribute('Impuesto')==='002')iva+=parseFloat(t.getAttribute('Importe')||0);});
-  doc.querySelectorAll('Retencion').forEach(r=>{if(r.getAttribute('Impuesto')==='002')ret+=parseFloat(r.getAttribute('Importe')||0);});
-  const receptor=doc.querySelector('Receptor');
-  const cliente=receptor?receptor.getAttribute('Nombre'):'';
-  const emisor=doc.querySelector('Emisor');
-  const tfd=doc.querySelector('TimbreFiscalDigital');
-  const uuid=tfd?tfd.getAttribute('UUID')||'':'';
-  const rfcEmisor=emisor?emisor.getAttribute('Rfc')||'':'';
-  const rfcReceptor=receptor?receptor.getAttribute('Rfc')||'':'';
-  const folioCompleto=serie+'-'+folio;
-  if(ingresosDB.some(v=>v.folio===folioCompleto&&v.unidad===unidad)){
-    alert(fname+': ya está registrado (duplicado).');return;
-  }
-  // Clasificar conceptos por tipo
-  // 7812xx = maniobras/carga (SAT), 7810xx/7811xx/7813xx/7814xx = transporte/flete
+// Clasificación de conceptos del CFDI por tipo — usada tanto por el flujo
+// normal (un XML = un operador) como por el desglose multi-operador, para
+// que ambos usen EXACTAMENTE el mismo criterio de comisión.
+// 7812xx = maniobras/carga (SAT), 7810xx/7811xx/7813xx/7814xx = transporte/flete
+function clasificarConceptosCFDI(doc,subtotal){
   let subtFlete=0,subtManiobras=0,subtOtros=0;
   doc.querySelectorAll('Concepto').forEach(c=>{
     const clave=c.getAttribute('ClaveProdServ')||'';
@@ -455,6 +469,46 @@ function parseXML(text,fname,unidad){
   });
   // Si no se pudo clasificar nada, poner todo en flete
   if(!subtFlete&&!subtManiobras&&!subtOtros)subtFlete=subtotal;
+  return {subtFlete,subtManiobras,subtOtros};
+}
+
+function parseXML(text,fname,unidad){
+  const doc=new DOMParser().parseFromString(text,'text/xml');
+  const comp=doc.querySelector('Comprobante');
+  if(!comp){alert(fname+': no es CFDI válido.');return;}
+  const serie=comp.getAttribute('Serie')||'';
+  const folio=comp.getAttribute('Folio')||'';
+  const fecha=(comp.getAttribute('Fecha')||'').slice(0,10);
+  const subtotal=parseFloat(comp.getAttribute('SubTotal')||0);
+  let iva=0,ret=0;
+  doc.querySelectorAll('Traslado').forEach(t=>{if(t.getAttribute('Impuesto')==='002')iva+=parseFloat(t.getAttribute('Importe')||0);});
+  doc.querySelectorAll('Retencion').forEach(r=>{if(r.getAttribute('Impuesto')==='002')ret+=parseFloat(r.getAttribute('Importe')||0);});
+  const receptor=doc.querySelector('Receptor');
+  const cliente=receptor?receptor.getAttribute('Nombre'):'';
+  const emisor=doc.querySelector('Emisor');
+  const tfd=doc.querySelector('TimbreFiscalDigital');
+  const uuid=tfd?tfd.getAttribute('UUID')||'':'';
+  const rfcEmisor=emisor?emisor.getAttribute('Rfc')||'':'';
+  const rfcReceptor=receptor?receptor.getAttribute('Rfc')||'':'';
+  const folioCompleto=serie+'-'+folio;
+  if(ingresosDB.some(v=>v.folio===folioCompleto&&v.unidad===unidad)){
+    alert(fname+': ya está registrado (duplicado).');return;
+  }
+  // Si este UUID ya se registró antes (normal o como desglose multi-operador), advertir.
+  if(uuid&&ingresosDB.some(v=>(v.uuid||'')===uuid)){
+    if(!confirm('⚠️ '+fname+': este CFDI (UUID '+uuid.slice(0,8)+'...) YA está registrado en Ingresos'+(ingresosDB.some(v=>(v.uuid||'')===uuid&&v.esDesglose)?' como factura desglosada multi-operador':'')+'.\n¿Registrarlo de todas formas? (podría duplicar el ingreso)'))return;
+  }
+  // Sugerencia (no obligatoria): si el receptor es un cliente que suele mandar
+  // facturas consolidadas de varios operadores, proponer el modo multi-operador.
+  if(RFC_CLIENTES_MULTIOP.indexOf(rfcReceptor.toUpperCase())!==-1&&!($('chkMultiOp')&&$('chkMultiOp').checked)){
+    if(confirm('💡 '+fname+': este cliente suele facturar maniobras de VARIOS operadores en un solo CFDI.\n\n¿Quieres desglosarla entre operadores (modo multi-operador)?\n\nAceptar = activar desglose · Cancelar = registrar normal a un solo operador')){
+      $('chkMultiOp').checked=true;toggleMultiOp();
+      parseXMLMultiOp(text,fname);
+      return;
+    }
+  }
+  // Clasificar conceptos por tipo (lógica compartida con el desglose multi-operador)
+  let {subtFlete,subtManiobras,subtOtros}=clasificarConceptosCFDI(doc,subtotal);
   // Extraer ruta carta porte
   let ruta=[];
   const ubics=doc.querySelectorAll('Ubicacion');
@@ -481,6 +535,235 @@ function parseXML(text,fname,unidad){
     uuid,rfcEmisor,rfcReceptor,satEstado:null,satCancelado:false});
   guardar();renderIngresos();
   alert('✅ '+fname+' registrado.'+(ruta.length?' Ruta: '+ruta.length+' tramos.':''));
+}
+
+// ══════════════════════════════════════════════
+// FACTURA MULTI-OPERADOR (desglose manual con prorrateo de IVA)
+// Un solo CFDI consolidado (ej. maniobras de la semana de varios operadores)
+// se reparte manualmente entre operadores. Todo el dinero se maneja en
+// CENTAVOS (enteros) para evitar errores de punto flotante, y el prorrateo
+// de IVA/retención se ajusta en el último operador para que las sumas
+// cuadren EXACTAMENTE contra el XML. Cada operador queda con SU registro en
+// ingresosDB (mismo criterio de montos que el flujo normal: subtotal sin
+// IVA + desglose flete/maniobras/otros + iva/ret/total propios), ligados
+// por facturaUUID. El flujo normal de un XML = un operador no cambia.
+// ══════════════════════════════════════════════
+// RFCs de clientes que suelen facturar consolidado (para SUGERIR el modo
+// multi-operador al subir su XML — nunca se fuerza). Agregar aquí el RFC
+// en mayúsculas, ej.: ['GCD170101GS6']
+const RFC_CLIENTES_MULTIOP=[];
+
+let dgPend=null; // CFDI parseado pendiente de desglosar
+let dgRows=[];   // renglones de asignación [{unidad,monto,destino,pedido}]
+
+const toCents=v=>Math.round((parseFloat(v)||0)*100);
+const fromCents=c=>c/100;
+
+function toggleMultiOp(){
+  const chk=$('chkMultiOp');if(!chk)return;
+  if(!chk.checked&&dgPend){
+    if(!confirm('Hay un desglose en curso sin guardar. ¿Descartarlo?')){chk.checked=true;return;}
+    dgPend=null;dgRows=[];
+  }
+  if($('cardDesglose'))$('cardDesglose').style.display=chk.checked?'block':'none';
+  if($('dgSinXML'))$('dgSinXML').style.display=(chk.checked&&!dgPend)?'block':'none';
+  if($('dgContenido'))$('dgContenido').style.display=(chk.checked&&dgPend)?'block':'none';
+}
+
+function parseXMLMultiOp(text,fname){
+  const doc=new DOMParser().parseFromString(text,'text/xml');
+  const comp=doc.querySelector('Comprobante');
+  if(!comp){alert(fname+': no es CFDI válido.');return;}
+  const subtotal=parseFloat(comp.getAttribute('SubTotal')||0);
+  if(!subtotal){alert(fname+': el CFDI no tiene subtotal. No se puede desglosar.');return;}
+  let iva=0,ret=0;
+  doc.querySelectorAll('Traslado').forEach(t=>{if(t.getAttribute('Impuesto')==='002')iva+=parseFloat(t.getAttribute('Importe')||0);});
+  doc.querySelectorAll('Retencion').forEach(r=>{if(r.getAttribute('Impuesto')==='002')ret+=parseFloat(r.getAttribute('Importe')||0);});
+  const receptor=doc.querySelector('Receptor');
+  const emisor=doc.querySelector('Emisor');
+  const tfd=doc.querySelector('TimbreFiscalDigital');
+  const uuid=tfd?tfd.getAttribute('UUID')||'':'';
+  if(uuid&&ingresosDB.some(v=>(v.uuid||'')===uuid)){
+    if(!confirm('⚠️ '+fname+': este CFDI (UUID '+uuid.slice(0,8)+'...) YA está registrado en Ingresos.\n¿Desglosarlo de todas formas? (podría duplicar el ingreso)'))return;
+  }
+  const {subtFlete,subtManiobras,subtOtros}=clasificarConceptosCFDI(doc,subtotal);
+  dgPend={
+    fname:fname,
+    serie:comp.getAttribute('Serie')||'',folio:comp.getAttribute('Folio')||'',
+    fecha:(comp.getAttribute('Fecha')||'').slice(0,10),
+    cliente:receptor?receptor.getAttribute('Nombre')||'':'',
+    rfcEmisor:emisor?emisor.getAttribute('Rfc')||'':'',
+    rfcReceptor:receptor?receptor.getAttribute('Rfc')||'':'',
+    uuid:uuid,
+    subtotalC:toCents(subtotal),ivaC:toCents(iva),retC:toCents(ret),
+    totalC:toCents(parseFloat(comp.getAttribute('Total')||0)||subtotal+iva-ret),
+    subtFleteC:toCents(subtFlete),subtManiobrasC:toCents(subtManiobras)
+  };
+  dgRows=[{unidad:0,monto:'',destino:'',pedido:''}];
+  if($('chkMultiOp'))$('chkMultiOp').checked=true;
+  toggleMultiOp();
+  renderDgRows();
+  recalcDesglose();
+}
+
+function cancelarDesglose(preguntar){
+  if(preguntar&&dgPend&&!confirm('¿Descartar este desglose sin guardar?'))return;
+  dgPend=null;dgRows=[];
+  toggleMultiOp();
+}
+
+function dgAgregarRenglon(){
+  dgRows.push({unidad:0,monto:'',destino:'',pedido:''});
+  renderDgRows();recalcDesglose();
+}
+function dgEliminarRenglon(i){
+  dgRows.splice(i,1);
+  if(!dgRows.length)dgRows.push({unidad:0,monto:'',destino:'',pedido:''});
+  renderDgRows();recalcDesglose();
+}
+function dgUpd(i,campo,valor){
+  if(!dgRows[i])return;
+  dgRows[i][campo]=campo==='unidad'?parseInt(valor||0):valor;
+  recalcDesglose();
+}
+
+// Re-dibuja solo los renglones editables (al agregar/quitar) — al teclear NO
+// se re-dibuja para no perder el foco; solo se recalculan contadores/preview.
+function renderDgRows(){
+  const tb=$('tbDgRows');if(!tb)return;
+  const opts=u=>'<option value="">— Operador —</option>'+OPERADORES.map(o=>'<option value="'+o.unidad+'"'+(o.unidad===u?' selected':'')+'>'+o.unidad+' · '+o.nombre+'</option>').join('');
+  tb.innerHTML=dgRows.map((r,i)=>'<tr>'
+    +'<td><select onchange="dgUpd('+i+',\'unidad\',this.value)" style="border:1.5px solid #dde;border-radius:5px;padding:6px;font-size:12px;background:#fafafa;min-width:190px">'+opts(r.unidad)+'</select></td>'
+    +'<td class="r"><input type="number" step="0.01" min="0" value="'+(r.monto||'')+'" placeholder="0.00" oninput="dgUpd('+i+',\'monto\',this.value)" style="border:1.5px solid #dde;border-radius:5px;padding:6px;font-size:12px;background:#fafafa;width:110px;text-align:right"></td>'
+    +'<td><input type="text" value="'+(r.destino||'').replace(/"/g,'&quot;')+'" placeholder="Destino" oninput="dgUpd('+i+',\'destino\',this.value)" style="border:1.5px solid #dde;border-radius:5px;padding:6px;font-size:12px;background:#fafafa;width:140px"></td>'
+    +'<td><input type="text" value="'+(r.pedido||'').replace(/"/g,'&quot;')+'" placeholder="Pedido/ref." oninput="dgUpd('+i+',\'pedido\',this.value)" style="border:1.5px solid #dde;border-radius:5px;padding:6px;font-size:12px;background:#fafafa;width:120px"></td>'
+    +'<td><button style="background:#fde8e8;color:#9b1c1c;border:none;cursor:pointer;border-radius:4px;padding:4px 9px" onclick="dgEliminarRenglon('+i+')">✕</button></td>'
+    +'</tr>').join('');
+}
+
+// Agrupa los renglones válidos por operador (varios renglones del mismo
+// operador se suman en UN registro) y prorratea IVA/retención/clasificación
+// en centavos, ajustando el redondeo en el ÚLTIMO grupo para que las sumas
+// cuadren exactamente contra el XML.
+function calcularProrrateo(){
+  if(!dgPend)return null;
+  const orden=[];const porOp={};
+  dgRows.forEach(r=>{
+    const mC=toCents(r.monto);
+    if(!r.unidad||mC<=0)return;
+    if(!porOp[r.unidad]){porOp[r.unidad]={unidad:r.unidad,montoC:0,destinos:[],pedidos:[]};orden.push(porOp[r.unidad]);}
+    porOp[r.unidad].montoC+=mC;
+    if(r.destino&&porOp[r.unidad].destinos.indexOf(r.destino)===-1)porOp[r.unidad].destinos.push(r.destino);
+    if(r.pedido&&porOp[r.unidad].pedidos.indexOf(r.pedido)===-1)porOp[r.unidad].pedidos.push(r.pedido);
+  });
+  const asignadoC=orden.reduce((s,g)=>s+g.montoC,0);
+  const completo=asignadoC===dgPend.subtotalC&&orden.length>0;
+  // Renglones con datos incompletos (monto sin operador o viceversa) bloquean el guardado
+  const incompletos=dgRows.some(r=>{const mC=toCents(r.monto);return (r.unidad&&mC<=0)||(!r.unidad&&mC>0);});
+  let sIva=0,sRet=0,sTot=0,sSf=0,sSm=0;
+  orden.forEach((g,idx)=>{
+    const ultimo=idx===orden.length-1;
+    if(completo&&ultimo){
+      g.ivaC=dgPend.ivaC-sIva;g.retC=dgPend.retC-sRet;
+      g.sfC=dgPend.subtFleteC-sSf;g.smC=dgPend.subtManiobrasC-sSm;
+    }else{
+      g.ivaC=Math.round(g.montoC*dgPend.ivaC/dgPend.subtotalC);
+      g.retC=Math.round(g.montoC*dgPend.retC/dgPend.subtotalC);
+      g.sfC=Math.round(g.montoC*dgPend.subtFleteC/dgPend.subtotalC);
+      g.smC=Math.round(g.montoC*dgPend.subtManiobrasC/dgPend.subtotalC);
+    }
+    // La clasificación jamás puede exceder el monto del grupo (protege el
+    // ajuste de redondeo del último renglón); otros = lo que reste.
+    if(g.sfC<0)g.sfC=0;if(g.smC<0)g.smC=0;
+    let ex=g.sfC+g.smC-g.montoC;
+    if(ex>0){if(g.smC>=ex){g.smC-=ex;}else{g.sfC-=(ex-g.smC);g.smC=0;}}
+    g.soC=g.montoC-g.sfC-g.smC;
+    g.totC=(completo&&ultimo)?(dgPend.totalC-sTot):(g.montoC+g.ivaC-g.retC);
+    sIva+=g.ivaC;sRet+=g.retC;sTot+=g.totC;sSf+=g.sfC;sSm+=g.smC;
+  });
+  return {grupos:orden,asignadoC,completo,incompletos,sIva,sRet,sTot};
+}
+
+function recalcDesglose(){
+  if(!dgPend)return;
+  const p=calcularProrrateo();if(!p)return;
+  const restanteC=dgPend.subtotalC-p.asignadoC;
+  const tasa=dgPend.subtotalC>0?(dgPend.ivaC/dgPend.subtotalC*100):0;
+  if($('dgResumenXML'))$('dgResumenXML').innerHTML=
+    '<strong>'+dgPend.fname+'</strong> · '+dgPend.cliente+' · '+dgPend.fecha
+    +(dgPend.uuid?' · UUID '+dgPend.uuid.slice(0,8)+'...':'')
+    +'<br>Subtotal: <strong>'+fmt(fromCents(dgPend.subtotalC))+'</strong>'
+    +' · IVA ('+tasa.toFixed(2).replace(/\.00$/,'')+'%): <strong>'+fmt(fromCents(dgPend.ivaC))+'</strong>'
+    +(dgPend.retC?' · Retención: <strong>'+fmt(fromCents(dgPend.retC))+'</strong>':'')
+    +' · Total: <strong>'+fmt(fromCents(dgPend.totalC))+'</strong>';
+  const kpi=(label,val,color)=>'<div style="background:#fff;border-radius:6px;padding:8px 14px;text-align:center;min-width:120px"><div style="font-size:16px;font-weight:800;color:'+color+'">'+val+'</div><div style="font-size:10px;text-transform:uppercase;color:#888">'+label+'</div></div>';
+  if($('dgContadores'))$('dgContadores').innerHTML=
+    kpi('Subtotal del XML',fmt(fromCents(dgPend.subtotalC)),'#1a1a2e')
+    +kpi('Asignado',fmt(fromCents(p.asignadoC)),'#1a4f8a')
+    +kpi('POR ASIGNAR',fmt(fromCents(restanteC)),restanteC===0?'#0a5233':'#c1121f');
+  // Previsualización por operador con prorrateo
+  let html='';
+  if(p.grupos.length){
+    const conRet=dgPend.retC>0;
+    html='<div style="font-size:11px;font-weight:700;text-transform:uppercase;color:#888;margin-bottom:6px">Previsualización por operador (con IVA prorrateado)</div>'
+      +'<div class="tbl-wrap"><table style="min-width:560px"><thead><tr><th>Operador</th><th class="r">Subtotal</th><th class="r">IVA</th>'+(conRet?'<th class="r">Retención</th>':'')+'<th class="r">Total</th></tr></thead><tbody>'
+      +p.grupos.map(g=>{
+        const op=OPERADORES.find(o=>o.unidad===g.unidad);
+        return '<tr><td style="font-size:12px">'+(op?op.nombre:g.unidad)+'</td><td class="num r">'+fmt(fromCents(g.montoC))+'</td><td class="num r">'+fmt(fromCents(g.ivaC))+'</td>'+(conRet?'<td class="num r">'+fmt(fromCents(g.retC))+'</td>':'')+'<td class="num r">'+fmt(fromCents(g.totC))+'</td></tr>';
+      }).join('')
+      +'</tbody><tfoot><tr style="font-weight:700;background:'+(p.completo?'#d1e7dd':'#fff3cd')+'">'
+      +'<td>SUMA '+(p.completo?'✓ cuadra con el XML':'(aún no cuadra)')+'</td>'
+      +'<td class="num r">'+fmt(fromCents(p.asignadoC))+'</td>'
+      +'<td class="num r">'+fmt(fromCents(p.sIva))+'</td>'
+      +(conRet?'<td class="num r">'+fmt(fromCents(p.sRet))+'</td>':'')
+      +'<td class="num r">'+fmt(fromCents(p.sTot))+'</td></tr></tfoot></table></div>';
+  }
+  if($('dgPreviewWrap'))$('dgPreviewWrap').innerHTML=html;
+  const btn=$('btnGuardarDesglose');
+  if(btn){
+    btn.disabled=!(p.completo&&!p.incompletos&&restanteC===0);
+    btn.title=btn.disabled?(p.incompletos?'Hay renglones incompletos (falta operador o monto).':'El monto asignado debe cuadrar EXACTAMENTE con el subtotal del XML ('+fmt(fromCents(dgPend.subtotalC))+').'):'';
+  }
+}
+
+function guardarDesglose(){
+  if(!dgPend)return;
+  lockRequest('Guardar desglose multi-operador — Ingresos', function(){
+    const p=calcularProrrateo();
+    // Suma de control final: nunca guardar si algo no cuadra exactamente
+    if(!p||!p.completo||p.incompletos||p.asignadoC!==dgPend.subtotalC||p.sIva!==dgPend.ivaC||p.sRet!==dgPend.retC||p.sTot!==dgPend.totalC){
+      alert('🚫 Las sumas del desglose no cuadran exactamente contra el XML. Revisa los renglones.\n\nSubtotal XML: '+fmt(fromCents(dgPend.subtotalC))+' vs asignado: '+fmt(fromCents(p?p.asignadoC:0)));
+      recalcDesglose();return;
+    }
+    if(dgPend.uuid&&ingresosDB.some(v=>(v.uuid||'')===dgPend.uuid)){
+      if(!confirm('⚠️ Este CFDI (UUID '+dgPend.uuid.slice(0,8)+'...) YA tiene registros en Ingresos. ¿Guardar el desglose de todas formas? (podría duplicar)'))return;
+    }
+    const folioCompleto=dgPend.serie+'-'+dgPend.folio;
+    const yaFolio=p.grupos.filter(g=>ingresosDB.some(v=>v.folio===folioCompleto&&v.unidad===g.unidad));
+    if(yaFolio.length&&!confirm('⚠️ El folio '+folioCompleto+' ya tiene registro para '+yaFolio.length+' de estos operadores. ¿Continuar de todas formas?'))return;
+    p.grupos.forEach(g=>{
+      const smC=g.smC,sfC=g.sfC,soC=g.soC;
+      const tipoDerivado=smC>0&&!sfC?'maniobra':soC>0&&!sfC&&!smC?'otro':'flete_for';
+      const destino=g.destinos.join(' / ');
+      ingresosDB.push({
+        id:uid(),unidad:g.unidad,folio:folioCompleto,fecha:dgPend.fecha,cliente:dgPend.cliente,
+        tipo:tipoDerivado,
+        subtotal:fromCents(g.montoC),subtFlete:fromCents(sfC),subtManiobras:fromCents(smC),subtOtros:fromCents(soC),
+        iva:fromCents(g.ivaC),ret:fromCents(g.retC),total:fromCents(g.totC),
+        estado:'sin_liquidar',liqNum:null,origen:'xml',
+        ruta:destino?[{origen:'',destino:destino,kms:''}]:[],
+        uuid:dgPend.uuid,facturaUUID:dgPend.uuid,esDesglose:true,
+        destino:destino,pedido:g.pedidos.join(' / '),
+        rfcEmisor:dgPend.rfcEmisor,rfcReceptor:dgPend.rfcReceptor,
+        satEstado:null,satCancelado:false
+      });
+    });
+    guardar();renderIngresos();
+    alert('✅ Desglose guardado: '+p.grupos.length+' registro(s) de ingreso, uno por operador, ligados al CFDI '+(dgPend.uuid?dgPend.uuid.slice(0,8)+'...':folioCompleto)+'.\nLas sumas cuadraron exactamente contra el XML.');
+    dgPend=null;dgRows=[];
+    if($('chkMultiOp'))$('chkMultiOp').checked=false;
+    toggleMultiOp();
+  });
 }
 
 // PDF via Claude
@@ -587,7 +870,7 @@ function renderIngresos(){
     const oCell=so>0?`<td class="num r">${fmt(so)}</td>`:`<td class="num r" style="color:#ccc">—</td>`;
     tb.innerHTML+=`<tr>
       <td style="width:32px;text-align:center"><input type="checkbox" class="chkIng" data-id="${v.id}" onchange="actualizarBarraSelIng()"></td>
-      <td class="num">${v.folio}</td><td>${v.fecha}</td>
+      <td class="num">${v.folio}${v.esDesglose?' <span class="badge bg-purple" title="Parte de una factura consolidada desglosada entre varios operadores (mismo CFDI)">🧩</span>':''}</td><td>${v.fecha}</td>
       <td style="font-size:11px">${op?op.nombre.split(' ').slice(0,2).join(' '):'?'}</td>
       <td style="max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px">${v.cliente}</td>
       ${fCell}${mCell}${oCell}
