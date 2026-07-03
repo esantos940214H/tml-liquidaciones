@@ -723,8 +723,14 @@ async function reabrirLiquidacion(){
         litros:x.litros||0,precioUnitario:x.precioUnitario||0,subtotal:x.subtotal||0,iva:x.iva||0,total:x.total||0,pagaOp:!!x.pagaOp};
     });
     const autopistas=(snap.autopistasList||[]).map(function(a){
-      return{fecha:a.fecha||'',hora:'',caseta:a.caseta||'',carril:'XML',importe:a.subtotal!=null?(a.subtotal+(a.iva||0)):0,
-        pagaOp:!!a.pagaOp,rfc:a.rfc||'',emisor:a.caseta||'',concepto:a.concepto||'',subtotal:a.subtotal||0,iva:a.iva||0,
+      // El importe (con IVA) SIEMPRE está guardado en el snapshot; NO se debe
+      // recalcular como subtotal+iva, porque en liquidaciones cerradas antes
+      // de que se guardara el subtotal de las casetas PASE, subtotal e iva
+      // quedaron en 0 y eso ponía las autopistas en $0 al reabrir.
+      var _imp=(a.importe!=null&&a.importe>0)?a.importe:((a.subtotal||0)+(a.iva||0));
+      var _sub=(a.subtotal!=null&&a.subtotal>0)?a.subtotal:_imp/1.16;
+      return{fecha:a.fecha||'',hora:'',caseta:a.caseta||'',carril:'XML',importe:_imp,
+        pagaOp:!!a.pagaOp,rfc:a.rfc||'',emisor:a.caseta||'',concepto:a.concepto||'',subtotal:_sub,iva:_imp-_sub,
         uuid:a.uuid||'',satEstado:null,satCancelado:false};
     });
     const casetasNF=(snap.casetasNFList||[]).map(function(c){
