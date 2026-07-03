@@ -1026,7 +1026,41 @@ async function cargarEstado(){
 
     if(l&&l.data){
       liq=JSON.parse(l.data);
-      if(liq) restaurarUILiquidacion();
+      if(liq){
+        // Auto-reparación: si esta liquidación tiene un registro en el
+        // historial con el mismo número/unidad pero liq.reabierta no quedó
+        // guardado como true (por ej. quedó así de un reabrir anterior antes
+        // de que este campo existiera, o se perdió en el camino), lo
+        // reconstruimos aquí — sin esto, todas las protecciones de "no jalar
+        // anticipos/viajes nuevos" y "no marcar diesel propio como ya
+        // liquidado" quedan desactivadas en silencio.
+        if(!liq.reabierta){
+          try{
+            var _histChk=await window.FB.get('historial','liq-'+liq.num+'-'+liq.unidad);
+            if(_histChk){
+              var _aChk=await window.FB.get('estado','anticiposDB');
+              var _antDBChk=(_aChk&&_aChk.data)?JSON.parse(_aChk.data):{};
+              if(Array.isArray(_antDBChk))_antDBChk={};
+              var _idsA=[];
+              Object.keys(_antDBChk).forEach(function(k){
+                if(parseInt(k)===parseInt(liq.unidad)){
+                  (_antDBChk[k]||[]).forEach(function(a){if(a.liqNum===liq.num)_idsA.push(a.id);});
+                }
+              });
+              var _iChk=await window.FB.get('estado','ingresosDB');
+              var _ingDBChk=(_iChk&&_iChk.data)?JSON.parse(_iChk.data):[];
+              var _idsV=[];
+              _ingDBChk.forEach(function(v){if(parseInt(v.unidad)===parseInt(liq.unidad)&&v.liqNum===liq.num)_idsV.push(v.id);});
+              liq.reabierta=true;
+              liq.anticiposIncluidos=_idsA;
+              liq.viajesIncluidos=_idsV;
+              console.warn('liq.reabierta auto-reparado: '+_idsA.length+' anticipos y '+_idsV.length+' viajes marcados como incluidos.');
+              guardarEstado();
+            }
+          }catch(e){console.error('Auto-reparación de liq.reabierta:',e);}
+        }
+        restaurarUILiquidacion();
+      }
     }
 
     if($('headerInfo'))$('headerInfo').textContent=liq?'Liq. #'+liq.num+' · '+liq.op.nombre:'Sin liquidación activa';
@@ -1115,11 +1149,15 @@ function restaurarUILiquidacion(){
     $('liqInfo').innerHTML='<div class="alert alert-ok">✅ Liquidación <strong>#'+liq.num+'</strong> restaurada — <strong>'+liq.op.nombre+'</strong> · Unidad '+liq.unidad+'</div>';
   }
   // Restaurar diesel inicial desde liq.diesel (no desde arrastres, que puede haber sido
-  // sobreescrito con el arrastre de salida al presionar "Guardar arrastre")
+  // sobreescrito con el arrastre de SALIDA de esta misma liquidación al cerrarla —
+  // ese es el arrastre para la SIGUIENTE liquidación, no el que entró a esta).
   if(liq.diesel&&liq.diesel.ltsIni!=null){
     if($('dIniLts'))$('dIniLts').value=liq.diesel.ltsIni;
     if($('dIniPrecio'))$('dIniPrecio').value=liq.diesel.precioIni||0;
-  } else if(arrastres[liq.unidad]){
+  } else if(!liq.reabierta&&arrastres[liq.unidad]){
+    // Solo usar el arrastre "en vivo" como respaldo en una liquidación NUEVA
+    // (recién iniciada) — en una reabierta, ese arrastre ya pertenece a la
+    // liquidación siguiente y no debe usarse como si fuera el de entrada.
     if($('dIniLts'))$('dIniLts').value=arrastres[liq.unidad].lts;
     if($('dIniPrecio'))$('dIniPrecio').value=arrastres[liq.unidad].precio;
   }
