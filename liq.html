@@ -1153,6 +1153,13 @@ function restaurarUILiquidacion(){
   // Restaurar cargas Edenred persistidas
   if(liq.cargasEdenred&&liq.cargasEdenred.length){
     cargasOp=liq.cargasEdenred;
+    // En una liquidación REABIERTA, sus propias cargas NUNCA deben tratarse
+    // como "ya liquidadas en otra liquidación" — si alguna quedó marcada así
+    // por error (ej. de una re-subida del XLSX mientras el registro todavía
+    // no estaba corregido), calcDiesel() la excluiría en silencio del cálculo
+    // y se dejaría de cobrar diesel de más al operador. Se limpia siempre al
+    // restaurar, sin excepción.
+    if(liq.reabierta)cargasOp.forEach(function(c){c.yaLiquidada=false;});
     if($('cardDiesel'))$('cardDiesel').style.display='block';
     renderTablaDiesel();
   }
@@ -1875,6 +1882,10 @@ async function obtenerClavesHistorialDiesel(unidad){
 }
 
 function marcarCargasYaLiquidadas(unidad, histClaves){
+  // En una liquidación REABIERTA, sus propias cargas nunca deben excluirse
+  // del cálculo por parecer "ya liquidadas en otra liquidación" — evita
+  // dejar de cobrar diesel de más al operador por un falso positivo.
+  if(liq&&liq.reabierta){cargasOp.forEach(function(c){c.yaLiquidada=false;});return;}
   var arr=arrastres[unidad]||arrastres[String(unidad)]||{};
   var yaLiqLocal=arr.cargasYaLiquidadas||[];
   var hist=histClaves||[];
