@@ -674,6 +674,16 @@ async function reabrirLiquidacion(){
     return;
   }
 
+  // Si esta liquidación YA es la activa (se reabrió antes y todavía no se
+  // vuelve a cerrar), NO recalcular nada — eso volvería a "liberar" anticipos/
+  // viajes que ya se habían liberado la primera vez, perdiendo la lista de
+  // cuáles eran los originales. Solo hay que ir al módulo a seguir editando.
+  if(activaActual&&activaActual.reabierta&&parseInt(activaActual.unidad)===parseInt(l.unidad)&&activaActual.num===l.num){
+    alert('La liquidación #'+l.num+' ya está reabierta y activa (no se ha vuelto a cerrar). Te llevo directo al módulo de Liquidaciones para seguir editándola, sin volver a recalcular nada.');
+    location.href='liq.html';
+    return;
+  }
+
   let msgConfirm='¿REABRIR la liquidación #'+l.num+' (unidad '+l.unidad+') para modificarla?\n\nSus anticipos, viajes e incidentes quedarán "pendientes" otra vez hasta que se vuelva a cerrar.';
   if(activaActual&&!(parseInt(activaActual.unidad)===parseInt(l.unidad)&&activaActual.num===l.num)){
     msgConfirm+='\n\n⚠️ ATENCIÓN: ahora mismo hay OTRA liquidación abierta (#'+activaActual.num+', unidad '+activaActual.unidad+') sin cerrar. Solo puede haber una liquidación activa a la vez — al reabrir esta se REEMPLAZA esa otra en el sistema (su progreso ya guardado en Firebase no se borra hasta que la cierres o la elimines, pero deja de ser "la liquidación activa"). ¿Seguro que ya la cerraste o no importa?';
@@ -713,7 +723,7 @@ async function reabrirLiquidacion(){
     const liqReab={
       num:l.num,op:op,unidad:l.unidad,clave:op.clave||'',
       salida:l.salida,llegada:l.llegada,duracion:l.duracion,
-      kms:l.kms||0,litrosECM:0,rendimiento:l.rendimiento||0,
+      kms:l.kms||0,litrosECM:(snap.diesel&&snap.diesel.ltsECM)||0,rendimiento:l.rendimiento||0,
       costoDiesel:(snap.diesel&&snap.diesel.pp)||27,comision:l.comision||12,
       diesel:snap.diesel||null,autopistas:autopistas,gastos:gastos,gastosXML:gastosXML,
       dieselXML:dieselXML,casetasNF:casetasNF,viajeVacio:{origen:'',destino:'',kms:''},
