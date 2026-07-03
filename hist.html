@@ -542,10 +542,14 @@ function verDetalle(id){
   const hayNeto=snap.dieselComprobadoSub!=null;
   const dieselLinea=hayNeto?snap.dieselComprobadoSub:(snap.dieselComprobado||0);
   const autLinea=hayNeto?snap.totAutSub:(snap.totAut||0);
+  // "Maniobras y otros gastos" = costo del módulo de gastos que entró a la
+  // utilidad (todos los manuales + XML a subtotal). Liquidaciones nuevas traen
+  // gastosModuloUtilidad; las anteriores caen al valor viejo (totGastosOp).
+  const gastosModulo=snap.gastosModuloUtilidad!=null?snap.gastosModuloUtilidad:(snap.totGastosOp||0);
   $('detGastos').innerHTML=
     dr('Diesel comprobado ('+fmtN(d.ltsComprobados||0)+' lts'+(hayNeto?' · sin IVA':'')+')',dieselLinea)
     +dr('Autopistas'+(hayNeto?' (sin IVA)':''),autLinea)
-    +dr('Maniobras y otros gastos',snap.totGastosOp||0)
+    +dr('Maniobras y otros gastos',gastosModulo)
     +dr('Comisión operador ('+l.comision+'%)',snap.totComision||0)
     +dr('1% gastos sin comprobante',snap.totGastos1||0)
     +`<div class="det-row subtotal"><span>TOTAL GASTOS</span><span class="num">${fmt(snap.totGastosEmpTotal||0)}</span></div>`;
