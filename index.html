@@ -46,6 +46,7 @@ iframe.visible{display:block}
     <a href="?m=ant" id="navAnt">📋 Anticipos</a>
     <a href="?m=ing" id="navIng">📄 Ingresos</a>
     <a href="?m=liq" id="navLiq">🚛 Liquidaciones</a>
+    <a href="?m=nom" id="navNom">🧾 Nómina</a>
     <a href="?m=inc" id="navInc">🚨 Incidentes</a>
     <a href="?m=hist" id="navHist">🗂️ Historial</a>
   </nav>
@@ -56,13 +57,14 @@ iframe.visible{display:block}
   <iframe id="fr-ant" src="ant.html" title="Anticipos"></iframe>
   <iframe id="fr-ing" src="ing.html" title="Ingresos"></iframe>
   <iframe id="fr-liq" src="liq.html" title="Liquidaciones"></iframe>
+  <iframe id="fr-nom" src="nomina.html" title="Nómina"></iframe>
   <iframe id="fr-inc" src="incidentes.html" title="Incidentes"></iframe>
   <iframe id="fr-hist" src="hist.html" title="Historial"></iframe>
 </div>
 
 <script>
-var NOMBRES = {ant:'· Anticipos', ing:'· Ingresos', liq:'· Liquidaciones', inc:'· Incidentes', hist:'· Historial'};
-var mods = ['ant','ing','liq','inc','hist'];
+var NOMBRES = {ant:'· Anticipos', ing:'· Ingresos', liq:'· Liquidaciones', nom:'· Nómina', inc:'· Incidentes', hist:'· Historial'};
+var mods = ['ant','ing','liq','nom','inc','hist'];
 
 // Sesión: cada módulo pide su propio login/permiso al cargarse en el iframe,
 // pero aquí filtramos el menú y elegimos a dónde aterrizar según lo que ya

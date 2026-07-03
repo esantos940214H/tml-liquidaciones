@@ -76,6 +76,7 @@ tr:hover td{background:#fafafa}
       <a href="ant.html">📋 Anticipos</a>
       <a href="ing.html">📄 Ingresos</a>
       <a href="liq.html">🚛 Liquidaciones</a>
+      <a href="nomina.html">🧾 Nómina</a>
       <a href="incidentes.html">🚨 Incidentes</a>
       <a href="hist.html">🗂️ Historial</a>
       <a href="usuarios.html" class="active">👤 Usuarios</a>
@@ -106,6 +107,7 @@ tr:hover td{background:#fafafa}
         <div class="field-check"><input type="checkbox" id="pAnt"><label style="text-transform:none;font-weight:600;color:#1a1a2e">📋 Anticipos</label></div>
         <div class="field-check"><input type="checkbox" id="pIng"><label style="text-transform:none;font-weight:600;color:#1a1a2e">📄 Ingresos</label></div>
         <div class="field-check"><input type="checkbox" id="pLiq"><label style="text-transform:none;font-weight:600;color:#1a1a2e">🚛 Liquidaciones</label></div>
+        <div class="field-check"><input type="checkbox" id="pNom"><label style="text-transform:none;font-weight:600;color:#1a1a2e">🧾 Nómina</label></div>
         <div class="field-check"><input type="checkbox" id="pInc"><label style="text-transform:none;font-weight:600;color:#1a1a2e">🚨 Incidentes</label></div>
         <div class="field-check"><input type="checkbox" id="pHist"><label style="text-transform:none;font-weight:600;color:#1a1a2e">🗂️ Historial</label></div>
       </div>
@@ -198,7 +200,7 @@ async function cargarUsuarios(){
 }
 
 function leerPermisosForm(){
-  return{ant:$('pAnt').checked,ing:$('pIng').checked,liq:$('pLiq').checked,inc:$('pInc').checked,hist:$('pHist').checked};
+  return{ant:$('pAnt').checked,ing:$('pIng').checked,liq:$('pLiq').checked,nom:$('pNom').checked,inc:$('pInc').checked,hist:$('pHist').checked};
 }
 
 // Hash SHA-256 de la contraseña — no se guarda en texto plano en Firestore.
@@ -208,7 +210,7 @@ async function sha256Hex(texto){
 }
 
 $('uEsAdmin').addEventListener('change',function(){
-  if(this.checked)['pAnt','pIng','pLiq','pInc','pHist'].forEach(function(id){$(id).checked=true;});
+  if(this.checked)['pAnt','pIng','pLiq','pNom','pInc','pHist'].forEach(function(id){$(id).checked=true;});
 });
 
 async function guardarUsuario(){
@@ -238,7 +240,7 @@ function editarUsuario(id){
   $('uActivo').checked=u.activo!==false;
   $('uEsAdmin').checked=!!u.esAdmin;
   var p=u.permisos||{};
-  $('pAnt').checked=!!p.ant;$('pIng').checked=!!p.ing;$('pLiq').checked=!!p.liq;$('pInc').checked=!!p.inc;$('pHist').checked=!!p.hist;
+  $('pAnt').checked=!!p.ant;$('pIng').checked=!!p.ing;$('pLiq').checked=!!p.liq;$('pNom').checked=!!p.nom;$('pInc').checked=!!p.inc;$('pHist').checked=!!p.hist;
   $('formTitle').textContent='✏️ Editando: '+u.nombre;
   $('btnCancelarEdicion').style.display='inline-block';
   window.scrollTo({top:0,behavior:'smooth'});
@@ -249,7 +251,7 @@ function cancelarEdicion(){
   $('uUsuario').value='';$('uNombre').value='';$('uPassword').value='';
   $('uPassword').placeholder='Contraseña de acceso';
   $('uActivo').checked=true;$('uEsAdmin').checked=false;
-  ['pAnt','pIng','pLiq','pInc','pHist'].forEach(function(id){$(id).checked=false;});
+  ['pAnt','pIng','pLiq','pNom','pInc','pHist'].forEach(function(id){$(id).checked=false;});
   $('formTitle').textContent='✏️ Registrar usuario';
   $('btnCancelarEdicion').style.display='none';
 }
@@ -274,7 +276,7 @@ function renderUsuarios(){
     return '<tr'+(u.activo===false?' style="opacity:.5"':'')+'>'
       +'<td><strong>'+u.usuario+'</strong></td>'
       +'<td>'+u.nombre+(u.esAdmin?' <span class="badge bg-yellow">👑 Admin</span>':'')+'</td>'
-      +'<td>'+(u.esAdmin?'<span class="badge bg-green">Todos los módulos</span>':badgePermiso(p.ant,'Anticipos')+badgePermiso(p.ing,'Ingresos')+badgePermiso(p.liq,'Liquidaciones')+badgePermiso(p.inc,'Incidentes')+badgePermiso(p.hist,'Historial'))+'</td>'
+      +'<td>'+(u.esAdmin?'<span class="badge bg-green">Todos los módulos</span>':badgePermiso(p.ant,'Anticipos')+badgePermiso(p.ing,'Ingresos')+badgePermiso(p.liq,'Liquidaciones')+badgePermiso(p.nom,'Nómina')+badgePermiso(p.inc,'Incidentes')+badgePermiso(p.hist,'Historial'))+'</td>'
       +'<td>'+(u.activo===false?'<span class="badge bg-red">Inactivo</span>':'<span class="badge bg-green">Activo</span>')+'</td>'
       +'<td><button class="btn-sm" style="background:#f0f2f5;border:none;cursor:pointer;border-radius:4px;padding:3px 8px;margin-right:4px" onclick="editarUsuario(\''+u.id+'\')">✏️ Editar</button>'
       +'<button class="btn-sm" style="background:#fde8e8;color:#9b1c1c;border:none;cursor:pointer;border-radius:4px;padding:3px 8px" onclick="eliminarUsuario(\''+u.id+'\')">✕ Eliminar</button></td>'
