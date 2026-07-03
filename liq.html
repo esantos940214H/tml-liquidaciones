@@ -3164,11 +3164,21 @@ function generarReporte(){
   // Gastos
   // Excluye gastos XML cancelados ante el SAT — nunca se consideran en los totales.
   const todosGastos=liq.gastosXML.filter(function(g){return !g.satCancelado;}).concat(liq.gastos);
+  // Cuenta del operador (abono): gastos que pagó y comprueba — con IVA (total).
   const totGastosOp=todosGastos.filter(function(g){return g.pagaOp;}).reduce(function(s,g){return s+(g.tipo==='xml'?g.total:g.importe);},0);
   const totGastosEmp=todosGastos.filter(function(g){return !g.pagaOp;}).reduce(function(s,g){return s+(g.tipo==='xml'?g.total:g.importe);},0);
 
-  // Desglose gastos por concepto
-  const gastosXMLTot=liq.gastosXML.filter(function(g){return !g.satCancelado;}).reduce(function(s,g){return s+g.total;},0);
+  // Gastos facturados (XML): total con IVA (cuenta del operador y desglose) y
+  // subtotal sin IVA (utilidad — el IVA de un CFDI es acreditable, no es costo).
+  const gastosXMLVig=liq.gastosXML.filter(function(g){return !g.satCancelado;});
+  const gastosXMLTot=gastosXMLVig.reduce(function(s,g){return s+g.total;},0);
+  function gastoXMLSub(g){return (g.subtotal!=null&&g.subtotal>0)?g.subtotal:(g.total||0)/1.16;}
+  const gastosXMLSub=gastosXMLVig.reduce(function(s,g){return s+gastoXMLSub(g);},0);
+  // Para la UTILIDAD de empresa: gastos MANUALES pagados por empresa (sin
+  // factura → monto completo, no llevan IVA) + TODOS los gastos XML a subtotal.
+  // Se separa el XML así para no contarlo dos veces (un XML pagado por empresa
+  // también cae en totGastosEmp) y para descontar su IVA acreditable.
+  const totGastosEmpManual=liq.gastos.filter(function(g){return !g.pagaOp;}).reduce(function(s,g){return s+(g.importe||0);},0);
   const gastosPorConcepto={};
   liq.gastos.forEach(function(g){
     if(!gastosPorConcepto[g.concepto])gastosPorConcepto[g.concepto]=0;
@@ -3190,10 +3200,11 @@ function generarReporte(){
   // Totales empresa
   // dieselTotal = lo que se cargó a empresa (por comprobar × precio promedio)
   const dieselTotal=(d.ltsPorComprobar||0)*(d.pp||0);
-  // Diesel y autopistas entran a la utilidad SIN IVA (subtotal); el resto de
-  // gastos (comisión, 2%, incidentes, casetas sin comprobante, gastos manuales)
-  // no llevan IVA desglosado y entran con su monto completo tal cual.
-  const totGastosEmpTotal=dieselComprobadoSub+totAutSub+totGastosEmp+gastosXMLTot+totComision+totGastos1+totIncidentes+totCasetasNF;
+  // Diesel, autopistas y gastos XML entran a la utilidad SIN IVA (subtotal),
+  // porque son CFDIs deducibles y su IVA es acreditable. Los gastos manuales
+  // sin factura, la comisión, el 2%, incidentes y casetas sin comprobante no
+  // llevan IVA desglosado y entran con su monto completo tal cual.
+  const totGastosEmpTotal=dieselComprobadoSub+totAutSub+totGastosEmpManual+gastosXMLSub+totComision+totGastos1+totIncidentes+totCasetasNF;
   const utilidad=totIngSubtotal-totGastosEmpTotal;
 
   // Cuenta operador
@@ -3243,12 +3254,12 @@ function generarReporte(){
     gastosHTML+=rr(k,gastosPorConcepto[k]);
   });
   if(gastosXMLTot||liq.gastosXML.some(function(g){return g.satCancelado;})){
-    gastosHTML+=rr('Gastos facturados (XML)',gastosXMLTot);
+    gastosHTML+=rr('Gastos facturados (XML · sin IVA)',gastosXMLSub);
     liq.gastosXML.forEach(function(g){
       if(g.satCancelado){
         gastosHTML+=rrDetail('⚠️ CANCELADO ante el SAT (no incluido) — '+(g.fecha||'—')+' · '+(g.proveedor||'')+' · '+(g.desc||g.conceptoDesc||''),0);
       } else {
-        gastosHTML+=rrDetail((g.fecha||'—')+' · '+(g.proveedor||'')+' · '+(g.desc||g.conceptoDesc||''),g.total);
+        gastosHTML+=rrDetail((g.fecha||'—')+' · '+(g.proveedor||'')+' · '+(g.desc||g.conceptoDesc||''),gastoXMLSub(g));
       }
     });
   }
