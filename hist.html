@@ -533,11 +533,18 @@ function verDetalle(id){
     +dr('Retención IVA',-(snap.totRetTotal||0))
     +`<div class="det-row subtotal"><span>TOTAL INGRESOS</span><span class="num">${fmt(snap.totIngSubtotal||0)}</span></div>`;
 
-  // Gastos
+  // Gastos — desde julio 2026 la utilidad de empresa usa diesel y autopistas
+  // SIN IVA (el IVA es acreditable). Las liquidaciones cerradas con la nueva
+  // lógica traen dieselComprobadoSub/totAutSub y su TOTAL GASTOS ya es neto;
+  // las anteriores (sin esos campos) se muestran como se guardaron (con IVA),
+  // consistentes con su propio total.
   const d=snap.diesel||{};
+  const hayNeto=snap.dieselComprobadoSub!=null;
+  const dieselLinea=hayNeto?snap.dieselComprobadoSub:(snap.dieselComprobado||0);
+  const autLinea=hayNeto?snap.totAutSub:(snap.totAut||0);
   $('detGastos').innerHTML=
-    dr('Diesel comprobado ('+fmtN(d.ltsComprobados||0)+' lts × '+fmt(d.pp||0)+')',snap.dieselComprobado||0)
-    +dr('Autopistas',snap.totAut||0)
+    dr('Diesel comprobado ('+fmtN(d.ltsComprobados||0)+' lts'+(hayNeto?' · sin IVA':'')+')',dieselLinea)
+    +dr('Autopistas'+(hayNeto?' (sin IVA)':''),autLinea)
     +dr('Maniobras y otros gastos',snap.totGastosOp||0)
     +dr('Comisión operador ('+l.comision+'%)',snap.totComision||0)
     +dr('1% gastos sin comprobante',snap.totGastos1||0)

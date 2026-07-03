@@ -2351,6 +2351,15 @@ function calcDiesel(){
   const totImpDisp=importeIni+totImporteCarg+impXmlTodos;
   const pp=totDisp>0?totImpDisp/totDisp:0;
 
+  // Precio promedio SIN IVA — para la utilidad de empresa. El IVA del diesel
+  // (Edenred, arrastre y XML son CFDIs con IVA desglosado) es acreditable, así
+  // que no cuenta como costo real. Edenred/arrastre: subtotal = total/1.16
+  // (16%); XML: subtotal real del CFDI. La cuenta del operador SÍ usa pp (con
+  // IVA) porque el operador adelantó el monto completo.
+  var impXmlTodosSub=dXML.reduce(function(s,x){return s+((x.subtotal!=null&&x.subtotal>0)?x.subtotal:(x.total||0)/1.16);},0);
+  const totImpDispSub=importeIni/1.16+totImporteCarg/1.16+impXmlTodosSub;
+  const ppSub=totDisp>0?totImpDispSub/totDisp:0;
+
   // Diesel final en tanque (al precio de la última carga) — ya calculado arriba
   const importeFinal=ltsFinal*ultimoPrecio;
 
@@ -2366,6 +2375,7 @@ function calcDiesel(){
   // Resultado: ECM + merma determina lo comprobado
   const ltsComprobados=Math.min(ltsECMAjustado,ltsPorComprobar);
   const importeComprobado=ltsComprobados*pp;
+  const importeComprobadoSub=ltsComprobados*ppSub; // sin IVA — para utilidad de empresa
   const ltsNoComprobados=Math.max(0,ltsPorComprobar-ltsECMAjustado);
   const importeNoComprobado=ltsNoComprobados*pp;
   const importePend=importeFinal;
@@ -2400,9 +2410,9 @@ function calcDiesel(){
     ltsXmlOp:ltsXmlOp,impXmlOp:impXmlOp,
     ltsXmlEmp:ltsXmlEmp,impXmlEmp:impXmlEmp,
     ltsFinal:ltsFinal,importeFinal:importeFinal,ultimoPrecio:ultimoPrecio,
-    totDisp:totDisp,totImpDisp:totImpDisp,pp:pp,
+    totDisp:totDisp,totImpDisp:totImpDisp,pp:pp,ppSub:ppSub,
     ltsPorComprobar:ltsPorComprobar,ltsECM:ltsECM,mermaPct:mermaPct,ltsIerma:ltsIerma,ltsECMAjustado:ltsECMAjustado,
-    ltsComprobados:ltsComprobados,importeComprobado:importeComprobado,
+    ltsComprobados:ltsComprobados,importeComprobado:importeComprobado,importeComprobadoSub:importeComprobadoSub,
     ltsNoComprobados:ltsNoComprobados,importeNoComprobado:importeNoComprobado,
     ltsPend:ltsFinal,importePend:importePend
   };
@@ -2531,7 +2541,12 @@ function parseIAVE(text,fname){
     var _imp=Math.abs(parseFloat((cols[iI]||'0').replace(/[$,\s]/g,'')));
     var _iKey=cols[iF]+'|'+(cols[iH]||'')+'|'+(cols[iC]||'')+'|'+Math.round(_imp*100);
     if(_iaveYaLiq.indexOf(_iKey)!==-1){nIaveSkip++;continue;}
-    liq.autopistas.push({fecha:cols[iF],hora:cols[iH]||'',caseta:cols[iC]||'',carril:cols[iCa]||'',importe:_imp,pagaOp:false});
+    // El reporte de PASE trae solo el TOTAL (con IVA). Las casetas son CFDIs
+    // deducibles al 16%, así que el subtotal = total/1.16 y el IVA = total −
+    // subtotal. El subtotal se usa para la utilidad de empresa; el total (importe)
+    // se conserva para la cuenta del operador.
+    var _sub=_imp/1.16;
+    liq.autopistas.push({fecha:cols[iF],hora:cols[iH]||'',caseta:cols[iC]||'',carril:cols[iCa]||'',importe:_imp,subtotal:_sub,iva:_imp-_sub,pagaOp:false});
   }
   renderIAVE();
   guardarEstado();
@@ -3125,6 +3140,12 @@ function generarReporte(){
   const d=liq.diesel||{totLtsCarg:0,pp:0,ltsComprobados:0,importeComprobado:0,ltsNoComprobados:0,importeNoComprobado:0,ltsPend:0,importePend:0,ltsFinal:0,ultimoPrecio:0,ltsPorComprobar:0,ltsECM:0};
   const dieselComprobado=d.importeComprobado||0;
   const dieselNoComprobado=d.importeNoComprobado||0;
+  // Utilidad de EMPRESA = ingresos subtotal (sin IVA) − gastos subtotal (sin IVA).
+  // Diesel y autopistas vienen de CFDIs deducibles: su IVA es acreditable y NO
+  // es costo real, así que la utilidad usa el subtotal. La CUENTA DEL OPERADOR
+  // (más abajo) sigue usando el total con IVA porque el operador adelantó el
+  // monto completo. Fallback /1.16 para liquidaciones guardadas antes de este cambio.
+  const dieselComprobadoSub=(d.importeComprobadoSub!=null)?d.importeComprobadoSub:dieselComprobado/1.16;
 
   // Autopistas — excluye casetas XML canceladas ante el SAT
   console.log('DEBUG autopistas:', liq.autopistas?liq.autopistas.length:0, JSON.stringify(liq.autopistas||[]));
@@ -3132,6 +3153,13 @@ function generarReporte(){
   const totAutEmp=autopistasVigentes.filter(function(a){return !a.pagaOp;}).reduce(function(s,a){return s+a.importe;},0);
   const totAutOp=autopistasVigentes.filter(function(a){return a.pagaOp;}).reduce(function(s,a){return s+a.importe;},0);
   const totAut=totAutEmp+totAutOp;
+  // Subtotal sin IVA de autopistas (casetas = CFDI deducible al 16%). Para XML
+  // se usa el subtotal real; para PASE/IAVE, total/1.16. Fallback para cruces
+  // guardados antes de este cambio (sin subtotal).
+  function autSub(a){return (a.subtotal!=null&&a.subtotal>0)?a.subtotal:(a.importe||0)/1.16;}
+  const totAutEmpSub=autopistasVigentes.filter(function(a){return !a.pagaOp;}).reduce(function(s,a){return s+autSub(a);},0);
+  const totAutOpSub=autopistasVigentes.filter(function(a){return a.pagaOp;}).reduce(function(s,a){return s+autSub(a);},0);
+  const totAutSub=totAutEmpSub+totAutOpSub;
 
   // Gastos
   // Excluye gastos XML cancelados ante el SAT — nunca se consideran en los totales.
@@ -3162,7 +3190,10 @@ function generarReporte(){
   // Totales empresa
   // dieselTotal = lo que se cargó a empresa (por comprobar × precio promedio)
   const dieselTotal=(d.ltsPorComprobar||0)*(d.pp||0);
-  const totGastosEmpTotal=dieselComprobado+totAut+totGastosEmp+gastosXMLTot+totComision+totGastos1+totIncidentes+totCasetasNF;
+  // Diesel y autopistas entran a la utilidad SIN IVA (subtotal); el resto de
+  // gastos (comisión, 2%, incidentes, casetas sin comprobante, gastos manuales)
+  // no llevan IVA desglosado y entran con su monto completo tal cual.
+  const totGastosEmpTotal=dieselComprobadoSub+totAutSub+totGastosEmp+gastosXMLTot+totComision+totGastos1+totIncidentes+totCasetasNF;
   const utilidad=totIngSubtotal-totGastosEmpTotal;
 
   // Cuenta operador
@@ -3196,15 +3227,15 @@ function generarReporte(){
   // En gastos solo va el diesel efectivamente consumido (comprobado por ECM)
   // El no comprobado se refleja en la cuenta del operador, no en gastos de empresa
   var gastosHTML=
-    rr('Diesel ('+fmtN(d.ltsComprobados||0)+' lts comprobados × '+fmt(d.pp||0)+')',dieselComprobado)
+    rr('Diesel ('+fmtN(d.ltsComprobados||0)+' lts comprobados × '+fmt(d.ppSub||(d.pp||0)/1.16)+' sin IVA)',dieselComprobadoSub)
     +(d.ltsNoComprobados>0?rrDetail('⚠️ '+fmtN(d.ltsNoComprobados||0)+' lts no comprobados — cargo al operador',0):'')
     +rrDetail('Arrastre próx. liq. ('+fmtN(d.ltsFinal||0)+' lts × '+fmt(d.ultimoPrecio||0)+')',d.importePend||0)
     +(liq.dieselXML||[]).filter(function(x){return x.satCancelado;}).map(function(x){
       return rrDetail('⚠️ Factura diesel CANCELADA ante el SAT (no incluida) — '+(x.fecha||'—')+' · '+(x.emisor||''),0);
     }).join('')
-    +rr('Autopistas',totAut)
-    +rrDetail('Empresa',totAutEmp)
-    +rrDetail('Operador (comprueba)',totAutOp)
+    +rr('Autopistas (sin IVA)',totAutSub)
+    +rrDetail('Empresa',totAutEmpSub)
+    +rrDetail('Operador (comprueba)',totAutOpSub)
     +liq.autopistas.filter(function(a){return a.satCancelado;}).map(function(a){
       return rrDetail('⚠️ CANCELADO ante el SAT (no incluido) — '+(a.fecha||'—')+' · '+(a.caseta||''),0);
     }).join('');
@@ -3433,6 +3464,7 @@ function generarReporte(){
     totComision:totComision, totGastos1:totGastos1,
     dieselComprobado:dieselComprobado, dieselNoComprobado:dieselNoComprobado,
     totAut:totAut, totAutOp:totAutOp, totAutEmp:totAutEmp,
+    totAutSub:totAutSub, dieselComprobadoSub:dieselComprobadoSub,
     totGastosOp:totGastosOp, totGastosEmp:totGastosEmp,
     totGastosEmpTotal:totGastosEmpTotal,
     totAnts:totAnts, totNomina:totNomina, totalCargosReal:totalCargosReal, totalAbonosReal:totalAbonosReal,
