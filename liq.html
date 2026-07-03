@@ -486,7 +486,7 @@ tr:hover td{background:#fafafa}
       <div class="card-title">📊 Liquidación <span id="repLiqNum"></span>
         <div style="display:flex;gap:8px;flex-wrap:wrap">
           <button class="btn btn-out btn-sm" onclick="generarReporte()">🔄 Recalcular</button>
-          <button class="btn btn-dark btn-sm" onclick="window.print()">🖨️ Imprimir</button>
+          <button class="btn btn-dark btn-sm" onclick="imprimirLiquidacion()">🖨️ Imprimir</button>
           <button class="btn btn-green btn-sm" onclick="cerrarLiquidacion()">✅ Cerrar liquidación</button>
         </div>
       </div>
@@ -2529,7 +2529,12 @@ function parseIAVE(text,fname){
   const idx=function(h){return headers.findIndex(function(x){return norm(x).includes(norm(h));});};
   const iU=idx('No.Economico'),iF=idx('Fecha'),iH=idx('Hora'),iC=idx('Caseta'),iCa=idx('Carril'),iI=idx('Importe');
   const dSal=new Date(liq.salida),dLleg=new Date(liq.llegada+'T23:59:59');
-  var _iaveYaLiq=(arrastres[liq.unidad]||arrastres[String(liq.unidad)]||{}).iaveYaLiquidadas||[];
+  // En una liquidación REABIERTA no se excluye ningún cruce por "ya liquidado":
+  // los cruces propios de esa liquidación siguen en iaveYaLiquidadas de cuando
+  // se cerró la primera vez, y excluirlos vaciaría las autopistas al re-subir
+  // el CSV. El filtro por fechas del periodo ya evita jalar cruces de otros
+  // periodos. (Mismo criterio que el diesel en liquidaciones reabiertas.)
+  var _iaveYaLiq=(liq.reabierta)?[]:((arrastres[liq.unidad]||arrastres[String(liq.unidad)]||{}).iaveYaLiquidadas||[]);
   liq.autopistas=[];
   var nIaveSkip=0;
   for(var i=1;i<lines.length;i++){
@@ -3511,6 +3516,20 @@ setTimeout(function(){
     console.warn('Firebase no respondió en 5 segundos');
   }
 }, 5000);
+
+// Imprime / guarda como PDF con el nombre "Liquidación #X de NOMBRE" — los
+// navegadores usan document.title como nombre por defecto del PDF. Se
+// restaura el título original después de imprimir.
+function imprimirLiquidacion(){
+  if(!liq){window.print();return;}
+  var _tituloPrev=document.title;
+  var _op=(liq.op&&liq.op.nombre)?liq.op.nombre:'';
+  document.title='Liquidación #'+liq.num+(_op?' de '+_op:'');
+  function _restaurar(){document.title=_tituloPrev;window.removeEventListener('afterprint',_restaurar);}
+  window.addEventListener('afterprint',_restaurar);
+  window.print();
+  setTimeout(_restaurar,3000); // respaldo por si afterprint no dispara
+}
 
 function cerrarLiquidacion(){
   if(!liq)return;
