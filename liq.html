@@ -1261,8 +1261,8 @@ function actualizarBadges(){
   const pendAnts=Object.values(anticiposDB).reduce(function(s,arr){return s+arr.filter(function(a){return a.estado==='pendiente';}).length;},0);
   const pendIng=ingresosDB.filter(function(v){return v.estado==='sin_liquidar';}).length;
   const bA=$('badgeAnt'),bI=$('badgeIng');
-  bA.textContent=pendAnts;bA.style.display=pendAnts?'inline':'none';
-  bI.textContent=pendIng;bI.style.display=pendIng?'inline':'none';
+  if(bA){bA.textContent=pendAnts;bA.style.display=pendAnts?'inline':'none';}
+  if(bI){bI.textContent=pendIng;bI.style.display=pendIng?'inline':'none';}
 }
 
 // ══════════════════════════════════════════════
