@@ -2559,12 +2559,33 @@ async function parseGastoXML(text,fname){
   $('gastoXMLInfo').innerHTML='<div class="alert alert-ok">'+liq.gastosXML.length+' gastos con XML registrados.</div>';
 }
 
+// Suma lo cobrado por "maniobras" en los ingresos (viajes) de esta liquidación
+// — no se le puede reconocer al operador más gasto de maniobras que lo que
+// realmente se facturó al cliente por ese concepto.
+function totalManiobrasIngreso(){
+  if(!liq)return 0;
+  function smOf(v){return v.subtManiobras!=null?v.subtManiobras:(v.tipo==='maniobra'?v.subtotal:0);}
+  return ingresosDB.filter(function(v){return parseInt(v.unidad)===parseInt(liq.unidad)&&v.estado==='sin_liquidar'&&!v.satCancelado;})
+    .filter(viajeIncluido)
+    .reduce(function(s,v){return s+smOf(v);},0);
+}
+
 function agregarGasto(){
   if(!liq)return;
   const importe=parseFloat($('gastoImporte').value||0);
   if(!importe){alert('Ingresa un importe.');return;}
+  const concepto=$('gastoConcepto').value;
+  // Candado: gastos de maniobras no pueden superar lo cobrado como maniobras en ingresos
+  if(concepto==='MANIOBRAS'){
+    var totManiobrasIng=totalManiobrasIngreso();
+    var yaRegistrado=(liq.gastos||[]).filter(function(g){return g.concepto==='MANIOBRAS';}).reduce(function(s,g){return s+(g.importe||0);},0);
+    if(yaRegistrado+importe>totManiobrasIng+0.01){
+      alert('🚫 No se puede registrar este gasto de maniobras.\n\nYa registrado: '+fmt(yaRegistrado)+'\nEste gasto: '+fmt(importe)+'\nTotal quedaría: '+fmt(yaRegistrado+importe)+'\n\nPero en esta liquidación solo se cobraron '+fmt(totManiobrasIng)+' de maniobras en los ingresos.\nNo se le puede reconocer al operador más de lo que se facturó al cliente por ese concepto.');
+      return;
+    }
+  }
   const pagaOp=$('gastoPagaOp').value==='si';
-  const gasto={concepto:$('gastoConcepto').value,desc:$('gastoDesc').value||'',importe:importe,pagaOp:pagaOp,tipo:'manual',autorizado:false};
+  const gasto={concepto:concepto,desc:$('gastoDesc').value||'',importe:importe,pagaOp:pagaOp,tipo:'manual',autorizado:false};
   // Candado: si supera límite y no tiene factura, requiere autorización
   if(importe>LIMITE_GASTO_SIN_FACTURA){
     gastoPendiente=gasto;
