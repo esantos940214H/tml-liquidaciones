@@ -423,7 +423,7 @@ function buscar(){
   const filtHasta=$('busHasta').value;
 
   const filtrados=historialDB.filter(l=>{
-    if(filtOp&&parseInt(l.unidad)!==filtOp)return false;
+    if(filtOp&&parseInt(l.opId||l.unidad)!==filtOp)return false;
     if(filtNum&&l.num!==filtNum)return false;
     if(filtDesde&&l.salida<filtDesde)return false;
     if(filtHasta&&l.llegada>filtHasta)return false;
@@ -444,7 +444,7 @@ function buscar(){
   }
 
   filtrados.forEach(l=>{
-    const op=OPERADORES.find(o=>o.unidad===parseInt(l.unidad));
+    const op=OPERADORES.find(o=>o.unidad===parseInt(l.opId||l.unidad));
     const snap=l.snapshot||{};
     const saldo=snap.saldoReal||0;
     const ingresos=snap.totIngSubtotal||0;
@@ -483,7 +483,7 @@ function verDetalle(id){
   if(!l)return;
   _detalleActual=l;
   const snap=l.snapshot||{};
-  const op=OPERADORES.find(o=>o.unidad===parseInt(l.unidad));
+  const op=OPERADORES.find(o=>o.unidad===parseInt(l.opId||l.unidad));
 
   $('cardLista').style.display='none';
   $('cardDetalle').style.display='block';
@@ -577,7 +577,7 @@ function verDetalle(id){
   // Cartera: usar snap.viajesList si está disponible (guardado al cerrar), sino buscar en ingresosDB
   var viajesData=(snap.viajesList&&snap.viajesList.length)
     ?snap.viajesList
-    :ingresosDB.filter(function(v){return v.liqNum===l.num&&parseInt(v.unidad)===parseInt(l.unidad);});
+    :ingresosDB.filter(function(v){return v.liqNum===l.num&&parseInt(v.unidad)===parseInt(l.opId||l.unidad);});
   if(viajesData.length){
     var totC=0;
     var rowsC=viajesData.map(function(v){totC+=parseFloat(v.total||0);return'<tr><td class="num">'+(v.folio||'—')+'</td><td>'+(v.fecha||'')+'</td><td style="font-size:11px;max-width:200px;overflow:hidden;text-overflow:ellipsis">'+(v.cliente||'')+'</td><td class="num r">'+fmt(v.subtotal||0)+'</td><td class="num r">'+fmt(v.iva||0)+'</td><td class="num r">'+fmt(v.ret||0)+'</td><td class="num r">'+fmt(v.total||0)+'</td></tr>';}).join('');
@@ -594,7 +594,7 @@ function verDetalle(id){
   var antsData=snap.antsList&&snap.antsList.length?snap.antsList:(function(){
     var res=[];
     Object.keys(anticiposDB).forEach(function(key){
-      if(parseInt(key)===parseInt(l.unidad)){
+      if(parseInt(key)===parseInt(l.opId||l.unidad)){
         (anticiposDB[key]||[]).filter(function(a){return a.liqNum===l.num;})
           .forEach(function(a){res.push(a);});
       }
@@ -679,14 +679,14 @@ async function reabrirLiquidacion(){
   // vuelve a cerrar), NO recalcular nada — eso volvería a "liberar" anticipos/
   // viajes que ya se habían liberado la primera vez, perdiendo la lista de
   // cuáles eran los originales. Solo hay que ir al módulo a seguir editando.
-  if(activaActual&&activaActual.reabierta&&parseInt(activaActual.unidad)===parseInt(l.unidad)&&activaActual.num===l.num){
+  if(activaActual&&activaActual.reabierta&&parseInt(activaActual.opId||activaActual.unidad)===parseInt(l.opId||l.unidad)&&activaActual.num===l.num){
     alert('La liquidación #'+l.num+' ya está reabierta y activa (no se ha vuelto a cerrar). Te llevo directo al módulo de Liquidaciones para seguir editándola, sin volver a recalcular nada.');
     location.href='liq.html';
     return;
   }
 
   let msgConfirm='¿REABRIR la liquidación #'+l.num+' (unidad '+l.unidad+') para modificarla?\n\nSus anticipos, viajes e incidentes quedarán "pendientes" otra vez hasta que se vuelva a cerrar.';
-  if(activaActual&&!(parseInt(activaActual.unidad)===parseInt(l.unidad)&&activaActual.num===l.num)){
+  if(activaActual&&!(parseInt(activaActual.opId||activaActual.unidad)===parseInt(l.opId||l.unidad)&&activaActual.num===l.num)){
     msgConfirm+='\n\n⚠️ ATENCIÓN: ahora mismo hay OTRA liquidación abierta (#'+activaActual.num+', unidad '+activaActual.unidad+') sin cerrar. Solo puede haber una liquidación activa a la vez — al reabrir esta se REEMPLAZA esa otra en el sistema (su progreso ya guardado en Firebase no se borra hasta que la cierres o la elimines, pero deja de ser "la liquidación activa"). ¿Seguro que ya la cerraste o no importa?';
   }
   if(!confirm(msgConfirm))return;
@@ -694,7 +694,8 @@ async function reabrirLiquidacion(){
 
   try{
     const snap=l.snapshot||{};
-    const op=OPERADORES.find(function(o){return o.unidad===parseInt(l.unidad);})||{unidad:l.unidad,nombre:'',clave:''};
+    const opIdL=l.opId||l.unidad;
+    const op=OPERADORES.find(function(o){return o.unidad===parseInt(opIdL);})||{unidad:opIdL,nombre:'',clave:''};
 
     // Reconstruir un objeto de liquidación editable a partir del snapshot
     const gastosXML=(snap.gastosList||[]).filter(function(g){return g.tipo==='xml';}).map(function(g){
@@ -722,7 +723,7 @@ async function reabrirLiquidacion(){
     });
 
     const liqReab={
-      num:l.num,op:op,unidad:l.unidad,clave:op.clave||'',
+      num:l.num,op:op,opId:opIdL,unidad:l.unidad,clave:op.clave||'',
       salida:l.salida,llegada:l.llegada,duracion:l.duracion,
       kms:l.kms||0,litrosECM:(snap.diesel&&snap.diesel.ltsECM)||0,rendimiento:l.rendimiento||0,
       costoDiesel:(snap.diesel&&snap.diesel.pp)||27,comision:l.comision||12,
@@ -754,17 +755,17 @@ async function reabrirLiquidacion(){
     let nA=0,nV=0,nI=0;
     var idsAntLiberados=[],idsViajesLiberados=[];
     Object.keys(antDB).forEach(function(key){
-      if(parseInt(key)===parseInt(l.unidad)){
+      if(parseInt(key)===parseInt(opIdL)){
         (antDB[key]||[]).forEach(function(a){
           if(a.liqNum===l.num){a.estado='pendiente';a.liqNum=null;nA++;idsAntLiberados.push(a.id);}
         });
       }
     });
     ingDB.forEach(function(v){
-      if(parseInt(v.unidad)===parseInt(l.unidad)&&v.liqNum===l.num){v.estado='sin_liquidar';v.liqNum=null;nV++;idsViajesLiberados.push(v.id);}
+      if(parseInt(v.unidad)===parseInt(opIdL)&&v.liqNum===l.num){v.estado='sin_liquidar';v.liqNum=null;nV++;idsViajesLiberados.push(v.id);}
     });
     Object.keys(incDB).forEach(function(key){
-      if(parseInt(key)===parseInt(l.unidad)){
+      if(parseInt(key)===parseInt(opIdL)){
         (incDB[key]||[]).forEach(function(a){
           if(a.liqNum===l.num){a.estado='pendiente';a.liqNum=null;nI++;}
         });
@@ -772,7 +773,7 @@ async function reabrirLiquidacion(){
     });
     var nN=0,idsNominaLiberados=[];
     Object.keys(nomDB).forEach(function(key){
-      if(parseInt(key)===parseInt(l.unidad)){
+      if(parseInt(key)===parseInt(opIdL)){
         (nomDB[key]||[]).forEach(function(n){
           if(n.liqNum===l.num){n.estado='pendiente';n.liqNum=null;nN++;idsNominaLiberados.push(n.id);}
         });
@@ -853,7 +854,7 @@ function liqsFiltradas(){
   const filtDesde=$('repDesde').value;
   const filtHasta=$('repHasta').value;
   return historialDB.filter(l=>{
-    if(filtOp&&parseInt(l.unidad)!==filtOp)return false;
+    if(filtOp&&parseInt(l.opId||l.unidad)!==filtOp)return false;
     if(filtDesde&&l.salida<filtDesde)return false;
     if(filtHasta&&l.llegada>filtHasta)return false;
     return true;
@@ -905,7 +906,7 @@ function repLiqOp(){
   const rows=liqs.map(l=>{
     const snap=l.snapshot||{};
     const saldo=snap.saldoReal||0;
-    return ['#'+l.num,opNombre(l.unidad),l.unidad,l.salida||'',l.llegada||'',
+    return ['#'+l.num,opNombre(l.opId||l.unidad),l.unidad,l.salida||'',l.llegada||'',
       fmt(snap.totIngSubtotal||0),fmt(snap.totGastosEmpTotal||0),fmt(Math.abs(saldo)),
       saldo>=0?'A favor op.':'En contra op.'];
   });
@@ -926,7 +927,7 @@ function repAntOp(){
   const rows=[];
   liqs.forEach(l=>{
     const lista=(l.snapshot||{}).antsList||[];
-    lista.forEach(a=>{rows.push(['#'+l.num,opNombre(l.unidad),l.unidad,a.fecha||'',a.concepto||'',fmt(a.importe||0)]);});
+    lista.forEach(a=>{rows.push(['#'+l.num,opNombre(l.opId||l.unidad),l.unidad,a.fecha||'',a.concepto||'',fmt(a.importe||0)]);});
   });
   const totAnt=rows.reduce((s,r)=>s+parseFloat((r[5]||'0').replace(/[^0-9.\-]/g,'')||0),0);
   $('repResumen').innerHTML='<div class="kpis"><div class="kpi"><div class="v">'+rows.length+'</div><div class="k">Anticipos</div></div>'
@@ -984,7 +985,7 @@ function repIvaResumen(){
     const ivaGastos=(snap.gastosList||[]).reduce((s,g)=>s+parseFloat(g.iva||0),0)
       +(snap.autopistasList||[]).reduce((s,a)=>s+parseFloat(a.iva||0),0)
       +(snap.dieselXML||[]).reduce((s,x)=>s+parseFloat(x.iva||0),0);
-    return ['#'+l.num,opNombre(l.unidad),l.unidad,l.salida||'',fmt(snap.totIvaTrasl||0),fmt(snap.totRetTotal||0),fmt(ivaGastos)];
+    return ['#'+l.num,opNombre(l.opId||l.unidad),l.unidad,l.salida||'',fmt(snap.totIvaTrasl||0),fmt(snap.totRetTotal||0),fmt(ivaGastos)];
   });
   const totTrasl=liqs.reduce((s,l)=>s+((l.snapshot||{}).totIvaTrasl||0),0);
   const totRet=liqs.reduce((s,l)=>s+((l.snapshot||{}).totRetTotal||0),0);

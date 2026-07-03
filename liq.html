@@ -198,7 +198,7 @@ tr:hover td{background:#fafafa}
     <div class="grid2" style="margin-bottom:14px">
       <div class="field"><label>Número de liquidación <span style="color:#e63946">(auto)</span></label><input type="number" id="liqNum" placeholder="Auto" min="1"></div>
       <div class="field"><label>Operador</label><select id="liqOp" onchange="onLiqOpChange()"><option value="">— Selecciona —</option></select></div>
-      <div class="field"><label>Unidad</label><input type="text" id="liqUnidad" readonly></div>
+      <div class="field"><label>Unidad manejada este periodo</label><select id="liqUnidad" onchange="onUnidadRealChange()"><option value="">— Selecciona —</option></select></div>
       <div class="field"><label>Clave operador</label><input type="text" id="liqClave" readonly style="background:#1a1a2e;color:#aaa;cursor:not-allowed"></div>
       <div class="field"><label>% Comisión fletes <span id="comisionLock" title="Cambiar comisión" onclick="desbloquearComision()" style="cursor:pointer;font-size:13px">🔒</span></label><input type="number" id="liqComision" value="12" step="1" min="0" max="100" readonly style="background:#1a1a2e;color:#aaa;cursor:not-allowed"></div>
       <div class="field"><label>Costo diesel ($/lt)</label><input type="number" id="liqCostoDiesel" placeholder="Auto al subir Edenred" step="0.0001"></div>
@@ -645,6 +645,13 @@ window.onFBReady=function(cb){if(window._fbInit)cb();else window._fbCallbacks.pu
 // ══════════════════════════════════════════════
 // CATÁLOGO
 // ══════════════════════════════════════════════
+// El campo "unidad" de cada operador es su ID de identidad (opId) — el
+// número con el que se guardan sus anticipos, viajes/ingresos y
+// deducciones de nómina en Firebase (histórico, no cambia). NO es
+// necesariamente la unidad/vehículo que maneja en un periodo dado: eso se
+// selecciona aparte al iniciar cada liquidación (ver UNIDADES), porque los
+// operadores a veces cambian de unidad y el arrastre de diesel/casetas debe
+// quedarse con el vehículo, no con el operador.
 const OPERADORES=[
   {unidad:4521,nombre:'ALEJANDRO RODRIGUEZ GONZALEZ',comision:12,clave:'OPE-001'},
   {unidad:4522,nombre:'ANDRÉS MARÍA RAMOS',comision:12,clave:'OPE-002'},
@@ -658,6 +665,11 @@ const OPERADORES=[
   {unidad:534, nombre:'MIGUEL ALONSO CALDERON',comision:12,clave:'OPE-010'},
   {unidad:535, nombre:'ISMAEL CONSTANTINO CABRERA',comision:12,clave:'OPE-011'},
 ];
+// Unidades/vehículos reales de la flota — independiente de qué operador las
+// maneje en un periodo dado. Se deriva del mismo catálogo (hoy coinciden 1
+// a 1 con los operadores), pero es una lista aparte para poder elegir
+// "operador X maneja la unidad Y" cuando ya no coincidan.
+const UNIDADES=OPERADORES.map(function(o){return o.unidad;}).slice().sort(function(a,b){return a-b;});
 
 const SUPERVISOR_PASS='tml2026';
 const TML_RFC='MTM171214PI4';
@@ -859,7 +871,7 @@ async function validarCFDIsSATLiquidacion(soloNuevos){
   if(!liq)return;
   var box=$('satValidandoInfo');
   if(!box)return;
-  var viajesXML=ingresosDB.filter(function(v){return parseInt(v.unidad)===parseInt(liq.unidad)&&v.estado==='sin_liquidar'&&v.origen==='xml'&&v.uuid&&(!soloNuevos||v.satEstado==null);});
+  var viajesXML=ingresosDB.filter(function(v){return parseInt(v.unidad)===parseInt(liq.opId||liq.unidad)&&v.estado==='sin_liquidar'&&v.origen==='xml'&&v.uuid&&(!soloNuevos||v.satEstado==null);});
   var gastosXMLconUUID=(liq.gastosXML||[]).filter(function(g){return g.uuid&&(!soloNuevos||g.satEstado==null);});
   var dieselXMLconUUID=(liq.dieselXML||[]).filter(function(g){return g.uuid&&(!soloNuevos||g.satEstado==null);});
   var autopistasXMLconUUID=(liq.autopistas||[]).filter(function(a){return a.uuid&&(!soloNuevos||a.satEstado==null);});
@@ -1098,27 +1110,28 @@ async function cargarEstado(){
         // liquidado" quedan desactivadas en silencio.
         if(!liq.reabierta){
           try{
-            var _histChk=await window.FB.get('historial','liq-'+liq.num+'-'+liq.unidad);
+            var _opIdChk=liq.opId||liq.unidad;
+            var _histChk=await window.FB.get('historial','liq-'+liq.num+'-'+_opIdChk);
             if(_histChk){
               var _aChk=await window.FB.get('estado','anticiposDB');
               var _antDBChk=(_aChk&&_aChk.data)?JSON.parse(_aChk.data):{};
               if(Array.isArray(_antDBChk))_antDBChk={};
               var _idsA=[];
               Object.keys(_antDBChk).forEach(function(k){
-                if(parseInt(k)===parseInt(liq.unidad)){
+                if(parseInt(k)===parseInt(_opIdChk)){
                   (_antDBChk[k]||[]).forEach(function(a){if(a.liqNum===liq.num)_idsA.push(a.id);});
                 }
               });
               var _iChk=await window.FB.get('estado','ingresosDB');
               var _ingDBChk=(_iChk&&_iChk.data)?JSON.parse(_iChk.data):[];
               var _idsV=[];
-              _ingDBChk.forEach(function(v){if(parseInt(v.unidad)===parseInt(liq.unidad)&&v.liqNum===liq.num)_idsV.push(v.id);});
+              _ingDBChk.forEach(function(v){if(parseInt(v.unidad)===parseInt(_opIdChk)&&v.liqNum===liq.num)_idsV.push(v.id);});
               var _nChk=await window.FB.get('estado','nominaDB');
               var _nomDBChk=(_nChk&&_nChk.data)?JSON.parse(_nChk.data):{};
               if(Array.isArray(_nomDBChk))_nomDBChk={};
               var _idsN=[];
               Object.keys(_nomDBChk).forEach(function(k){
-                if(parseInt(k)===parseInt(liq.unidad)){
+                if(parseInt(k)===parseInt(_opIdChk)){
                   (_nomDBChk[k]||[]).forEach(function(n){if(n.liqNum===liq.num)_idsN.push(n.id);});
                 }
               });
@@ -1153,7 +1166,7 @@ async function cargarEstado(){
         var _la=JSON.parse(data.data);
         anticiposDB=Array.isArray(_la)?{}:_la;
         var op=parseInt($('liqOp')?$('liqOp').value||0:0);
-        if(!op && liq) op=liq.unidad;
+        if(!op && liq) op=liq.opId||liq.unidad;
         if(op) mostrarPreviewLiq(op);
         // Si el reporte está visible, regenerarlo con datos actuales
         var tabActivo=document.querySelector('.tab.active');
@@ -1166,7 +1179,7 @@ async function cargarEstado(){
       if(data&&data.data){
         ingresosDB=JSON.parse(data.data);
         var op=parseInt($('liqOp')?$('liqOp').value||0:0);
-        if(!op && liq) op=liq.unidad;
+        if(!op && liq) op=liq.opId||liq.unidad;
         if(op) mostrarPreviewLiq(op);
         // Si el reporte está visible, regenerarlo con datos actuales
         var tabActivo=document.querySelector('.tab.active');
@@ -1184,7 +1197,7 @@ async function cargarEstado(){
         var _ln=JSON.parse(data.data);
         nominaDB=Array.isArray(_ln)?{}:_ln;
         var op=parseInt($('liqOp')?$('liqOp').value||0:0);
-        if(!op && liq) op=liq.unidad;
+        if(!op && liq) op=liq.opId||liq.unidad;
         if(op) mostrarPreviewLiq(op);
         var tabActivo=document.querySelector('.tab.active');
         var tabs=document.querySelectorAll('.tab');
@@ -1252,7 +1265,7 @@ function restaurarUILiquidacion(){
     if($('dIniLts'))$('dIniLts').value=arrastres[liq.unidad].lts;
     if($('dIniPrecio'))$('dIniPrecio').value=arrastres[liq.unidad].precio;
   }
-  if($('liqOp'))$('liqOp').value=liq.unidad;
+  if($('liqOp'))$('liqOp').value=liq.opId||liq.unidad;
   if($('liqNum'))$('liqNum').value=liq.num;
   if($('liqSalida'))$('liqSalida').value=liq.salida||'';
   if($('liqLlegada'))$('liqLlegada').value=liq.llegada||'';
@@ -1268,7 +1281,7 @@ function restaurarUILiquidacion(){
   if($('vVacioDestino'))$('vVacioDestino').value=_vv.destino||'';
   if($('vVacioKms'))$('vVacioKms').value=_vv.kms||'';
   if($('liqUnidad'))$('liqUnidad').value=liq.unidad||'';
-  var _opRest=OPERADORES.find(function(o){return o.unidad===parseInt(liq.unidad||0);});
+  var _opRest=OPERADORES.find(function(o){return o.unidad===parseInt(liq.opId||liq.unidad||0);});
   if($('liqClave'))$('liqClave').value=_opRest?_opRest.clave:'';
   if(liq.gastosXML||liq.gastos) renderGastos();
   renderIncidentesLiq();
@@ -1332,6 +1345,14 @@ function initSelects(){
       s.appendChild(o);
     });
   });
+  const sU=$('liqUnidad');
+  if(sU){
+    UNIDADES.forEach(function(u){
+      const o=document.createElement('option');
+      o.value=u;o.textContent=u;
+      sU.appendChild(o);
+    });
+  }
 }
 initSelects();
 
@@ -1554,7 +1575,7 @@ function parseXMLIngreso(text,fname,unidad){
   var tipoDerivado=subtManiobras>0&&!subtFlete?'maniobra':subtOtros>0&&!subtFlete&&!subtManiobras?'otro':'flete_for';
   ingresosDB.push({id:uid(),unidad:unidad,folio:serie+'-'+folio,fecha:fecha,cliente:cliente,tipo:tipoDerivado,subtotal:subtotal,subtFlete:subtFlete,subtManiobras:subtManiobras,subtOtros:subtOtros,iva:iva,ret:ret,total:total,estado:'sin_liquidar',liqNum:null,origen:'xml',ruta:ruta});
   // Guardar ruta en liq si está activa
-  if(liq&&liq.unidad===unidad&&ruta.length){
+  if(liq&&(liq.opId||liq.unidad)===unidad&&ruta.length){
     if(!liq.rutaCP)liq.rutaCP=[];
     ruta.forEach(function(r){
       if(!liq.rutaCP.some(function(x){return x.origen===r.origen&&x.destino===r.destino;}))
@@ -1680,21 +1701,35 @@ function eliminarIngreso(id){
 // 2: LIQUIDACIÓN
 // ══════════════════════════════════════════════
 function onLiqOpChange(){
-  const unidad=parseInt($('liqOp').value||0);
-  const op=OPERADORES.find(function(o){return o.unidad===unidad;});
-  $('liqUnidad').value=op?op.unidad:'';
+  const opId=parseInt($('liqOp').value||0);
+  const op=OPERADORES.find(function(o){return o.unidad===opId;});
+  // Unidad manejada: por default se propone la unidad "de casa" del
+  // operador, pero queda seleccionable aparte (onUnidadRealChange) por si
+  // este periodo manejó otra — el arrastre de diesel/casetas sigue a la
+  // unidad que se elija ahí, no al operador.
+  if($('liqUnidad'))$('liqUnidad').value=op?op.unidad:'';
   // Clave: auto-llenar desde OPERADORES (solo lectura)
   if($('liqClave'))$('liqClave').value=op?op.clave:'';
   // Comisión: usar valor del operador y re-bloquear
   $('liqComision').value=op?op.comision:12;
   bloquearComision();
+  actualizarArrastreDieselPreview();
+  if(!liq)$('liqNum').value=ultimaLiqNum+1;
+  if(opId) refrescarPreview();
+}
+// Se llama cuando cambia la unidad manejada (independiente del operador) —
+// solo refresca la previsualización del arrastre de diesel, que pertenece
+// a la unidad/vehículo, no al operador.
+function onUnidadRealChange(){
+  actualizarArrastreDieselPreview();
+}
+function actualizarArrastreDieselPreview(){
+  var unidadSel=parseInt($('liqUnidad')?$('liqUnidad').value||0:0);
   // Siempre reasignar (no solo cuando hay arrastre) para que al cambiar de
-  // operador no se quede pegado el arrastre del operador anterior mostrado.
-  var arr=arrastres[unidad]||arrastres[String(unidad)]||{};
+  // unidad no se quede pegado el arrastre de la unidad anterior mostrada.
+  var arr=arrastres[unidadSel]||arrastres[String(unidadSel)]||{};
   if($('dIniLts'))$('dIniLts').value=arr.lts||0;
   if($('dIniPrecio'))$('dIniPrecio').value=arr.precio||0;
-  if(!liq)$('liqNum').value=ultimaLiqNum+1;
-  if(unidad) refrescarPreview();
 }
 var _comisionUnlocked=false;
 function bloquearComision(){
@@ -1740,8 +1775,8 @@ async function refrescarPreview(){
   if(a&&a.data)anticiposDB=JSON.parse(a.data);
   const i=await window.FB.get('estado','ingresosDB');
   if(i&&i.data)ingresosDB=JSON.parse(i.data);
-  const unidad=parseInt($('liqOp')?$('liqOp').value||0:0);
-  if(unidad)mostrarPreviewLiq(unidad);
+  const opId=parseInt($('liqOp')?$('liqOp').value||0:0);
+  if(opId)mostrarPreviewLiq(opId);
   console.log('Recargado desde Firebase - anticipos:',Object.keys(anticiposDB),'ingresos:',ingresosDB.length);
 }
 
@@ -1769,7 +1804,7 @@ function insertarNomina(id){
   if(!liq.nominaIncluidos)liq.nominaIncluidos=[];
   if(liq.nominaIncluidos.indexOf(id)===-1)liq.nominaIncluidos.push(id);
   guardarEstado();
-  mostrarPreviewLiq(liq.unidad);
+  mostrarPreviewLiq(liq.opId||liq.unidad);
   generarReporte();
 }
 function insertarAnticipo(id){
@@ -1777,7 +1812,7 @@ function insertarAnticipo(id){
   if(!liq.anticiposIncluidos)liq.anticiposIncluidos=[];
   if(liq.anticiposIncluidos.indexOf(id)===-1)liq.anticiposIncluidos.push(id);
   guardarEstado();
-  mostrarPreviewLiq(liq.unidad);
+  mostrarPreviewLiq(liq.opId||liq.unidad);
   generarReporte();
 }
 function insertarViaje(id){
@@ -1785,19 +1820,22 @@ function insertarViaje(id){
   if(!liq.viajesIncluidos)liq.viajesIncluidos=[];
   if(liq.viajesIncluidos.indexOf(id)===-1)liq.viajesIncluidos.push(id);
   guardarEstado();
-  mostrarPreviewLiq(liq.unidad);
+  mostrarPreviewLiq(liq.opId||liq.unidad);
   generarReporte();
 }
 
-function mostrarPreviewLiq(unidad){
-  // Buscar anticipos por unidad (puede ser string o número en Firebase)
-  const todosAnts=(anticiposDB[unidad]||anticiposDB[String(unidad)]||anticiposDB[parseInt(unidad)]||[]).filter(function(a){return a.estado==='pendiente';});
-  const todosViajes=ingresosDB.filter(function(v){return parseInt(v.unidad)===parseInt(unidad)&&v.estado==='sin_liquidar';});
+function mostrarPreviewLiq(opId){
+  // Anticipos, viajes y nómina se buscan por OPERADOR (opId), no por la
+  // unidad/vehículo que maneje este periodo — un operador se lleva sus
+  // pendientes con él aunque cambie de unidad (el campo en Firebase, por
+  // legado, se sigue llamando "unidad" pero aquí representa al operador).
+  const todosAnts=(anticiposDB[opId]||anticiposDB[String(opId)]||anticiposDB[parseInt(opId)]||[]).filter(function(a){return a.estado==='pendiente';});
+  const todosViajes=ingresosDB.filter(function(v){return parseInt(v.unidad)===parseInt(opId)&&v.estado==='sin_liquidar';});
   const ants=todosAnts.filter(anticipoIncluido);
   const antsNuevos=todosAnts.filter(function(a){return!anticipoIncluido(a);});
   const viajes=todosViajes.filter(viajeIncluido);
   const viajesNuevos=todosViajes.filter(function(v){return!viajeIncluido(v);});
-  console.log('Preview - unidad:',unidad,'ants:',ants.length,'viajes:',viajes.length,'anticiposDB keys:',Object.keys(anticiposDB),'ingresosDB:',ingresosDB.length);
+  console.log('Preview - opId:',opId,'ants:',ants.length,'viajes:',viajes.length,'anticiposDB keys:',Object.keys(anticiposDB),'ingresosDB:',ingresosDB.length);
   // Anticipos
   const pA=$('prevAnticipos');
   let htmlA='';
@@ -1836,7 +1874,7 @@ function mostrarPreviewLiq(unidad){
   }
   pI.innerHTML=htmlI;
   // Deducciones de nómina
-  const todosNom=(nominaDB[unidad]||nominaDB[String(unidad)]||[]).filter(function(n){return n.estado==='pendiente';});
+  const todosNom=(nominaDB[opId]||nominaDB[String(opId)]||[]).filter(function(n){return n.estado==='pendiente';});
   const nom=todosNom.filter(nominaIncluida);
   const nomNuevos=todosNom.filter(function(n){return!nominaIncluida(n);});
   const pN=$('prevNomina');
@@ -1919,19 +1957,25 @@ function aplicarDatosDDEC(datos,fname){
 
 function iniciarLiquidacion(){
  try{
-  const unidad=parseInt($('liqOp').value||0);
-  const op=OPERADORES.find(function(o){return o.unidad===unidad;});
-  if(!op||!$('liqSalida').value||!$('liqLlegada').value){alert('Completa operador y fechas.');return;}
-  var _pendAnts=(anticiposDB[unidad]||anticiposDB[String(unidad)]||[]).filter(function(a){return a.estado==='pendiente';});
-  var _pendViajes=ingresosDB.filter(function(v){return parseInt(v.unidad)===unidad&&v.estado==='sin_liquidar';});
+  const opId=parseInt($('liqOp').value||0);
+  const op=OPERADORES.find(function(o){return o.unidad===opId;});
+  const unidad=parseInt($('liqUnidad')?$('liqUnidad').value||0:0);
+  if(!op||!unidad||!$('liqSalida').value||!$('liqLlegada').value){alert('Completa operador, unidad manejada y fechas.');return;}
+  // Anticipos, viajes y nómina se buscan por OPERADOR (opId) — se los lleva
+  // con él aunque este periodo maneje otra unidad.
+  var _pendAnts=(anticiposDB[opId]||anticiposDB[String(opId)]||[]).filter(function(a){return a.estado==='pendiente';});
+  var _pendViajes=ingresosDB.filter(function(v){return parseInt(v.unidad)===opId&&v.estado==='sin_liquidar';});
   if(!_pendAnts.length&&!_pendViajes.length){
-    alert('Sin anticipos ni ingresos pendientes para unidad '+unidad+'.\nRegistra al menos un ingreso o anticipo antes de iniciar la liquidación.');
+    alert('Sin anticipos ni ingresos pendientes para '+op.nombre+'.\nRegistra al menos un ingreso o anticipo antes de iniciar la liquidación.');
     return;
   }
   const numIng=parseInt($('liqNum').value||0);
   const num=numIng>0?numIng:ultimaLiqNum+1;
   $('liqNum').value=num;ultimaLiqNum=Math.max(ultimaLiqNum,num);
-  liq={num:num,op:op,unidad:unidad,clave:$('liqClave').value,
+  // liq.opId = identidad del operador (dueño de anticipos/viajes/nómina).
+  // liq.unidad = vehículo manejado este periodo (dueño del arrastre de
+  // diesel/casetas) — pueden diferir si el operador cambió de unidad.
+  liq={num:num,op:op,opId:opId,unidad:unidad,clave:$('liqClave').value,
     salida:$('liqSalida').value,llegada:$('liqLlegada').value,duracion:$('liqDuracion').value,
     kms:parseFloat($('liqKms').value||0),litrosECM:parseFloat($('liqLitrosECM').value||0),
     rendimiento:parseFloat($('liqRend').value||4),
@@ -1939,10 +1983,10 @@ function iniciarLiquidacion(){
     diesel:null,autopistas:[],gastos:[],gastosXML:[],dieselXML:[],casetasNF:[],viajeVacio:{origen:'',destino:'',kms:''},
     fechaApertura:hoy(),advertenciasFecha:[]};
   $('liqInfo').style.display='block';
-  $('liqInfo').innerHTML='<div class="alert alert-ok">✅ Liquidación <strong>#'+num+'</strong> — <strong>'+op.nombre+'</strong> · Unidad '+op.unidad+' · '+liq.salida+' al '+liq.llegada+(liq.kms?' · '+liq.kms.toLocaleString('es-MX')+' km':'')+(liq.rendimiento?' · '+liq.rendimiento+' km/L':'')+'</div>';
+  $('liqInfo').innerHTML='<div class="alert alert-ok">✅ Liquidación <strong>#'+num+'</strong> — <strong>'+op.nombre+'</strong> · Unidad '+unidad+' · '+liq.salida+' al '+liq.llegada+(liq.kms?' · '+liq.kms.toLocaleString('es-MX')+' km':'')+(liq.rendimiento?' · '+liq.rendimiento+' km/L':'')+'</div>';
   ['1','2','3','4'].forEach(function(i){$('liqReqMsg'+i).style.display='none';$('panel'+i+'Content').style.display='block';});
   $('dOpNombre').textContent=op.nombre;$('iaveOpNombre').textContent=op.nombre;
-  $('headerInfo').textContent='Liq. #'+num+' · '+op.nombre;
+  $('headerInfo').textContent='Liq. #'+num+' · '+op.nombre+' · Unidad '+unidad;
   cargasOp=cargasEdenred.filter(function(c){return c.unidad===unidad;});
   if(cargasOp.length){
     obtenerClavesHistorialDiesel(unidad).then(function(histClaves){
@@ -1950,7 +1994,7 @@ function iniciarLiquidacion(){
       renderTablaDiesel();
     });
   }
-  mostrarPreviewLiq(unidad);
+  mostrarPreviewLiq(opId);
   renderGastos();
   renderIncidentesLiq();
   renderCasetasNF();
@@ -2692,8 +2736,9 @@ async function parseGastoXML(text,fname){
 // realmente se facturó al cliente por ese concepto.
 function totalManiobrasIngreso(){
   if(!liq)return 0;
+  var opId=liq.opId||liq.unidad;
   function smOf(v){return v.subtManiobras!=null?v.subtManiobras:(v.tipo==='maniobra'?v.subtotal:0);}
-  return ingresosDB.filter(function(v){return parseInt(v.unidad)===parseInt(liq.unidad)&&v.estado==='sin_liquidar'&&!v.satCancelado;})
+  return ingresosDB.filter(function(v){return parseInt(v.unidad)===parseInt(opId)&&v.estado==='sin_liquidar'&&!v.satCancelado;})
     .filter(viajeIncluido)
     .reduce(function(s,v){return s+smOf(v);},0);
 }
@@ -2753,7 +2798,8 @@ const TOPE_INCIDENTES_POR_LIQUIDACION=1500;
 
 function incidentesPendientesLiq(){
   if(!liq)return[];
-  return(incidentesDB[liq.unidad]||incidentesDB[String(liq.unidad)]||[]).filter(function(a){return a.estado==='pendiente';});
+  var opId=liq.opId||liq.unidad;
+  return(incidentesDB[opId]||incidentesDB[String(opId)]||[]).filter(function(a){return a.estado==='pendiente';});
 }
 // Reparte el tope de $1,500 por liquidación entre los incidentes pendientes
 // (en el orden en que se capturaron). Lo que no cabe en el tope se queda
@@ -3012,29 +3058,32 @@ function generarReporte(){
   $('repLiqNum').textContent='#'+liq.num;
 
   // Encabezado compacto
+  var repOpId=liq.opId||liq.unidad;
   $('repEncabezado').innerHTML=
-    'Operador: <strong>'+liq.op.nombre+'</strong> · Unidad: <strong>'+liq.unidad+'</strong> · '
+    'Operador: <strong>'+liq.op.nombre+'</strong> · Unidad manejada: <strong>'+liq.unidad+'</strong> · '
     +liq.salida+' al '+liq.llegada+' · <strong>'+liq.duracion+' días</strong>'
     +(liq.kms?' · '+liq.kms.toLocaleString('es-MX')+' km':'')
     +(liq.rendimiento?' · '+liq.rendimiento+' km/L':'');
 
   // ── Datos base ─────────────────────────────────────
+  // Anticipos, viajes y nómina se cuentan por OPERADOR (repOpId), no por la
+  // unidad manejada — se los lleva con él aunque cambie de vehículo.
   // (en una liquidación reabierta, solo se cuentan los anticipos/viajes
   // marcados como "incluidos" — los nuevos requieren insertarse a propósito)
-  const antsPend=(anticiposDB[liq.unidad]||anticiposDB[String(liq.unidad)]||[]).filter(function(a){return a.estado==='pendiente';}).filter(anticipoIncluido);
+  const antsPend=(anticiposDB[repOpId]||anticiposDB[String(repOpId)]||[]).filter(function(a){return a.estado==='pendiente';}).filter(anticipoIncluido);
   const totAnts=antsPend.reduce(function(s,a){return s+a.importe;},0);
   // Excluye CFDI cancelados ante el SAT (validados al abrir la liquidación) — nunca se consideran.
-  const viajes=ingresosDB.filter(function(v){return parseInt(v.unidad)===parseInt(liq.unidad)&&v.estado==='sin_liquidar'&&!v.satCancelado;}).filter(viajeIncluido);
+  const viajes=ingresosDB.filter(function(v){return parseInt(v.unidad)===parseInt(repOpId)&&v.estado==='sin_liquidar'&&!v.satCancelado;}).filter(viajeIncluido);
   // Guardar EXACTAMENTE cuáles anticipos/viajes se contaron aquí, para que al
   // cerrar la liquidación se marquen "liquidado" justo estos mismos — sin
   // volver a filtrar por separado, así nunca puede haber diferencia entre lo
   // que se reportó/cobró y lo que realmente se marca como usado.
-  const nomPend=(nominaDB[liq.unidad]||nominaDB[String(liq.unidad)]||[]).filter(function(n){return n.estado==='pendiente';}).filter(nominaIncluida);
+  const nomPend=(nominaDB[repOpId]||nominaDB[String(repOpId)]||[]).filter(function(n){return n.estado==='pendiente';}).filter(nominaIncluida);
   const totNomina=nomPend.reduce(function(s,n){return s+(n.totalDeducciones||0);},0);
   window._idsAntsReporte=antsPend.map(function(a){return a.id;});
   window._idsViajesReporte=viajes.map(function(v){return v.id;});
   window._idsNominaReporte=nomPend.map(function(n){return n.id;});
-  console.log('DEBUG liq.unidad:', liq.unidad, typeof liq.unidad);
+  console.log('DEBUG repOpId:', repOpId, 'liq.unidad:', liq.unidad);
   console.log('DEBUG ingresosDB total:', ingresosDB.length, 'viajes filtrados:', viajes.length);
   if(ingresosDB.length>0)console.log('DEBUG primer ingreso unidad:', ingresosDB[0].unidad, typeof ingresosDB[0].unidad, 'estado:', ingresosDB[0].estado);
 
@@ -3313,7 +3362,7 @@ function generarReporte(){
   if($('repEncabezado2')) $('repEncabezado2').innerHTML=$('repEncabezado').innerHTML;
 
   // ── ANTICIPOS en reporte ───────────────────────────
-  var antsPendRep=(anticiposDB[liq.unidad]||anticiposDB[String(liq.unidad)]||[]).filter(function(a){return a.estado==='pendiente';}).filter(anticipoIncluido);
+  var antsPendRep=(anticiposDB[repOpId]||anticiposDB[String(repOpId)]||[]).filter(function(a){return a.estado==='pendiente';}).filter(anticipoIncluido);
   if($('repAnticipos')){
     if(antsPendRep.length){
       var totA=0;
@@ -3416,13 +3465,19 @@ function cerrarLiquidacion(){
   // Capturar copia de liq ANTES de anularlo
   var liqCopia=JSON.parse(JSON.stringify(liq));
 
+  // opId identifica al OPERADOR (dueño de anticipos/viajes/nómina/incidentes);
+  // _unidadNum identifica el VEHÍCULO manejado este periodo (dueño del
+  // arrastre de diesel/casetas) — pueden ser distintos si el operador
+  // cambió de unidad.
+  var _opIdNum=parseInt(liqCopia.opId||liqCopia.unidad);
+
   // Marcar anticipos: exactamente los mismos ids que generarReporte() acaba de
   // contar (window._idsAntsReporte), no un filtro nuevo — evita cualquier
   // posibilidad de que lo reportado y lo marcado como usado no coincidan.
   var idsAntsCerrar=window._idsAntsReporte||[];
   var nAMarcados=0;
   Object.keys(anticiposDB).forEach(function(key){
-    if(parseInt(key)===parseInt(liqCopia.unidad)){
+    if(parseInt(key)===_opIdNum){
       (anticiposDB[key]||[]).forEach(function(a){
         if(a.estado==='pendiente'&&idsAntsCerrar.indexOf(a.id)!==-1){
           a.estado='liquidado';
@@ -3437,7 +3492,7 @@ function cerrarLiquidacion(){
   var idsViajesCerrar=window._idsViajesReporte||[];
   var nVMarcados=0;
   ingresosDB.forEach(function(v){
-    if(parseInt(v.unidad)===parseInt(liqCopia.unidad)&&v.estado==='sin_liquidar'&&idsViajesCerrar.indexOf(v.id)!==-1){
+    if(parseInt(v.unidad)===_opIdNum&&v.estado==='sin_liquidar'&&idsViajesCerrar.indexOf(v.id)!==-1){
       v.estado='liquidado';
       v.liqNum=liqCopia.num;
       nVMarcados++;
@@ -3454,7 +3509,7 @@ function cerrarLiquidacion(){
   _incTopeCierre.excedente.forEach(function(a){_idsIncExcedente[a.id]=true;});
   var nIMarcados=0,nIDescartados=0;
   Object.keys(incidentesDB).forEach(function(key){
-    if(parseInt(key)===parseInt(liqCopia.unidad)){
+    if(parseInt(key)===_opIdNum){
       (incidentesDB[key]||[]).forEach(function(a){
         if(a.estado!=='pendiente')return;
         if(_idsIncAplicar[a.id]){
@@ -3473,7 +3528,7 @@ function cerrarLiquidacion(){
   var idsNominaCerrar=window._idsNominaReporte||[];
   var nNMarcados=0;
   Object.keys(nominaDB).forEach(function(key){
-    if(parseInt(key)===parseInt(liqCopia.unidad)){
+    if(parseInt(key)===_opIdNum){
       (nominaDB[key]||[]).forEach(function(n){
         if(n.estado==='pendiente'&&idsNominaCerrar.indexOf(n.id)!==-1){
           n.estado='liquidado';
@@ -3489,6 +3544,7 @@ function cerrarLiquidacion(){
   var nCMarcados=(liqCopia.casetasNF||[]).length;
 
   // Registrar gastos de este período para evitar duplicados en liquidaciones futuras
+  // (arrastre de diesel/casetas: SIEMPRE por la unidad/vehículo, no por operador)
   var _unidadNum=parseInt(liqCopia.unidad);
   if(!arrastres[_unidadNum])arrastres[_unidadNum]={lts:0,precio:0};
 
@@ -3529,8 +3585,8 @@ function cerrarLiquidacion(){
     var _hoy=new Date();
     var _fechaISO=_hoy.toISOString().slice(0,10);
     var _fechaStr=_hoy.toLocaleDateString('es-MX');
-    if(!anticiposDB[_unidadNum])anticiposDB[_unidadNum]=[];
-    anticiposDB[_unidadNum].push({
+    if(!anticiposDB[_opIdNum])anticiposDB[_opIdNum]=[];
+    anticiposDB[_opIdNum].push({
       id:'saldo-liq-'+liqCopia.num+'-'+Date.now(),
       fecha:_fechaISO, fechaStr:_fechaStr,
       importe:_deuda,
@@ -3549,11 +3605,15 @@ function cerrarLiquidacion(){
     window.FB.del('estado','liqActiva'); // eliminar ANTES del alert para que persista
   }
 
-  // Guardar snapshot en historial
+  // Guardar snapshot en historial — el id/clave del documento usa opId
+  // (identidad del operador), no la unidad manejada, para que la liquidación
+  // quede archivada bajo el operador dueño de sus anticipos/viajes/nómina.
+  // Se guardan ambos campos (opId y unidad) por separado para no perder el
+  // dato de qué vehículo manejó ese periodo.
   if(window.FB){
-    window.FB.set('historial','liq-'+liqCopia.num+'-'+liqCopia.unidad,{
-      id:'liq-'+liqCopia.num+'-'+liqCopia.unidad,
-      num:liqCopia.num, unidad:liqCopia.unidad, op:liqCopia.op,
+    window.FB.set('historial','liq-'+liqCopia.num+'-'+_opIdNum,{
+      id:'liq-'+liqCopia.num+'-'+_opIdNum,
+      num:liqCopia.num, opId:_opIdNum, unidad:liqCopia.unidad, op:liqCopia.op,
       salida:liqCopia.salida, llegada:liqCopia.llegada, duracion:liqCopia.duracion,
       kms:liqCopia.kms||0, rendimiento:liqCopia.rendimiento||0, comision:liqCopia.comision||12,
       fechaCierre:new Date().toISOString().slice(0,10),
