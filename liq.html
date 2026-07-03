@@ -1945,7 +1945,8 @@ function handleXLSX(file){
         }
         $('xlsxInfo').innerHTML='<div class="alert alert-ok">'+cargasEdenred.length+' cargas · PPP nuevas: <strong>'+fmt(ppOp)+'/lt</strong>'
           +(_arrOp.lts>0?' · Arrastre ant.: <strong>'+fmtN(_arrOp.lts)+' lts @ '+fmt(_arrOp.precio)+'</strong>':'')+'</div>'
-          +(nYaLiq>0?'<div class="alert alert-warn" style="margin-top:6px">⚠️ '+nYaLiq+' carga(s) ya liquidadas en períodos anteriores — excluidas del cálculo.</div>':'');
+          +(nYaLiq>0?'<div class="alert alert-warn" style="margin-top:6px">⚠️ '+nYaLiq+' carga(s) ya liquidadas en períodos anteriores — excluidas del cálculo.</div>':'')
+          +'<div style="margin-top:6px;font-size:11px;color:#888">🔧 Diagnóstico: liq.reabierta='+(liq.reabierta?'SÍ':'NO')+' · liq.num='+liq.num+' · liq.unidad='+liq.unidad+'</div>';
         renderTablaDiesel();
         calcDiesel();
       });
