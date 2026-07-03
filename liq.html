@@ -434,6 +434,7 @@ tr:hover td{background:#fafafa}
       <div class="upload-zone" id="dzGastoXML" onclick="document.getElementById('fGastoXML').click()"><div class="icon">🧾</div><p><strong>Arrastra XML de gastos</strong></p></div>
       <input type="file" id="fGastoXML" accept=".xml" multiple style="display:none">
       <div id="gastoXMLInfo" style="display:none;margin-top:10px"></div>
+      <div id="advertenciasFechaInfo" style="display:none;margin-top:10px"></div>
     </div>
     <div class="card">
       <div class="card-title">📝 Gastos sin factura</div>
@@ -681,13 +682,29 @@ function fechaEnPeriodoLiq(fechaISO){
   var dSal=new Date(liq.salida+'T00:00:00'),dLleg=new Date(liq.llegada+'T23:59:59');
   return f>=dSal&&f<=dLleg;
 }
+// Además del periodo del viaje, se acepta un CFDI fechado entre la apertura
+// de esta liquidación y hoy: son facturas que la liquidadora genera mientras
+// está haciendo la liquidación (ej. tickets que factura el mismo día que
+// liquida), aunque su fecha caiga fuera del rango del viaje. Se registran
+// pero quedan marcadas en liq.advertenciasFecha para que el supervisor las revise.
+function fechaEnPeriodoApertura(fechaISO){
+  if(!liq||!liq.fechaApertura||!fechaISO)return false;
+  var f=new Date(fechaISO.slice(0,10)+'T12:00:00');
+  var dApert=new Date(liq.fechaApertura+'T00:00:00');
+  var dHoy=new Date(hoy()+'T23:59:59');
+  return f>=dApert&&f<=dHoy;
+}
 function validarPeriodoXML(comp,fname){
   var fechaCFDI=(comp.getAttribute('Fecha')||'').slice(0,10);
-  if(!fechaEnPeriodoLiq(fechaCFDI)){
-    alert('⚠️ '+fname+': la fecha del CFDI ('+fechaCFDI+') está fuera del periodo de esta liquidación ('+liq.salida+' al '+liq.llegada+'). No se puede registrar.');
-    return false;
+  if(fechaEnPeriodoLiq(fechaCFDI))return true;
+  if(fechaEnPeriodoApertura(fechaCFDI)){
+    if(!liq.advertenciasFecha)liq.advertenciasFecha=[];
+    liq.advertenciasFecha.push({fname:fname,fechaCFDI:fechaCFDI,registrado:hoy()});
+    alert('⚠️ '+fname+': el CFDI está fechado '+fechaCFDI+', fuera del periodo del viaje ('+liq.salida+' al '+liq.llegada+').\nComo corresponde a la gestión de esta liquidación (facturado durante su apertura), se registrará de todas formas, pero quedará marcado para revisión del supervisor.');
+    return true;
   }
-  return true;
+  alert('⚠️ '+fname+': la fecha del CFDI ('+fechaCFDI+') está fuera del periodo de esta liquidación ('+liq.salida+' al '+liq.llegada+') y fuera del periodo de gestión (desde que se abrió la liquidación el '+(liq.fechaApertura||'?')+'). No se puede registrar.');
+  return false;
 }
 // ══════════════════════════════════════════════
 // REGISTRO GLOBAL DE FACTURAS YA USADAS (anti-duplicados entre operadores)
@@ -1136,6 +1153,9 @@ async function cargarEstado(){
 
 function restaurarUILiquidacion(){
   if(!liq)return;
+  if(!liq.fechaApertura)liq.fechaApertura=hoy();
+  if(!liq.advertenciasFecha)liq.advertenciasFecha=[];
+  renderAdvertenciasFecha();
   ['1','2','3','4'].forEach(function(i){
     var rm=$('liqReqMsg'+i),pc=$('panel'+i+'Content');
     if(rm)rm.style.display='none';
@@ -1811,7 +1831,8 @@ function iniciarLiquidacion(){
     kms:parseFloat($('liqKms').value||0),litrosECM:parseFloat($('liqLitrosECM').value||0),
     rendimiento:parseFloat($('liqRend').value||4),
     costoDiesel:parseFloat($('liqCostoDiesel').value||27),comision:parseFloat($('liqComision').value||12),
-    diesel:null,autopistas:[],gastos:[],gastosXML:[],dieselXML:[],casetasNF:[],viajeVacio:{origen:'',destino:'',kms:''}};
+    diesel:null,autopistas:[],gastos:[],gastosXML:[],dieselXML:[],casetasNF:[],viajeVacio:{origen:'',destino:'',kms:''},
+    fechaApertura:hoy(),advertenciasFecha:[]};
   $('liqInfo').style.display='block';
   $('liqInfo').innerHTML='<div class="alert alert-ok">✅ Liquidación <strong>#'+num+'</strong> — <strong>'+op.nombre+'</strong> · Unidad '+op.unidad+' · '+liq.salida+' al '+liq.llegada+(liq.kms?' · '+liq.kms.toLocaleString('es-MX')+' km':'')+(liq.rendimiento?' · '+liq.rendimiento+' km/L':'')+'</div>';
   ['1','2','3','4'].forEach(function(i){$('liqReqMsg'+i).style.display='none';$('panel'+i+'Content').style.display='block';});
@@ -2509,6 +2530,7 @@ async function parseGastoXML(text,fname){
     registrarFacturaUsada(uuidChk,liq.num,liq.unidad,'diesel');
     renderDieselXML();calcDiesel();guardarEstado();
     validarCFDIsSATLiquidacion(true);
+    renderAdvertenciasFecha();
     $('gastoXMLInfo').style.display='block';
     $('gastoXMLInfo').innerHTML='<div class="alert alert-warn">⛽ XML de combustible detectado — agregado al módulo <strong>Diesel</strong> (tab Diesel) con '+fmtN(litrosTot)+' lts. Ajusta ahí si pagó el operador o la empresa.</div>';
     return;
@@ -2533,6 +2555,7 @@ async function parseGastoXML(text,fname){
     registrarFacturaUsada(uuidChk,liq.num,liq.unidad,'caseta');
     renderIAVE();guardarEstado();
     validarCFDIsSATLiquidacion(true);
+    renderAdvertenciasFecha();
     $('cardAutopistas').style.display='block';
     $('gastoXMLInfo').style.display='block';
     $('gastoXMLInfo').innerHTML='<div class="alert alert-warn">🚧 XML de caseta/autopista detectado — agregado al módulo <strong>Autopistas</strong> con '+fmt(totalC)+'. Ajusta ahí si pagó el operador o la empresa.</div>';
@@ -2805,8 +2828,19 @@ function cerrarModalCaseta(){
   _lockCasCallback=null;
 }
 
+function renderAdvertenciasFecha(){
+  var box=$('advertenciasFechaInfo');
+  if(!box)return;
+  var adv=liq&&liq.advertenciasFecha||[];
+  if(!adv.length){box.style.display='none';return;}
+  box.style.display='block';
+  box.innerHTML='<div class="alert alert-warn">⚠️ <strong>'+adv.length+' factura(s) fuera del periodo del viaje</strong>, registradas por corresponder a la gestión de esta liquidación. Revisión del supervisor:<ul style="margin:6px 0 0 18px">'
+    +adv.map(function(a){return '<li>'+a.fname+' — CFDI fechado '+a.fechaCFDI+' (registrado '+a.registrado+')</li>';}).join('')
+    +'</ul></div>';
+}
 function renderGastos(){
   if(!liq)return;
+  renderAdvertenciasFecha();
   const todos=liq.gastosXML.concat(liq.gastos);
   const tb=$('tbGastos');tb.innerHTML='';
   var totOp=0,totEmp=0;
@@ -3232,7 +3266,8 @@ function generarReporte(){
     autopistasList:(liq.autopistas||[]).filter(function(a){return!a.satCancelado;}).map(function(a){return{fecha:a.fecha||'',caseta:a.caseta||'',rfc:a.rfc||'',concepto:a.concepto||'',uuid:a.uuid||'',subtotal:a.subtotal||0,iva:a.iva||0,importe:a.importe||0,pagaOp:!!a.pagaOp};}),
     totIncidentes:totIncidentes, totCasetasNF:totCasetasNF,
     incidentesList:incidentesAplicar.map(function(a){return{id:a.id,fechaEvento:a.fechaEvento,causa:a.causa,montoReportado:a.montoReportado,montoReconocido:a.montoReconocido,fueraDeTiempo:!!a.fueraDeTiempo};}),
-    casetasNFList:casetasNFAplicar.map(function(a){return{id:a.id,fecha:a.fecha,caseta:a.caseta,monto:a.monto,motivo:a.motivo,evidenciaURL:a.evidenciaURL||null,sinFoto:!!a.sinFoto};})
+    casetasNFList:casetasNFAplicar.map(function(a){return{id:a.id,fecha:a.fecha,caseta:a.caseta,monto:a.monto,motivo:a.motivo,evidenciaURL:a.evidenciaURL||null,sinFoto:!!a.sinFoto};}),
+    advertenciasFecha:(liq.advertenciasFecha||[]).slice()
   };
 }
 

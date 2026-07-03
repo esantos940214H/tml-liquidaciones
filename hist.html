@@ -727,7 +727,8 @@ async function reabrirLiquidacion(){
       costoDiesel:(snap.diesel&&snap.diesel.pp)||27,comision:l.comision||12,
       diesel:snap.diesel||null,autopistas:autopistas,gastos:gastos,gastosXML:gastosXML,
       dieselXML:dieselXML,casetasNF:casetasNF,viajeVacio:{origen:'',destino:'',kms:''},
-      cargasEdenred:snap.cargasDiesel||[]
+      cargasEdenred:snap.cargasDiesel||[],
+      fechaApertura:new Date().toISOString().slice(0,10),advertenciasFecha:(snap.advertenciasFecha||[]).slice()
     };
 
     // Liberar anticipos, viajes e incidentes que esta liquidación había marcado
