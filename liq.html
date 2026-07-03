@@ -3174,11 +3174,13 @@ function generarReporte(){
   const gastosXMLTot=gastosXMLVig.reduce(function(s,g){return s+g.total;},0);
   function gastoXMLSub(g){return (g.subtotal!=null&&g.subtotal>0)?g.subtotal:(g.total||0)/1.16;}
   const gastosXMLSub=gastosXMLVig.reduce(function(s,g){return s+gastoXMLSub(g);},0);
-  // Para la UTILIDAD de empresa: gastos MANUALES pagados por empresa (sin
-  // factura → monto completo, no llevan IVA) + TODOS los gastos XML a subtotal.
-  // Se separa el XML así para no contarlo dos veces (un XML pagado por empresa
-  // también cae en totGastosEmp) y para descontar su IVA acreditable.
-  const totGastosEmpManual=liq.gastos.filter(function(g){return !g.pagaOp;}).reduce(function(s,g){return s+(g.importe||0);},0);
+  // Para la UTILIDAD de empresa: TODOS los gastos manuales (los pague el
+  // operador o la empresa) son costo real del viaje — igual que las autopistas,
+  // que también cuentan op + empresa. Sin factura → monto completo (no llevan
+  // IVA). Que el operador los haya pagado y comprobado NO los excluye del costo:
+  // la empresa se los reembolsa (aparecen como abono en su cuenta). Los gastos
+  // XML entran aparte, TODOS a subtotal (una sola vez, con IVA acreditable).
+  const totGastosManual=liq.gastos.reduce(function(s,g){return s+(g.importe||0);},0);
   const gastosPorConcepto={};
   liq.gastos.forEach(function(g){
     if(!gastosPorConcepto[g.concepto])gastosPorConcepto[g.concepto]=0;
@@ -3204,7 +3206,7 @@ function generarReporte(){
   // porque son CFDIs deducibles y su IVA es acreditable. Los gastos manuales
   // sin factura, la comisión, el 2%, incidentes y casetas sin comprobante no
   // llevan IVA desglosado y entran con su monto completo tal cual.
-  const totGastosEmpTotal=dieselComprobadoSub+totAutSub+totGastosEmpManual+gastosXMLSub+totComision+totGastos1+totIncidentes+totCasetasNF;
+  const totGastosEmpTotal=dieselComprobadoSub+totAutSub+totGastosManual+gastosXMLSub+totComision+totGastos1+totIncidentes+totCasetasNF;
   const utilidad=totIngSubtotal-totGastosEmpTotal;
 
   // Cuenta operador
@@ -3477,6 +3479,7 @@ function generarReporte(){
     totAut:totAut, totAutOp:totAutOp, totAutEmp:totAutEmp,
     totAutSub:totAutSub, dieselComprobadoSub:dieselComprobadoSub,
     totGastosOp:totGastosOp, totGastosEmp:totGastosEmp,
+    gastosModuloUtilidad:totGastosManual+gastosXMLSub,
     totGastosEmpTotal:totGastosEmpTotal,
     totAnts:totAnts, totNomina:totNomina, totalCargosReal:totalCargosReal, totalAbonosReal:totalAbonosReal,
     saldoReal:saldoReal, diesel:liq.diesel||{},
