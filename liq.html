@@ -952,26 +952,35 @@ function palabras(s){return norm(s).split(' ').filter(w=>w.length>2);}
 function matchScore(c,n){const cW=palabras(c),oW=palabras(n);if(!oW.length)return 0;return oW.filter(w=>cW.some(x=>x.includes(w)||w.includes(x))).length/oW.length;}
 function esSaldo(c){const n=norm(c);return n.includes('SALDO')||n.includes('LIQUIDACION')||/^LIQ\b/.test(n);}
 function normUnidad(u){
-  // Mapa de tarjeta de diesel (Edenred) o código de dispositivo IAVE/PASE a
-  // número económico real — ninguno de los dos sistemas usa el número
-  // económico real tal cual en todos los casos:
+  // Mapa de tarjeta de diesel (Edenred) o código IAVE/PASE a número
+  // económico real — ninguno de los dos sistemas usa el número económico
+  // real tal cual en todos los casos:
   //  - Edenred trae el número de TARJETA en "No. Económico" (ej. tarjeta
   //    00002 es en realidad la unidad 4521).
-  //  - PASE/IAVE identifica las unidades 45xx con el código "S"+últimos 2
-  //    dígitos, SIN el prefijo completo (ej. unidad 4521 aparece como S21,
-  //    no como S4521). Las unidades 5xx (529, 531-534) ya coinciden con su
-  //    número real y no necesitan mapeo aparte.
+  //  - PASE/IAVE identifica las unidades 45xx con solo los últimos 3
+  //    dígitos, sin el prefijo "4" (ej. la unidad 4521 aparece como 521 o
+  //    S21). Las unidades 527, 529 y 531-534 ya coinciden con su número
+  //    real y no necesitan mapeo aparte.
   const TARJETAS={
+    // Edenred (tarjeta → económico)
     '42BC9V':529,
     '00002':4521,
     '00004':4523,
     '00008':527,
+    '00009':4524,
     '00010':4522,
     '00100':4526,
     '00531':531,
     '00532':532,
     '00533':533,
     '00534':534,
+    // PASE/IAVE numérico (código → económico)
+    '521':4521,
+    '522':4522,
+    '523':4523,
+    '524':4524,
+    '526':4526,
+    // PASE/IAVE con prefijo S (código → económico)
     'S21':4521,
     'S22':4522,
     'S23':4523,
