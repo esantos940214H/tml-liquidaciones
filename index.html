@@ -55,13 +55,13 @@ iframe.visible{display:block}
 
 <!-- IFRAMES -->
 <div id="app">
-  <iframe id="fr-ant" src="https://anticipos.mudanzastml.mx" title="Anticipos"></iframe>
-  <iframe id="fr-ing" src="https://cxc.mudanzastml.mx" title="Ingresos"></iframe>
-  <iframe id="fr-liq" src="https://liquidaciones.mudanzastml.mx" title="Liquidaciones"></iframe>
-  <iframe id="fr-nom" src="https://nomina.mudanzastml.mx" title="Nómina"></iframe>
-  <iframe id="fr-inc" src="https://incidentes.mudanzastml.mx" title="Incidentes"></iframe>
-  <iframe id="fr-hist" src="https://historial.mudanzastml.mx" title="Historial"></iframe>
-  <iframe id="fr-usuarios" src="https://usuarios.mudanzastml.mx" title="Usuarios"></iframe>
+  <iframe id="fr-ant" src="about:blank" title="Anticipos"></iframe>
+  <iframe id="fr-ing" src="about:blank" title="Ingresos"></iframe>
+  <iframe id="fr-liq" src="about:blank" title="Liquidaciones"></iframe>
+  <iframe id="fr-nom" src="about:blank" title="Nómina"></iframe>
+  <iframe id="fr-inc" src="about:blank" title="Incidentes"></iframe>
+  <iframe id="fr-hist" src="about:blank" title="Historial"></iframe>
+  <iframe id="fr-usuarios" src="about:blank" title="Usuarios"></iframe>
 </div>
 
 <script>
@@ -88,6 +88,21 @@ function tmlDeleteCookie(name){
 
 var NOMBRES = {ant:'· Anticipos', ing:'· Ingresos', liq:'· Liquidaciones', nom:'· Nómina', inc:'· Incidentes', hist:'· Historial', usuarios:'· Usuarios'};
 var mods = ['ant','ing','liq','nom','inc','hist']; // 'usuarios' se maneja aparte (solo admin)
+
+// URLs reales de cada módulo (subdominios de Firebase Hosting). Los iframes
+// arrancan sin src (about:blank) y solo se cargan la primera vez que el
+// usuario entra a ese módulo, para que la cookie de sesión ya exista cuando
+// el módulo revise si hay login (si no, cada iframe pedía su propio login
+// aunque ya hubiera uno activo en otro módulo).
+var DOMINIOS = {
+  ant:'https://anticipos.mudanzastml.mx',
+  ing:'https://cxc.mudanzastml.mx',
+  liq:'https://liquidaciones.mudanzastml.mx',
+  nom:'https://nomina.mudanzastml.mx',
+  inc:'https://incidentes.mudanzastml.mx',
+  hist:'https://historial.mudanzastml.mx',
+  usuarios:'https://usuarios.mudanzastml.mx'
+};
 
 // Sesión: cada módulo pide su propio login/permiso al cargarse en el iframe,
 // pero aquí filtramos el menú y elegimos a dónde aterrizar según lo que ya
@@ -119,7 +134,13 @@ function mostrarModulo(mod){
   });
   document.querySelectorAll('#app iframe').forEach(function(fr){fr.classList.remove('visible');});
   var fr = document.getElementById('fr-' + mod);
-  if (fr) fr.classList.add('visible');
+  if (fr) {
+    if (!fr.getAttribute('data-cargado') && DOMINIOS[mod]) {
+      fr.src = DOMINIOS[mod];
+      fr.setAttribute('data-cargado', '1');
+    }
+    fr.classList.add('visible');
+  }
 }
 
 // Ocultar del menú los módulos a los que el usuario no tiene permiso, y el
