@@ -181,6 +181,21 @@ tr:hover td{background:#fafafa}
     <div class="tbl-wrap" id="repTablaWrap" style="margin-top:10px"></div>
   </div>
 
+  <!-- MIGRACIÓN DE NUMERACIÓN (solo admin) -->
+  <div class="card" id="cardMigracion" style="display:none;border-color:#e63946">
+    <div class="card-title">🔢 Migrar folio global → consecutivo por operador</div>
+    <div style="font-size:12px;color:#666;margin-bottom:10px">
+      Renumera las liquidaciones cerradas para que cada operador tenga su propio consecutivo (1, 2, 3…) en vez del folio único global actual. Genera primero la vista previa y descarga el respaldo — no se aplica nada hasta que lo confirmes. Esta migración se corre UNA SOLA VEZ y requiere que no haya ninguna liquidación activa abierta.
+    </div>
+    <div class="row">
+      <button class="btn btn-out btn-sm" onclick="previewRenumeracion()">🔍 Generar vista previa</button>
+      <button class="btn btn-out btn-sm" onclick="descargarRespaldoMigracion()">💾 Descargar respaldo (JSON)</button>
+      <button class="btn btn-red btn-sm" id="btnAplicarMigracion" onclick="aplicarRenumeracion()" disabled>⚠️ Aplicar migración</button>
+    </div>
+    <div id="migracionInfo" style="margin-top:10px"></div>
+    <div class="tbl-wrap" id="migracionTablaWrap" style="margin-top:10px;max-height:420px;overflow-y:auto"></div>
+  </div>
+
   <!-- LISTA DE LIQUIDACIONES -->
   <div class="card" id="cardLista">
     <div class="card-title">📋 Liquidaciones cerradas <span id="countLiq" style="font-size:11px;font-weight:400;color:#aaa"></span></div>
@@ -398,6 +413,7 @@ function mostrarSesionEnHeader(){
   if(!u)return;
   if($('sesionUsuarioLabel'))$('sesionUsuarioLabel').textContent='👤 '+(u.nombre||u.usuario)+(u.esAdmin?' (admin)':'');
   if($('btnCerrarSesion'))$('btnCerrarSesion').style.display='inline';
+  if($('cardMigracion'))$('cardMigracion').style.display=u.esAdmin?'block':'none';
   aplicarPermisosNav(u);
 }
 function verificarSesionModulo(){
@@ -504,13 +520,16 @@ function verDetalle(id){
   $('cardDetalle').style.display='block';
   $('detLiqNum').textContent='#'+l.num;
 
-  // Botón de reabrir: solo admin, y solo si no existe NINGUNA liquidación
-  // posterior (de cualquier operador) ya cerrada — el número de liquidación
-  // es un folio único y secuencial para todo el sistema, no por operador,
-  // así que reabrir una con folio menor mientras ya existe uno mayor podría
-  // romper la cadena de arrastres (anticipos, diesel, etc.) de en medio.
+  // Botón de reabrir: solo admin, y solo si no existe una liquidación
+  // POSTERIOR DEL MISMO OPERADOR ya cerrada — el folio ahora es un
+  // consecutivo independiente por operador, así que solo importa el orden
+  // dentro de las liquidaciones de ese mismo operador (reabrir una con folio
+  // menor mientras ya existe uno mayor DEL MISMO OPERADOR podría romper la
+  // cadena de arrastres de en medio; liquidaciones de otros operadores no
+  // afectan esta cadena).
   var _uReab=usuarioSesion();
-  var _hayPosterior=historialDB.some(function(h){return h.num>l.num;});
+  var _opIdDet=parseInt(l.opId||l.unidad);
+  var _hayPosterior=historialDB.some(function(h){return parseInt(h.opId||h.unidad)===_opIdDet&&h.num>l.num;});
   var btnReab=$('btnReabrirLiq');
   if(btnReab){
     if(_uReab&&_uReab.esAdmin&&!_hayPosterior){
@@ -688,16 +707,19 @@ async function reabrirLiquidacion(){
   if(!l){alert('Selecciona primero una liquidación.');return;}
   if(!window.FB){alert('Sin conexión a Firebase.');return;}
 
-  // Revalidar en vivo (no confiar solo en lo que ya se cargó en esta pestaña)
+  // Revalidar en vivo (no confiar solo en lo que ya se cargó en esta pestaña).
+  // El folio es un consecutivo por operador: solo bloquea si existe una
+  // liquidación POSTERIOR DEL MISMO OPERADOR ya cerrada.
+  const opIdDetR=parseInt(l.opId||l.unidad);
   const histFresco=await window.FB.getAll('historial');
-  const hayPosterior=histFresco.some(function(h){return h.num>l.num;});
-  if(hayPosterior){alert('No se puede reabrir: ya existe una liquidación #'+l.num+' o posterior ya cerrada en el sistema. Reabrir esta rompería la cadena de arrastres (anticipos/diesel) de en medio.');return;}
+  const hayPosterior=histFresco.some(function(h){return parseInt(h.opId||h.unidad)===opIdDetR&&h.num>l.num;});
+  if(hayPosterior){alert('No se puede reabrir: ya existe una liquidación #'+l.num+' o posterior de este mismo operador ya cerrada en el sistema. Reabrir esta rompería la cadena de arrastres (anticipos/diesel) de en medio.');return;}
 
   const activaData=await window.FB.get('estado','liqActiva');
   let activaActual=null;
   if(activaData&&activaData.data){try{activaActual=JSON.parse(activaData.data);}catch(e){}}
-  if(activaActual&&activaActual.num>l.num){
-    alert('No se puede reabrir: hay una liquidación #'+activaActual.num+' actualmente abierta y es más reciente.');
+  if(activaActual&&parseInt(activaActual.opId||activaActual.unidad)===opIdDetR&&activaActual.num>l.num){
+    alert('No se puede reabrir: hay una liquidación #'+activaActual.num+' de este mismo operador actualmente abierta y es más reciente.');
     return;
   }
 
@@ -862,6 +884,186 @@ async function reabrirLiquidacion(){
 }
 
 // ══════════════════════════════════════════════
+// MIGRACIÓN: folio global → consecutivo por operador
+// ══════════════════════════════════════════════
+// El folio (num) de cada liquidación cerrada era, hasta ahora, un
+// consecutivo GLOBAL único para todo el sistema (asignado en el orden en
+// que se cerraron). Como ese orden global YA refleja el orden cronológico
+// real de creación, agrupar por operador y ordenar por el num actual
+// (ascendente) dentro de cada grupo reproduce exactamente "por fecha de
+// creación" sin necesitar ningún otro campo de fecha. Como el num viejo es
+// único en todo el sistema, el mapa numViejo→numNuevo puede construirse
+// una sola vez, sin ambigüedad, y aplicarse tal cual a cualquier liqNum
+// suelto que aparezca en anticipos/ingresos/incidentes/nómina/facturas
+// usadas — no hace falta cruzarlo también con operador/unidad ahí.
+let _planMigracion=null;
+
+function calcularPlanMigracion(lista){
+  var grupos={};
+  lista.forEach(function(h){
+    var opId=parseInt(h.opId||h.unidad);
+    if(!grupos[opId])grupos[opId]=[];
+    grupos[opId].push(h);
+  });
+  var oldNumToNew={};
+  var porOperador=[];
+  Object.keys(grupos).forEach(function(k){
+    var opId=parseInt(k);
+    var liqs=grupos[k].slice().sort(function(a,b){return(a.num||0)-(b.num||0);});
+    var items=liqs.map(function(h,i){
+      var newNum=i+1;
+      oldNumToNew[h.num]=newNum;
+      return{oldNum:h.num,newNum:newNum,fechaCierre:h.fechaCierre||'',id:h.id,unidad:h.unidad};
+    });
+    porOperador.push({opId:opId,opNombre:opNombre(opId),liqs:items});
+  });
+  porOperador.sort(function(a,b){return a.opNombre.localeCompare(b.opNombre);});
+  return{porOperador:porOperador,oldNumToNew:oldNumToNew};
+}
+
+async function previewRenumeracion(){
+  var u=usuarioSesion();
+  if(!u||!u.esAdmin){alert('Solo un administrador puede usar esta herramienta.');return;}
+  if(!window.FB){alert('Sin conexión a Firebase.');return;}
+  var activaData=await window.FB.get('estado','liqActiva');
+  var activaActual=null;
+  if(activaData&&activaData.data){try{activaActual=JSON.parse(activaData.data);}catch(e){}}
+  var fresco=await window.FB.getAll('historial');
+  _planMigracion=calcularPlanMigracion(fresco);
+
+  var totalLiqs=fresco.length;
+  var cambian=_planMigracion.porOperador.reduce(function(s,g){return s+g.liqs.filter(function(x){return x.oldNum!==x.newNum;}).length;},0);
+  var rows='';
+  _planMigracion.porOperador.forEach(function(g){
+    rows+='<tr style="background:#f5f5f8"><td colspan="3" style="font-weight:700">'+g.opNombre+' ('+g.liqs.length+' liquidaciones)</td></tr>';
+    g.liqs.forEach(function(x){
+      var cambia=x.oldNum!==x.newNum;
+      rows+='<tr'+(cambia?' style="color:#c1121f"':'')+'><td>#'+x.oldNum+'</td><td>→ #'+x.newNum+(cambia?' (cambia)':' (sin cambio)')+'</td><td>'+(x.fechaCierre||'')+'</td></tr>';
+    });
+  });
+  $('migracionTablaWrap').innerHTML='<table><thead><tr><th>Folio actual</th><th>Folio nuevo</th><th>Fecha cierre</th></tr></thead><tbody>'+rows+'</tbody></table>';
+  $('migracionInfo').innerHTML='<div class="alert alert-warn">📋 '+totalLiqs+' liquidaciones en el historial · '+_planMigracion.porOperador.length+' operadores · <strong>'+cambian+'</strong> liquidaciones cambiarán de folio.'
+    +(activaActual?'<br>⚠️ Hay una liquidación activa ABIERTA (#'+activaActual.num+', '+(activaActual.op?activaActual.op.nombre:'')+'). Ciérrala o descártala antes de aplicar la migración.':'<br>✅ No hay ninguna liquidación activa abierta — es seguro migrar.')
+    +'</div>';
+  $('btnAplicarMigracion').disabled=!!activaActual;
+}
+
+async function descargarRespaldoMigracion(){
+  var u=usuarioSesion();
+  if(!u||!u.esAdmin){alert('Solo un administrador puede usar esta herramienta.');return;}
+  if(!window.FB){alert('Sin conexión a Firebase.');return;}
+  var res=await Promise.all([
+    window.FB.getAll('historial'),
+    window.FB.get('estado','anticiposDB'),
+    window.FB.get('estado','ingresosDB'),
+    window.FB.get('estado','incidentesDB'),
+    window.FB.get('estado','nominaDB'),
+    window.FB.get('estado','facturasUsadas'),
+    window.FB.get('estado','config'),
+  ]);
+  var hist=res[0],a=res[1],i=res[2],inc=res[3],nom=res[4],fu=res[5],cfg=res[6];
+  var respaldo={
+    fecha:new Date().toISOString(),
+    historial:hist,
+    anticiposDB:(a&&a.data)?JSON.parse(a.data):{},
+    ingresosDB:(i&&i.data)?JSON.parse(i.data):[],
+    incidentesDB:(inc&&inc.data)?JSON.parse(inc.data):{},
+    nominaDB:(nom&&nom.data)?JSON.parse(nom.data):{},
+    facturasUsadas:(fu&&fu.data)?JSON.parse(fu.data):{},
+    config:cfg||{}
+  };
+  var blob=new Blob([JSON.stringify(respaldo,null,2)],{type:'application/json'});
+  var url=URL.createObjectURL(blob);
+  var linkEl=document.createElement('a');
+  linkEl.href=url;linkEl.download='respaldo_liquidaciones_'+new Date().toISOString().slice(0,19).replace(/[:T]/g,'-')+'.json';
+  document.body.appendChild(linkEl);linkEl.click();document.body.removeChild(linkEl);
+  URL.revokeObjectURL(url);
+  $('migracionInfo').innerHTML+='<div class="alert alert-ok">💾 Respaldo descargado.</div>';
+}
+
+async function aplicarRenumeracion(){
+  var u=usuarioSesion();
+  if(!u||!u.esAdmin){alert('Solo un administrador puede usar esta herramienta.');return;}
+  if(!_planMigracion){alert('Primero genera la vista previa.');return;}
+  if(!window.FB){alert('Sin conexión a Firebase.');return;}
+
+  var activaData=await window.FB.get('estado','liqActiva');
+  var activaActual=null;
+  if(activaData&&activaData.data){try{activaActual=JSON.parse(activaData.data);}catch(e){}}
+  if(activaActual){alert('No se puede migrar: hay una liquidación activa abierta (#'+activaActual.num+'). Ciérrala o descártala primero.');return;}
+
+  if(!confirm('¿Aplicar la renumeración?\n\nEsto reescribe el historial y los folios (liqNum) en anticipos, ingresos, incidentes, nómina y facturas usadas. Asegúrate de haber descargado el respaldo antes — esta acción no se puede deshacer automáticamente.'))return;
+  if(prompt('Para confirmar, escribe RENUMERAR:')!=='RENUMERAR'){alert('No coincide. No se aplicó nada.');return;}
+
+  try{
+    var fresco=await window.FB.getAll('historial');
+    var plan=calcularPlanMigracion(fresco); // recalcular con datos frescos, no confiar en el preview viejo
+    var oldNumToNew=plan.oldNumToNew;
+    function remap(liqNum){return(liqNum!=null&&oldNumToNew[liqNum]!=null)?oldNumToNew[liqNum]:liqNum;}
+
+    var res=await Promise.all([
+      window.FB.get('estado','anticiposDB'),
+      window.FB.get('estado','ingresosDB'),
+      window.FB.get('estado','incidentesDB'),
+      window.FB.get('estado','nominaDB'),
+      window.FB.get('estado','facturasUsadas'),
+    ]);
+    var antDB=(res[0]&&res[0].data)?JSON.parse(res[0].data):{};
+    if(Array.isArray(antDB))antDB={};
+    var ingDB=(res[1]&&res[1].data)?JSON.parse(res[1].data):[];
+    var incDB=(res[2]&&res[2].data)?JSON.parse(res[2].data):{};
+    if(Array.isArray(incDB))incDB={};
+    var nomDB=(res[3]&&res[3].data)?JSON.parse(res[3].data):{};
+    if(Array.isArray(nomDB))nomDB={};
+    var fuDB=(res[4]&&res[4].data)?JSON.parse(res[4].data):{};
+
+    Object.keys(antDB).forEach(function(k){(antDB[k]||[]).forEach(function(a){a.liqNum=remap(a.liqNum);});});
+    ingDB.forEach(function(v){v.liqNum=remap(v.liqNum);});
+    Object.keys(incDB).forEach(function(k){(incDB[k]||[]).forEach(function(a){a.liqNum=remap(a.liqNum);});});
+    Object.keys(nomDB).forEach(function(k){(nomDB[k]||[]).forEach(function(n){n.liqNum=remap(n.liqNum);});});
+    Object.keys(fuDB).forEach(function(k){if(fuDB[k])fuDB[k].liqNum=remap(fuDB[k].liqNum);});
+
+    // Reescribir historial: nuevo doc con id/num actualizados, borrar el doc viejo
+    var nCambiados=0;
+    for(var idx=0;idx<fresco.length;idx++){
+      var h=fresco[idx];
+      var opId=parseInt(h.opId||h.unidad);
+      var newNum=oldNumToNew[h.num];
+      if(newNum==null||newNum===h.num)continue;
+      var nuevoId='liq-'+newNum+'-'+opId;
+      var docNuevo=Object.assign({},h,{id:nuevoId,num:newNum});
+      await window.FB.set('historial',nuevoId,docNuevo);
+      if(h.id!==nuevoId) await window.FB.del('historial',h.id);
+      nCambiados++;
+    }
+
+    // Nuevo consecutivo por operador = cantidad de liquidaciones que le quedaron (1..N)
+    var ultimaLiqNumPorOp={};
+    plan.porOperador.forEach(function(g){ultimaLiqNumPorOp[g.opId]=g.liqs.length;});
+    var cfg=(await window.FB.get('estado','config'))||{};
+    cfg.ultimaLiqNumPorOp=ultimaLiqNumPorOp;
+
+    await Promise.all([
+      window.FB.set('estado','anticiposDB',{data:JSON.stringify(antDB)}),
+      window.FB.set('estado','ingresosDB',{data:JSON.stringify(ingDB)}),
+      window.FB.set('estado','incidentesDB',{data:JSON.stringify(incDB)}),
+      window.FB.set('estado','nominaDB',{data:JSON.stringify(nomDB)}),
+      window.FB.set('estado','facturasUsadas',{data:JSON.stringify(fuDB)}),
+      window.FB.set('estado','config',cfg),
+    ]);
+
+    _planMigracion=null;
+    $('btnAplicarMigracion').disabled=true;
+    $('migracionInfo').innerHTML='<div class="alert alert-ok">✅ Migración aplicada: '+nCambiados+' liquidaciones renumeradas. Recargando historial...</div>';
+    historialDB=await window.FB.getAll('historial');
+    buscar();
+  }catch(e){
+    console.error('aplicarRenumeracion:',e);
+    alert('⚠️ Error al aplicar la migración: '+e.message+'\nRevisa la consola. Si algo quedó a medias, usa el respaldo descargado para restaurar manualmente.');
+  }
+}
+
+// ══════════════════════════════════════════════
 // REPORTES
 // ══════════════════════════════════════════════
 let repDatosActuales=null; // {headers:[...], rows:[[...]]} para exportar CSV
@@ -869,7 +1071,9 @@ let repNombreActual='reporte';
 
 function cambiarTipoReporte(){
   const t=$('repTipo').value;
-  $('fieldRepOp').style.display=(t==='gastosLiq'||t==='ingresosLiq')?'none':'flex';
+  // El folio de liquidación ya no es único en todo el sistema (consecutivo
+  // por operador), así que estos dos reportes necesitan operador + número.
+  $('fieldRepOp').style.display='flex';
   $('fieldRepNum').style.display=(t==='gastosLiq'||t==='ingresosLiq')?'flex':'none';
   $('repResumen').innerHTML='';
   $('repTablaWrap').innerHTML='';
@@ -972,9 +1176,11 @@ function repAntOp(){
 
 function repGastosLiq(){
   const num=parseInt($('repNum').value||0);
+  const filtOp=parseInt($('repOp').value||0);
   if(!num){alert('Ingresa el número de liquidación.');return;}
-  const l=historialDB.find(x=>x.num===num);
-  if(!l){alert('No se encontró la liquidación #'+num+' en el historial.');return;}
+  if(!filtOp){alert('Selecciona el operador (el folio ya es un consecutivo por operador, no alcanza con el número solo).');return;}
+  const l=historialDB.find(x=>x.num===num&&parseInt(x.opId||x.unidad)===filtOp);
+  if(!l){alert('No se encontró la liquidación #'+num+' de ese operador en el historial.');return;}
   const snap=l.snapshot||{};
   const headers=['Tipo','Fecha','Proveedor/Caseta','RFC','Concepto','Subtotal','IVA','Total','Pagó'];
   const gastos=(snap.gastosList||[]).map(g=>['Gasto '+(g.tipo==='xml'?'facturado':'manual'),g.fecha||'',g.proveedor||'',g.rfc||'',g.concepto||'',fmt(g.subtotal||0),fmt(g.iva||0),fmt(g.total||0),g.pagaOp?'Operador':'Empresa']);
@@ -994,9 +1200,11 @@ function repGastosLiq(){
 
 function repIngresosLiq(){
   const num=parseInt($('repNum').value||0);
+  const filtOp=parseInt($('repOp').value||0);
   if(!num){alert('Ingresa el número de liquidación.');return;}
-  const l=historialDB.find(x=>x.num===num);
-  if(!l){alert('No se encontró la liquidación #'+num+' en el historial.');return;}
+  if(!filtOp){alert('Selecciona el operador (el folio ya es un consecutivo por operador, no alcanza con el número solo).');return;}
+  const l=historialDB.find(x=>x.num===num&&parseInt(x.opId||x.unidad)===filtOp);
+  if(!l){alert('No se encontró la liquidación #'+num+' de ese operador en el historial.');return;}
   const snap=l.snapshot||{};
   const headers=['Folio','Fecha','Cliente','UUID','Subtotal','IVA','Retención','Total'];
   const rows=(snap.viajesList||[]).map(v=>[v.folio||'—',v.fecha||'',v.cliente||'',v.uuid||'',fmt(v.subtotal||0),fmt(v.iva||0),fmt(v.ret||0),fmt(v.total||0)]);

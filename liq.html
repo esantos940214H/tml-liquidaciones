@@ -932,7 +932,22 @@ let liq=null;
 let arrastres={};
 let cargasEdenred=[];
 let cargasOp=[];
-let ultimaLiqNum=0;
+let ultimaLiqNum=0; // legacy: consecutivo global — se mantiene solo hasta correr la migración a folio por operador
+let ultimaLiqNumPorOp={}; // nuevo: {opId: últimoNúmero} — consecutivo independiente por operador
+let migracionFolioPorOpAplicada=false; // se activa cuando config.ultimaLiqNumPorOp existe (lo crea la migración en hist.html)
+
+// Calcula el siguiente folio para el operador dado. Antes de correr la
+// migración a folio-por-operador (hist.html → "Migrar numeración"), sigue
+// usando el consecutivo global de siempre para no crear folios que choquen
+// con los ya existentes; después de migrar, cada operador folia aparte.
+function siguienteNumLiq(opId){
+  if(migracionFolioPorOpAplicada) return (ultimaLiqNumPorOp[opId]||0)+1;
+  return ultimaLiqNum+1;
+}
+function registrarNumLiqUsado(opId,num){
+  if(migracionFolioPorOpAplicada) ultimaLiqNumPorOp[opId]=Math.max(ultimaLiqNumPorOp[opId]||0,num);
+  else ultimaLiqNum=Math.max(ultimaLiqNum,num);
+}
 let gastoPendiente=null; // gasto esperando autorización
 let _snap={}; // snapshot del último reporte generado
 
@@ -1100,7 +1115,7 @@ function guardarEstado(){
   if(!fbReady){ console.warn('Firebase no listo aún'); return; }
   // SOLO guarda lo que pertenece a liquidaciones — NO toca anticiposDB ni ingresosDB
   window.FB.set('estado','arrastres',{data: JSON.stringify(arrastres)});
-  window.FB.set('estado','config',{ultimaLiqNum: ultimaLiqNum});
+  window.FB.set('estado','config',{ultimaLiqNum: ultimaLiqNum, ultimaLiqNumPorOp: ultimaLiqNumPorOp});
   if(liq) window.FB.set('estado','liqActiva',{data: JSON.stringify(liq)});
   else window.FB.del('estado','liqActiva');
 }
@@ -1120,6 +1135,7 @@ async function cargarEstado(){
 
     if(ar&&ar.data) arrastres=JSON.parse(ar.data);
     if(cfg&&cfg.ultimaLiqNum) ultimaLiqNum=cfg.ultimaLiqNum;
+    if(cfg&&cfg.ultimaLiqNumPorOp){ultimaLiqNumPorOp=cfg.ultimaLiqNumPorOp;migracionFolioPorOpAplicada=true;}
     if(fu&&fu.data) facturasUsadas=JSON.parse(fu.data);
 
     if(l&&l.data){
@@ -1344,7 +1360,7 @@ function limpiarEstado(){
   window.FB.del('estado','arrastres');
   window.FB.del('estado','config');
   window.FB.del('estado','liqActiva');
-  anticiposDB={};ingresosDB=[];arrastres={};ultimaLiqNum=0;liq=null;
+  anticiposDB={};ingresosDB=[];arrastres={};ultimaLiqNum=0;ultimaLiqNumPorOp={};migracionFolioPorOpAplicada=false;liq=null;
   location.reload();
 }
 
@@ -1738,7 +1754,7 @@ function onLiqOpChange(){
   $('liqComision').value=op?op.comision:12;
   bloquearComision();
   actualizarArrastreDieselPreview();
-  if(!liq)$('liqNum').value=ultimaLiqNum+1;
+  if(!liq&&opId)$('liqNum').value=siguienteNumLiq(opId);
   if(opId) refrescarPreview();
 }
 // Se llama cuando cambia la unidad manejada (independiente del operador) —
@@ -1994,8 +2010,8 @@ function iniciarLiquidacion(){
     return;
   }
   const numIng=parseInt($('liqNum').value||0);
-  const num=numIng>0?numIng:ultimaLiqNum+1;
-  $('liqNum').value=num;ultimaLiqNum=Math.max(ultimaLiqNum,num);
+  const num=numIng>0?numIng:siguienteNumLiq(opId);
+  $('liqNum').value=num;registrarNumLiqUsado(opId,num);
   // liq.opId = identidad del operador (dueño de anticipos/viajes/nómina).
   // liq.unidad = vehículo manejado este periodo (dueño del arrastre de
   // diesel/casetas) — pueden diferir si el operador cambió de unidad.
@@ -3729,7 +3745,7 @@ function cerrarLiquidacion(){
   if($('liqKms'))$('liqKms').value='';
   if($('liqLitrosECM'))$('liqLitrosECM').value='';
   if($('liqInfo'))$('liqInfo').style.display='none';
-  if($('liqNum'))$('liqNum').value=ultimaLiqNum+1;
+  if($('liqNum'))$('liqNum').value=''; // se recalcula por operador al elegir uno nuevo (onLiqOpChange)
   actualizarBadges();
   guardarEstado();
   showTab(0);
