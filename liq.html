@@ -1011,11 +1011,26 @@ var fbReady = false;
 const MODULO_ACTUAL='liq';
 const NOMBRES_MODULO={ant:'Anticipos',ing:'Ingresos',liq:'Liquidaciones',nom:'Nómina',inc:'Incidentes',hist:'Historial'};
 
+// Cookie compartida entre subdominios (.mudanzastml.mx) — reemplaza
+// sessionStorage: cada módulo vive en su propio subdominio (site de
+// Firebase Hosting), así que sessionStorage ya no se comparte entre ellos.
+function tmlSetCookie(name,value,days){
+  var expires='';
+  if(days){var d=new Date();d.setTime(d.getTime()+days*24*60*60*1000);expires=';expires='+d.toUTCString();}
+  document.cookie=name+'='+encodeURIComponent(value)+expires+';domain=.mudanzastml.mx;path=/;SameSite=Lax;Secure';
+}
+function tmlGetCookie(name){
+  var m=document.cookie.match('(^|;\\s*)'+name+'=([^;]*)');
+  return m?decodeURIComponent(m[2]):null;
+}
+function tmlDeleteCookie(name){
+  document.cookie=name+'=;expires=Thu, 01 Jan 1970 00:00:00 GMT;domain=.mudanzastml.mx;path=/;SameSite=Lax;Secure';
+}
 function usuarioSesion(){
-  try{return JSON.parse(sessionStorage.getItem('tml_user')||'null');}catch(e){return null;}
+  try{return JSON.parse(tmlGetCookie('tml_user')||'null');}catch(e){return null;}
 }
 function cerrarSesionTML(){
-  sessionStorage.removeItem('tml_user');
+  tmlDeleteCookie('tml_user');
   location.reload();
 }
 function mostrarLoginModulo(){
@@ -1042,7 +1057,7 @@ async function intentarLogin(){
     if(!match.esAdmin&&(!match.permisos||!match.permisos[MODULO_ACTUAL])){
       err.textContent='Tu usuario no tiene permiso para entrar a '+NOMBRES_MODULO[MODULO_ACTUAL]+'.';err.style.display='block';return;
     }
-    sessionStorage.setItem('tml_user',JSON.stringify({id:match.id,usuario:match.usuario,nombre:match.nombre,permisos:match.permisos,esAdmin:!!match.esAdmin}));
+    tmlSetCookie('tml_user',JSON.stringify({id:match.id,usuario:match.usuario,nombre:match.nombre,permisos:match.permisos,esAdmin:!!match.esAdmin}));
     $('sessionOverlay').classList.remove('show');
     mostrarSesionEnHeader();
   }catch(e){
