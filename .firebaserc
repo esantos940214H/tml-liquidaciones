@@ -1,0 +1,19 @@
+{
+  "projects": {
+    "default": "tml-liquidaciones"
+  },
+  "targets": {
+    "tml-liquidaciones": {
+      "hosting": {
+        "portal": ["tml-liquidaciones"],
+        "anticipos": ["tml-liquidaciones-anticipos"],
+        "cxc": ["tml-liquidaciones-cxc"],
+        "liquidaciones": ["tml-liquidaciones-liq"],
+        "nomina": ["tml-liquidaciones-nomina"],
+        "incidentes": ["tml-liquidaciones-incidentes"],
+        "historial": ["tml-liquidaciones-historial"],
+        "usuarios": ["tml-liquidaciones-usuarios"]
+      }
+    }
+  }
+}
