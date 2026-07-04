@@ -117,13 +117,13 @@ tr:hover td{background:#fafafa}
     <button class="session-logout" id="btnCerrarSesion" onclick="cerrarSesionTML()" style="display:none">Cerrar sesión</button>
     <span class="fb-status" id="fbStatus">⏳ Conectando...</span>
     <nav class="nav">
-      <a href="ant.html">📋 Anticipos</a>
-      <a href="ing.html" class="active">📄 Ingresos</a>
-      <a href="liq.html">🚛 Liquidaciones</a>
-      <a href="nomina.html">🧾 Nómina</a>
-      <a href="incidentes.html">🚨 Incidentes</a>
-      <a href="hist.html">🗂️ Historial</a>
-      <a href="usuarios.html">👤 Usuarios</a>
+      <a href="https://anticipos.mudanzastml.mx">📋 Anticipos</a>
+      <a href="https://cxc.mudanzastml.mx" class="active">📄 Ingresos</a>
+      <a href="https://liquidaciones.mudanzastml.mx">🚛 Liquidaciones</a>
+      <a href="https://nomina.mudanzastml.mx">🧾 Nómina</a>
+      <a href="https://incidentes.mudanzastml.mx">🚨 Incidentes</a>
+      <a href="https://historial.mudanzastml.mx">🗂️ Historial</a>
+      <a href="https://usuarios.mudanzastml.mx">👤 Usuarios</a>
     </nav>
   </div>
 </header>
@@ -347,13 +347,13 @@ async function intentarLogin(){
 }
 function aplicarPermisosNav(u){
   if(!u||u.esAdmin)return;
-  var mapa={ant:'ant.html',ing:'ing.html',liq:'liq.html',nom:'nomina.html',inc:'incidentes.html',hist:'hist.html'};
+  var mapa={ant:'https://anticipos.mudanzastml.mx',ing:'https://cxc.mudanzastml.mx',liq:'https://liquidaciones.mudanzastml.mx',nom:'https://nomina.mudanzastml.mx',inc:'https://incidentes.mudanzastml.mx',hist:'https://historial.mudanzastml.mx'};
   Object.keys(mapa).forEach(function(mod){
     if(!u.permisos||!u.permisos[mod]){
       document.querySelectorAll('nav a[href="'+mapa[mod]+'"]').forEach(function(el){el.style.display='none';});
     }
   });
-  var usuariosLink=document.querySelector('nav a[href="usuarios.html"]');
+  var usuariosLink=document.querySelector('nav a[href="https://usuarios.mudanzastml.mx"]');
   if(usuariosLink)usuariosLink.style.display='none';
 }
 function mostrarSesionEnHeader(){
