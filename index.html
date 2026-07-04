@@ -23,7 +23,7 @@ body{font-family:'Segoe UI',Arial,sans-serif;background:#f0f2f5;min-height:100vh
 /* HEADER */
 header{background:#1a1a2e;color:#fff;padding:10px 20px;display:flex;align-items:center;justify-content:space-between;border-bottom:3px solid #e63946;position:fixed;top:0;left:0;right:0;z-index:100}
 .logo{font-size:18px;font-weight:800}.logo span{color:#e63946}
-.nav{display:flex;gap:6px}
+.nav{display:flex;gap:6px;flex-wrap:wrap}
 .nav a{color:#aaa;text-decoration:none;font-size:12px;padding:6px 12px;border-radius:5px;border:1px solid #333;transition:all .15s}
 .nav a:hover{color:#fff;border-color:#555}
 .nav a.active{color:#fff;background:#e63946;border-color:#e63946}
@@ -43,34 +43,57 @@ iframe.visible{display:block}
     <span id="moduloLabel" style="font-size:13px;font-weight:400;color:#aaa"></span>
   </div>
   <nav class="nav">
-    <a href="?m=ant" id="navAnt">📋 Anticipos</a>
-    <a href="?m=ing" id="navIng">📄 Ingresos</a>
-    <a href="?m=liq" id="navLiq">🚛 Liquidaciones</a>
-    <a href="?m=nom" id="navNom">🧾 Nómina</a>
-    <a href="?m=inc" id="navInc">🚨 Incidentes</a>
-    <a href="?m=hist" id="navHist">🗂️ Historial</a>
+    <a href="https://anticipos.mudanzastml.mx" id="navAnt" data-mod="ant">📋 Anticipos</a>
+    <a href="https://cxc.mudanzastml.mx" id="navIng" data-mod="ing">📄 Ingresos</a>
+    <a href="https://liquidaciones.mudanzastml.mx" id="navLiq" data-mod="liq">🚛 Liquidaciones</a>
+    <a href="https://nomina.mudanzastml.mx" id="navNom" data-mod="nom">🧾 Nómina</a>
+    <a href="https://incidentes.mudanzastml.mx" id="navInc" data-mod="inc">🚨 Incidentes</a>
+    <a href="https://historial.mudanzastml.mx" id="navHist" data-mod="hist">🗂️ Historial</a>
+    <a href="https://usuarios.mudanzastml.mx" id="navUsuarios" data-mod="usuarios">👤 Usuarios</a>
   </nav>
 </header>
 
 <!-- IFRAMES -->
 <div id="app">
-  <iframe id="fr-ant" src="ant.html" title="Anticipos"></iframe>
-  <iframe id="fr-ing" src="ing.html" title="Ingresos"></iframe>
-  <iframe id="fr-liq" src="liq.html" title="Liquidaciones"></iframe>
-  <iframe id="fr-nom" src="nomina.html" title="Nómina"></iframe>
-  <iframe id="fr-inc" src="incidentes.html" title="Incidentes"></iframe>
-  <iframe id="fr-hist" src="hist.html" title="Historial"></iframe>
+  <iframe id="fr-ant" src="https://anticipos.mudanzastml.mx" title="Anticipos"></iframe>
+  <iframe id="fr-ing" src="https://cxc.mudanzastml.mx" title="Ingresos"></iframe>
+  <iframe id="fr-liq" src="https://liquidaciones.mudanzastml.mx" title="Liquidaciones"></iframe>
+  <iframe id="fr-nom" src="https://nomina.mudanzastml.mx" title="Nómina"></iframe>
+  <iframe id="fr-inc" src="https://incidentes.mudanzastml.mx" title="Incidentes"></iframe>
+  <iframe id="fr-hist" src="https://historial.mudanzastml.mx" title="Historial"></iframe>
+  <iframe id="fr-usuarios" src="https://usuarios.mudanzastml.mx" title="Usuarios"></iframe>
 </div>
 
 <script>
-var NOMBRES = {ant:'· Anticipos', ing:'· Ingresos', liq:'· Liquidaciones', nom:'· Nómina', inc:'· Incidentes', hist:'· Historial'};
-var mods = ['ant','ing','liq','nom','inc','hist'];
+// ══════════════════════════════════════════════
+// COOKIE COMPARTIDA ENTRE SUBDOMINIOS (.mudanzastml.mx)
+// Reemplaza sessionStorage: cada módulo vive en su propio subdominio
+// (site de Firebase Hosting), así que sessionStorage ya no se comparte
+// entre ellos. La sesión "tml_user" se guarda como cookie con
+// Domain=.mudanzastml.mx para que el login hecho en un módulo sea
+// visible en todos los demás (y en este portal).
+// ══════════════════════════════════════════════
+function tmlSetCookie(name,value,days){
+  var expires='';
+  if(days){var d=new Date();d.setTime(d.getTime()+days*24*60*60*1000);expires=';expires='+d.toUTCString();}
+  document.cookie=name+'='+encodeURIComponent(value)+expires+';domain=.mudanzastml.mx;path=/;SameSite=Lax;Secure';
+}
+function tmlGetCookie(name){
+  var m=document.cookie.match('(^|;\\s*)'+name+'=([^;]*)');
+  return m?decodeURIComponent(m[2]):null;
+}
+function tmlDeleteCookie(name){
+  document.cookie=name+'=;expires=Thu, 01 Jan 1970 00:00:00 GMT;domain=.mudanzastml.mx;path=/;SameSite=Lax;Secure';
+}
+
+var NOMBRES = {ant:'· Anticipos', ing:'· Ingresos', liq:'· Liquidaciones', nom:'· Nómina', inc:'· Incidentes', hist:'· Historial', usuarios:'· Usuarios'};
+var mods = ['ant','ing','liq','nom','inc','hist']; // 'usuarios' se maneja aparte (solo admin)
 
 // Sesión: cada módulo pide su propio login/permiso al cargarse en el iframe,
 // pero aquí filtramos el menú y elegimos a dónde aterrizar según lo que ya
-// sabemos de la sesión guardada (sessionStorage, la llena el login del módulo).
+// sabemos de la sesión guardada (cookie compartida, la llena el login del módulo).
 function usuarioSesionRouter(){
-  try{return JSON.parse(sessionStorage.getItem('tml_user')||'null');}catch(e){return null;}
+  try{return JSON.parse(tmlGetCookie('tml_user')||'null');}catch(e){return null;}
 }
 var _u=usuarioSesionRouter();
 var modsPermitidos=mods;
@@ -80,24 +103,42 @@ if(_u && !_u.esAdmin){
 
 var modActual = (new URLSearchParams(window.location.search).get('m')) || (modsPermitidos[0]||'liq');
 if (!NOMBRES[modActual]) modActual = modsPermitidos[0]||'liq';
-if(_u && !_u.esAdmin && modsPermitidos.length && modsPermitidos.indexOf(modActual)===-1){
+if(_u && !_u.esAdmin && modsPermitidos.length && modsPermitidos.indexOf(modActual)===-1 && modActual!=='usuarios'){
   modActual = modsPermitidos[0];
 }
+// "Usuarios" es exclusivo de administradores — nunca aterrizar ahí sin serlo.
+if(modActual==='usuarios' && !(_u&&_u.esAdmin)) modActual = modsPermitidos[0]||'liq';
 
 document.getElementById('mainHeader').style.display = 'flex';
-document.getElementById('moduloLabel').textContent = NOMBRES[modActual] || '';
-mods.forEach(function(m) {
-  var el = document.getElementById('nav' + m.charAt(0).toUpperCase() + m.slice(1));
-  if (el) {
-    el.className = m === modActual ? 'active' : '';
-    if(_u && !_u.esAdmin && (!_u.permisos || !_u.permisos[m])) el.style.display = 'none';
+
+function mostrarModulo(mod){
+  modActual = mod;
+  document.getElementById('moduloLabel').textContent = NOMBRES[mod] || '';
+  document.querySelectorAll('.nav a').forEach(function(el){
+    el.classList.toggle('active', el.getAttribute('data-mod') === mod);
+  });
+  document.querySelectorAll('#app iframe').forEach(function(fr){fr.classList.remove('visible');});
+  var fr = document.getElementById('fr-' + mod);
+  if (fr) fr.classList.add('visible');
+}
+
+// Ocultar del menú los módulos a los que el usuario no tiene permiso, y el
+// link de Usuarios si no es administrador.
+document.querySelectorAll('.nav a').forEach(function(el){
+  var m = el.getAttribute('data-mod');
+  if(m==='usuarios'){
+    if(!(_u&&_u.esAdmin)) el.style.display='none';
+  } else if(_u && !_u.esAdmin && (!_u.permisos || !_u.permisos[m])){
+    el.style.display = 'none';
   }
+  // Clic en el menú: cambiar el iframe visible SIN recargar la página.
+  el.addEventListener('click', function(e){
+    e.preventDefault();
+    mostrarModulo(m);
+  });
 });
-document.querySelectorAll('#app iframe').forEach(function(fr) {
-  fr.classList.remove('visible');
-});
-var fr = document.getElementById('fr-' + modActual);
-if (fr) fr.classList.add('visible');
+
+mostrarModulo(modActual);
 </script>
 </body>
 </html>
