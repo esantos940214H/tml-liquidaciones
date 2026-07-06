@@ -1953,10 +1953,31 @@ function mostrarPreviewLiq(opId){
 function calcDuracion(){
   const s=$('liqSalida').value,l=$('liqLlegada').value;
   if(s&&l){const d=Math.round((new Date(l)-new Date(s))/(1000*60*60*24));$('liqDuracion').value=d>=0?d:0;}
+  sincronizarEncabezadoLiq();
 }
 function calcRendAuto(){
   const kms=parseFloat($('liqKms').value||0),lts=parseFloat($('liqLitrosECM').value||0);
   if(kms>0&&lts>0)$('liqRend').value=(kms/lts).toFixed(2);
+  sincronizarEncabezadoLiq();
+}
+// Si ya hay una liquidación activa (nueva o reabierta), cualquier cambio a
+// los datos del encabezado (fechas, kms, litros ECM del escaneo,
+// rendimiento) se guarda de inmediato en ella. Antes, la única forma de que
+// estos campos "se guardaran" era volver a apretar "Iniciar liquidación" —
+// pero ese botón crea una liquidación EN BLANCO encima de la activa,
+// borrando diesel/gastos/autopistas ya capturados. Con esto, corregir un
+// dato de captura (p.ej. el escaneo de litros ECM) ya no requiere pasar por
+// ahí — se guarda solo al salir del campo.
+function sincronizarEncabezadoLiq(){
+  if(!liq)return;
+  liq.salida=$('liqSalida').value||liq.salida;
+  liq.llegada=$('liqLlegada').value||liq.llegada;
+  liq.duracion=$('liqDuracion').value||liq.duracion;
+  liq.kms=parseFloat($('liqKms').value||0);
+  liq.litrosECM=parseFloat($('liqLitrosECM').value||0);
+  liq.rendimiento=parseFloat($('liqRend').value||0);
+  if($('kpisDiesel'))calcDiesel(); // recalcula el diesel comprobado con el nuevo escaneo y guarda
+  else guardarEstado();
 }
 
 // DDEC via Claude
@@ -2008,6 +2029,18 @@ function aplicarDatosDDEC(datos,fname){
 
 function iniciarLiquidacion(){
  try{
+  // Este botón NUNCA debe crear una liquidación nueva encima de una ya
+  // activa (nueva o reabierta) — eso reemplazaba todo liq con un objeto en
+  // blanco (diesel:null, autopistas:[], gastos:[], etc.), borrando lo ya
+  // capturado. Si ya hay una activa, solo actualiza los datos editables del
+  // encabezado (normalmente ya se guardan solos al salir del campo, ver
+  // sincronizarEncabezadoLiq) y avisa — para iniciar otra liquidación hay
+  // que cerrar o eliminar primero la actual.
+  if(liq){
+    sincronizarEncabezadoLiq();
+    alert('Ya hay una liquidación activa (#'+liq.num+' · '+liq.op.nombre+'). Se actualizaron los datos del encabezado (fechas, kms, litros ECM, rendimiento).\n\nPara iniciar una liquidación distinta, primero cierra o elimina la actual.');
+    return;
+  }
   const opId=parseInt($('liqOp').value||0);
   const op=OPERADORES.find(function(o){return o.unidad===opId;});
   const unidad=parseInt($('liqUnidad')?$('liqUnidad').value||0:0);
