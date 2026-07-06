@@ -1260,9 +1260,20 @@ async function cargarEstado(){
     window.FB.listen('estado','liqActiva', function(data){
       if(data&&data.data){
         var liqRemota=JSON.parse(data.data);
+        var noHabiaActiva=!liq;
         if(!liq||(liq&&liq.num===liqRemota.num)){
           liq=liqRemota;
           if($('headerInfo'))$('headerInfo').textContent='Liq. #'+liq.num+' · '+liq.op.nombre;
+          // Esta pestaña no tenía ninguna liquidación activa en memoria (por
+          // ejemplo, quedó en null tras cerrar una anterior sin recargar la
+          // página — el módulo vive en un iframe del portal que ya NO se
+          // recarga entre clics) y Firestore ahora reporta una activa (p.ej.
+          // se acaba de reabrir desde Historial). Sin este refresco completo,
+          // solo se actualizaba el encabezado: la tabla de diesel se quedaba
+          // mostrando las cargas de la liquidación anterior mientras cargasOp
+          // seguía vacío (reseteado al cerrar), y los KPIs salían todos en
+          // ceros al recalcular.
+          if(noHabiaActiva) restaurarUILiquidacion();
         }
       }
     });

@@ -730,7 +730,7 @@ async function reabrirLiquidacion(){
   // cuáles eran los originales. Solo hay que ir al módulo a seguir editando.
   if(activaActual&&activaActual.reabierta&&parseInt(activaActual.opId||activaActual.unidad)===parseInt(l.opId||l.unidad)&&activaActual.num===l.num){
     alert('La liquidación #'+l.num+' ya está reabierta y activa (no se ha vuelto a cerrar). Te llevo directo al módulo de Liquidaciones para seguir editándola, sin volver a recalcular nada.');
-    location.href='liq.html';
+    location.href='https://liquidaciones.mudanzastml.mx';
     return;
   }
 
@@ -877,7 +877,7 @@ async function reabrirLiquidacion(){
     ]);
 
     alert('🔓 Liquidación #'+l.num+' reabierta.\n'+nA+' anticipo(s), '+nV+' viaje(s)'+(nN?', '+nN+' recibo(s) de nómina':'')+(nI?' y '+nI+' incidente(s)':'')+' quedaron pendientes otra vez e incluidos en la liquidación.\n\nSi hay anticipos, viajes o recibos de nómina NUEVOS registrados después del cierre original, no se van a jalar solos — vas a poder insertarlos a propósito con un botón dentro del módulo de Liquidaciones.\n\nAbriendo el módulo de Liquidaciones para editarla...');
-    location.href='liq.html';
+    location.href='https://liquidaciones.mudanzastml.mx';
   }catch(e){
     console.error('reabrirLiquidacion:',e);
     alert('⚠️ Error al reabrir la liquidación: '+e.message);
