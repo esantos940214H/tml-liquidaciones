@@ -540,6 +540,7 @@ function verDetalle(id){
   </div>`;
 
   function dr(label,val,cls){return`<div class="det-row${cls?' '+cls:''}""><span>${label}</span><span class="num">${fmt(val)}</span></div>`;}
+  function drDetail(label,val){return`<div style="display:flex;justify-content:space-between;padding:4px 10px 4px 20px;font-size:12px;color:#666;border-bottom:1px solid #f5f5f5"><span>${label}</span><span class="num">${fmt(val)}</span></div>`;}
 
   // Ingresos
   $('detIngresos').innerHTML=
@@ -590,12 +591,28 @@ function verDetalle(id){
     +dr('Diesel no comprobado',snap.dieselNoComprobado||0,'cargo')
     +`<div class="det-row subtotal cargo"><span>TOTAL CARGOS</span><span class="num">${fmt(snap.totalCargosReal||0)}</span></div>`;
 
+  // Desglose de "Gastos del operador" por concepto (viáticos, refacciones,
+  // maniobras, gastos p/viaje, empaque, otros) — mismo detalle que ya tenía
+  // el resultado de la empresa, pero antes solo aparecía como un renglón
+  // único aquí. Se reconstruye del snapshot.gastosList (manuales + XML),
+  // filtrando solo lo que pagó y comprobó el operador.
+  const gastosListOp=(snap.gastosList||[]).filter(function(g){return g.pagaOp;});
+  const gastosPorConceptoOpHist={};
+  gastosListOp.filter(function(g){return g.tipo!=='xml';}).forEach(function(g){
+    var k=g.concepto||'OTROS';
+    if(!gastosPorConceptoOpHist[k])gastosPorConceptoOpHist[k]=0;
+    gastosPorConceptoOpHist[k]+=g.total||0;
+  });
+  const gastosXMLOpHist=gastosListOp.filter(function(g){return g.tipo==='xml';});
+
   $('detAbonos').innerHTML=
     dr('Comisión fletes '+l.comision+'%',snap.totComision||0,'abono')
     +dr('1% gastos sin comprobante',snap.totGastos1||0,'abono')
     +dr('Diesel comprobado',snap.dieselComprobado||0,'abono')
     +dr('Autopistas op.',snap.totAutOp||0,'abono')
     +dr('Gastos del operador',snap.totGastosOp||0,'abono')
+    +Object.keys(gastosPorConceptoOpHist).map(function(k){return drDetail(k,gastosPorConceptoOpHist[k]);}).join('')
+    +gastosXMLOpHist.map(function(g){return drDetail('Facturado · '+(g.fecha||'—')+' · '+(g.proveedor||'')+' · '+(g.concepto||''),g.total||0);}).join('')
     +`<div class="det-row subtotal abono"><span>TOTAL ABONOS</span><span class="num">${fmt(snap.totalAbonosReal||0)}</span></div>`;
 
   $('detSaldo').innerHTML=`<div class="saldo-box ${saldo>=0?'saldo-fav':'saldo-con'}">

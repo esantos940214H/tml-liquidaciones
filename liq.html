@@ -3228,6 +3228,16 @@ function generarReporte(){
     if(!gastosPorConcepto[g.concepto])gastosPorConcepto[g.concepto]=0;
     gastosPorConcepto[g.concepto]+=g.importe;
   });
+  // Mismo desglose por concepto (viáticos, refacciones, maniobras, gastos
+  // p/viaje, empaque, otros) pero solo de los gastos que pagó y comprobó el
+  // operador — para mostrarlo en su cuenta igual de detallado que en el
+  // resultado de la empresa, en vez de un solo renglón "Gastos del operador".
+  const gastosPorConceptoOp={};
+  liq.gastos.filter(function(g){return g.pagaOp;}).forEach(function(g){
+    if(!gastosPorConceptoOp[g.concepto])gastosPorConceptoOp[g.concepto]=0;
+    gastosPorConceptoOp[g.concepto]+=g.importe;
+  });
+  const gastosXMLOpAplicar=gastosXMLVig.filter(function(g){return g.pagaOp;});
 
   // Incidentes de vialidad (módulo incidentes.html, independiente) — tope de $1,500
   // EN TOTAL por liquidación, no por incidente. El excedente queda pendiente.
@@ -3375,6 +3385,8 @@ function generarReporte(){
     +rr('Diesel comprobado ECM ('+fmtN(ltsComprobadosTot)+' lts × '+fmt(d.pp||0)+')',importeComprobadoTot,'abono')
     +rr('Autopistas pagadas por operador',totAutOp,'abono')
     +rr('Gastos del operador comprobados',totGastosOp,'abono')
+    +Object.keys(gastosPorConceptoOp).map(function(k){return rrDetail(k,gastosPorConceptoOp[k]);}).join('')
+    +gastosXMLOpAplicar.map(function(g){return rrDetail('Facturado · '+(g.fecha||'—')+' · '+(g.proveedor||'')+' · '+(g.desc||g.conceptoDesc||''),g.total);}).join('')
     +(totIncidentes?rr('Incidentes de vialidad',totIncidentes,'abono'):'')
     +(totCasetasNFOp?rr('Casetas sin comprobante (operador)',totCasetasNFOp,'abono'):'')
     +'<div class="rep-row subtotal abono"><span>TOTAL ABONOS</span><span class="num">'+fmt(totalAbonosReal)+'</span></div>';
