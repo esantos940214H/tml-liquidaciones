@@ -726,10 +726,16 @@ async function reabrirLiquidacion(){
 
   // Si esta liquidación YA es la activa (se reabrió antes y todavía no se
   // vuelve a cerrar), NO recalcular nada — eso volvería a "liberar" anticipos/
-  // viajes que ya se habían liberado la primera vez, perdiendo la lista de
-  // cuáles eran los originales. Solo hay que ir al módulo a seguir editando.
-  if(activaActual&&activaActual.reabierta&&parseInt(activaActual.opId||activaActual.unidad)===parseInt(l.opId||l.unidad)&&activaActual.num===l.num){
-    alert('La liquidación #'+l.num+' ya está reabierta y activa (no se ha vuelto a cerrar). Te llevo directo al módulo de Liquidaciones para seguir editándola, sin volver a recalcular nada.');
+  // viajes que ya se habían liberado la primera vez, dejando viajesIncluidos/
+  // anticiposIncluidos en [] (porque ya no queda ningún anticipo/viaje con
+  // liqNum===l.num para volver a encontrar) y el reporte se ve en ceros
+  // aunque diesel/gastos sigan bien. Esta comparación se hace SOLO por
+  // identidad (mismo operador + mismo folio) y ya NO exige que el flag
+  // `reabierta` haya sobrevivido intacto — si por cualquier motivo se
+  // corrompiera, seguía re-liberando de más cada vez que se apretaba
+  // "Reabrir" de nuevo.
+  if(activaActual&&parseInt(activaActual.opId||activaActual.unidad)===parseInt(l.opId||l.unidad)&&activaActual.num===l.num){
+    alert('La liquidación #'+l.num+' ya está activa en el módulo de Liquidaciones (se reabrió antes y no se ha vuelto a cerrar). Te llevo directo ahí, sin volver a tocar anticipos/viajes.');
     location.href='https://liquidaciones.mudanzastml.mx';
     return;
   }
