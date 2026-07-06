@@ -2667,9 +2667,15 @@ function esCombustibleXML(doc){
   var conceptos=doc.querySelectorAll('Concepto');
   for(var i=0;i<conceptos.length;i++){
     var clave=conceptos[i].getAttribute('ClaveProdServ')||'';
+    var claveUnidad=(conceptos[i].getAttribute('ClaveUnidad')||'').toUpperCase();
     var desc=(conceptos[i].getAttribute('Descripcion')||conceptos[i].getAttribute('Descripción')||'').toUpperCase();
     if(CLAVES_SAT_COMBUSTIBLE.indexOf(clave)!==-1)return true;
-    if(desc.indexOf('DIESEL')!==-1||desc.indexOf('GASOLINA')!==-1||desc.indexOf('COMBUSTIBLE')!==-1)return true;
+    // Fallback por palabra clave en la descripción: SOLO si además se vende
+    // por litro (unidad típica del combustible despachado en bomba). Sin
+    // este segundo requisito, refacciones como "TAPON DIESEL" o "ACEITE...
+    // DIESEL" (vendidas por pieza/galón) se detectaban como factura de
+    // combustible por error, solo por traer la palabra en el nombre.
+    if(claveUnidad==='LTR'&&(desc.indexOf('DIESEL')!==-1||desc.indexOf('GASOLINA')!==-1||desc.indexOf('MAGNA')!==-1||desc.indexOf('PREMIUM')!==-1||desc.indexOf('COMBUSTIBLE')!==-1))return true;
   }
   return false;
 }
