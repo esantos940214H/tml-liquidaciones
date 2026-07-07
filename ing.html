@@ -190,6 +190,7 @@ tr:hover td{background:#fafafa}
         <div class="field"><label style="color:#888">Destino <span style="font-weight:400;font-size:11px">(opcional)</span></label><input type="text" id="ingDestino" placeholder="Municipio, Estado"></div>
         <div class="field"><label style="color:#888">Distancia km <span style="font-weight:400;font-size:11px">(opcional)</span></label><input type="number" id="ingDistKms" placeholder="0" step="1"></div>
       </div>
+      <div class="field" style="margin-top:8px"><label style="color:#888">Observaciones <span style="font-weight:400;font-size:11px">(opcional)</span></label><textarea id="ingObs" rows="2" placeholder="Notas sobre este viaje..." style="border:1.5px solid #dde;border-radius:6px;padding:8px 10px;font-size:13px;color:#1a1a2e;background:#fafafa;width:100%;font-family:inherit;resize:vertical"></textarea></div>
       <div id="ingInfo" style="display:none;margin-top:10px"></div>
       <div style="margin-top:10px;display:flex;gap:8px">
         <button class="btn btn-red" onclick="agregarIngreso()">+ Registrar viaje</button>
@@ -422,7 +423,7 @@ function calcTotales(){
 }
 
 function limpiarForm(){
-  ['ingFolio','ingFecha','ingCliente','ingFlete','ingManiobras','ingOtros','ingSubtotal','ingIva','ingRet','ingTotal','ingOrigen','ingDestino','ingDistKms'].forEach(id=>{if($(id))$(id).value='';});
+  ['ingFolio','ingFecha','ingCliente','ingFlete','ingManiobras','ingOtros','ingSubtotal','ingIva','ingRet','ingTotal','ingOrigen','ingDestino','ingDistKms','ingObs'].forEach(id=>{if($(id))$(id).value='';});
   $('ingInfo').style.display='none';
 }
 
@@ -861,12 +862,13 @@ function agregarIngresoReal(){
   var _destino=($('ingDestino').value||'').trim();
   var _kms=($('ingDistKms').value||'').trim();
   var _ruta=(_origen&&_destino)?[{origen:_origen,destino:_destino,kms:_kms}]:[];
+  var _obs=($('ingObs').value||'').trim();
   const tipoDerivado=subtManiobras>0&&!subtFlete?'maniobra':subtOtros>0&&!subtFlete&&!subtManiobras?'otro':'flete_for';
   ingresosDB.push({id:uid(),unidad,folio,fecha:$('ingFecha').value||hoy(),
     cliente:$('ingCliente').value||'Sin cliente',tipo:tipoDerivado,
     subtotal,subtFlete,subtManiobras,subtOtros,
     iva:parseFloat($('ingIva').value||0),ret:parseFloat($('ingRet').value||0),
-    total:parseFloat($('ingTotal').value||0),estado:'sin_liquidar',liqNum:null,origen:'manual',ruta:_ruta});
+    total:parseFloat($('ingTotal').value||0),estado:'sin_liquidar',liqNum:null,origen:'manual',ruta:_ruta,observaciones:_obs});
   limpiarForm();guardar();renderIngresos();
 }
 
@@ -899,7 +901,7 @@ function renderIngresos(){
     const oCell=so>0?`<td class="num r">${fmt(so)}</td>`:`<td class="num r" style="color:#ccc">—</td>`;
     tb.innerHTML+=`<tr>
       <td style="width:32px;text-align:center"><input type="checkbox" class="chkIng" data-id="${v.id}" ${v.estado!=='sin_liquidar'?'disabled title="No se puede eliminar: ya está liquidado"':''} onchange="actualizarBarraSelIng()"></td>
-      <td class="num">${v.folio}${v.esDesglose?' <span class="badge bg-purple" title="Parte de una factura consolidada desglosada entre varios operadores (mismo CFDI)">🧩</span>':''}</td><td>${v.fecha}</td>
+      <td class="num">${v.folio}${v.esDesglose?' <span class="badge bg-purple" title="Parte de una factura consolidada desglosada entre varios operadores (mismo CFDI)">🧩</span>':''}${v.observaciones?` <span title="${v.observaciones.replace(/"/g,'&quot;')}">📝</span>`:''}</td><td>${v.fecha}</td>
       <td style="font-size:11px">${op?op.nombre.split(' ').slice(0,2).join(' '):'?'}</td>
       <td style="max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px">${v.cliente}</td>
       ${fCell}${mCell}${oCell}
