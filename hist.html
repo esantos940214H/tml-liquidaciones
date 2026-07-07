@@ -68,6 +68,12 @@ tr:hover td{background:#fafafa}
 .firma-label{font-size:10px;color:#666;text-transform:uppercase;letter-spacing:.7px;text-align:center}
 .firma-opnombre{font-size:12px;color:#555;text-align:center;font-weight:700;margin-top:4px}
 @media(max-width:600px){.grid2{grid-template-columns:1fr}}
+@media print{
+  header,.no-print{display:none!important}
+  body{background:#fff!important}
+  .card{box-shadow:none!important;border:1px solid #ccc;margin-bottom:10px!important}
+  .container{padding:6px!important}
+}
 
 /* ── SESIÓN (login por módulo) ── */
 .session-overlay{position:fixed;inset:0;background:#1a1a2e;z-index:999999;display:none;align-items:center;justify-content:center}
@@ -122,6 +128,7 @@ tr:hover td{background:#fafafa}
       <a href="https://nomina.mudanzastml.mx">🧾 Nómina</a>
       <a href="https://incidentes.mudanzastml.mx">🚨 Incidentes</a>
       <a href="https://historial.mudanzastml.mx" class="active">🗂️ Historial</a>
+      <a href="https://autorizaciones.mudanzastml.mx">🔐 Autorizaciones</a>
       <a href="https://usuarios.mudanzastml.mx">👤 Usuarios</a>
     </nav>
   </div>
@@ -130,7 +137,7 @@ tr:hover td{background:#fafafa}
 <div class="container">
 
   <!-- BÚSQUEDA -->
-  <div class="card">
+  <div class="card no-print">
     <div class="card-title">🔍 Buscar liquidaciones cerradas</div>
     <div class="row">
       <div class="field"><label>Operador</label>
@@ -152,7 +159,7 @@ tr:hover td{background:#fafafa}
   </div>
 
   <!-- REPORTES -->
-  <div class="card" id="cardReportes">
+  <div class="card no-print" id="cardReportes">
     <div class="card-title">📊 Reportes</div>
     <div class="row">
       <div class="field" style="min-width:220px"><label>Tipo de reporte</label>
@@ -184,7 +191,7 @@ tr:hover td{background:#fafafa}
   </div>
 
   <!-- RECONSTRUIR VIAJES BORRADOS DE UNA LIQUIDACIÓN (temporal, solo admin) -->
-  <div class="card" id="cardReconstruirViajes" style="display:none;border-color:#c1121f">
+  <div class="card no-print" id="cardReconstruirViajes" style="display:none;border-color:#c1121f">
     <div class="card-title">🩹 Reconstruir viajes borrados de una liquidación cerrada</div>
     <div style="font-size:12px;color:#666;margin-bottom:10px">
       Compara el snapshot guardado al cerrar (que no se toca nunca) contra lo que hay ahora en Ingresos, y te muestra qué viajes de esa liquidación ya no existen — para recrearlos exactamente con los mismos datos, marcados "Liquidado" con el mismo folio de liquidación. Quítate esta tarjeta del código en cuanto ya no la necesites — es una herramienta de un solo uso.
@@ -200,7 +207,7 @@ tr:hover td{background:#fafafa}
   </div>
 
   <!-- LISTA DE LIQUIDACIONES -->
-  <div class="card" id="cardLista">
+  <div class="card no-print" id="cardLista">
     <div class="card-title">📋 Liquidaciones cerradas <span id="countLiq" style="font-size:11px;font-weight:400;color:#aaa"></span></div>
     <div class="tbl-wrap">
       <table>
@@ -218,7 +225,7 @@ tr:hover td{background:#fafafa}
     <div class="card">
       <div class="card-title">
         <span>📊 Liquidación <span id="detLiqNum" style="color:#e63946"></span> <span class="readonly-badge">Solo lectura</span></span>
-        <button class="btn btn-out btn-sm" onclick="cerrarDetalle()">← Volver a la lista</button>
+        <button class="btn btn-out btn-sm no-print" onclick="cerrarDetalle()">← Volver a la lista</button>
       </div>
 
       <div id="detEncabezado" style="background:#f5f5f8;border-radius:8px;padding:12px;margin-bottom:16px;font-size:13px"></div>
@@ -281,8 +288,8 @@ tr:hover td{background:#fafafa}
         <div id="detFirma"></div>
       </div>
 
-      <div style="margin-top:16px;display:flex;gap:8px;align-items:center">
-        <button class="btn btn-dark btn-sm" onclick="window.print()">🖨️ Imprimir</button>
+      <div class="no-print" style="margin-top:16px;display:flex;gap:8px;align-items:center">
+        <button class="btn btn-dark btn-sm" onclick="imprimirDetalle()">🖨️ Imprimir</button>
         <button class="btn btn-out btn-sm" id="btnReabrirLiq" style="display:none;border-color:#e63946;color:#e63946" onclick="reabrirLiquidacion()">🔓 Reabrir liquidación (admin)</button>
       </div>
     </div>
@@ -353,7 +360,7 @@ let fbReady=false;
 // SESIÓN (login general con permisos por módulo)
 // ══════════════════════════════════════════════
 const MODULO_ACTUAL='hist';
-const NOMBRES_MODULO={ant:'Anticipos',ing:'Ingresos',liq:'Liquidaciones',nom:'Nómina',inc:'Incidentes',hist:'Historial'};
+const NOMBRES_MODULO={ant:'Anticipos',ing:'Ingresos',liq:'Liquidaciones',nom:'Nómina',inc:'Incidentes',hist:'Historial',autoriz:'Autorizaciones'};
 
 // Cookie compartida entre subdominios (.mudanzastml.mx) — reemplaza
 // sessionStorage: cada módulo vive en su propio subdominio (site de
@@ -410,7 +417,7 @@ async function intentarLogin(){
 }
 function aplicarPermisosNav(u){
   if(!u||u.esAdmin)return;
-  var mapa={ant:'https://anticipos.mudanzastml.mx',ing:'https://cxc.mudanzastml.mx',liq:'https://liquidaciones.mudanzastml.mx',nom:'https://nomina.mudanzastml.mx',inc:'https://incidentes.mudanzastml.mx',hist:'https://historial.mudanzastml.mx'};
+  var mapa={ant:'https://anticipos.mudanzastml.mx',ing:'https://cxc.mudanzastml.mx',liq:'https://liquidaciones.mudanzastml.mx',nom:'https://nomina.mudanzastml.mx',inc:'https://incidentes.mudanzastml.mx',hist:'https://historial.mudanzastml.mx',autoriz:'https://autorizaciones.mudanzastml.mx'};
   Object.keys(mapa).forEach(function(mod){
     if(!u.permisos||!u.permisos[mod]){
       document.querySelectorAll('nav a[href="'+mapa[mod]+'"]').forEach(function(el){el.style.display='none';});
@@ -724,6 +731,23 @@ function verDetalle(id){
 function cerrarDetalle(){
   $('cardDetalle').style.display='none';
   $('cardLista').style.display='block';
+}
+
+// Imprime el detalle de una liquidación cerrada (misma idea que
+// imprimirLiquidacion() en liq.html): pone el título del documento como
+// "Liquidación #X de NOMBRE" para que así se guarde/nombre el PDF, y lo
+// restaura después. El CSS @media print de este archivo oculta todo lo que
+// no sea la tarjeta de detalle (header, búsqueda, reportes, lista, botones).
+function imprimirDetalle(){
+  var l=_detalleActual;
+  if(!l){window.print();return;}
+  var _tituloPrev=document.title;
+  var _op=opNombre(l.opId||l.unidad);
+  document.title='Liquidación #'+l.num+(_op?' de '+_op:'');
+  function _restaurar(){document.title=_tituloPrev;window.removeEventListener('afterprint',_restaurar);}
+  window.addEventListener('afterprint',_restaurar);
+  window.print();
+  setTimeout(_restaurar,3000);
 }
 
 // Reabre una liquidación YA CERRADA para poder modificarla, solo para

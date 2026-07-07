@@ -12,7 +12,8 @@
         "nomina": ["tml-liquidaciones-nomina"],
         "incidentes": ["tml-liquidaciones-incidentes"],
         "historial": ["tml-liquidaciones-historial"],
-        "usuarios": ["tml-liquidaciones-usuarios"]
+        "usuarios": ["tml-liquidaciones-usuarios"],
+        "autorizaciones": ["tml-liquidaciones-autorizaciones"]
       }
     }
   }
