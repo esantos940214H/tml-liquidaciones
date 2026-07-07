@@ -189,6 +189,7 @@ tr:hover td{background:#fafafa}
   <div class="tab" onclick="showTab(2)">🛣️ Autopistas</div>
   <div class="tab" onclick="showTab(3)">🧾 Gastos</div>
   <div class="tab" onclick="showTab(4)">💰 Reporte</div>
+  <div class="tab" onclick="showTab(5)">🔐 Autorizaciones<span id="badgeAutorizaciones" style="display:none;background:#e63946;color:#fff;border-radius:10px;padding:1px 6px;font-size:10px;margin-left:4px"></span></div>
 </div>
 
 <!-- ══════════════════════════════════════════════
@@ -457,7 +458,7 @@ tr:hover td{background:#fafafa}
     </div>
     <div class="card">
       <div class="card-title">📝 Gastos sin factura</div>
-      <div class="alert alert-info" style="margin-bottom:14px">⚠️ Gastos mayores a $<strong id="limiteGastoLabel">500</strong> sin factura requieren autorización de supervisor.</div>
+      <div class="alert alert-info" style="margin-bottom:14px">⚠️ Gastos mayores a $<strong id="limiteGastoLabel">500</strong> sin factura se registran igual, pero quedan PENDIENTES y no cuentan en la liquidación hasta que un supervisor los autorice en la pestaña "🔐 Autorizaciones".</div>
       <div class="row" style="margin-bottom:12px">
         <div class="field"><label>Concepto</label>
           <select id="gastoConcepto">
@@ -582,19 +583,25 @@ tr:hover td{background:#fafafa}
   </div>
 </div></div>
 
-<!-- MODAL AUTORIZACIÓN SUPERVISOR -->
-<div class="modal-overlay" id="modalAuth">
-  <div class="modal">
-    <h3>🔒 Autorización de supervisor</h3>
-    <p style="font-size:13px;color:#666;margin-bottom:16px">Este gasto supera el límite permitido sin factura. Ingresa la contraseña de supervisor para continuar.</p>
-    <div class="field"><label>Contraseña</label><input type="password" id="authPass" placeholder="••••••••" onkeydown="if(event.key==='Enter')verificarAuth()"></div>
-    <div id="authError" style="display:none;margin-top:8px" class="alert alert-err">Contraseña incorrecta.</div>
-    <div class="modal-actions">
-      <button class="btn btn-out btn-sm" onclick="cerrarModal()">Cancelar</button>
-      <button class="btn btn-red" onclick="verificarAuth()">Confirmar</button>
+<!-- ══════════════════════════════════════════════
+     5: AUTORIZACIONES (supervisor)
+══════════════════════════════════════════════ -->
+<div id="panel-5" class="panel"><div class="container">
+  <div id="liqReqMsg5" class="alert alert-warn">⚠️ Primero inicia una liquidación.</div>
+  <div id="panel5Content" style="display:none">
+    <div class="card">
+      <div class="card-title">🔐 Gastos pendientes de autorización</div>
+      <p style="font-size:12px;color:#888;margin-bottom:10px">
+        La liquidadora puede registrar cualquier gasto sin factura libremente, pero los mayores a $<strong id="limiteAutorizLabel">500</strong> quedan PENDIENTES aquí y NO se cuentan en la liquidación hasta que un supervisor los autorice. Selecciona los que quieras aprobar y confirma con la contraseña de supervisor.
+      </p>
+      <div id="autorizacionesTablaWrap"></div>
+      <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+        <button class="btn btn-out btn-sm" onclick="toggleTodosAutorizaciones(this)">Seleccionar todos</button>
+        <button class="btn btn-green btn-sm" onclick="autorizarSeleccionados()">🔓 Autorizar seleccionados</button>
+      </div>
     </div>
   </div>
-</div>
+</div></div>
 
 <!-- MODAL CANDADO CASETA SIN COMPROBANTE (CAS2026) -->
 <div class="modal-overlay" id="modalCasetaAuth">
@@ -964,7 +971,6 @@ function registrarNumLiqUsado(opId,num){
   if(migracionFolioPorOpAplicada) ultimaLiqNumPorOp[opId]=Math.max(ultimaLiqNumPorOp[opId]||0,num);
   else ultimaLiqNum=Math.max(ultimaLiqNum,num);
 }
-let gastoPendiente=null; // gasto esperando autorización
 let _snap={}; // snapshot del último reporte generado
 
 // ══════════════════════════════════════════════
@@ -1310,7 +1316,7 @@ function restaurarUILiquidacion(){
   else if(liq.fechaApertura>hoy())liq.fechaApertura=hoy();
   if(!liq.advertenciasFecha)liq.advertenciasFecha=[];
   renderAdvertenciasFecha();
-  ['1','2','3','4'].forEach(function(i){
+  ['1','2','3','4','5'].forEach(function(i){
     var rm=$('liqReqMsg'+i),pc=$('panel'+i+'Content');
     if(rm)rm.style.display='none';
     if(pc)pc.style.display='block';
@@ -1401,6 +1407,7 @@ function showTab(i){
   document.querySelectorAll('.panel').forEach((p,j)=>p.classList.toggle('active',j===i));
   document.querySelectorAll('.tab').forEach((t,j)=>t.classList.toggle('active',j===i));
   if(i===4)generarReporte();
+  if(i===5)renderAutorizaciones();
 }
 
 // ══════════════════════════════════════════════
@@ -2168,7 +2175,7 @@ function iniciarLiquidacion(){
     fechaApertura:hoy(),advertenciasFecha:[]};
   $('liqInfo').style.display='block';
   $('liqInfo').innerHTML='<div class="alert alert-ok">✅ Liquidación <strong>#'+num+'</strong> — <strong>'+op.nombre+'</strong> · Unidad '+unidad+' · '+liq.salida+' al '+liq.llegada+(liq.kms?' · '+liq.kms.toLocaleString('es-MX')+' km':'')+(liq.rendimiento?' · '+liq.rendimiento+' km/L':'')+'</div>';
-  ['1','2','3','4'].forEach(function(i){$('liqReqMsg'+i).style.display='none';$('panel'+i+'Content').style.display='block';});
+  ['1','2','3','4','5'].forEach(function(i){$('liqReqMsg'+i).style.display='none';$('panel'+i+'Content').style.display='block';});
   $('dOpNombre').textContent=op.nombre;$('iaveOpNombre').textContent=op.nombre;
   $('headerInfo').textContent='Liq. #'+num+' · '+op.nombre+' · Unidad '+unidad;
   cargasOp=cargasEdenred.filter(function(c){return c.unidad===unidad;});
@@ -2231,7 +2238,7 @@ function eliminarLiquidacionActual(){
   if($('btnEliminarLiqWrap'))$('btnEliminarLiqWrap').style.display='none';
   if($('satValidandoInfo'))$('satValidandoInfo').style.display='none';
   $('headerInfo').textContent='Sin liquidación activa';
-  ['1','2','3','4'].forEach(function(i){if($('liqReqMsg'+i))$('liqReqMsg'+i).style.display='block';if($('panel'+i+'Content'))$('panel'+i+'Content').style.display='none';});
+  ['1','2','3','4','5'].forEach(function(i){if($('liqReqMsg'+i))$('liqReqMsg'+i).style.display='block';if($('panel'+i+'Content'))$('panel'+i+'Content').style.display='none';});
   if($('liqOp'))$('liqOp').value='';
   if($('liqUnidad'))$('liqUnidad').value='';
   if($('liqSalida'))$('liqSalida').value='';
@@ -2986,34 +2993,19 @@ function agregarGasto(){
     }
   }
   const pagaOp=$('gastoPagaOp').value==='si';
-  const gasto={concepto:concepto,desc:$('gastoDesc').value||'',importe:importe,pagaOp:pagaOp,tipo:'manual',autorizado:false};
-  // Candado: si supera límite y no tiene factura, requiere autorización
-  if(importe>LIMITE_GASTO_SIN_FACTURA){
-    gastoPendiente=gasto;
-    $('authPass').value='';$('authError').style.display='none';
-    $('modalAuth').classList.add('open');
-    setTimeout(function(){$('authPass').focus();},100);
-  } else {
-    gasto.autorizado=true;
-    liq.gastos.push(gasto);
-    $('gastoImporte').value='';$('gastoDesc').value='';
-    renderGastos();
-    guardarEstado();
+  // Ya NO se pide contraseña aquí: se registra siempre. Si supera el límite
+  // sin factura, queda autorizado:false — no cuenta en la liquidación hasta
+  // que un supervisor lo autorice en el módulo "Autorizaciones" (pestaña
+  // aparte). Ver renderAutorizaciones()/autorizarSeleccionados().
+  const gasto={concepto:concepto,desc:$('gastoDesc').value||'',importe:importe,pagaOp:pagaOp,tipo:'manual',autorizado:importe<=LIMITE_GASTO_SIN_FACTURA};
+  liq.gastos.push(gasto);
+  $('gastoImporte').value='';$('gastoDesc').value='';
+  renderGastos();
+  guardarEstado();
+  if(!gasto.autorizado){
+    alert('⏳ Este gasto ('+fmt(importe)+') supera el límite de '+fmt(LIMITE_GASTO_SIN_FACTURA)+' sin factura.\n\nQuedó registrado como PENDIENTE — no se va a contar en la liquidación hasta que un supervisor lo autorice en la pestaña "Autorizaciones".');
   }
 }
-
-function verificarAuth(){
-  if($('authPass').value===SUPERVISOR_PASS){
-    $('modalAuth').classList.remove('open');
-    if(gastoPendiente){gastoPendiente.autorizado=true;liq.gastos.push(gastoPendiente);gastoPendiente=null;}
-    $('gastoImporte').value='';$('gastoDesc').value='';
-    renderGastos();
-    guardarEstado();
-  } else {
-    $('authError').style.display='block';
-  }
-}
-function cerrarModal(){$('modalAuth').classList.remove('open');gastoPendiente=null;}
 
 // ══════════════════════════════════════════════
 // INCIDENTES DE VIALIDAD
@@ -3243,6 +3235,64 @@ function renderGastos(){
   });
   $('tfGastos').innerHTML='<tr style="background:#f5f5f8;font-weight:700"><td colspan="4">TOTALES</td><td class="num r">'+fmt(totOp+totEmp)+'</td>'
     +'<td colspan="2"><span style="color:#0a5233">Op: '+fmt(totOp)+'</span> · <span style="color:#9b1c1c">Emp: '+fmt(totEmp)+'</span></td><td colspan="2"></td></tr>';
+  renderAutorizaciones();
+}
+
+// ══════════════════════════════════════════════
+// AUTORIZACIONES: gastos manuales > LIMITE_GASTO_SIN_FACTURA quedan con
+// autorizado:false al registrarse (ver agregarGasto) y no cuentan en la
+// liquidación hasta que un supervisor los apruebe aquí, seleccionando
+// varios de una vez. No hay candado por gasto individual — la contraseña
+// se pide UNA vez, al confirmar el lote seleccionado.
+// ══════════════════════════════════════════════
+function renderAutorizaciones(){
+  if($('limiteAutorizLabel'))$('limiteAutorizLabel').textContent=LIMITE_GASTO_SIN_FACTURA;
+  const wrap=$('autorizacionesTablaWrap');
+  if(!wrap)return;
+  if(!liq){wrap.innerHTML='';if($('badgeAutorizaciones'))$('badgeAutorizaciones').style.display='none';return;}
+  const pendientes=(liq.gastos||[]).map(function(g,i){return{g:g,i:i};}).filter(function(x){return x.g.autorizado===false;});
+  const badge=$('badgeAutorizaciones');
+  if(badge){
+    if(pendientes.length){badge.style.display='inline-block';badge.textContent=pendientes.length;}
+    else badge.style.display='none';
+  }
+  if(!pendientes.length){
+    wrap.innerHTML='<div style="color:#aaa;font-size:13px;padding:10px">✅ Sin gastos pendientes de autorización.</div>';
+    return;
+  }
+  var totPend=pendientes.reduce(function(s,x){return s+(x.g.importe||0);},0);
+  wrap.innerHTML='<div class="tbl-wrap"><table><thead><tr><th style="width:32px"></th><th>Concepto</th><th>Descripción</th><th class="r">Importe</th><th>¿Quién paga?</th></tr></thead><tbody>'
+    +pendientes.map(function(x){return '<tr>'
+      +'<td style="text-align:center"><input type="checkbox" class="chkAutoriz" data-gi="'+x.i+'"></td>'
+      +'<td>'+x.g.concepto+'</td>'
+      +'<td style="font-size:12px">'+(x.g.desc||'')+'</td>'
+      +'<td class="num r">'+fmt(x.g.importe||0)+'</td>'
+      +'<td>'+(x.g.pagaOp?'Operador':'Empresa')+'</td>'
+      +'</tr>';}).join('')
+    +'</tbody><tfoot><tr style="font-weight:700;background:#f5f5f8"><td colspan="3">TOTAL PENDIENTE</td><td class="num r">'+fmt(totPend)+'</td><td></td></tr></tfoot></table></div>';
+}
+
+function toggleTodosAutorizaciones(btn){
+  var chks=document.querySelectorAll('.chkAutoriz');
+  var todosMarcados=Array.from(chks).every(function(c){return c.checked;})&&chks.length>0;
+  chks.forEach(function(c){c.checked=!todosMarcados;});
+}
+
+function autorizarSeleccionados(){
+  if(!liq)return;
+  var chks=document.querySelectorAll('.chkAutoriz:checked');
+  if(!chks.length){alert('Selecciona al menos un gasto pendiente.');return;}
+  var pass=prompt('Contraseña de supervisor para autorizar '+chks.length+' gasto(s):');
+  if(pass!==SUPERVISOR_PASS){alert('Contraseña incorrecta. No se autorizó nada.');return;}
+  var n=0;
+  chks.forEach(function(c){
+    var idx=parseInt(c.dataset.gi);
+    if(liq.gastos[idx]){liq.gastos[idx].autorizado=true;n++;}
+  });
+  renderGastos();
+  guardarEstado();
+  if(document.querySelector('.tab.active')&&$('panel4Content')&&$('panel4Content').style.display!=='none')generarReporte();
+  alert('✅ '+n+' gasto(s) autorizado(s). Ya cuentan en la liquidación — revisa el Reporte.');
 }
 
 function toggleGastoPagaOp(i,val){
@@ -3366,8 +3416,12 @@ function generarReporte(){
   const totAutSub=totAutEmpSub+totAutOpSub;
 
   // Gastos
-  // Excluye gastos XML cancelados ante el SAT — nunca se consideran en los totales.
-  const todosGastos=liq.gastosXML.filter(function(g){return !g.satCancelado;}).concat(liq.gastos);
+  // Excluye gastos XML cancelados ante el SAT, y gastos manuales PENDIENTES
+  // de autorización (mayores a LIMITE_GASTO_SIN_FACTURA, ver agregarGasto) —
+  // ninguno de los dos se considera en los totales hasta que se resuelva
+  // (el SAT lo cancele o no; el supervisor lo autorice en "Autorizaciones").
+  const gastosManualAutorizados=liq.gastos.filter(function(g){return g.autorizado!==false;});
+  const todosGastos=liq.gastosXML.filter(function(g){return !g.satCancelado;}).concat(gastosManualAutorizados);
   // Cuenta del operador (abono): gastos que pagó y comprueba — con IVA (total).
   const totGastosOp=todosGastos.filter(function(g){return g.pagaOp;}).reduce(function(s,g){return s+(g.tipo==='xml'?g.total:g.importe);},0);
   const totGastosEmp=todosGastos.filter(function(g){return !g.pagaOp;}).reduce(function(s,g){return s+(g.tipo==='xml'?g.total:g.importe);},0);
@@ -3384,9 +3438,11 @@ function generarReporte(){
   // IVA). Que el operador los haya pagado y comprobado NO los excluye del costo:
   // la empresa se los reembolsa (aparecen como abono en su cuenta). Los gastos
   // XML entran aparte, TODOS a subtotal (una sola vez, con IVA acreditable).
-  const totGastosManual=liq.gastos.reduce(function(s,g){return s+(g.importe||0);},0);
+  const totGastosManual=gastosManualAutorizados.reduce(function(s,g){return s+(g.importe||0);},0);
+  const gastosPendientesAutorizacion=liq.gastos.filter(function(g){return g.autorizado===false;});
+  const totGastosPendientes=gastosPendientesAutorizacion.reduce(function(s,g){return s+(g.importe||0);},0);
   const gastosPorConcepto={};
-  liq.gastos.forEach(function(g){
+  gastosManualAutorizados.forEach(function(g){
     if(!gastosPorConcepto[g.concepto])gastosPorConcepto[g.concepto]=0;
     gastosPorConcepto[g.concepto]+=g.importe;
   });
@@ -3395,7 +3451,7 @@ function generarReporte(){
   // operador — para mostrarlo en su cuenta igual de detallado que en el
   // resultado de la empresa, en vez de un solo renglón "Gastos del operador".
   const gastosPorConceptoOp={};
-  liq.gastos.filter(function(g){return g.pagaOp;}).forEach(function(g){
+  gastosManualAutorizados.filter(function(g){return g.pagaOp;}).forEach(function(g){
     if(!gastosPorConceptoOp[g.concepto])gastosPorConceptoOp[g.concepto]=0;
     gastosPorConceptoOp[g.concepto]+=g.importe;
   });
@@ -3495,6 +3551,9 @@ function generarReporte(){
   }
   gastosHTML+='<div style="height:1px;background:#eee;margin:6px 0"></div>'
     +rr('TOTAL GASTOS',totGastosEmpTotal,null,true);
+  if(gastosPendientesAutorizacion.length){
+    gastosHTML+='<div class="alert alert-warn" style="margin-top:10px">⏳ Hay '+gastosPendientesAutorizacion.length+' gasto(s) por '+fmt(totGastosPendientes)+' PENDIENTES de autorización (mayores a '+fmt(LIMITE_GASTO_SIN_FACTURA)+' sin factura) — NO están incluidos en este total. Autorízalos en la pestaña "🔐 Autorizaciones" para que cuenten.</div>';
+  }
   $('repGastos').innerHTML=gastosHTML;
 
   // ── RESULTADO ──────────────────────────────────────
@@ -3754,6 +3813,11 @@ function imprimirLiquidacion(){
 
 function cerrarLiquidacion(){
   if(!liq)return;
+  var _gastosPend=(liq.gastos||[]).filter(function(g){return g.autorizado===false;});
+  if(_gastosPend.length){
+    alert('🚫 No se puede cerrar: hay '+_gastosPend.length+' gasto(s) pendiente(s) de autorización por '+fmt(_gastosPend.reduce(function(s,g){return s+(g.importe||0);},0))+'.\n\nUn supervisor debe autorizarlos (o elimínalos si no proceden) en la pestaña "🔐 Autorizaciones" antes de cerrar.');
+    return;
+  }
   if(!confirm('¿Cerrar liquidación #'+liq.num+'?\nSe marcarán anticipos y viajes como liquidados.'))return;
   // Generar reporte para poblar _snap (incluye antsList, viajesList, cargasDiesel)
   generarReporte();
@@ -3925,7 +3989,7 @@ function cerrarLiquidacion(){
   if($('btnEliminarLiqWrap'))$('btnEliminarLiqWrap').style.display='none';
   if($('satValidandoInfo'))$('satValidandoInfo').style.display='none';
   $('headerInfo').textContent='Sin liquidación activa';
-  ['1','2','3','4'].forEach(function(i){$('liqReqMsg'+i).style.display='block';$('panel'+i+'Content').style.display='none';});
+  ['1','2','3','4','5'].forEach(function(i){$('liqReqMsg'+i).style.display='block';$('panel'+i+'Content').style.display='none';});
   // Resetear formulario para siguiente liquidación
   if($('liqOp'))$('liqOp').value='';
   if($('liqUnidad'))$('liqUnidad').value='';
