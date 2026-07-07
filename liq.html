@@ -1784,7 +1784,7 @@ function eliminarIngreso(id){
 // ══════════════════════════════════════════════
 // 2: LIQUIDACIÓN
 // ══════════════════════════════════════════════
-function onLiqOpChange(){
+async function onLiqOpChange(){
   const opId=parseInt($('liqOp').value||0);
   const op=OPERADORES.find(function(o){return o.unidad===opId;});
   // Unidad manejada: por default se propone la unidad "de casa" del
@@ -1800,6 +1800,23 @@ function onLiqOpChange(){
   actualizarArrastreDieselPreview();
   if(!liq&&opId)$('liqNum').value=siguienteNumLiq(opId);
   if(opId) refrescarPreview();
+
+  // Si este operador ya tiene una liquidación activa (la está trabajando
+  // otra persona, en otra computadora/sesión, o quedó abierta antes), se
+  // carga aquí automáticamente para poder verla/seguir editándola. Sin
+  // esto, con el candado por operador (ver suscribirLiqActiva), alguien
+  // que solo selecciona el operador desde otra computadora no ve nada
+  // hasta que la primera persona cierre su liquidación.
+  if(opId&&!(liq&&liq.opId===opId)&&fbReady&&window.FB){
+    try{
+      var _remota=await window.FB.get('liqActivas',String(opId));
+      if(_remota&&_remota.data){
+        liq=JSON.parse(_remota.data);
+        restaurarUILiquidacion();
+        suscribirLiqActiva(opId);
+      }
+    }catch(e){console.error('onLiqOpChange (cargar activa remota):',e);}
+  }
 }
 // Se llama cuando cambia la unidad manejada (independiente del operador) —
 // solo refresca la previsualización del arrastre de diesel, que pertenece
