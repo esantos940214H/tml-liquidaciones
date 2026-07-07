@@ -459,7 +459,7 @@ tr:hover td{background:#fafafa}
     </div>
     <div class="card">
       <div class="card-title">📝 Gastos sin factura</div>
-      <div class="alert alert-info" style="margin-bottom:14px">⚠️ Gastos mayores a $<strong id="limiteGastoLabel">500</strong> sin factura se registran igual, pero quedan PENDIENTES y no cuentan en la liquidación hasta que un supervisor los autorice en la pestaña "🔐 Autorizaciones".</div>
+      <div class="alert alert-info" style="margin-bottom:14px">⚠️ Gastos que paga el <strong>operador</strong> mayores a $<strong id="limiteGastoLabel">500</strong> sin factura se registran igual, pero quedan PENDIENTES y no cuentan en la liquidación hasta que un supervisor los autorice en la pestaña "🔐 Autorizaciones". Los gastos que paga la <strong>empresa</strong> no requieren autorización (no afectan el saldo del operador).</div>
       <div class="row" style="margin-bottom:12px">
         <div class="field"><label>Concepto</label>
           <select id="gastoConcepto">
@@ -593,7 +593,7 @@ tr:hover td{background:#fafafa}
     <div class="card">
       <div class="card-title">🔐 Gastos pendientes de autorización</div>
       <p style="font-size:12px;color:#888;margin-bottom:10px">
-        La liquidadora puede registrar cualquier gasto sin factura libremente, pero los mayores a $<strong id="limiteAutorizLabel">500</strong> quedan PENDIENTES aquí y NO se cuentan en la liquidación hasta que un supervisor los autorice. Selecciona los que quieras aprobar y confirma con la contraseña de supervisor.
+        La liquidadora puede registrar cualquier gasto sin factura libremente, pero los que paga el <strong>operador</strong> por más de $<strong id="limiteAutorizLabel">500</strong> quedan PENDIENTES aquí y NO se cuentan en la liquidación hasta que un supervisor los autorice. Los que paga la empresa nunca quedan pendientes. Selecciona los que quieras aprobar y confirma con la contraseña de supervisor.
       </p>
       <div id="autorizacionesTablaWrap"></div>
       <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
@@ -2994,11 +2994,14 @@ function agregarGasto(){
     }
   }
   const pagaOp=$('gastoPagaOp').value==='si';
-  // Ya NO se pide contraseña aquí: se registra siempre. Si supera el límite
-  // sin factura, queda autorizado:false — no cuenta en la liquidación hasta
-  // que un supervisor lo autorice en el módulo "Autorizaciones" (pestaña
-  // aparte). Ver renderAutorizaciones()/autorizarSeleccionados().
-  const gasto={concepto:concepto,desc:$('gastoDesc').value||'',importe:importe,pagaOp:pagaOp,tipo:'manual',autorizado:importe<=LIMITE_GASTO_SIN_FACTURA};
+  // Ya NO se pide contraseña aquí: se registra siempre. Si lo paga el
+  // operador y supera el límite sin factura, queda autorizado:false — no
+  // cuenta en la liquidación hasta que un supervisor lo autorice en el
+  // módulo "Autorizaciones" (pestaña aparte). Ver
+  // renderAutorizaciones()/autorizarSeleccionados(). Los gastos que paga la
+  // EMPRESA no requieren autorización: no afectan el saldo del operador,
+  // solo el resultado de la empresa.
+  const gasto={concepto:concepto,desc:$('gastoDesc').value||'',importe:importe,pagaOp:pagaOp,tipo:'manual',autorizado:!pagaOp||importe<=LIMITE_GASTO_SIN_FACTURA};
   liq.gastos.push(gasto);
   $('gastoImporte').value='';$('gastoDesc').value='';
   renderGastos();
@@ -3299,8 +3302,17 @@ function autorizarSeleccionados(){
 function toggleGastoPagaOp(i,val){
   if(!liq)return;
   var nX=liq.gastosXML.length;
-  if(i<nX)liq.gastosXML[i].pagaOp=val==='si';
-  else liq.gastos[i-nX].pagaOp=val==='si';
+  var pagaOp=val==='si';
+  if(i<nX){
+    liq.gastosXML[i].pagaOp=pagaOp;
+  }else{
+    var g=liq.gastos[i-nX];
+    g.pagaOp=pagaOp;
+    // Los gastos que paga la empresa no requieren autorización (no afectan
+    // el saldo del operador); si vuelve a "Operador" se re-evalúa contra
+    // el límite sin factura.
+    g.autorizado=!pagaOp||g.importe<=LIMITE_GASTO_SIN_FACTURA;
+  }
   renderGastos();guardarEstado();
 }
 
