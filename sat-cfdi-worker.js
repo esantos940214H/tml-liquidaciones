@@ -1,7 +1,7 @@
 /*
  * Cloudflare Worker — Proxy de validación de estado de CFDI ante el SAT
  * ═══════════════════════════════════════════════════════════════════
- * Este archivo NO se sirve desde GitHub Pages ni forma parte de la app.
+ * Este archivo NO se sirve desde el sitio ni forma parte de la app.
  * Es el código fuente de un Worker que se despliega por separado en
  * Cloudflare (gratis) para poder consultar el servicio del SAT sin que
  * el navegador lo bloquee por CORS.
@@ -18,9 +18,7 @@
  *   3. Ponle un nombre, ej. "sat-cfdi-proxy" → Deploy.
  *   4. Abre "Edit code", borra el contenido de ejemplo, pega TODO este
  *      archivo, y dale "Deploy" de nuevo.
- *   5. Cambia ALLOWED_ORIGIN abajo si tu sitio no es exactamente
- *      https://esantos940214h.github.io (déjalo así si sí lo es).
- *   6. Copia la URL que te da Cloudflare (algo como
+ *   5. Copia la URL que te da Cloudflare (algo como
  *      https://sat-cfdi-proxy.<tu-usuario>.workers.dev) y pégala como
  *      valor de SAT_PROXY_URL en liq.html e ing.html.
  *
@@ -28,30 +26,43 @@
  *   npm install -g wrangler
  *   wrangler login
  *   wrangler deploy sat-cfdi-worker.js --name sat-cfdi-proxy
+ *
+ * SI YA LO TENÍAS DESPLEGADO Y ACTUALIZASTE ESTE ARCHIVO:
+ *   Tienes que volver a pegar el contenido nuevo en "Edit code" en el
+ *   dashboard de Cloudflare (o correr "wrangler deploy" de nuevo) — los
+ *   cambios en este archivo del repo NO se suben solos al Worker.
  */
 
-const ALLOWED_ORIGIN = 'https://esantos940214h.github.io';
+// El sitio vive en varios subdominios de mudanzastml.mx (uno por módulo:
+// liquidaciones, cxc, anticipos, historial, autorizaciones, etc.), así que
+// en vez de una sola URL fija se acepta cualquier subdominio de
+// mudanzastml.mx (y, por si acaso queda algún acceso viejo, también
+// esantos940214h.github.io).
+const ALLOWED_ORIGIN_RE = /^https:\/\/([a-z0-9-]+\.)*mudanzastml\.mx$|^https:\/\/esantos940214h\.github\.io$/i;
 const SAT_URL = 'https://consultaqr.facturaelectronica.sat.gob.mx/ConsultaCFDIService.svc';
 
 export default {
   async fetch(request) {
+    const origin = request.headers.get('Origin') || '';
+    const allowOrigin = ALLOWED_ORIGIN_RE.test(origin) ? origin : '';
+
     if (request.method === 'OPTIONS') {
-      return new Response(null, { headers: corsHeaders() });
+      return new Response(null, { headers: corsHeaders(allowOrigin) });
     }
     if (request.method !== 'POST') {
-      return json({ error: 'Método no permitido. Usa POST.' }, 405);
+      return json({ error: 'Método no permitido. Usa POST.' }, 405, allowOrigin);
     }
 
     let body;
     try {
       body = await request.json();
     } catch (e) {
-      return json({ error: 'JSON inválido en el cuerpo de la petición.' }, 400);
+      return json({ error: 'JSON inválido en el cuerpo de la petición.' }, 400, allowOrigin);
     }
 
     const { uuid, rfcEmisor, rfcReceptor, total } = body || {};
     if (!uuid || !rfcEmisor || !rfcReceptor || total == null) {
-      return json({ error: 'Faltan datos: se requieren uuid, rfcEmisor, rfcReceptor y total.' }, 400);
+      return json({ error: 'Faltan datos: se requieren uuid, rfcEmisor, rfcReceptor y total.' }, 400, allowOrigin);
     }
 
     const totalStr = Number(total).toFixed(6);
@@ -78,7 +89,7 @@ export default {
       });
 
       if (!satRes.ok) {
-        return json({ error: 'El SAT respondió con error HTTP ' + satRes.status, estado: 'No verificado', cancelado: false }, 502);
+        return json({ error: 'El SAT respondió con error HTTP ' + satRes.status, estado: 'No verificado', cancelado: false }, 502, allowOrigin);
       }
 
       const text = await satRes.text();
@@ -96,9 +107,9 @@ export default {
         estatusCancelacion,
         codigoEstatus,
         validacionEFOS
-      });
+      }, 200, allowOrigin);
     } catch (e) {
-      return json({ error: 'No se pudo consultar el SAT: ' + e.message, estado: 'No verificado', cancelado: false }, 502);
+      return json({ error: 'No se pudo consultar el SAT: ' + e.message, estado: 'No verificado', cancelado: false }, 502, allowOrigin);
     }
   }
 };
@@ -115,16 +126,17 @@ function escapeXml(s) {
 function encodeXmlText(s) {
   return String(s).trim();
 }
-function corsHeaders() {
+function corsHeaders(allowOrigin) {
   return {
-    'Access-Control-Allow-Origin': ALLOWED_ORIGIN,
+    'Access-Control-Allow-Origin': allowOrigin || 'null',
     'Access-Control-Allow-Methods': 'POST, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type'
+    'Access-Control-Allow-Headers': 'Content-Type',
+    'Vary': 'Origin'
   };
 }
-function json(obj, status) {
+function json(obj, status, allowOrigin) {
   return new Response(JSON.stringify(obj), {
     status: status || 200,
-    headers: { 'Content-Type': 'application/json; charset=utf-8', ...corsHeaders() }
+    headers: { 'Content-Type': 'application/json; charset=utf-8', ...corsHeaders(allowOrigin) }
   });
 }
