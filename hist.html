@@ -319,8 +319,13 @@ const OPERADORES=[
 const $=id=>document.getElementById(id);
 const fmt=(n,d=2)=>'$'+parseFloat(n||0).toLocaleString('es-MX',{minimumFractionDigits:d,maximumFractionDigits:d});
 // Leyenda de conformidad en la firma: cambia según el saldo (misma lógica que liq.html).
-const TEXTO_FIRMA_FAVOR='EN ESTA FECHA SE FORMULA LA PRESENTE LIQUIDACION QUE ES A MI ENTERA SATISFACCION Y EN LA QUE SE ENCUENTRAN INCLUIDOS LOS SALARIOS ESTIPULADOS DE ACUERDO AL CONTRATO COLECTIVO DE TRABAJO, INCLUYENDOSE EN MI SALARIO EL PAGO CORRESPONDIENTE A HORAS EXTRAS DE TRABAJO GASTOS DE VIAJE Y LA PARTE PROPORCIONAL DE DESCANSOS SEMANALES Y OBLIGACIONES, POR LO QUE NO TENGO RECLAMACION ALGUNA QUE SE DERIVE DEL CONTRATO COLECTIVO DE TRABAJO.';
-const TEXTO_FIRMA_CONTRA='ESTANDO DE ACUERDO CON EL PRESENTE ESTADO DE CUENTA, DOY FE DE HABER RECIBIDO LOS RECURSOS DESCRITOS Y RECONOZCO EL SALDO INDICADO COMO CORRECTO, COMPROMETIÉNDOME A SU LIQUIDACIÓN CONFORME A LOS TÉRMINOS ESTABLECIDOS POR MUDANZAS TML.';
+// A favor: conformidad de nómina. En contra: pagaré con el monto adeudado.
+function textoFirmaConformidad(saldoVal){
+  if(saldoVal>=0){
+    return 'EN ESTA FECHA SE FORMULA LA PRESENTE LIQUIDACIÓN QUE ES A MI ENTERA SATISFACCIÓN Y EN LA QUE SE ENCUENTRAN INCLUIDOS LOS SALARIOS ESTIPULADOS DE ACUERDO AL CONTRATO COLECTIVO DE TRABAJO, INCLUYÉNDOSE EN MI SALARIO EL PAGO CORRESPONDIENTE A HORAS EXTRAS DE TRABAJO, GASTOS DE VIAJE Y LA PARTE PROPORCIONAL DE DESCANSOS SEMANALES Y OBLIGACIONES, POR LO QUE NO TENGO RECLAMACIÓN ALGUNA QUE SE DERIVE DEL CONTRATO COLECTIVO DE TRABAJO.';
+  }
+  return 'DEBO Y PAGARÉ INCONDICIONALMENTE POR ESTE PAGARÉ A LA ORDEN DE MUDANZAS TML, S.A. DE C.V. LA CANTIDAD DE '+fmt(Math.abs(saldoVal))+' POR CONCEPTO DE SALDO DEUDOR DE ESTA LIQUIDACIÓN.';
+}
 const fmtN=(n,d=2)=>parseFloat(n||0).toLocaleString('es-MX',{minimumFractionDigits:d,maximumFractionDigits:d});
 
 let historialDB=[];
@@ -686,7 +691,7 @@ function verDetalle(id){
   // operador usa el texto de conformidad de nómina; en contra (quedó
   // debiendo) usa el texto tipo pagaré, reconociendo el saldo.
   $('detFirma').innerHTML='<div class="firma-bloque">'
-    +'<div class="firma-texto">'+(saldo>=0?TEXTO_FIRMA_FAVOR:TEXTO_FIRMA_CONTRA)+'</div>'
+    +'<div class="firma-texto">'+textoFirmaConformidad(saldo)+'</div>'
     +'<div class="firma-centrada">'
     +'<div class="firma-fecha">Fecha: '+(l.llegada||l.fechaCierre||'')+'</div>'
     +'<div class="firma-linea"></div>'
