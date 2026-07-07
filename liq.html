@@ -3202,7 +3202,7 @@ function renderGastos(){
     const tituloImp=g.tipo==='xml'?('Subtotal: '+fmt(g.subtotal||0)+' · IVA: '+fmt(g.iva||0)+' · Total: '+fmt(g.total||0)):'';
     const estadoCell=g.satCancelado
       ?'<span class="badge bg-red" style="color:#c1121f" title="Cancelado ante el SAT — excluido del cálculo">⚠ CANCELADO SAT</span>'
-      :(g.autorizado?'<span class="badge bg-green">✓ OK</span>':'<span class="badge bg-yellow">Pendiente</span>');
+      :(g.autorizado?'<span class="badge bg-green">✓ OK</span>':'<span class="badge bg-yellow">Requiere autorización de un supervisor</span>');
     tb.innerHTML+='<tr'+(g.satCancelado?' style="opacity:.55;text-decoration:line-through"':'')+'><td style="font-size:11px">'+(g.fecha||'—')+'</td><td>'+g.concepto+'</td><td>'+(g.desc||g.conceptoDesc||'')+'</td>'
       +'<td style="font-size:11px" title="'+(g.rfc||'')+'">'+(g.proveedor||g.emisor||'—')+'</td>'
       +'<td class="num r" title="'+tituloImp+'">'+fmt(imp)+'</td>'
