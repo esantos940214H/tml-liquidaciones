@@ -884,7 +884,7 @@ function renderIngresos(){
     const mCell=sm>0?`<td class="num r">${fmt(sm)}</td>`:`<td class="num r" style="color:#ccc">—</td>`;
     const oCell=so>0?`<td class="num r">${fmt(so)}</td>`:`<td class="num r" style="color:#ccc">—</td>`;
     tb.innerHTML+=`<tr>
-      <td style="width:32px;text-align:center"><input type="checkbox" class="chkIng" data-id="${v.id}" onchange="actualizarBarraSelIng()"></td>
+      <td style="width:32px;text-align:center"><input type="checkbox" class="chkIng" data-id="${v.id}" ${v.estado!=='sin_liquidar'?'disabled title="No se puede eliminar: ya está liquidado"':''} onchange="actualizarBarraSelIng()"></td>
       <td class="num">${v.folio}${v.esDesglose?' <span class="badge bg-purple" title="Parte de una factura consolidada desglosada entre varios operadores (mismo CFDI)">🧩</span>':''}</td><td>${v.fecha}</td>
       <td style="font-size:11px">${op?op.nombre.split(' ').slice(0,2).join(' '):'?'}</td>
       <td style="max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px">${v.cliente}</td>
@@ -933,7 +933,15 @@ function toggleTodosIng(chkHeader){
 function eliminarSeleccionadosIng(){
   var chks=document.querySelectorAll('.chkIng:checked');
   if(!chks.length){alert('No hay ingresos seleccionados.');return;}
-  var ids=Array.from(chks).map(function(c){return c.dataset.id;});
+  var idsSel=Array.from(chks).map(function(c){return c.dataset.id;});
+  // Nunca borrar un viaje ya liquidado (ligado a una liquidación cerrada) —
+  // el checkbox ya viene deshabilitado para esos casos, pero se revalida
+  // aquí contra el estado actual por si acaso, para no dejar la liquidación
+  // cerrada referenciando un viaje que ya no existe.
+  var yaLiquidados=ingresosDB.filter(function(v){return idsSel.indexOf(v.id)!==-1&&v.estado!=='sin_liquidar';});
+  var ids=ingresosDB.filter(function(v){return idsSel.indexOf(v.id)!==-1&&v.estado==='sin_liquidar';}).map(function(v){return v.id;});
+  if(!ids.length){alert('Ninguno de los seleccionados se puede eliminar: ya están liquidados.');return;}
+  if(yaLiquidados.length){alert('⚠️ '+yaLiquidados.length+' de los seleccionados ya están liquidados y NO se van a eliminar. Solo se eliminarán los '+ids.length+' que siguen sin liquidar.');}
   lockRequest('Eliminar '+ids.length+' ingreso(s)', function(){
     ingresosDB=ingresosDB.filter(function(v){return ids.indexOf(v.id)===-1;});
     guardar();renderIngresos();
