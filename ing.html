@@ -505,6 +505,10 @@ function parseXML(text,fname,unidad){
   const uuid=tfd?tfd.getAttribute('UUID')||'':'';
   const rfcEmisor=emisor?emisor.getAttribute('Rfc')||'':'';
   const rfcReceptor=receptor?receptor.getAttribute('Rfc')||'':'';
+  if(rfcEmisor.toUpperCase()!==TML_RFC){
+    alert('🚫 '+fname+': el EMISOR de este CFDI es "'+(rfcEmisor||'(vacío)')+'", no Mudanzas TML ('+TML_RFC+').\n\nEste XML parece ser una factura de un proveedor/gasto, no un ingreso — no se puede registrar aquí.');
+    return;
+  }
   const folioCompleto=serie+'-'+folio;
   if(ingresosDB.some(v=>v.folio===folioCompleto&&v.unidad===unidad)){
     alert(fname+': ya está registrado (duplicado).');return;
@@ -567,6 +571,10 @@ function parseXML(text,fname,unidad){
 // multi-operador al subir su XML — nunca se fuerza). Agregar aquí el RFC
 // en mayúsculas, ej.: ['GCD170101GS6']
 const RFC_CLIENTES_MULTIOP=[];
+// Ingresos = CFDIs que Mudanzas TML EMITE a sus clientes. Un XML donde TML
+// aparece como RECEPTOR (ej. factura de un proveedor/gasto) no es un
+// ingreso — se rechaza al subirlo, sin importar el módulo por el que entre.
+const TML_RFC='MTM171214PI4';
 
 let dgPend=null; // CFDI parseado pendiente de desglosar
 let dgRows=[];   // renglones de asignación [{unidad,monto,destino,pedido}]
@@ -596,6 +604,11 @@ function parseXMLMultiOp(text,fname){
   doc.querySelectorAll('Retencion').forEach(r=>{if(r.getAttribute('Impuesto')==='002')ret+=parseFloat(r.getAttribute('Importe')||0);});
   const receptor=doc.querySelector('Receptor');
   const emisor=doc.querySelector('Emisor');
+  const rfcEmisorChk=emisor?emisor.getAttribute('Rfc')||'':'';
+  if(rfcEmisorChk.toUpperCase()!==TML_RFC){
+    alert('🚫 '+fname+': el EMISOR de este CFDI es "'+(rfcEmisorChk||'(vacío)')+'", no Mudanzas TML ('+TML_RFC+').\n\nEste XML parece ser una factura de un proveedor/gasto, no un ingreso — no se puede registrar aquí.');
+    return;
+  }
   const tfd=doc.querySelector('TimbreFiscalDigital');
   const uuid=tfd?tfd.getAttribute('UUID')||'':'';
   if(uuid&&ingresosDB.some(v=>(v.uuid||'')===uuid)){
