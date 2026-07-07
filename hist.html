@@ -778,6 +778,20 @@ async function reabrirLiquidacion(){
   const activaData=await window.FB.get('liqActivas',String(opIdDetR));
   let activaActual=null;
   if(activaData&&activaData.data){try{activaActual=JSON.parse(activaData.data);}catch(e){}}
+  // Respaldo de compatibilidad: mientras alguna pestaña de Liquidaciones
+  // siga con el código anterior al candado por operador, su liquidación
+  // puede seguir solo en el doc único viejo (estado/liqActiva) — se revisa
+  // también para no reabrir a ciegas sobre una liquidación que en realidad
+  // sigue activa (solo que en el lugar viejo).
+  if(!activaActual){
+    try{
+      const _old=await window.FB.get('estado','liqActiva');
+      if(_old&&_old.data){
+        const _liqOld=JSON.parse(_old.data);
+        if(_liqOld&&parseInt(_liqOld.opId||_liqOld.unidad)===opIdDetR)activaActual=_liqOld;
+      }
+    }catch(e){}
+  }
   if(activaActual&&parseInt(activaActual.opId||activaActual.unidad)===opIdDetR&&activaActual.num>l.num){
     alert('No se puede reabrir: hay una liquidación #'+activaActual.num+' de este mismo operador actualmente abierta y es más reciente.');
     return;
