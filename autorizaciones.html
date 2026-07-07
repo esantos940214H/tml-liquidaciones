@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TML · Autorizaciones</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Segoe UI',Arial,sans-serif;background:#f0f2f5;color:#1a1a2e;min-height:100vh}
+html.in-iframe header{display:none!important}
+header{background:#1a1a2e;color:#fff;padding:14px 24px;display:flex;align-items:center;justify-content:space-between;border-bottom:3px solid #e63946}
+.logo{font-size:18px;font-weight:800}.logo span{color:#e63946}
+.nav{display:flex;gap:8px;flex-wrap:wrap}
+.nav a{color:#aaa;text-decoration:none;font-size:12px;padding:6px 12px;border-radius:5px;border:1px solid #333;transition:all .15s}
+.nav a:hover{color:#fff;border-color:#555}
+.nav a.active{color:#fff;background:#e63946;border-color:#e63946}
+.container{max-width:1100px;margin:0 auto;padding:20px 16px}
+.card{background:#fff;border-radius:10px;box-shadow:0 2px 12px rgba(0,0,0,.07);padding:20px 24px;margin-bottom:16px}
+.card-title{font-size:12px;font-weight:700;color:#1a1a2e;margin-bottom:14px;text-transform:uppercase;letter-spacing:1px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end}
+.btn{padding:8px 18px;border-radius:6px;border:none;font-size:12px;font-weight:700;cursor:pointer;transition:all .15s;text-transform:uppercase;letter-spacing:.5px}
+.btn-red{background:#e63946;color:#fff}.btn-red:hover{background:#c1121f}
+.btn-dark{background:#1a1a2e;color:#fff}.btn-dark:hover{background:#0d0d1a}
+.btn-out{background:#fff;color:#1a1a2e;border:1.5px solid #1a1a2e}.btn-out:hover{background:#f0f2f5}
+.btn-green{background:#2d6a4f;color:#fff}.btn-green:hover{background:#1b4332}
+.btn:disabled{opacity:.35;cursor:not-allowed}
+.btn-sm{padding:5px 11px;font-size:11px}
+.alert{padding:9px 13px;border-radius:7px;font-size:12px;margin-bottom:10px}
+.alert-info{background:#e8f4fd;color:#0369a1;border:1px solid #bae6fd}
+.alert-ok{background:#d1e7dd;color:#0a5233;border:1px solid #a3cfbb}
+.alert-warn{background:#fffbeb;color:#92400e;border:1px solid #fde68a}
+.alert-err{background:#fde8e8;color:#9b1c1c;border:1px solid #f9a8a8}
+.tbl-wrap{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:13px;min-width:500px}
+th{background:#1a1a2e;color:#fff;padding:8px 10px;font-size:11px;text-transform:uppercase;letter-spacing:.7px;text-align:left;font-weight:600}
+th.r{text-align:right}
+td{padding:7px 10px;border-bottom:1px solid #f0f0f0;vertical-align:middle}
+tr:last-child td{border-bottom:none}
+tr:hover td{background:#fafafa}
+.r{text-align:right}.num{font-family:monospace;font-weight:600}
+.fb-status{font-size:11px;color:#aaa}
+.fb-ok{color:#2d6a4f}.fb-err{color:#e63946}
+
+/* ── SESIÓN (login por módulo) ── */
+.session-overlay{position:fixed;inset:0;background:#1a1a2e;z-index:999999;display:none;align-items:center;justify-content:center}
+.session-overlay.show{display:flex}
+.session-box{background:#fff;border-radius:14px;padding:36px;width:320px;box-shadow:0 20px 60px rgba(0,0,0,.4);text-align:center}
+.session-logo{font-size:20px;font-weight:800;margin-bottom:4px;color:#1a1a2e}
+.session-logo span{color:#e63946}
+.session-modulo{font-size:13px;color:#666;margin-bottom:18px;font-weight:700}
+.session-input{width:100%;border:1.5px solid #dde;border-radius:8px;padding:10px 14px;font-size:14px;margin-bottom:10px;outline:none}
+.session-input:focus{border-color:#e63946}
+.session-btn{width:100%;padding:11px;background:#e63946;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer}
+.session-btn:hover{background:#c1121f}
+.session-err{color:#e63946;font-size:12px;margin-top:8px}
+.session-user-label{font-size:11px;color:#aaa}
+.session-logout{font-size:11px;color:#aaa;text-decoration:underline;cursor:pointer;background:none;border:none}
+.session-logout:hover{color:#fff}
+</style>
+<script>if(window!==window.top)document.documentElement.className+=' in-iframe';</script>
+</head>
+<body>
+
+<!-- OVERLAY DE SESIÓN -->
+<div class="session-overlay" id="sessionOverlay">
+  <div class="session-box">
+    <div class="session-logo">MUDANZAS <span>TML</span></div>
+    <div class="session-modulo" id="sessionModuloLabel">Iniciar sesión — Autorizaciones</div>
+    <input type="text" id="sessionUser" class="session-input" placeholder="Usuario" autocomplete="username" onkeydown="if(event.key==='Enter')document.getElementById('sessionPass').focus()">
+    <input type="password" id="sessionPass" class="session-input" placeholder="Contraseña" autocomplete="current-password" onkeydown="if(event.key==='Enter')intentarLogin()">
+    <button class="session-btn" onclick="intentarLogin()">Entrar</button>
+    <div class="session-err" id="sessionErr" style="display:none"></div>
+  </div>
+</div>
+<div class="session-overlay" id="sessionDenied">
+  <div class="session-box">
+    <div class="session-logo">MUDANZAS <span>TML</span></div>
+    <div class="session-modulo">⛔ Tu usuario no tiene permiso para entrar a este módulo.</div>
+    <div style="font-size:12px;color:#888;margin-bottom:16px">Sesión iniciada como <strong id="sessionDeniedUser"></strong></div>
+    <button class="session-btn" onclick="cerrarSesionTML()">Cerrar sesión</button>
+  </div>
+</div>
+
+<header>
+  <div class="logo">MUDANZAS <span>TML</span> <span style="font-size:13px;font-weight:400;color:#aaa;margin-left:8px">· Autorizaciones</span></div>
+  <div style="display:flex;align-items:center;gap:12px">
+    <span class="session-user-label" id="sesionUsuarioLabel"></span>
+    <button class="session-logout" id="btnCerrarSesion" onclick="cerrarSesionTML()" style="display:none">Cerrar sesión</button>
+    <span class="fb-status" id="fbStatus">⏳ Conectando...</span>
+    <nav class="nav">
+      <a href="https://anticipos.mudanzastml.mx">📋 Anticipos</a>
+      <a href="https://cxc.mudanzastml.mx">📄 Ingresos</a>
+      <a href="https://liquidaciones.mudanzastml.mx">🚛 Liquidaciones</a>
+      <a href="https://nomina.mudanzastml.mx">🧾 Nómina</a>
+      <a href="https://incidentes.mudanzastml.mx">🚨 Incidentes</a>
+      <a href="https://historial.mudanzastml.mx">🗂️ Historial</a>
+      <a href="https://autorizaciones.mudanzastml.mx" class="active">🔐 Autorizaciones</a>
+      <a href="https://usuarios.mudanzastml.mx">👤 Usuarios</a>
+    </nav>
+  </div>
+</header>
+
+<div class="container">
+
+  <div class="alert alert-info">🔐 Gastos sin factura mayores al límite permitido, registrados en el módulo de Liquidaciones, que necesitan autorización antes de contar en la liquidación. Selecciona los que quieras aprobar y confirma con la contraseña de supervisor.</div>
+
+  <div class="card">
+    <div class="card-title">
+      <span>⏳ Gastos pendientes <span id="liqActivaLabel" style="font-weight:400;color:#888;text-transform:none;letter-spacing:normal"></span></span>
+      <button class="btn btn-out btn-sm" onclick="cargarPendientes()">🔄 Recargar</button>
+    </div>
+    <div id="pendientesWrap"><div style="text-align:center;padding:30px;color:#aaa">Cargando...</div></div>
+    <div id="pendientesAcciones" style="margin-top:12px;display:none;gap:8px;flex-wrap:wrap;align-items:center">
+      <button class="btn btn-out btn-sm" onclick="toggleTodosPend(this)">Seleccionar todos</button>
+      <button class="btn btn-green btn-sm" onclick="autorizarSeleccionados()">🔓 Autorizar seleccionados</button>
+    </div>
+  </div>
+
+</div>
+
+<!-- Firebase compat -->
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+<script>
+window._fbInit=false;
+window._fbCallbacks=[];
+window.onFBReady=function(cb){if(window._fbInit)cb();else window._fbCallbacks.push(cb);};
+(function(){
+  try{
+    var cfg={apiKey:"AIzaSyDqlhREJFVFLGzz7bVlPcNl1Uba9HI3r8s",authDomain:"tml-liquidaciones.firebaseapp.com",
+      projectId:"tml-liquidaciones",storageBucket:"tml-liquidaciones.firebasestorage.app",
+      messagingSenderId:"268455373953",appId:"1:268455373953:web:ad359c5dbcba9f53557180"};
+    if(!firebase.apps.length)firebase.initializeApp(cfg);
+    var db=firebase.firestore();
+    window.FB={
+      set:function(col,id,data){return db.collection(col).doc(id).set(data);},
+      get:async function(col,id){try{var s=await db.collection(col).doc(id).get();return s.exists?s.data():null;}catch(e){console.error('FB.get:',e);return null;}},
+      del:function(col,id){return db.collection(col).doc(id).delete();},
+      listen:function(col,id,cb){return db.collection(col).doc(id).onSnapshot(function(s){cb(s.exists?s.data():null);});},
+      getAll:async function(col){
+        try{var s=await db.collection(col).get();var r=[];s.forEach(function(d){r.push(Object.assign({id:d.id},d.data()));});return r.sort(function(a,b){return(b.num||0)-(a.num||0);});}
+        catch(e){console.error('FB.getAll:',e);return[];}
+      }
+    };
+    window._fbInit=true;
+    window._fbCallbacks.forEach(function(cb){try{cb();}catch(e){console.error(e);}});
+    window._fbCallbacks=[];
+    setTimeout(function(){window.dispatchEvent(new Event('firebase-ready'));},0);
+  }catch(e){console.error('Firebase init error:',e);}
+})();
+</script>
+
+<script>
+const $=id=>document.getElementById(id);
+const fmt=(n,d=2)=>'$'+parseFloat(n||0).toLocaleString('es-MX',{minimumFractionDigits:d,maximumFractionDigits:d});
+let fbReady=false;
+
+// Solo se autoriza dentro de la ÚNICA liquidación activa del sistema — no
+// puede haber dos abiertas a la vez, así que este módulo no necesita elegir
+// operador/liquidación, solo lee/escribe estado/liqActiva directamente.
+const SUPERVISOR_PASS='tml2026';
+
+// ══════════════════════════════════════════════
+// SESIÓN (login general con permisos por módulo — mismo patrón que los demás)
+// ══════════════════════════════════════════════
+const MODULO_ACTUAL='autoriz';
+const NOMBRES_MODULO={ant:'Anticipos',ing:'Ingresos',liq:'Liquidaciones',nom:'Nómina',inc:'Incidentes',hist:'Historial',autoriz:'Autorizaciones'};
+
+function tmlSetCookie(name,value,days){
+  var expires='';
+  if(days){var d=new Date();d.setTime(d.getTime()+days*24*60*60*1000);expires=';expires='+d.toUTCString();}
+  document.cookie=name+'='+encodeURIComponent(value)+expires+';domain=.mudanzastml.mx;path=/;SameSite=Lax;Secure';
+}
+function tmlGetCookie(name){
+  var m=document.cookie.match('(^|;\\s*)'+name+'=([^;]*)');
+  return m?decodeURIComponent(m[2]):null;
+}
+function tmlDeleteCookie(name){
+  document.cookie=name+'=;expires=Thu, 01 Jan 1970 00:00:00 GMT;domain=.mudanzastml.mx;path=/;SameSite=Lax;Secure';
+}
+function usuarioSesion(){
+  try{return JSON.parse(tmlGetCookie('tml_user')||'null');}catch(e){return null;}
+}
+function cerrarSesionTML(){
+  tmlDeleteCookie('tml_user');
+  location.reload();
+}
+function mostrarLoginModulo(){
+  $('sessionModuloLabel').textContent='Iniciar sesión — '+NOMBRES_MODULO[MODULO_ACTUAL];
+  $('sessionOverlay').classList.add('show');
+  setTimeout(function(){$('sessionUser').focus();},100);
+}
+async function sha256Hex(texto){
+  var buf=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(texto));
+  return Array.from(new Uint8Array(buf)).map(function(b){return b.toString(16).padStart(2,'0');}).join('');
+}
+async function intentarLogin(){
+  var usuario=($('sessionUser').value||'').trim();
+  var pass=$('sessionPass').value||'';
+  var err=$('sessionErr');
+  err.style.display='none';
+  if(!usuario||!pass){err.textContent='Ingresa usuario y contraseña.';err.style.display='block';return;}
+  if(!fbReady){err.textContent='Sin conexión aún, espera un momento e intenta de nuevo.';err.style.display='block';return;}
+  try{
+    var hash=await sha256Hex(pass);
+    var usuarios=await window.FB.getAll('usuarios');
+    var match=usuarios.find(function(u){return (u.usuario||'').toLowerCase()===usuario.toLowerCase()&&u.passwordHash===hash&&u.activo!==false;});
+    if(!match){err.textContent='Usuario o contraseña incorrectos.';err.style.display='block';return;}
+    if(!match.esAdmin&&(!match.permisos||!match.permisos[MODULO_ACTUAL])){
+      err.textContent='Tu usuario no tiene permiso para entrar a '+NOMBRES_MODULO[MODULO_ACTUAL]+'.';err.style.display='block';return;
+    }
+    tmlSetCookie('tml_user',JSON.stringify({id:match.id,usuario:match.usuario,nombre:match.nombre,permisos:match.permisos,esAdmin:!!match.esAdmin}));
+    $('sessionOverlay').classList.remove('show');
+    mostrarSesionEnHeader();
+  }catch(e){
+    err.textContent='Error de conexión: '+e.message;err.style.display='block';
+  }
+}
+function aplicarPermisosNav(u){
+  if(!u||u.esAdmin)return;
+  var mapa={ant:'https://anticipos.mudanzastml.mx',ing:'https://cxc.mudanzastml.mx',liq:'https://liquidaciones.mudanzastml.mx',nom:'https://nomina.mudanzastml.mx',inc:'https://incidentes.mudanzastml.mx',hist:'https://historial.mudanzastml.mx',autoriz:'https://autorizaciones.mudanzastml.mx'};
+  Object.keys(mapa).forEach(function(mod){
+    if(!u.permisos||!u.permisos[mod]){
+      document.querySelectorAll('nav a[href="'+mapa[mod]+'"]').forEach(function(el){el.style.display='none';});
+    }
+  });
+  var usuariosLink=document.querySelector('nav a[href="https://usuarios.mudanzastml.mx"]');
+  if(usuariosLink)usuariosLink.style.display='none';
+}
+function mostrarSesionEnHeader(){
+  var u=usuarioSesion();
+  if(!u)return;
+  if($('sesionUsuarioLabel'))$('sesionUsuarioLabel').textContent='👤 '+(u.nombre||u.usuario)+(u.esAdmin?' (admin)':'');
+  if($('btnCerrarSesion'))$('btnCerrarSesion').style.display='inline';
+  aplicarPermisosNav(u);
+}
+function verificarSesionModulo(){
+  var u=usuarioSesion();
+  if(!u){mostrarLoginModulo();return;}
+  if(!u.esAdmin&&(!u.permisos||!u.permisos[MODULO_ACTUAL])){
+    $('sessionDeniedUser').textContent=u.nombre||u.usuario;
+    $('sessionDenied').classList.add('show');
+    return;
+  }
+  mostrarSesionEnHeader();
+  cargarPendientes();
+}
+window.onFBReady(function(){
+  fbReady=true;
+  $('fbStatus').textContent='✅ Conectado';
+  $('fbStatus').className='fb-status fb-ok';
+  verificarSesionModulo();
+});
+setTimeout(function(){if(!fbReady){$('fbStatus').textContent='❌ Sin conexión';$('fbStatus').className='fb-status fb-err';}},6000);
+
+// ══════════════════════════════════════════════
+// GASTOS PENDIENTES DE AUTORIZACIÓN
+// Viven dentro de la ÚNICA liquidación activa (estado/liqActiva) — no hay
+// varias liquidaciones abiertas a la vez en todo el sistema. Un gasto queda
+// autorizado:false cuando la liquidadora lo registra sin factura por más
+// del límite permitido (ver LIMITE_GASTO_SIN_FACTURA en liq.html).
+// ══════════════════════════════════════════════
+let _liqActiva=null;
+
+function signatureGasto(g){return (g.concepto||'')+'|'+(g.desc||'')+'|'+(g.importe||0)+'|'+(g.pagaOp?1:0);}
+
+async function cargarPendientes(){
+  $('pendientesWrap').innerHTML='<div style="text-align:center;padding:30px;color:#aaa">Cargando...</div>';
+  $('pendientesAcciones').style.display='none';
+  var data=await window.FB.get('estado','liqActiva');
+  _liqActiva=(data&&data.data)?JSON.parse(data.data):null;
+  if(!_liqActiva){
+    $('liqActivaLabel').textContent='';
+    $('pendientesWrap').innerHTML='<div style="color:#aaa;font-size:13px;padding:10px">No hay ninguna liquidación activa en este momento.</div>';
+    return;
+  }
+  $('liqActivaLabel').textContent='— Liq. #'+_liqActiva.num+' · '+(_liqActiva.op?_liqActiva.op.nombre:'');
+  var pendientes=(_liqActiva.gastos||[]).map(function(g,i){return{g:g,i:i};}).filter(function(x){return x.g.autorizado===false;});
+  if(!pendientes.length){
+    $('pendientesWrap').innerHTML='<div class="alert alert-ok">✅ Sin gastos pendientes de autorización en la liquidación #'+_liqActiva.num+'.</div>';
+    return;
+  }
+  var totPend=pendientes.reduce(function(s,x){return s+(x.g.importe||0);},0);
+  $('pendientesWrap').innerHTML='<div class="tbl-wrap"><table><thead><tr><th style="width:32px"></th><th>Concepto</th><th>Descripción</th><th class="r">Importe</th><th>¿Quién paga?</th></tr></thead><tbody>'
+    +pendientes.map(function(x){return '<tr>'
+      +'<td style="text-align:center"><input type="checkbox" class="chkPend" data-gi="'+x.i+'"></td>'
+      +'<td>'+x.g.concepto+'</td>'
+      +'<td style="font-size:12px">'+(x.g.desc||'')+'</td>'
+      +'<td class="num r">'+fmt(x.g.importe||0)+'</td>'
+      +'<td>'+(x.g.pagaOp?'Operador':'Empresa')+'</td>'
+      +'</tr>';}).join('')
+    +'</tbody><tfoot><tr style="font-weight:700;background:#f5f5f8"><td colspan="3">TOTAL PENDIENTE</td><td class="num r">'+fmt(totPend)+'</td><td></td></tr></tfoot></table></div>';
+  $('pendientesAcciones').style.display='flex';
+}
+
+function toggleTodosPend(btn){
+  var chks=document.querySelectorAll('.chkPend');
+  var todosMarcados=Array.from(chks).every(function(c){return c.checked;})&&chks.length>0;
+  chks.forEach(function(c){c.checked=!todosMarcados;});
+}
+
+async function autorizarSeleccionados(){
+  var chks=document.querySelectorAll('.chkPend:checked');
+  if(!chks.length){alert('Selecciona al menos un gasto pendiente.');return;}
+  if(!_liqActiva){alert('No hay liquidación activa.');return;}
+  var pass=prompt('Contraseña de supervisor para autorizar '+chks.length+' gasto(s):');
+  if(pass!==SUPERVISOR_PASS){alert('Contraseña incorrecta. No se autorizó nada.');return;}
+
+  var firmas=Array.from(chks).map(function(c){
+    var idx=parseInt(c.dataset.gi);
+    return signatureGasto(_liqActiva.gastos[idx]);
+  });
+
+  try{
+    // Releer fresco justo antes de escribir, por si la liquidadora modificó
+    // algo mientras tanto — se autoriza por firma (concepto+desc+importe+
+    // pagaOp), no por índice, para no depender de que el arreglo no cambió.
+    var data=await window.FB.get('estado','liqActiva');
+    var liqFresca=(data&&data.data)?JSON.parse(data.data):null;
+    if(!liqFresca||liqFresca.num!==_liqActiva.num){
+      alert('⚠️ La liquidación activa cambió mientras tanto. Vuelve a cargar y revisa antes de autorizar.');
+      cargarPendientes();
+      return;
+    }
+    var n=0;
+    (liqFresca.gastos||[]).forEach(function(g){
+      if(g.autorizado===false&&firmas.indexOf(signatureGasto(g))!==-1){g.autorizado=true;n++;}
+    });
+    await window.FB.set('estado','liqActiva',{data:JSON.stringify(liqFresca)});
+    alert('✅ '+n+' gasto(s) autorizado(s) en la liquidación #'+liqFresca.num+'.');
+    cargarPendientes();
+  }catch(e){
+    console.error('autorizarSeleccionados:',e);
+    alert('⚠️ Error al autorizar: '+e.message);
+  }
+}
+</script>
+</body>
+</html>

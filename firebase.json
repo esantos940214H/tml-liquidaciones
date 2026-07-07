@@ -47,6 +47,12 @@
       "public": "dist/usuarios",
       "ignore": ["firebase.json", "**/.*"],
       "rewrites": [{ "source": "**", "destination": "/index.html" }]
+    },
+    {
+      "target": "autorizaciones",
+      "public": "dist/autorizaciones",
+      "ignore": ["firebase.json", "**/.*"],
+      "rewrites": [{ "source": "**", "destination": "/index.html" }]
     }
   ]
 }

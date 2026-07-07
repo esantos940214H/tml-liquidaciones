@@ -7,18 +7,19 @@ set -euo pipefail
 cd "$(dirname "$0")"
 
 rm -rf dist
-mkdir -p dist/portal dist/anticipos dist/cxc dist/liquidaciones dist/nomina dist/incidentes dist/historial dist/usuarios
+mkdir -p dist/portal dist/anticipos dist/cxc dist/liquidaciones dist/nomina dist/incidentes dist/historial dist/usuarios dist/autorizaciones
 
-cp index.html       dist/portal/index.html
-cp ant.html         dist/anticipos/index.html
-cp ing.html         dist/cxc/index.html
-cp liq.html         dist/liquidaciones/index.html
-cp nomina.html      dist/nomina/index.html
-cp incidentes.html  dist/incidentes/index.html
-cp hist.html        dist/historial/index.html
-cp usuarios.html    dist/usuarios/index.html
+cp index.html          dist/portal/index.html
+cp ant.html            dist/anticipos/index.html
+cp ing.html            dist/cxc/index.html
+cp liq.html            dist/liquidaciones/index.html
+cp nomina.html         dist/nomina/index.html
+cp incidentes.html     dist/incidentes/index.html
+cp hist.html           dist/historial/index.html
+cp usuarios.html       dist/usuarios/index.html
+cp autorizaciones.html dist/autorizaciones/index.html
 
 # LOGO.png solo lo usa el portal (index.html)
 cp LOGO.png dist/portal/LOGO.png
 
-echo "build.sh: dist/ generado con 8 sites."
+echo "build.sh: dist/ generado con 9 sites."

@@ -129,6 +129,7 @@ tr:hover td{background:#fafafa}
       <a href="https://nomina.mudanzastml.mx">🧾 Nómina</a>
       <a href="https://incidentes.mudanzastml.mx" class="active">🚨 Incidentes</a>
       <a href="https://historial.mudanzastml.mx">🗂️ Historial</a>
+      <a href="https://autorizaciones.mudanzastml.mx">🔐 Autorizaciones</a>
       <a href="https://usuarios.mudanzastml.mx">👤 Usuarios</a>
     </nav>
   </div>
@@ -280,7 +281,7 @@ let fbReady=false;
 // SESIÓN (login general con permisos por módulo)
 // ══════════════════════════════════════════════
 const MODULO_ACTUAL='inc';
-const NOMBRES_MODULO={ant:'Anticipos',ing:'Ingresos',liq:'Liquidaciones',nom:'Nómina',inc:'Incidentes',hist:'Historial'};
+const NOMBRES_MODULO={ant:'Anticipos',ing:'Ingresos',liq:'Liquidaciones',nom:'Nómina',inc:'Incidentes',hist:'Historial',autoriz:'Autorizaciones'};
 
 // Cookie compartida entre subdominios (.mudanzastml.mx) — reemplaza
 // sessionStorage: cada módulo vive en su propio subdominio (site de
@@ -337,7 +338,7 @@ async function intentarLogin(){
 }
 function aplicarPermisosNav(u){
   if(!u||u.esAdmin)return;
-  var mapa={ant:'https://anticipos.mudanzastml.mx',ing:'https://cxc.mudanzastml.mx',liq:'https://liquidaciones.mudanzastml.mx',nom:'https://nomina.mudanzastml.mx',inc:'https://incidentes.mudanzastml.mx',hist:'https://historial.mudanzastml.mx'};
+  var mapa={ant:'https://anticipos.mudanzastml.mx',ing:'https://cxc.mudanzastml.mx',liq:'https://liquidaciones.mudanzastml.mx',nom:'https://nomina.mudanzastml.mx',inc:'https://incidentes.mudanzastml.mx',hist:'https://historial.mudanzastml.mx',autoriz:'https://autorizaciones.mudanzastml.mx'};
   Object.keys(mapa).forEach(function(mod){
     if(!u.permisos||!u.permisos[mod]){
       document.querySelectorAll('nav a[href="'+mapa[mod]+'"]').forEach(function(el){el.style.display='none';});
