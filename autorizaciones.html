@@ -276,6 +276,18 @@ async function cargarPendientes(){
     if(!r.data)return;
     try{var l=JSON.parse(r.data);if(l&&l.opId!=null)_liqsActivas[l.opId]=l;}catch(e){}
   });
+  // Respaldo de compatibilidad: mientras alguna pestaña de Liquidaciones
+  // siga con el código anterior al candado por operador, su liquidación
+  // puede seguir solo en el doc único viejo (estado/liqActiva), no en
+  // liqActivas — se incluye aquí también para no perder de vista sus
+  // gastos pendientes durante la transición.
+  try{
+    var _old=await window.FB.get('estado','liqActiva');
+    if(_old&&_old.data){
+      var lOld=JSON.parse(_old.data);
+      if(lOld&&lOld.opId!=null&&_liqsActivas[lOld.opId]==null)_liqsActivas[lOld.opId]=lOld;
+    }
+  }catch(e){}
   var opIds=Object.keys(_liqsActivas);
   if(!opIds.length){
     $('liqActivaLabel').textContent='';
