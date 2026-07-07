@@ -861,12 +861,20 @@ async function consultarEstadoSAT(item){
 // Se ejecuta al abrir la liquidación: valida ingresos (viajes XML) y gastos
 // facturados (XML) de la unidad ante el SAT, y marca/excluye los cancelados.
 // Nunca bloquea la liquidación si el proxy falla — solo avisa que no se pudo verificar.
-async function validarUnaLista(lista,mapRfcEmisor,mapRfcReceptor,mapTotal,contadores){
+async function validarUnaLista(lista,mapRfcEmisor,mapRfcReceptor,mapTotal,contadores,etiqueta){
   for(var i=0;i<lista.length;i++){
     var item=lista[i];
-    var r=await consultarEstadoSAT({uuid:item.uuid,rfcEmisor:mapRfcEmisor(item),rfcReceptor:mapRfcReceptor(item),total:mapTotal(item)});
+    var _req={uuid:item.uuid,rfcEmisor:mapRfcEmisor(item),rfcReceptor:mapRfcReceptor(item),total:mapTotal(item)};
+    var r=await consultarEstadoSAT(_req);
     item.satEstado=r.estado;item.satCancelado=!!r.cancelado;
-    if(r.error)contadores.nErrores++;else if(r.cancelado)contadores.nCancelados++;
+    if(r.error){
+      contadores.nErrores++;
+      contadores.porCategoria[etiqueta]=(contadores.porCategoria[etiqueta]||0)+1;
+      // Diagnóstico: por qué falló exactamente esta consulta (ej. falta
+      // rfcReceptor en un ingreso viejo capturado antes de guardar ese
+      // campo) — visible en la consola del navegador (F12 → Console).
+      console.error('SAT: no se pudo validar UUID '+item.uuid+' ('+etiqueta+') — '+(r.mensaje||r.estado)+' · datos enviados:',_req);
+    }else if(r.cancelado)contadores.nCancelados++;
   }
 }
 
@@ -888,15 +896,15 @@ async function validarCFDIsSATLiquidacion(soloNuevos){
   box.style.display='block';
   box.innerHTML='<div class="alert alert-info">⏳ Validando '+total+' CFDI ante el SAT (ingresos, gastos, diesel y casetas)...</div>';
 
-  var c={nCancelados:0,nErrores:0};
+  var c={nCancelados:0,nErrores:0,porCategoria:{}};
   await validarUnaLista(viajesXML,
-    function(v){return v.rfcEmisor||TML_RFC;},function(v){return v.rfcReceptor||'';},function(v){return v.total;},c);
+    function(v){return v.rfcEmisor||TML_RFC;},function(v){return v.rfcReceptor||'';},function(v){return v.total;},c,'ingresos');
   await validarUnaLista(gastosXMLconUUID,
-    function(g){return g.rfc||'';},function(){return TML_RFC;},function(g){return g.total;},c);
+    function(g){return g.rfc||'';},function(){return TML_RFC;},function(g){return g.total;},c,'gastos');
   await validarUnaLista(dieselXMLconUUID,
-    function(g){return g.rfc||'';},function(){return TML_RFC;},function(g){return g.total;},c);
+    function(g){return g.rfc||'';},function(){return TML_RFC;},function(g){return g.total;},c,'diesel');
   await validarUnaLista(autopistasXMLconUUID,
-    function(a){return a.rfc||'';},function(){return TML_RFC;},function(a){return a.importe;},c);
+    function(a){return a.rfc||'';},function(){return TML_RFC;},function(a){return a.importe;},c,'casetas');
 
   // ingresosDB es compartido con ant.html/ing.html/hist.html — se guarda completo
   // (ya sincronizado por el listener en vivo) para reflejar el estado SAT ahí también.
@@ -909,12 +917,13 @@ async function validarCFDIsSATLiquidacion(soloNuevos){
   var tabs=document.querySelectorAll('.tab');
   if(Array.from(tabs).indexOf(tabActivo)===4)generarReporte();
 
+  var _detalleErrores=Object.keys(c.porCategoria).map(function(k){return c.porCategoria[k]+' de '+k;}).join(', ');
   if(c.nErrores===total){
-    box.innerHTML='<div class="alert alert-warn">⚠️ No se pudo validar ningún CFDI ante el SAT (revisa que SAT_PROXY_URL esté configurado en liq.html). Los CFDI se consideran vigentes mientras no se puedan verificar.</div>';
+    box.innerHTML='<div class="alert alert-warn">⚠️ No se pudo validar ningún CFDI ante el SAT ('+_detalleErrores+'). Revisa la consola del navegador (F12) para el detalle exacto de cada uno. Los CFDI se consideran vigentes mientras no se puedan verificar.</div>';
   } else if(c.nCancelados){
-    box.innerHTML='<div class="alert alert-warn">⚠️ Se encontraron '+c.nCancelados+' CFDI cancelado(s) ante el SAT — se excluyeron del cálculo de esta liquidación.'+(c.nErrores?' ('+c.nErrores+' no se pudieron verificar.)':'')+'</div>';
+    box.innerHTML='<div class="alert alert-warn">⚠️ Se encontraron '+c.nCancelados+' CFDI cancelado(s) ante el SAT — se excluyeron del cálculo de esta liquidación.'+(c.nErrores?' ('+c.nErrores+' no se pudieron verificar: '+_detalleErrores+'.)':'')+'</div>';
   } else {
-    box.innerHTML='<div class="alert alert-ok">✅ CFDI verificados vigentes ante el SAT.'+(c.nErrores?' ('+c.nErrores+' no se pudieron verificar.)':'')+'</div>';
+    box.innerHTML='<div class="alert alert-ok">✅ CFDI verificados vigentes ante el SAT.'+(c.nErrores?' ('+c.nErrores+' no se pudieron verificar: '+_detalleErrores+'.)':'')+'</div>';
   }
 }
 
