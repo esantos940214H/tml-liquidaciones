@@ -125,6 +125,8 @@ tr:hover td{background:#fafafa}
 .firma-bloque{margin-top:8px}
 .firma-texto{font-size:11.5px;line-height:1.7;color:#222;text-align:justify;font-weight:600;margin-bottom:28px;text-transform:uppercase}
 .firma-campos{display:grid;grid-template-columns:2fr 1fr;gap:48px;margin-top:8px}
+.firma-centrada{max-width:320px;margin:24px auto 0;text-align:center}
+.firma-fecha{font-size:12px;color:#555;font-weight:700;margin-bottom:2px}
 .firma-linea{border-top:1.5px solid #1a1a2e;margin-bottom:6px;margin-top:40px}
 .firma-label{font-size:10px;color:#666;text-transform:uppercase;letter-spacing:.7px;text-align:center}
 .firma-opnombre{font-size:12px;color:#555;margin-top:4px;text-align:center;font-weight:700}
@@ -555,18 +557,12 @@ tr:hover td{background:#fafafa}
 
       <!-- FIRMA DE CONFORMIDAD -->
       <div class="card firma-bloque">
-        <p class="firma-texto">EN ESTA FECHA SE FORMULA LA PRESENTE LIQUIDACION QUE ES A MI ENTERA SATISFACCION Y EN LA QUE SE ENCUENTRAN INCLUIDOS LOS SALARIOS ESTIPULADOS DE ACUERDO AL CONTRATO COLECTIVO DE TRABAJO, INCLUYENDOSE EN MI SALARIO EL PAGO CORRESPONDIENTE A HORAS EXTRAS DE TRABAJO GASTOS DE VIAJE Y LA PARTE PROPORCIONAL DE DESCANSOS SEMANALES Y OBLIGACIONES, POR LO QUE NO TENGO RECLAMACION ALGUNA QUE SE DERIVE DEL CONTRATO COLECTIVO DE TRABAJO.</p>
-        <div class="firma-campos">
-          <div>
-            <div class="firma-linea"></div>
-            <div class="firma-label">Nombre y firma del operador</div>
-            <div class="firma-opnombre" id="repFirmaOpNombre"></div>
-          </div>
-          <div>
-            <div class="firma-linea"></div>
-            <div class="firma-label">Fecha</div>
-            <div class="firma-opnombre" id="repFirmaFecha"></div>
-          </div>
+        <p class="firma-texto" id="repFirmaTexto"></p>
+        <div class="firma-centrada">
+          <div class="firma-fecha" id="repFirmaFecha"></div>
+          <div class="firma-linea"></div>
+          <div class="firma-label">Nombre y firma del operador</div>
+          <div class="firma-opnombre" id="repFirmaOpNombre"></div>
         </div>
       </div>
     </div>
@@ -673,6 +669,9 @@ const UNIDADES=OPERADORES.map(function(o){return o.unidad;}).slice().sort(functi
 
 const SUPERVISOR_PASS='tml2026';
 const TML_RFC='MTM171214PI4';
+// Leyenda de conformidad en la firma del reporte: cambia según el saldo.
+const TEXTO_FIRMA_FAVOR='EN ESTA FECHA SE FORMULA LA PRESENTE LIQUIDACION QUE ES A MI ENTERA SATISFACCION Y EN LA QUE SE ENCUENTRAN INCLUIDOS LOS SALARIOS ESTIPULADOS DE ACUERDO AL CONTRATO COLECTIVO DE TRABAJO, INCLUYENDOSE EN MI SALARIO EL PAGO CORRESPONDIENTE A HORAS EXTRAS DE TRABAJO GASTOS DE VIAJE Y LA PARTE PROPORCIONAL DE DESCANSOS SEMANALES Y OBLIGACIONES, POR LO QUE NO TENGO RECLAMACION ALGUNA QUE SE DERIVE DEL CONTRATO COLECTIVO DE TRABAJO.';
+const TEXTO_FIRMA_CONTRA='ESTANDO DE ACUERDO CON EL PRESENTE ESTADO DE CUENTA, DOY FE DE HABER RECIBIDO LOS RECURSOS DESCRITOS Y RECONOZCO EL SALDO INDICADO COMO CORRECTO, COMPROMETIÉNDOME A SU LIQUIDACIÓN CONFORME A LOS TÉRMINOS ESTABLECIDOS POR MUDANZAS TML.';
 function getReceptorRfc(doc){
   var ns='http://www.sat.gob.mx/cfd/4',ns3='http://www.sat.gob.mx/cfd/3';
   var receptor=doc.querySelector('Receptor')||doc.getElementsByTagNameNS(ns,'Receptor')[0]||doc.getElementsByTagNameNS(ns3,'Receptor')[0];
@@ -3565,8 +3564,14 @@ function generarReporte(){
   }
 
   // ── FIRMA ──────────────────────────────────────────
+  // Dos leyendas según el saldo: a favor del operador (recibe su
+  // liquidación completa, sin deberle nada a la empresa) usa el texto de
+  // conformidad de nómina; en contra (el operador quedó debiendo, ej.
+  // diesel/gastos adelantados de más) usa el texto tipo pagaré,
+  // reconociendo el saldo y comprometiéndose a liquidarlo.
+  if($('repFirmaTexto')) $('repFirmaTexto').textContent=saldoReal>=0?TEXTO_FIRMA_FAVOR:TEXTO_FIRMA_CONTRA;
   if($('repFirmaOpNombre')) $('repFirmaOpNombre').textContent=liq.op.nombre;
-  if($('repFirmaFecha')) $('repFirmaFecha').textContent=liq.llegada||hoy();
+  if($('repFirmaFecha')) $('repFirmaFecha').textContent='Fecha: '+(liq.llegada||hoy());
 
   // ── SNAPSHOT para cerrar liquidación ──────────────
   _snap={

@@ -62,6 +62,8 @@ tr:hover td{background:#fafafa}
 .firma-bloque{margin-top:8px}
 .firma-texto{font-size:11.5px;line-height:1.7;color:#333;text-align:justify;font-weight:600;text-transform:uppercase;margin-bottom:28px}
 .firma-campos{display:grid;grid-template-columns:2fr 1fr;gap:48px;margin-top:8px}
+.firma-centrada{max-width:320px;margin:24px auto 0;text-align:center}
+.firma-fecha{font-size:12px;color:#555;font-weight:700;margin-bottom:2px}
 .firma-linea{border-top:1.5px solid #1a1a2e;margin-top:40px;margin-bottom:6px}
 .firma-label{font-size:10px;color:#666;text-transform:uppercase;letter-spacing:.7px;text-align:center}
 .firma-opnombre{font-size:12px;color:#555;text-align:center;font-weight:700;margin-top:4px}
@@ -316,6 +318,9 @@ const OPERADORES=[
 ];
 const $=id=>document.getElementById(id);
 const fmt=(n,d=2)=>'$'+parseFloat(n||0).toLocaleString('es-MX',{minimumFractionDigits:d,maximumFractionDigits:d});
+// Leyenda de conformidad en la firma: cambia según el saldo (misma lógica que liq.html).
+const TEXTO_FIRMA_FAVOR='EN ESTA FECHA SE FORMULA LA PRESENTE LIQUIDACION QUE ES A MI ENTERA SATISFACCION Y EN LA QUE SE ENCUENTRAN INCLUIDOS LOS SALARIOS ESTIPULADOS DE ACUERDO AL CONTRATO COLECTIVO DE TRABAJO, INCLUYENDOSE EN MI SALARIO EL PAGO CORRESPONDIENTE A HORAS EXTRAS DE TRABAJO GASTOS DE VIAJE Y LA PARTE PROPORCIONAL DE DESCANSOS SEMANALES Y OBLIGACIONES, POR LO QUE NO TENGO RECLAMACION ALGUNA QUE SE DERIVE DEL CONTRATO COLECTIVO DE TRABAJO.';
+const TEXTO_FIRMA_CONTRA='ESTANDO DE ACUERDO CON EL PRESENTE ESTADO DE CUENTA, DOY FE DE HABER RECIBIDO LOS RECURSOS DESCRITOS Y RECONOZCO EL SALDO INDICADO COMO CORRECTO, COMPROMETIÉNDOME A SU LIQUIDACIÓN CONFORME A LOS TÉRMINOS ESTABLECIDOS POR MUDANZAS TML.';
 const fmtN=(n,d=2)=>parseFloat(n||0).toLocaleString('es-MX',{minimumFractionDigits:d,maximumFractionDigits:d});
 
 let historialDB=[];
@@ -677,12 +682,16 @@ function verDetalle(id){
     $('detDiesel').innerHTML='<div style="color:#aaa;font-size:13px">Sin cargas de combustible registradas.</div>';
   }
 
-  // Firma de conformidad
+  // Firma de conformidad — la leyenda cambia según el saldo: a favor del
+  // operador usa el texto de conformidad de nómina; en contra (quedó
+  // debiendo) usa el texto tipo pagaré, reconociendo el saldo.
   $('detFirma').innerHTML='<div class="firma-bloque">'
-    +'<div class="firma-texto">Estando de acuerdo con el presente estado de cuenta, doy fe de haber recibido los recursos descritos y reconozco el saldo indicado como correcto, comprometiéndome a su liquidación conforme a los términos establecidos por Mudanzas TML.</div>'
-    +'<div class="firma-campos">'
-    +'<div><div class="firma-linea"></div><div class="firma-label">Firma y nombre del operador</div><div class="firma-opnombre">'+(op?op.nombre:'')+'</div></div>'
-    +'<div><div class="firma-linea"></div><div class="firma-label">Fecha</div><div class="firma-opnombre">'+(l.llegada||l.fechaCierre||'')+'</div></div>'
+    +'<div class="firma-texto">'+(saldo>=0?TEXTO_FIRMA_FAVOR:TEXTO_FIRMA_CONTRA)+'</div>'
+    +'<div class="firma-centrada">'
+    +'<div class="firma-fecha">Fecha: '+(l.llegada||l.fechaCierre||'')+'</div>'
+    +'<div class="firma-linea"></div>'
+    +'<div class="firma-label">Firma y nombre del operador</div>'
+    +'<div class="firma-opnombre">'+(op?op.nombre:'')+'</div>'
     +'</div></div>';
 
   window.scrollTo(0,0);
