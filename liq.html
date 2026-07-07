@@ -319,6 +319,18 @@ tr:hover td{background:#fafafa}
       <div id="tablaDieselXML" style="margin-top:10px"></div>
     </div>
 
+    <!-- Reporte de diesel en PDF (proveedores distintos a Edenred, ej. Effectivale) -->
+    <div class="card">
+      <div class="card-title">🛢️ Reporte de diesel (PDF)</div>
+      <p style="font-size:12px;color:#888;margin-bottom:10px">Para unidades cuyo proveedor de diesel no es Edenred y descarga un reporte en PDF en vez de Excel (ej. Effectivale). Una IA extrae las cargas y se agregan directo a "Cargas del periodo" de abajo, igual que el reporte de Edenred.</p>
+      <div class="upload-zone" id="dzDieselPDF" onclick="document.getElementById('fDieselPDF').click()" style="padding:14px">
+        <div class="icon" style="font-size:20px">📄</div>
+        <p style="font-size:12px"><strong>Subir PDF del reporte de diesel</strong><br><span style="font-size:11px;color:#aaa">Puede subirse uno por uno</span></p>
+      </div>
+      <input type="file" id="fDieselPDF" accept=".pdf" style="display:none">
+      <div id="dieselPDFInfo" style="display:none;margin-top:10px"></div>
+    </div>
+
     <div id="cardDiesel" style="display:none"><div class="card">
       <div class="card-title">⛽ Cargas del periodo — <span id="dOpNombre"></span></div>
       <div id="alertDiesel"></div>
@@ -1009,7 +1021,10 @@ function normUnidad(u){
     'S31':531,
     'S32':532,
     'S33':533,
-    'S34':534
+    'S34':534,
+    // Tarjeta de peaje ECO 535 (reporte distinto, formato Tag/Concepto —
+    // se identifica por el número de tarjeta/Tag, no por económico directo)
+    'IMDM24840466':535
   };
   const str=(u||'').toString().trim().toUpperCase();
   if(TARJETAS[str])return TARJETAS[str];
@@ -2039,6 +2054,65 @@ function handleDDEC(file){
   });
 }
 
+// Reporte de diesel en PDF (proveedores sin Excel, ej. Effectivale) — el PDF
+// suele ser una captura de pantalla vectorizada sin texto extraíble, así que
+// se manda a la IA igual que el escaneo DDEC. Las cargas resultantes se
+// fusionan directo en cargasOp/"Cargas del periodo", como si vinieran del
+// Excel de Edenred — misma tabla, mismo cálculo de diesel comprobado.
+const dzDieselPDF=$('dzDieselPDF'); if(dzDieselPDF){
+dzDieselPDF.addEventListener('dragover',function(e){e.preventDefault();dzDieselPDF.classList.add('drag');});
+dzDieselPDF.addEventListener('dragleave',function(){dzDieselPDF.classList.remove('drag');});
+dzDieselPDF.addEventListener('drop',function(e){e.preventDefault();dzDieselPDF.classList.remove('drag');handleDieselPDF(e.dataTransfer.files[0]);});
+$('fDieselPDF').addEventListener('change',function(e){handleDieselPDF(e.target.files[0]);e.target.value='';});
+}
+
+function handleDieselPDF(file){
+  if(!file)return;
+  if(!liq){alert('Primero inicia o abre una liquidación.');return;}
+  $('dieselPDFInfo').style.display='block';
+  $('dieselPDFInfo').innerHTML='<div class="alert alert-info">⏳ Analizando reporte de diesel con IA...</div>';
+  fileToBase64(file).then(function(base64){
+    return fetch('https://api.anthropic.com/v1/messages',{
+      method:'POST',
+      headers:{'Content-Type':'application/json','anthropic-dangerous-direct-browser-access':'true'},
+      body:JSON.stringify({model:'claude-sonnet-4-6',max_tokens:2000,messages:[{role:'user',content:[
+        {type:'document',source:{type:'base64',media_type:'application/pdf',data:base64}},
+        {type:'text',text:'Es un reporte de consumos de diesel de una tarjeta (ej. Effectivale). Extrae TODAS las filas de la tabla de consumos y responde SOLO JSON sin texto ni backticks, un arreglo: [{"fecha":"DD/MM/YYYY","hora":"HH:MM:SS","litros":numero,"precio":numero,"importe":numero,"estacion":"string"}]. fecha y hora vienen de la columna FECHA MOVIMIENTO. litros de CONSUMO (LITROS). precio de PRECIO. importe de CONSUMO (IMPORTE). estacion de NOMBRE ESTACIÓN. Ignora filas que no sean consumo de diesel.'}
+      ]}]})
+    });
+  }).then(function(res){if(!res.ok)return res.json().then(function(e){throw new Error(e.error&&e.error.message?e.error.message:'HTTP '+res.status);});return res.json();})
+  .then(function(data){
+    const txt=(data.content||[]).filter(function(b){return b.type==='text';}).map(function(b){return b.text;}).join('');
+    const filas=JSON.parse(txt.replace(/```json|```/g,'').trim());
+    aplicarDieselPDF(filas,file.name);
+  }).catch(function(err){
+    $('dieselPDFInfo').innerHTML='<div class="alert alert-warn">⚠️ Error: '+err.message+'. Captura manualmente.</div>';
+  });
+}
+
+function aplicarDieselPDF(filas,fname){
+  if(!liq||!Array.isArray(filas)||!filas.length){
+    $('dieselPDFInfo').innerHTML='<div class="alert alert-warn">⚠️ No se encontraron cargas en el PDF.</div>';
+    return;
+  }
+  const dSal=new Date(liq.salida),dLleg=new Date(liq.llegada+'T23:59:59');
+  const clavesActuales=cargasOp.map(function(c){return (c.fecha||'')+'|'+(c.hora||'')+'|'+Math.round((c.litros||0)*100);});
+  var nuevas=0,fueraRango=0,duplicadas=0;
+  filas.forEach(function(f){
+    if(!f||f.litros==null)return;
+    const fo=parseDateDDMM(f.fecha);
+    if(fo&&(fo<dSal||fo>dLleg)){fueraRango++;return;}
+    const key=(f.fecha||'')+'|'+(f.hora||'')+'|'+Math.round((f.litros||0)*100);
+    if(clavesActuales.indexOf(key)!==-1){duplicadas++;return;}
+    clavesActuales.push(key);
+    cargasOp.push({fecha:f.fecha||'',hora:f.hora||'',estacion:f.estacion||'',litros:parseFloat(f.litros)||0,precio:parseFloat(f.precio)||0,importe:parseFloat(f.importe)||0,ltsDejoInput:0,yaLiquidada:false});
+    nuevas++;
+  });
+  renderTablaDiesel();
+  calcDiesel();
+  $('dieselPDFInfo').innerHTML='<div class="alert alert-ok">✅ <strong>'+fname+'</strong> — '+nuevas+' carga(s) agregada(s) a "Cargas del periodo".'+(fueraRango?' '+fueraRango+' fuera del rango de fechas de esta liquidación.':'')+(duplicadas?' '+duplicadas+' ya estaban agregadas.':'')+'</div>';
+}
+
 function aplicarDatosDDEC(datos,fname){
   const enc=[];
   if(datos.kms!=null){$('liqKms').value=datos.kms;enc.push(Number(datos.kms).toLocaleString('es-MX')+' km');}
@@ -2628,7 +2702,24 @@ function parseIAVE(text,fname){
   const lines=text.split(/\r?\n/).filter(function(l){return l.trim();});
   const headers=lines[0].split(',').map(function(h){return h.trim();});
   const idx=function(h){return headers.findIndex(function(x){return norm(x).includes(norm(h));});};
-  const iU=idx('No.Economico'),iF=idx('Fecha'),iH=idx('Hora'),iC=idx('Caseta'),iCa=idx('Carril'),iI=idx('Importe');
+  const idxExact=function(h){var t=norm(h);return headers.findIndex(function(x){return norm(x)===t;});};
+  // Dos formatos de reporte de casetas:
+  //  - PASE/IAVE "clásico": trae "No. Económico" en cada renglón.
+  //  - Tag/Concepto (ej. ECO 535, tarjeta IMDM...): todo el archivo es de
+  //    UNA sola tarjeta identificada por el "Tag" (se mapea a económico vía
+  //    normUnidad/TARJETAS), y trae renglones que NO son peaje (ej.
+  //    "RECARGA SALDO", solo agregan saldo a la tarjeta) que hay que excluir.
+  //    Además usa nombres de columna repetidos ("No. Caseta" vs "Caseta",
+  //    "No. Carril" vs "Carril"), así que aquí se buscan por nombre EXACTO
+  //    para no agarrar la columna equivocada.
+  const esFormatoTag=idxExact('Tag')!==-1&&idxExact('Concepto')!==-1;
+  const iU=esFormatoTag?idxExact('Tag'):idx('No.Economico');
+  const iF=esFormatoTag?idxExact('Fecha de Movimiento'):idx('Fecha');
+  const iH=esFormatoTag?idxExact('Hora de Movimiento'):idx('Hora');
+  const iC=esFormatoTag?idxExact('Caseta'):idx('Caseta');
+  const iCa=esFormatoTag?idxExact('Carril'):idx('Carril');
+  const iI=idx('Importe');
+  const iConc=esFormatoTag?idxExact('Concepto'):-1;
   const dSal=new Date(liq.salida),dLleg=new Date(liq.llegada+'T23:59:59');
   // En una liquidación REABIERTA no se excluye ningún cruce por "ya liquidado":
   // los cruces propios de esa liquidación siguen en iaveYaLiquidadas de cuando
@@ -2641,6 +2732,7 @@ function parseIAVE(text,fname){
   for(var i=1;i<lines.length;i++){
     const cols=lines[i].split(',').map(function(c){return c.trim();});
     if(cols.length<6)continue;
+    if(esFormatoTag&&norm(cols[iConc])!=='PEAJE')continue; // excluir recargas de saldo y otros movimientos que no son cruces
     if(normUnidad(cols[iU])!==liq.unidad)continue;
     const fo=parseDateDDMM(cols[iF]);
     if(fo&&(fo<dSal||fo>dLleg))continue;
