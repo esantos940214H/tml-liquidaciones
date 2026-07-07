@@ -3993,18 +3993,25 @@ async function cerrarLiquidacion(){
     arrastres[_unidadNum].iaveYaLiquidadas=_iaveYaLiq;
   }
 
-  // Saldo en contra: crear anticipo automático para la siguiente liquidación
+  // Saldo en contra: crear anticipo automático para la siguiente liquidación.
+  // Solo se crea AQUÍ, al cerrar (nunca antes, ni en la vista previa). Si esta
+  // liquidación se reabrió y se vuelve a cerrar, primero se quita el anticipo
+  // "Saldo en contra liq #N" que ya existiera de la vez anterior (siempre
+  // sigue pendiente — no se puede reabrir si ya hay una liquidación posterior
+  // cerrada que pudo haberlo usado) para no duplicar la misma deuda dos veces.
+  if(!anticiposDB[_opIdNum])anticiposDB[_opIdNum]=[];
+  var _conceptoSaldo='Saldo en contra liq #'+liqCopia.num;
+  anticiposDB[_opIdNum]=anticiposDB[_opIdNum].filter(function(a){return!(a.concepto===_conceptoSaldo&&a.estado==='pendiente');});
   if(_snap.saldoReal<0){
     var _deuda=Math.abs(_snap.saldoReal);
     var _hoy=new Date();
     var _fechaISO=_hoy.toISOString().slice(0,10);
     var _fechaStr=_hoy.toLocaleDateString('es-MX');
-    if(!anticiposDB[_opIdNum])anticiposDB[_opIdNum]=[];
     anticiposDB[_opIdNum].push({
       id:'saldo-liq-'+liqCopia.num+'-'+Date.now(),
       fecha:_fechaISO, fechaStr:_fechaStr,
       importe:_deuda,
-      concepto:'Saldo en contra liq #'+liqCopia.num,
+      concepto:_conceptoSaldo,
       estado:'pendiente',
       liqNum:null
     });
