@@ -3851,12 +3851,27 @@ function imprimirLiquidacion(){
   setTimeout(_restaurar,3000); // respaldo por si afterprint no dispara
 }
 
-function cerrarLiquidacion(){
+async function cerrarLiquidacion(){
   if(!liq)return;
   var _gastosPend=(liq.gastos||[]).filter(function(g){return g.autorizado===false;});
   if(_gastosPend.length){
     alert('🚫 No se puede cerrar: hay '+_gastosPend.length+' gasto(s) pendiente(s) de autorización por '+fmt(_gastosPend.reduce(function(s,g){return s+(g.importe||0);},0))+'.\n\nUn supervisor debe autorizarlos (o elimínalos si no proceden) en autorizaciones.mudanzastml.mx antes de cerrar.');
     return;
+  }
+  // Revalidación final ante el SAT justo antes de cerrar — por si algún CFDI
+  // se canceló después de la última verificación, para no cerrar la
+  // liquidación con saldos que ya no reflejan la realidad.
+  await validarCFDIsSATLiquidacion(false);
+  var _opIdChk=parseInt(liq.opId||liq.unidad);
+  var _viajesCancelados=ingresosDB.filter(function(v){return parseInt(v.unidad)===_opIdChk&&v.estado==='sin_liquidar'&&v.satCancelado;}).length;
+  var _gastosCancelados=(liq.gastosXML||[]).filter(function(g){return g.satCancelado;}).length;
+  var _dieselCancelados=(liq.dieselXML||[]).filter(function(x){return x.satCancelado;}).length;
+  var _casetasCanceladas=(liq.autopistas||[]).filter(function(a){return a.satCancelado;}).length;
+  var _totalCancelados=_viajesCancelados+_gastosCancelados+_dieselCancelados+_casetasCanceladas;
+  if(_totalCancelados){
+    if(!confirm('⚠️ Se encontró '+_totalCancelados+' CFDI CANCELADO ante el SAT en esta liquidación (ingresos: '+_viajesCancelados+', gastos: '+_gastosCancelados+', diesel: '+_dieselCancelados+', casetas: '+_casetasCanceladas+').\n\nYa está excluido de los cálculos, pero esto VA A AFECTAR los saldos respecto a lo que se tenía capturado antes. Revisa la pestaña de Reporte antes de continuar.\n\n¿Cerrar de todas formas?')){
+      return;
+    }
   }
   if(!confirm('¿Cerrar liquidación #'+liq.num+'?\nSe marcarán anticipos y viajes como liquidados.'))return;
   // Generar reporte para poblar _snap (incluye antsList, viajesList, cargasDiesel)
