@@ -773,7 +773,9 @@ async function reabrirLiquidacion(){
   const hayPosterior=histFresco.some(function(h){return parseInt(h.opId||h.unidad)===opIdDetR&&h.num>l.num;});
   if(hayPosterior){alert('No se puede reabrir: ya existe una liquidación #'+l.num+' o posterior de este mismo operador ya cerrada en el sistema. Reabrir esta rompería la cadena de arrastres (anticipos/diesel) de en medio.');return;}
 
-  const activaData=await window.FB.get('estado','liqActiva');
+  // liqActivas/{opId}: una liquidación activa POR OPERADOR, no un doc único
+  // global — se consulta solo la de este mismo operador (opIdDetR).
+  const activaData=await window.FB.get('liqActivas',String(opIdDetR));
   let activaActual=null;
   if(activaData&&activaData.data){try{activaActual=JSON.parse(activaData.data);}catch(e){}}
   if(activaActual&&parseInt(activaActual.opId||activaActual.unidad)===opIdDetR&&activaActual.num>l.num){
@@ -793,13 +795,13 @@ async function reabrirLiquidacion(){
   // "Reabrir" de nuevo.
   if(activaActual&&parseInt(activaActual.opId||activaActual.unidad)===parseInt(l.opId||l.unidad)&&activaActual.num===l.num){
     alert('La liquidación #'+l.num+' ya está activa en el módulo de Liquidaciones (se reabrió antes y no se ha vuelto a cerrar). Te llevo directo ahí, sin volver a tocar anticipos/viajes.');
-    location.href='https://liquidaciones.mudanzastml.mx';
+    location.href='https://liquidaciones.mudanzastml.mx/?liqOp='+opIdDetR;
     return;
   }
 
   let msgConfirm='¿REABRIR la liquidación #'+l.num+' (unidad '+l.unidad+') para modificarla?\n\nSus anticipos, viajes e incidentes quedarán "pendientes" otra vez hasta que se vuelva a cerrar.';
   if(activaActual&&!(parseInt(activaActual.opId||activaActual.unidad)===parseInt(l.opId||l.unidad)&&activaActual.num===l.num)){
-    msgConfirm+='\n\n⚠️ ATENCIÓN: ahora mismo hay OTRA liquidación abierta (#'+activaActual.num+', unidad '+activaActual.unidad+') sin cerrar. Solo puede haber una liquidación activa a la vez — al reabrir esta se REEMPLAZA esa otra en el sistema (su progreso ya guardado en Firebase no se borra hasta que la cierres o la elimines, pero deja de ser "la liquidación activa"). ¿Seguro que ya la cerraste o no importa?';
+    msgConfirm+='\n\n⚠️ ATENCIÓN: este operador ya tiene OTRA liquidación abierta (#'+activaActual.num+') sin cerrar. Solo puede haber una liquidación activa a la vez POR OPERADOR — al reabrir esta se REEMPLAZA esa otra para este mismo operador (su progreso ya guardado en Firebase no se borra hasta que la cierres o la elimines, pero deja de ser "la liquidación activa" de este operador). ¿Seguro que ya la cerraste o no importa?';
   }
   if(!confirm(msgConfirm))return;
   if(prompt('Para confirmar, escribe el número de liquidación (#'+l.num+'):')!==String(l.num)){alert('No coincide el número. No se reabrió nada.');return;}
@@ -936,11 +938,11 @@ async function reabrirLiquidacion(){
       window.FB.set('estado','incidentesDB',{data:JSON.stringify(incDB)}),
       window.FB.set('estado','nominaDB',{data:JSON.stringify(nomDB)}),
       window.FB.set('estado','arrastres',{data:JSON.stringify(arrDB)}),
-      window.FB.set('estado','liqActiva',{data:JSON.stringify(liqReab)}),
+      window.FB.set('liqActivas',String(opIdL),{data:JSON.stringify(liqReab)}),
     ]);
 
     alert('🔓 Liquidación #'+l.num+' reabierta.\n'+nA+' anticipo(s), '+nV+' viaje(s)'+(nN?', '+nN+' recibo(s) de nómina':'')+(nI?' y '+nI+' incidente(s)':'')+' quedaron pendientes otra vez e incluidos en la liquidación.\n\nSi hay anticipos, viajes o recibos de nómina NUEVOS registrados después del cierre original, no se van a jalar solos — vas a poder insertarlos a propósito con un botón dentro del módulo de Liquidaciones.\n\nAbriendo el módulo de Liquidaciones para editarla...');
-    location.href='https://liquidaciones.mudanzastml.mx';
+    location.href='https://liquidaciones.mudanzastml.mx/?liqOp='+opIdL;
   }catch(e){
     console.error('reabrirLiquidacion:',e);
     alert('⚠️ Error al reabrir la liquidación: '+e.message);

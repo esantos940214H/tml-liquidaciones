@@ -155,9 +155,10 @@ const $=id=>document.getElementById(id);
 const fmt=(n,d=2)=>'$'+parseFloat(n||0).toLocaleString('es-MX',{minimumFractionDigits:d,maximumFractionDigits:d});
 let fbReady=false;
 
-// Solo se autoriza dentro de la ÚNICA liquidación activa del sistema — no
-// puede haber dos abiertas a la vez, así que este módulo no necesita elegir
-// operador/liquidación, solo lee/escribe estado/liqActiva directamente.
+// Puede haber varias liquidaciones activas a la vez (una por operador, ver
+// liqActivas/{opId} en Firestore) — este módulo junta los gastos pendientes
+// de TODAS ellas en una sola tabla, indicando de qué operador/liquidación
+// es cada uno.
 const SUPERVISOR_PASS='tml2026';
 
 // ══════════════════════════════════════════════
@@ -255,41 +256,55 @@ setTimeout(function(){if(!fbReady){$('fbStatus').textContent='❌ Sin conexión'
 
 // ══════════════════════════════════════════════
 // GASTOS PENDIENTES DE AUTORIZACIÓN
-// Viven dentro de la ÚNICA liquidación activa (estado/liqActiva) — no hay
-// varias liquidaciones abiertas a la vez en todo el sistema. Un gasto queda
-// autorizado:false cuando la liquidadora lo registra sin factura por más
-// del límite permitido (ver LIMITE_GASTO_SIN_FACTURA en liq.html).
+// Puede haber varias liquidaciones activas a la vez (una por operador, ver
+// liqActivas/{opId}) — se juntan los gastos pendientes de todas en una sola
+// tabla. Un gasto queda autorizado:false cuando la liquidadora lo registra
+// sin factura por más del límite permitido (ver LIMITE_GASTO_SIN_FACTURA en
+// liq.html), y solo si lo paga el operador (los que paga la empresa nunca
+// quedan pendientes).
 // ══════════════════════════════════════════════
-let _liqActiva=null;
+let _liqsActivas={}; // {opId: liqObjeto}
 
 function signatureGasto(g){return (g.concepto||'')+'|'+(g.desc||'')+'|'+(g.importe||0)+'|'+(g.pagaOp?1:0);}
 
 async function cargarPendientes(){
   $('pendientesWrap').innerHTML='<div style="text-align:center;padding:30px;color:#aaa">Cargando...</div>';
   $('pendientesAcciones').style.display='none';
-  var data=await window.FB.get('estado','liqActiva');
-  _liqActiva=(data&&data.data)?JSON.parse(data.data):null;
-  if(!_liqActiva){
+  var rows=await window.FB.getAll('liqActivas');
+  _liqsActivas={};
+  rows.forEach(function(r){
+    if(!r.data)return;
+    try{var l=JSON.parse(r.data);if(l&&l.opId!=null)_liqsActivas[l.opId]=l;}catch(e){}
+  });
+  var opIds=Object.keys(_liqsActivas);
+  if(!opIds.length){
     $('liqActivaLabel').textContent='';
     $('pendientesWrap').innerHTML='<div style="color:#aaa;font-size:13px;padding:10px">No hay ninguna liquidación activa en este momento.</div>';
     return;
   }
-  $('liqActivaLabel').textContent='— Liq. #'+_liqActiva.num+' · '+(_liqActiva.op?_liqActiva.op.nombre:'');
-  var pendientes=(_liqActiva.gastos||[]).map(function(g,i){return{g:g,i:i};}).filter(function(x){return x.g.autorizado===false;});
+  $('liqActivaLabel').textContent='— '+opIds.length+' liquidación(es) activa(s)';
+  var pendientes=[];
+  opIds.forEach(function(opId){
+    var l=_liqsActivas[opId];
+    (l.gastos||[]).forEach(function(g,i){
+      if(g.autorizado===false)pendientes.push({opId:opId,liq:l,g:g,i:i});
+    });
+  });
   if(!pendientes.length){
-    $('pendientesWrap').innerHTML='<div class="alert alert-ok">✅ Sin gastos pendientes de autorización en la liquidación #'+_liqActiva.num+'.</div>';
+    $('pendientesWrap').innerHTML='<div class="alert alert-ok">✅ Sin gastos pendientes de autorización en ninguna liquidación activa.</div>';
     return;
   }
   var totPend=pendientes.reduce(function(s,x){return s+(x.g.importe||0);},0);
-  $('pendientesWrap').innerHTML='<div class="tbl-wrap"><table><thead><tr><th style="width:32px"></th><th>Concepto</th><th>Descripción</th><th class="r">Importe</th><th>¿Quién paga?</th></tr></thead><tbody>'
+  $('pendientesWrap').innerHTML='<div class="tbl-wrap"><table><thead><tr><th style="width:32px"></th><th>Liquidación</th><th>Concepto</th><th>Descripción</th><th class="r">Importe</th><th>¿Quién paga?</th></tr></thead><tbody>'
     +pendientes.map(function(x){return '<tr>'
-      +'<td style="text-align:center"><input type="checkbox" class="chkPend" data-gi="'+x.i+'"></td>'
+      +'<td style="text-align:center"><input type="checkbox" class="chkPend" data-opid="'+x.opId+'" data-gi="'+x.i+'"></td>'
+      +'<td style="font-size:12px">#'+x.liq.num+' · '+(x.liq.op?x.liq.op.nombre:'')+'</td>'
       +'<td>'+x.g.concepto+'</td>'
       +'<td style="font-size:12px">'+(x.g.desc||'')+'</td>'
       +'<td class="num r">'+fmt(x.g.importe||0)+'</td>'
       +'<td>'+(x.g.pagaOp?'Operador':'Empresa')+'</td>'
       +'</tr>';}).join('')
-    +'</tbody><tfoot><tr style="font-weight:700;background:#f5f5f8"><td colspan="3">TOTAL PENDIENTE</td><td class="num r">'+fmt(totPend)+'</td><td></td></tr></tfoot></table></div>';
+    +'</tbody><tfoot><tr style="font-weight:700;background:#f5f5f8"><td colspan="4">TOTAL PENDIENTE</td><td class="num r">'+fmt(totPend)+'</td><td></td></tr></tfoot></table></div>';
   $('pendientesAcciones').style.display='flex';
 }
 
@@ -302,32 +317,41 @@ function toggleTodosPend(btn){
 async function autorizarSeleccionados(){
   var chks=document.querySelectorAll('.chkPend:checked');
   if(!chks.length){alert('Selecciona al menos un gasto pendiente.');return;}
-  if(!_liqActiva){alert('No hay liquidación activa.');return;}
   var pass=prompt('Contraseña de supervisor para autorizar '+chks.length+' gasto(s):');
   if(pass!==SUPERVISOR_PASS){alert('Contraseña incorrecta. No se autorizó nada.');return;}
 
-  var firmas=Array.from(chks).map(function(c){
+  // Agrupar las firmas seleccionadas por operador — cada liquidación activa
+  // se relee y escribe por separado.
+  var firmasPorOp={};
+  Array.from(chks).forEach(function(c){
+    var opId=c.dataset.opid;
     var idx=parseInt(c.dataset.gi);
-    return signatureGasto(_liqActiva.gastos[idx]);
+    var liqSel=_liqsActivas[opId];
+    if(!liqSel)return;
+    if(!firmasPorOp[opId])firmasPorOp[opId]=[];
+    firmasPorOp[opId].push(signatureGasto(liqSel.gastos[idx]));
   });
 
   try{
-    // Releer fresco justo antes de escribir, por si la liquidadora modificó
-    // algo mientras tanto — se autoriza por firma (concepto+desc+importe+
-    // pagaOp), no por índice, para no depender de que el arreglo no cambió.
-    var data=await window.FB.get('estado','liqActiva');
-    var liqFresca=(data&&data.data)?JSON.parse(data.data):null;
-    if(!liqFresca||liqFresca.num!==_liqActiva.num){
-      alert('⚠️ La liquidación activa cambió mientras tanto. Vuelve a cargar y revisa antes de autorizar.');
-      cargarPendientes();
-      return;
+    var totalAutorizados=0;
+    for(var opId in firmasPorOp){
+      // Releer fresco justo antes de escribir, por si la liquidadora modificó
+      // algo mientras tanto — se autoriza por firma (concepto+desc+importe+
+      // pagaOp), no por índice, para no depender de que el arreglo no cambió.
+      var data=await window.FB.get('liqActivas',opId);
+      var liqFresca=(data&&data.data)?JSON.parse(data.data):null;
+      if(!liqFresca){continue;}
+      var firmas=firmasPorOp[opId];
+      var n=0;
+      (liqFresca.gastos||[]).forEach(function(g){
+        if(g.autorizado===false&&firmas.indexOf(signatureGasto(g))!==-1){g.autorizado=true;n++;}
+      });
+      if(n){
+        await window.FB.set('liqActivas',opId,{data:JSON.stringify(liqFresca)});
+        totalAutorizados+=n;
+      }
     }
-    var n=0;
-    (liqFresca.gastos||[]).forEach(function(g){
-      if(g.autorizado===false&&firmas.indexOf(signatureGasto(g))!==-1){g.autorizado=true;n++;}
-    });
-    await window.FB.set('estado','liqActiva',{data:JSON.stringify(liqFresca)});
-    alert('✅ '+n+' gasto(s) autorizado(s) en la liquidación #'+liqFresca.num+'.');
+    alert('✅ '+totalAutorizados+' gasto(s) autorizado(s).');
     cargarPendientes();
   }catch(e){
     console.error('autorizarSeleccionados:',e);
