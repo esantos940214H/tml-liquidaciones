@@ -2230,6 +2230,12 @@ async function iniciarLiquidacion(){
   }
   const numIng=parseInt($('liqNum').value||0);
   const num=numIng>0?numIng:siguienteNumLiq(opId);
+  // Última confirmación antes de crear un objeto de liquidación EN BLANCO:
+  // ya se revisó Firestore (arriba) y no hay ninguna activa de este
+  // operador, pero si por un corte de conexión esa revisión fallara en
+  // silencio, esta pausa evita crear una liquidación fantasma encima de
+  // una real que solo no se pudo consultar a tiempo.
+  if(!confirm('Vas a INICIAR una liquidación NUEVA (#'+num+') para '+op.nombre+'.\n\n¿Confirmas que NO tiene ya una liquidación en curso (por ejemplo, en otra computadora)?'))return;
   $('liqNum').value=num;registrarNumLiqUsado(opId,num);
   // liq.opId = identidad del operador (dueño de anticipos/viajes/nómina).
   // liq.unidad = vehículo manejado este periodo (dueño del arrastre de
