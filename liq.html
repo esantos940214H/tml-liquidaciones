@@ -199,7 +199,7 @@ tr:hover td{background:#fafafa}
   <div class="card">
     <div class="card-title">🚛 Encabezado de liquidación</div>
     <div class="grid2" style="margin-bottom:14px">
-      <div class="field"><label>Número de liquidación <span style="color:#e63946">(auto)</span></label><input type="number" id="liqNum" placeholder="Auto" min="1"></div>
+      <div class="field"><label>Número de liquidación <span style="color:#e63946">(auto)</span></label><input type="number" id="liqNum" placeholder="Auto" min="1" readonly style="background:#1a1a2e;color:#aaa;cursor:not-allowed"></div>
       <div class="field"><label>Operador</label><select id="liqOp" onchange="onLiqOpChange()"><option value="">— Selecciona —</option></select></div>
       <div class="field"><label>Unidad manejada este periodo</label><select id="liqUnidad" onchange="onUnidadRealChange()"><option value="">— Selecciona —</option></select></div>
       <div class="field"><label>Clave operador</label><input type="text" id="liqClave" readonly style="background:#1a1a2e;color:#aaa;cursor:not-allowed"></div>
@@ -2237,8 +2237,10 @@ async function iniciarLiquidacion(){
     alert('Sin anticipos ni ingresos pendientes para '+op.nombre+'.\nRegistra al menos un ingreso o anticipo antes de iniciar la liquidación.');
     return;
   }
-  const numIng=parseInt($('liqNum').value||0);
-  const num=numIng>0?numIng:siguienteNumLiq(opId);
+  // El campo liqNum es de solo lectura (nunca editable a mano, para no poder
+  // sobreescribir el folio de otra liquidación) — el número siempre se
+  // calcula aquí, no se confía en lo que haya quedado en el input.
+  const num=siguienteNumLiq(opId);
   // Última confirmación antes de crear un objeto de liquidación EN BLANCO:
   // ya se revisó Firestore (arriba) y no hay ninguna activa de este
   // operador, pero si por un corte de conexión esa revisión fallara en
