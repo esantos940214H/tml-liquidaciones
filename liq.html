@@ -798,23 +798,22 @@ async function buscarUUIDDuplicado(uuid){
     ||(liq.dieselXML||[]).some(function(x){return(x.uuid||'').toUpperCase()===uuid;})
     ||(liq.autopistas||[]).some(function(a){return(a.uuid||'').toUpperCase()===uuid;}));
   if(enActual)return{liqNum:liq.num,actual:true};
-  // 2.5) Leer directo de Firestore la liquidación activa GLOBAL (por si en otra
-  // pestaña/sesión quedó otra liquidación abierta distinta a la de esta pestaña —
-  // solo puede haber una liquidación abierta a la vez en todo el sistema, así
-  // que si esta pestaña no la refleja, puede estar desactualizada).
+  // 2.5) Leer directo de Firestore TODAS las liquidaciones activas (una por
+  // operador — puede haber varias simultáneas) por si en otra pestaña/sesión
+  // quedó abierta una distinta a la de esta pestaña y esta no la refleja aún.
   if(fbReady&&window.FB){
     try{
-      var liqActivaRemota=await window.FB.get('estado','liqActiva');
-      if(liqActivaRemota&&liqActivaRemota.data){
-        var liqR=JSON.parse(liqActivaRemota.data);
-        if(liqR&&!(liq&&liqR.num===liq.num&&liqR.unidad===liq.unidad)){
-          var enRemota=(liqR.gastosXML||[]).some(function(g){return(g.uuid||'').toUpperCase()===uuid;})
-            ||(liqR.dieselXML||[]).some(function(x){return(x.uuid||'').toUpperCase()===uuid;})
-            ||(liqR.autopistas||[]).some(function(a){return(a.uuid||'').toUpperCase()===uuid;});
-          if(enRemota)return{liqNum:liqR.num,actual:false};
-        }
+      var activasRaw=await window.FB.getAll('liqActivas');
+      for(var k=0;k<activasRaw.length;k++){
+        if(!activasRaw[k].data)continue;
+        var liqR=JSON.parse(activasRaw[k].data);
+        if(liq&&liqR.num===liq.num&&liqR.opId===liq.opId)continue;
+        var enRemota=(liqR.gastosXML||[]).some(function(g){return(g.uuid||'').toUpperCase()===uuid;})
+          ||(liqR.dieselXML||[]).some(function(x){return(x.uuid||'').toUpperCase()===uuid;})
+          ||(liqR.autopistas||[]).some(function(a){return(a.uuid||'').toUpperCase()===uuid;});
+        if(enRemota)return{liqNum:liqR.num,actual:false};
       }
-    }catch(e){console.error('buscarUUIDDuplicado (liqActiva remota):',e);}
+    }catch(e){console.error('buscarUUIDDuplicado (liqActivas remotas):',e);}
   }
   // 3) En liquidaciones ya cerradas (respaldo si el registro global no lo tenía)
   if(!fbReady||!window.FB)return null;
@@ -932,6 +931,37 @@ let ingresosDB=[];    // [{id,unidad,folio,fecha,cliente,tipo,subtotal,iva,ret,t
 let incidentesDB={};  // {unidad:[{...incidente,montoReconocido,estado,liqNum}]} — módulo incidentes.html (independiente)
 let nominaDB={};       // {unidad:[{id,uuid,folio,fecha,periodoIni,periodoFin,totalPercepciones,totalDeducciones,estado,liqNum}]}
 let liq=null;
+// El candado de "una liquidación activa a la vez" es POR OPERADOR (ver
+// liqActivas/{opId} en Firestore), no global — dos operadores distintos
+// pueden tener cada uno su propia liquidación abierta al mismo tiempo.
+// _unsubLiqActiva guarda la función para dejar de escuchar el doc del
+// operador que esta pestaña tenía cargado, antes de suscribirse al de otro.
+let _unsubLiqActiva=null;
+function suscribirLiqActiva(opId){
+  if(_unsubLiqActiva){_unsubLiqActiva();_unsubLiqActiva=null;}
+  if(!opId){localStorage.removeItem('liq_ultimoOpId');return;}
+  localStorage.setItem('liq_ultimoOpId',String(opId));
+  _unsubLiqActiva=window.FB.listen('liqActivas',String(opId),function(data){
+    if(data&&data.data){
+      var liqRemota=JSON.parse(data.data);
+      var noHabiaActiva=!liq;
+      if(!liq||liq.opId===liqRemota.opId){
+        liq=liqRemota;
+        if($('headerInfo'))$('headerInfo').textContent='Liq. #'+liq.num+' · '+liq.op.nombre;
+        // Esta pestaña no tenía ninguna liquidación activa en memoria (por
+        // ejemplo, quedó en null tras cerrar una anterior sin recargar la
+        // página — el módulo vive en un iframe del portal que ya NO se
+        // recarga entre clics) y Firestore ahora reporta una activa (p.ej.
+        // se acaba de reabrir desde Historial). Sin este refresco completo,
+        // solo se actualizaba el encabezado: la tabla de diesel se quedaba
+        // mostrando las cargas de la liquidación anterior mientras cargasOp
+        // seguía vacío (reseteado al cerrar), y los KPIs salían todos en
+        // ceros al recalcular.
+        if(noHabiaActiva) restaurarUILiquidacion();
+      }
+    }
+  });
+}
 let arrastres={};
 let cargasEdenred=[];
 let cargasOp=[];
@@ -1121,8 +1151,11 @@ function guardarEstado(){
   // SOLO guarda lo que pertenece a liquidaciones — NO toca anticiposDB ni ingresosDB
   window.FB.set('estado','arrastres',{data: JSON.stringify(arrastres)});
   window.FB.set('estado','config',{ultimaLiqNum: ultimaLiqNum, ultimaLiqNumPorOp: ultimaLiqNumPorOp});
-  if(liq) window.FB.set('estado','liqActiva',{data: JSON.stringify(liq)});
-  else window.FB.del('estado','liqActiva');
+  // liqActivas/{opId}: una liquidación activa POR OPERADOR, no un doc único
+  // global. El borrado del doc de un operador se hace explícito en los
+  // puntos donde se cierra/elimina/descarta su liquidación (no aquí), para
+  // no depender de que "liq" sea null en el momento correcto.
+  if(liq&&liq.opId) window.FB.set('liqActivas',String(liq.opId),{data: JSON.stringify(liq)});
 }
 
 async function cargarEstado(){
@@ -1131,10 +1164,18 @@ async function cargarEstado(){
     if($('headerInfo'))$('headerInfo').textContent='Cargando datos...';
 
     // Cargar datos que NO cambian frecuentemente con get() directo
+    // ?liqOp=<opId> lo manda hist.html al redirigir aquí después de reabrir
+    // una liquidación (así se sabe cuál cargar aunque esta pestaña, en su
+    // propio localStorage, tuviera guardado otro operador distinto).
+    const _opIdURL=new URLSearchParams(location.search).get('liqOp');
+    const _ultimoOpId=_opIdURL||localStorage.getItem('liq_ultimoOpId');
     const [ar,cfg,l,fu] = await Promise.all([
       window.FB.get('estado','arrastres'),
       window.FB.get('estado','config'),
-      window.FB.get('estado','liqActiva'),
+      // liqActivas es por operador — al recargar la página, esta pestaña
+      // solo sabe (vía localStorage) cuál fue el último operador que estuvo
+      // editando, para recuperar justo esa liquidación si sigue activa.
+      _ultimoOpId?window.FB.get('liqActivas',_ultimoOpId):Promise.resolve(null),
       window.FB.get('estado','facturasUsadas'),
     ]);
 
@@ -1262,26 +1303,10 @@ async function cargarEstado(){
         if(Array.from(tabs).indexOf(tabActivo)===4) generarReporte();
       }
     });
-    window.FB.listen('estado','liqActiva', function(data){
-      if(data&&data.data){
-        var liqRemota=JSON.parse(data.data);
-        var noHabiaActiva=!liq;
-        if(!liq||(liq&&liq.num===liqRemota.num)){
-          liq=liqRemota;
-          if($('headerInfo'))$('headerInfo').textContent='Liq. #'+liq.num+' · '+liq.op.nombre;
-          // Esta pestaña no tenía ninguna liquidación activa en memoria (por
-          // ejemplo, quedó en null tras cerrar una anterior sin recargar la
-          // página — el módulo vive en un iframe del portal que ya NO se
-          // recarga entre clics) y Firestore ahora reporta una activa (p.ej.
-          // se acaba de reabrir desde Historial). Sin este refresco completo,
-          // solo se actualizaba el encabezado: la tabla de diesel se quedaba
-          // mostrando las cargas de la liquidación anterior mientras cargasOp
-          // seguía vacío (reseteado al cerrar), y los KPIs salían todos en
-          // ceros al recalcular.
-          if(noHabiaActiva) restaurarUILiquidacion();
-        }
-      }
-    });
+    // Suscribirse en vivo al doc liqActivas/{opId} del operador que quedó
+    // cargado (si lo hay), para reflejar cambios hechos desde otra pestaña/
+    // usuario o desde "Reabrir" en Historial.
+    if(liq&&liq.opId) suscribirLiqActiva(liq.opId);
 
     console.log('Firebase cargado: anticipos='+Object.keys(anticiposDB).length+' ops, ingresos='+ingresosDB.length);
   }catch(e){ console.error('Error cargando Firebase:',e); }
@@ -1375,7 +1400,10 @@ function limpiarEstado(){
   window.FB.del('estado','ingresosDB');
   window.FB.del('estado','arrastres');
   window.FB.del('estado','config');
-  window.FB.del('estado','liqActiva');
+  window.FB.getAll('liqActivas').then(function(rows){
+    rows.forEach(function(r){window.FB.del('liqActivas',r.id);});
+  });
+  localStorage.removeItem('liq_ultimoOpId');
   anticiposDB={};ingresosDB=[];arrastres={};ultimaLiqNum=0;ultimaLiqNumPorOp={};migracionFolioPorOpAplicada=false;liq=null;
   location.reload();
 }
@@ -2113,24 +2141,38 @@ function aplicarDatosDDEC(datos,fname){
   $('ddecResumen').style.display='none';
 }
 
-function iniciarLiquidacion(){
+async function iniciarLiquidacion(){
  try{
-  // Este botón NUNCA debe crear una liquidación nueva encima de una ya
-  // activa (nueva o reabierta) — eso reemplazaba todo liq con un objeto en
-  // blanco (diesel:null, autopistas:[], gastos:[], etc.), borrando lo ya
-  // capturado. Si ya hay una activa, solo actualiza los datos editables del
-  // encabezado (normalmente ya se guardan solos al salir del campo, ver
-  // sincronizarEncabezadoLiq) y avisa — para iniciar otra liquidación hay
-  // que cerrar o eliminar primero la actual.
-  if(liq){
-    sincronizarEncabezadoLiq();
-    alert('Ya hay una liquidación activa (#'+liq.num+' · '+liq.op.nombre+'). Se actualizaron los datos del encabezado (fechas, kms, litros ECM, rendimiento).\n\nPara iniciar una liquidación distinta, primero cierra o elimina la actual.');
-    return;
-  }
   const opId=parseInt($('liqOp').value||0);
   const op=OPERADORES.find(function(o){return o.unidad===opId;});
   const unidad=parseInt($('liqUnidad')?$('liqUnidad').value||0:0);
   if(!op||!unidad||!$('liqSalida').value||!$('liqLlegada').value){alert('Completa operador, unidad manejada y fechas.');return;}
+  // El candado de "una liquidación activa a la vez" es POR OPERADOR (ver
+  // liqActivas/{opId}), no global — dos operadores distintos pueden tener
+  // cada uno su propia liquidación abierta al mismo tiempo. Este botón NUNCA
+  // debe crear una liquidación nueva encima de una ya activa DEL MISMO
+  // OPERADOR (nueva o reabierta) — eso reemplazaba todo liq con un objeto en
+  // blanco (diesel:null, autopistas:[], gastos:[], etc.), borrando lo ya
+  // capturado. Si ya hay una activa de este operador, solo actualiza los
+  // datos editables del encabezado (normalmente ya se guardan solos al salir
+  // del campo, ver sincronizarEncabezadoLiq) y avisa.
+  if(liq&&liq.opId===opId){
+    sincronizarEncabezadoLiq();
+    alert('Ya hay una liquidación activa de '+op.nombre+' (#'+liq.num+'). Se actualizaron los datos del encabezado (fechas, kms, litros ECM, rendimiento).');
+    return;
+  }
+  // Puede que este operador ya tenga una liquidación activa en Firestore
+  // aunque esta pestaña no la tenga cargada (abierta en otra pestaña/sesión,
+  // o recién reabierta desde Historial) — se carga aquí para continuar
+  // editándola en vez de permitir crear una nueva encima.
+  var _remota=await window.FB.get('liqActivas',String(opId));
+  if(_remota&&_remota.data){
+    liq=JSON.parse(_remota.data);
+    restaurarUILiquidacion();
+    suscribirLiqActiva(opId);
+    alert('⚠️ '+op.nombre+' ya tiene una liquidación activa (#'+liq.num+'), abierta en otra sesión. Se cargó aquí para continuar editándola.');
+    return;
+  }
   // Anticipos, viajes y nómina se buscan por OPERADOR (opId) — se los lleva
   // con él aunque este periodo maneje otra unidad.
   var _pendAnts=(anticiposDB[opId]||anticiposDB[String(opId)]||[]).filter(function(a){return a.estado==='pendiente';});
@@ -2171,6 +2213,7 @@ function iniciarLiquidacion(){
   if($('btnRevalidarSATWrap'))$('btnRevalidarSATWrap').style.display='block';
   actualizarBotonEliminarLiq();
   guardarEstado();
+  suscribirLiqActiva(opId);
   validarCFDIsSATLiquidacion();
  }catch(e){
   console.error('iniciarLiquidacion error:',e);
@@ -2209,7 +2252,8 @@ function eliminarLiquidacionActual(){
     if(item.uuid)liberarFacturaUsada(item.uuid);
   });
 
-  if(fbReady&&window.FB)window.FB.del('estado','liqActiva');
+  if(fbReady&&window.FB)window.FB.del('liqActivas',String(liq.opId));
+  suscribirLiqActiva(null);
   liq=null;
   cargasOp=[];
   renderIncidentesLiq();
@@ -3893,7 +3937,7 @@ function cerrarLiquidacion(){
     window.FB.set('estado','ingresosDB',{data: JSON.stringify(ingresosDB)});
     window.FB.set('estado','incidentesDB',{data: JSON.stringify(incidentesDB)});
     window.FB.set('estado','nominaDB',{data: JSON.stringify(nominaDB)});
-    window.FB.del('estado','liqActiva'); // eliminar ANTES del alert para que persista
+    window.FB.del('liqActivas',String(_opIdNum)); // eliminar ANTES del alert para que persista
   }
 
   // Guardar snapshot en historial — el id/clave del documento usa opId
@@ -3914,6 +3958,7 @@ function cerrarLiquidacion(){
 
   alert('✅ Liquidación #'+liqCopia.num+' cerrada.\n'+nAMarcados+' anticipos, '+nVMarcados+' viajes'+(nNMarcados?', '+nNMarcados+' recibo(s) de nómina':'')+(nIMarcados?', '+nIMarcados+' incidente(s) de vialidad':'')+(nCMarcados?' y '+nCMarcados+' caseta(s) sin comprobante':'')+' incluidos.'+(nIDescartados?'\n⚠️ '+nIDescartados+' incidente(s) excedieron el tope de $1,500 de esta liquidación y se descartaron (no se pagan).':''));
 
+  suscribirLiqActiva(null);
   liq=null;
   cargasOp=[];
   renderIncidentesLiq();
