@@ -383,7 +383,7 @@ tr:hover td{background:#fafafa}
     </div>
     <div class="card">
       <div class="card-title">🚧 Caseta sin comprobante (con evidencia)</div>
-      <div class="alert alert-info" style="margin-bottom:10px">Costo operativo real, sin tope. Requiere foto del ticket (o justificación si no hay) y contraseña de autorización.</div>
+      <div class="alert alert-info" style="margin-bottom:10px">Costo operativo real, sin tope. Requiere foto del ticket (o justificación si no hay). Si lo paga el <strong>operador</strong>, queda PENDIENTE hasta que un supervisor lo autorice en "🔐 Autorizaciones" (autorizaciones.mudanzastml.mx).</div>
       <div class="row" style="gap:8px;flex-wrap:wrap;align-items:flex-end;margin-bottom:12px">
         <div class="field" style="min-width:130px"><label>Fecha</label><input type="date" id="cnfFecha"></div>
         <div class="field" style="flex:2;min-width:160px"><label>Caseta / ubicación</label><input type="text" id="cnfCaseta" placeholder="Ej. Tequisquiapan-Querétaro"></div>
@@ -421,10 +421,10 @@ tr:hover td{background:#fafafa}
           </div>
         </div>
       </div>
-      <button class="btn btn-red" id="btnAgregarCNF" onclick="agregarCasetaSinComprobante()">🔒 Registrar caseta sin comprobante</button>
+      <button class="btn btn-red" id="btnAgregarCNF" onclick="agregarCasetaSinComprobante()">Registrar caseta sin comprobante</button>
       <div id="cnfUploadStatus" style="margin-top:10px"></div>
       <div class="tbl-wrap" style="margin-top:14px"><table>
-        <thead><tr><th>Fecha</th><th>Caseta</th><th class="r">Monto</th><th>Motivo</th><th>¿Op. paga?</th><th>Evidencia</th><th></th></tr></thead>
+        <thead><tr><th>Fecha</th><th>Caseta</th><th class="r">Monto</th><th>Motivo</th><th>¿Op. paga?</th><th>Evidencia</th><th>Estado</th><th></th></tr></thead>
         <tbody id="tbCasetasNF"></tbody><tfoot id="tfCasetasNF"></tfoot>
       </table></div>
     </div>
@@ -583,20 +583,6 @@ tr:hover td{background:#fafafa}
 
   </div>
 </div></div>
-
-<!-- MODAL CANDADO CASETA SIN COMPROBANTE (CAS2026) -->
-<div class="modal-overlay" id="modalCasetaAuth">
-  <div class="modal">
-    <h3>🔒 Autorización — Caseta sin comprobante</h3>
-    <p style="font-size:13px;color:#666;margin-bottom:16px">Ingresa la contraseña del módulo de Casetas para registrar este gasto.</p>
-    <div class="field"><label>Contraseña</label><input type="password" id="casAuthPass" placeholder="••••••••" onkeydown="if(event.key==='Enter')verificarCasAuth()"></div>
-    <div id="casAuthError" style="display:none;margin-top:8px" class="alert alert-err">Contraseña incorrecta.</div>
-    <div class="modal-actions">
-      <button class="btn btn-out btn-sm" onclick="cerrarModalCaseta()">Cancelar</button>
-      <button class="btn btn-red" onclick="verificarCasAuth()">Confirmar</button>
-    </div>
-  </div>
-</div>
 
 <!-- Firebase compat -->
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
@@ -3282,9 +3268,7 @@ function agregarCasetaSinComprobante(){
   if(!sinFoto&&!file){alert('Adjunta la foto del ticket, o marca "Sin foto disponible" con justificación.');return;}
   if(sinFoto&&!justificacion.trim()){alert('Si no hay foto, debes justificar por qué.');return;}
 
-  lockRequestCaseta('Registrar caseta sin comprobante', function(){
-    guardarCasetaSinComprobanteReal(fecha,caseta,monto,pagaOp,motivo,motivoOtro,sinFoto,justificacion,file);
-  });
+  guardarCasetaSinComprobanteReal(fecha,caseta,monto,pagaOp,motivo,motivoOtro,sinFoto,justificacion,file);
 }
 
 async function guardarCasetaSinComprobanteReal(fecha,caseta,monto,pagaOp,motivo,motivoOtro,sinFoto,justificacion,file){
@@ -3305,15 +3289,24 @@ async function guardarCasetaSinComprobanteReal(fecha,caseta,monto,pagaOp,motivo,
     }
   }
   if(!liq.casetasNF)liq.casetasNF=[];
+  // Igual que los gastos sin factura (ver LIMITE_GASTO_SIN_FACTURA): si la
+  // paga el operador, queda PENDIENTE de autorización de un supervisor
+  // desde $1, sin excepción — no cuenta en la liquidación hasta que se
+  // autorice en autorizaciones.mudanzastml.mx. Las que paga la empresa no
+  // requieren autorización (no afectan el saldo del operador).
+  var autorizado=!pagaOp;
   liq.casetasNF.push({
     id:id, fecha:fecha, caseta:caseta, monto:monto, pagaOp:pagaOp,
     motivo:motivo, motivoOtro:motivo==='otro'?motivoOtro:'',
-    evidenciaURL:evidenciaURL, sinFoto:sinFoto, justificacionSinFoto:sinFoto?justificacion:''
+    evidenciaURL:evidenciaURL, sinFoto:sinFoto, justificacionSinFoto:sinFoto?justificacion:'',
+    autorizado:autorizado
   });
   renderCasetasNF();
   guardarEstado();
   btn.disabled=false;
-  $('cnfUploadStatus').innerHTML='<div class="alert alert-ok">✅ Caseta registrada'+(evidenciaURL?' con evidencia adjunta.':'.')+'</div>';
+  $('cnfUploadStatus').innerHTML=autorizado
+    ?'<div class="alert alert-ok">✅ Caseta registrada'+(evidenciaURL?' con evidencia adjunta.':'.')+'</div>'
+    :'<div class="alert alert-warn">⏳ Caseta registrada'+(evidenciaURL?' con evidencia adjunta':'')+', PENDIENTE de autorización de un supervisor — no cuenta en la liquidación hasta que se autorice en autorizaciones.mudanzastml.mx.</div>';
   $('cnfCaseta').value='';$('cnfMonto').value='';$('cnfMotivoOtro').value='';
   $('cnfSinFoto').checked=false;$('cnfJustificacion').value='';
   $('fCNFEvid').value='';$('cnfPreviewImg').style.display='none';
@@ -3326,52 +3319,31 @@ function renderCasetasNF(){
   var tb=$('tbCasetasNF');if(!tb)return;
   var totOp=0,totEmp=0;
   tb.innerHTML=lista.map(function(a,i){
-    if(a.pagaOp)totOp+=a.monto;else totEmp+=a.monto;
+    var pendiente=a.autorizado===false;
+    if(!pendiente){if(a.pagaOp)totOp+=a.monto;else totEmp+=a.monto;}
     var evid=a.sinFoto
       ?'<span class="badge bg-red" style="color:#c1121f" title="'+(a.justificacionSinFoto||'').replace(/"/g,'&quot;')+'">⚠ Sin foto</span>'
       :(a.evidenciaURL?'<a href="'+a.evidenciaURL+'" target="_blank"><img src="'+a.evidenciaURL+'" style="width:36px;height:36px;object-fit:cover;border-radius:5px;border:1px solid #dde"></a>':'—');
+    var estado=pendiente?'<span class="badge bg-yellow">Requiere autorización de un supervisor</span>':'<span class="badge bg-green">✓ OK</span>';
     return '<tr><td style="font-size:11px">'+(a.fecha||'')+'</td><td>'+(a.caseta||'')+'</td>'
       +'<td class="num r">'+fmt(a.monto)+'</td>'
       +'<td style="font-size:11px">'+motivoLabelCNF(a.motivo,a.motivoOtro)+'</td>'
       +'<td>'+(a.pagaOp?'Operador':'Empresa')+'</td>'
       +'<td style="text-align:center">'+evid+'</td>'
+      +'<td>'+estado+'</td>'
       +'<td><button class="btn btn-sm" style="background:#fde8e8;color:#9b1c1c;border:none;cursor:pointer" onclick="eliminarCasetaNF('+i+')">✕</button></td></tr>';
   }).join('');
+  var totPend=lista.filter(function(a){return a.autorizado===false;}).reduce(function(s,a){return s+a.monto;},0);
   $('tfCasetasNF').innerHTML='<tr style="background:#f5f5f8;font-weight:700"><td colspan="2">TOTALES</td><td class="num r">'+fmt(totOp+totEmp)+'</td>'
-    +'<td colspan="2"><span style="color:#0a5233">Op: '+fmt(totOp)+'</span> · <span style="color:#9b1c1c">Emp: '+fmt(totEmp)+'</span></td><td colspan="2"></td></tr>';
+    +'<td colspan="2"><span style="color:#0a5233">Op: '+fmt(totOp)+'</span> · <span style="color:#9b1c1c">Emp: '+fmt(totEmp)+'</span></td><td colspan="2"></td></tr>'
+    +(totPend?'<tr><td colspan="8" style="padding:8px 10px"><div class="alert alert-warn" style="margin:0">⏳ '+fmt(totPend)+' PENDIENTE de autorización — no incluido en TOTALES ni en la liquidación hasta que se autorice en autorizaciones.mudanzastml.mx.</div></td></tr>':'');
 }
 
 function eliminarCasetaNF(i){
   if(!liq)return;
-  lockRequestCaseta('Eliminar caseta sin comprobante', function(){
-    liq.casetasNF.splice(i,1);
-    renderCasetasNF();
-    guardarEstado();
-  });
-}
-
-// ── CANDADO CAS2026 (caseta sin comprobante) ─────────────────────────────
-var _lockCasCallback=null;
-var CAS_PASS='CAS2026';
-function lockRequestCaseta(desc,callback){
-  _lockCasCallback=callback;
-  $('casAuthError').style.display='none';
-  $('casAuthPass').value='';
-  $('modalCasetaAuth').classList.add('open');
-  setTimeout(function(){$('casAuthPass').focus();},100);
-}
-function verificarCasAuth(){
-  if($('casAuthPass').value===CAS_PASS){
-    $('modalCasetaAuth').classList.remove('open');
-    if(_lockCasCallback)_lockCasCallback();
-    _lockCasCallback=null;
-  } else {
-    $('casAuthError').style.display='block';
-  }
-}
-function cerrarModalCaseta(){
-  $('modalCasetaAuth').classList.remove('open');
-  _lockCasCallback=null;
+  liq.casetasNF.splice(i,1);
+  renderCasetasNF();
+  guardarEstado();
 }
 
 function renderAdvertenciasFecha(){
@@ -3590,7 +3562,13 @@ function generarReporte(){
   const totIncidentes=_incTope.totAplicado;
   // Casetas sin comprobante — se capturan dentro de esta misma liquidación (liq.casetasNF),
   // igual que autopistas. Conceptos de gasto separados, independientes del 2% (totGastos1).
-  const casetasNFAplicar=liq.casetasNF||[];
+  // Las que paga el operador quedan autorizado:false hasta que un supervisor las
+  // autorice en autorizaciones.mudanzastml.mx — no se incluyen en los totales
+  // hasta entonces (ver guardarCasetaSinComprobanteReal).
+  const casetasNFTodas=liq.casetasNF||[];
+  const casetasNFAplicar=casetasNFTodas.filter(function(a){return a.autorizado!==false;});
+  const casetasNFPendientes=casetasNFTodas.filter(function(a){return a.autorizado===false;});
+  const totCasetasNFPend=casetasNFPendientes.reduce(function(s,a){return s+a.monto;},0);
   const totCasetasNFOp=casetasNFAplicar.filter(function(a){return a.pagaOp;}).reduce(function(s,a){return s+a.monto;},0);
   const totCasetasNFEmp=casetasNFAplicar.filter(function(a){return !a.pagaOp;}).reduce(function(s,a){return s+a.monto;},0);
   const totCasetasNF=totCasetasNFOp+totCasetasNFEmp;
@@ -3679,6 +3657,9 @@ function generarReporte(){
     +rr('TOTAL GASTOS',totGastosEmpTotal,null,true);
   if(gastosPendientesAutorizacion.length){
     gastosHTML+='<div class="alert alert-warn" style="margin-top:10px">⏳ Hay '+gastosPendientesAutorizacion.length+' gasto(s) por '+fmt(totGastosPendientes)+' PENDIENTES de autorización (sin factura) — NO están incluidos en este total. Autorízalos en autorizaciones.mudanzastml.mx para que cuenten.</div>';
+  }
+  if(casetasNFPendientes.length){
+    gastosHTML+='<div class="alert alert-warn" style="margin-top:10px">⏳ Hay '+casetasNFPendientes.length+' caseta(s) sin comprobante por '+fmt(totCasetasNFPend)+' PENDIENTES de autorización — NO están incluidas en este total. Autorízalas en autorizaciones.mudanzastml.mx para que cuenten.</div>';
   }
   $('repGastos').innerHTML=gastosHTML;
 
@@ -3942,6 +3923,11 @@ async function cerrarLiquidacion(){
   var _gastosPend=(liq.gastos||[]).filter(function(g){return g.autorizado===false;});
   if(_gastosPend.length){
     alert('🚫 No se puede cerrar: hay '+_gastosPend.length+' gasto(s) pendiente(s) de autorización por '+fmt(_gastosPend.reduce(function(s,g){return s+(g.importe||0);},0))+'.\n\nUn supervisor debe autorizarlos (o elimínalos si no proceden) en autorizaciones.mudanzastml.mx antes de cerrar.');
+    return;
+  }
+  var _casetasNFPend=(liq.casetasNF||[]).filter(function(a){return a.autorizado===false;});
+  if(_casetasNFPend.length){
+    alert('🚫 No se puede cerrar: hay '+_casetasNFPend.length+' caseta(s) sin comprobante pendiente(s) de autorización por '+fmt(_casetasNFPend.reduce(function(s,a){return s+a.monto;},0))+'.\n\nUn supervisor debe autorizarlas (o elimínalas si no proceden) en autorizaciones.mudanzastml.mx antes de cerrar.');
     return;
   }
   // Revalidación final ante el SAT justo antes de cerrar — por si algún CFDI

@@ -103,11 +103,11 @@ tr:hover td{background:#fafafa}
 
 <div class="container">
 
-  <div class="alert alert-info">🔐 Gastos sin factura mayores al límite permitido, registrados en el módulo de Liquidaciones, que necesitan autorización antes de contar en la liquidación. Selecciona los que quieras aprobar y confirma con la contraseña de supervisor.</div>
+  <div class="alert alert-info">🔐 Gastos y casetas sin comprobante fiscal, registrados en el módulo de Liquidaciones, que necesitan autorización antes de contar en la liquidación. Selecciona los que quieras aprobar y confirma con la contraseña de supervisor.</div>
 
   <div class="card">
     <div class="card-title">
-      <span>⏳ Gastos pendientes <span id="liqActivaLabel" style="font-weight:400;color:#888;text-transform:none;letter-spacing:normal"></span></span>
+      <span>⏳ Pendientes de autorización <span id="liqActivaLabel" style="font-weight:400;color:#888;text-transform:none;letter-spacing:normal"></span></span>
       <button class="btn btn-out btn-sm" onclick="cargarPendientes()">🔄 Recargar</button>
     </div>
     <div id="pendientesWrap"><div style="text-align:center;padding:30px;color:#aaa">Cargando...</div></div>
@@ -256,17 +256,18 @@ window.onFBReady(function(){
 setTimeout(function(){if(!fbReady){$('fbStatus').textContent='❌ Sin conexión';$('fbStatus').className='fb-status fb-err';}},6000);
 
 // ══════════════════════════════════════════════
-// GASTOS PENDIENTES DE AUTORIZACIÓN
+// PENDIENTES DE AUTORIZACIÓN (gastos sin factura + casetas sin comprobante)
 // Puede haber varias liquidaciones activas a la vez (una por operador, ver
-// liqActivas/{opId}) — se juntan los gastos pendientes de todas en una sola
-// tabla. Un gasto queda autorizado:false cuando la liquidadora lo registra
-// sin factura por más del límite permitido (ver LIMITE_GASTO_SIN_FACTURA en
-// liq.html), y solo si lo paga el operador (los que paga la empresa nunca
-// quedan pendientes).
+// liqActivas/{opId}) — se juntan los pendientes de todas en una sola tabla.
+// Un gasto/caseta queda autorizado:false cuando la liquidadora lo registra
+// sin factura y lo paga el operador (ver LIMITE_GASTO_SIN_FACTURA y
+// guardarCasetaSinComprobanteReal en liq.html); los que paga la empresa
+// nunca quedan pendientes.
 // ══════════════════════════════════════════════
 let _liqsActivas={}; // {opId: liqObjeto}
 
 function signatureGasto(g){return (g.concepto||'')+'|'+(g.desc||'')+'|'+(g.importe||0)+'|'+(g.pagaOp?1:0);}
+function signatureCaseta(a){return (a.id||'')+'|'+(a.caseta||'')+'|'+(a.monto||0)+'|'+(a.pagaOp?1:0);}
 
 async function cargarPendientes(){
   $('pendientesWrap').innerHTML='<div style="text-align:center;padding:30px;color:#aaa">Cargando...</div>';
@@ -300,22 +301,25 @@ async function cargarPendientes(){
   opIds.forEach(function(opId){
     var l=_liqsActivas[opId];
     (l.gastos||[]).forEach(function(g,i){
-      if(g.autorizado===false)pendientes.push({opId:opId,liq:l,g:g,i:i});
+      if(g.autorizado===false)pendientes.push({opId:opId,liq:l,tipo:'gasto',concepto:g.concepto,desc:g.desc||'',importe:g.importe||0,pagaOp:g.pagaOp,i:i});
+    });
+    (l.casetasNF||[]).forEach(function(a,i){
+      if(a.autorizado===false)pendientes.push({opId:opId,liq:l,tipo:'caseta',concepto:'Caseta sin comprobante',desc:(a.caseta||'')+' · '+(a.fecha||''),importe:a.monto||0,pagaOp:a.pagaOp,i:i});
     });
   });
   if(!pendientes.length){
-    $('pendientesWrap').innerHTML='<div class="alert alert-ok">✅ Sin gastos pendientes de autorización en ninguna liquidación activa.</div>';
+    $('pendientesWrap').innerHTML='<div class="alert alert-ok">✅ Sin gastos ni casetas pendientes de autorización en ninguna liquidación activa.</div>';
     return;
   }
-  var totPend=pendientes.reduce(function(s,x){return s+(x.g.importe||0);},0);
-  $('pendientesWrap').innerHTML='<div class="tbl-wrap"><table><thead><tr><th style="width:32px"></th><th>Liquidación</th><th>Concepto</th><th>Descripción</th><th class="r">Importe</th><th>¿Quién paga?</th></tr></thead><tbody>'
+  var totPend=pendientes.reduce(function(s,x){return s+x.importe;},0);
+  $('pendientesWrap').innerHTML='<div class="tbl-wrap"><table><thead><tr><th style="width:32px"></th><th>Liquidación</th><th>Tipo</th><th>Descripción</th><th class="r">Importe</th><th>¿Quién paga?</th></tr></thead><tbody>'
     +pendientes.map(function(x){return '<tr>'
-      +'<td style="text-align:center"><input type="checkbox" class="chkPend" data-opid="'+x.opId+'" data-gi="'+x.i+'"></td>'
+      +'<td style="text-align:center"><input type="checkbox" class="chkPend" data-opid="'+x.opId+'" data-tipo="'+x.tipo+'" data-gi="'+x.i+'"></td>'
       +'<td style="font-size:12px">#'+x.liq.num+' · '+(x.liq.op?x.liq.op.nombre:'')+'</td>'
-      +'<td>'+x.g.concepto+'</td>'
-      +'<td style="font-size:12px">'+(x.g.desc||'')+'</td>'
-      +'<td class="num r">'+fmt(x.g.importe||0)+'</td>'
-      +'<td>'+(x.g.pagaOp?'Operador':'Empresa')+'</td>'
+      +'<td>'+(x.tipo==='caseta'?'🛣️ Caseta':'📝 '+x.concepto)+'</td>'
+      +'<td style="font-size:12px">'+x.desc+'</td>'
+      +'<td class="num r">'+fmt(x.importe)+'</td>'
+      +'<td>'+(x.pagaOp?'Operador':'Empresa')+'</td>'
       +'</tr>';}).join('')
     +'</tbody><tfoot><tr style="font-weight:700;background:#f5f5f8"><td colspan="4">TOTAL PENDIENTE</td><td class="num r">'+fmt(totPend)+'</td><td></td></tr></tfoot></table></div>';
   $('pendientesAcciones').style.display='flex';
@@ -329,42 +333,47 @@ function toggleTodosPend(btn){
 
 async function autorizarSeleccionados(){
   var chks=document.querySelectorAll('.chkPend:checked');
-  if(!chks.length){alert('Selecciona al menos un gasto pendiente.');return;}
-  var pass=prompt('Contraseña de supervisor para autorizar '+chks.length+' gasto(s):');
+  if(!chks.length){alert('Selecciona al menos un pendiente.');return;}
+  var pass=prompt('Contraseña de supervisor para autorizar '+chks.length+' pendiente(s):');
   if(pass!==SUPERVISOR_PASS){alert('Contraseña incorrecta. No se autorizó nada.');return;}
 
-  // Agrupar las firmas seleccionadas por operador — cada liquidación activa
-  // se relee y escribe por separado.
+  // Agrupar las firmas seleccionadas por operador y tipo — cada liquidación
+  // activa se relee y escribe por separado.
   var firmasPorOp={};
   Array.from(chks).forEach(function(c){
     var opId=c.dataset.opid;
+    var tipo=c.dataset.tipo;
     var idx=parseInt(c.dataset.gi);
     var liqSel=_liqsActivas[opId];
     if(!liqSel)return;
-    if(!firmasPorOp[opId])firmasPorOp[opId]=[];
-    firmasPorOp[opId].push(signatureGasto(liqSel.gastos[idx]));
+    if(!firmasPorOp[opId])firmasPorOp[opId]={gasto:[],caseta:[]};
+    if(tipo==='caseta')firmasPorOp[opId].caseta.push(signatureCaseta(liqSel.casetasNF[idx]));
+    else firmasPorOp[opId].gasto.push(signatureGasto(liqSel.gastos[idx]));
   });
 
   try{
     var totalAutorizados=0;
     for(var opId in firmasPorOp){
       // Releer fresco justo antes de escribir, por si la liquidadora modificó
-      // algo mientras tanto — se autoriza por firma (concepto+desc+importe+
-      // pagaOp), no por índice, para no depender de que el arreglo no cambió.
+      // algo mientras tanto — se autoriza por firma, no por índice, para no
+      // depender de que el arreglo no cambió.
       var data=await window.FB.get('liqActivas',opId);
       var liqFresca=(data&&data.data)?JSON.parse(data.data):null;
       if(!liqFresca){continue;}
-      var firmas=firmasPorOp[opId];
+      var firmasG=firmasPorOp[opId].gasto,firmasC=firmasPorOp[opId].caseta;
       var n=0;
       (liqFresca.gastos||[]).forEach(function(g){
-        if(g.autorizado===false&&firmas.indexOf(signatureGasto(g))!==-1){g.autorizado=true;n++;}
+        if(g.autorizado===false&&firmasG.indexOf(signatureGasto(g))!==-1){g.autorizado=true;n++;}
+      });
+      (liqFresca.casetasNF||[]).forEach(function(a){
+        if(a.autorizado===false&&firmasC.indexOf(signatureCaseta(a))!==-1){a.autorizado=true;n++;}
       });
       if(n){
         await window.FB.set('liqActivas',opId,{data:JSON.stringify(liqFresca)});
         totalAutorizados+=n;
       }
     }
-    alert('✅ '+totalAutorizados+' gasto(s) autorizado(s).');
+    alert('✅ '+totalAutorizados+' pendiente(s) autorizado(s).');
     cargarPendientes();
   }catch(e){
     console.error('autorizarSeleccionados:',e);
