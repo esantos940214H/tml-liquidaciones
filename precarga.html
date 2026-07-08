@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>TML · Nómina</title>
+<title>TML · Pre-carga de comprobantes</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:'Segoe UI',Arial,sans-serif;background:#f0f2f5;color:#1a1a2e;min-height:100vh}
@@ -14,9 +14,11 @@ header{background:#1a1a2e;color:#fff;padding:14px 24px;display:flex;align-items:
 .nav a{color:#aaa;text-decoration:none;font-size:12px;padding:6px 12px;border-radius:5px;border:1px solid #333;transition:all .15s}
 .nav a:hover{color:#fff;border-color:#555}
 .nav a.active{color:#fff;background:#e63946;border-color:#e63946}
-.container{max-width:1100px;margin:0 auto;padding:20px 16px}
+.container{max-width:1200px;margin:0 auto;padding:20px 16px}
 .card{background:#fff;border-radius:10px;box-shadow:0 2px 12px rgba(0,0,0,.07);padding:20px 24px;margin-bottom:16px}
 .card-title{font-size:12px;font-weight:700;color:#1a1a2e;margin-bottom:14px;text-transform:uppercase;letter-spacing:1px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px}
+.grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px}
+.grid4{display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:14px}
 .field{display:flex;flex-direction:column;gap:4px}
 .field label{font-size:11px;font-weight:700;color:#666;text-transform:uppercase;letter-spacing:.5px}
 .field input,.field select{border:1.5px solid #dde;border-radius:6px;padding:8px 10px;font-size:13px;color:#1a1a2e;background:#fafafa;width:100%}
@@ -27,16 +29,16 @@ header{background:#1a1a2e;color:#fff;padding:14px 24px;display:flex;align-items:
 .btn-dark{background:#1a1a2e;color:#fff}.btn-dark:hover{background:#0d0d1a}
 .btn-out{background:#fff;color:#1a1a2e;border:1.5px solid #1a1a2e}.btn-out:hover{background:#f0f2f5}
 .btn-sm{padding:5px 11px;font-size:11px}
-.upload-zone{border:2px dashed #c0c4cc;border-radius:8px;padding:20px;text-align:center;cursor:pointer;transition:all .2s;background:#fafafa}
+.upload-zone{border:2px dashed #c0c4cc;border-radius:8px;padding:24px;text-align:center;cursor:pointer;transition:all .2s;background:#fafafa}
 .upload-zone:hover,.upload-zone.drag{border-color:#e63946;background:#fff5f5}
-.upload-zone .icon{font-size:24px;margin-bottom:5px}
+.upload-zone .icon{font-size:26px;margin-bottom:6px}
 .upload-zone p{color:#666;font-size:12px}
 .alert{padding:9px 13px;border-radius:7px;font-size:12px;margin-bottom:10px}
 .alert-info{background:#e8f4fd;color:#0369a1;border:1px solid #bae6fd}
 .alert-ok{background:#d1e7dd;color:#0a5233;border:1px solid #a3cfbb}
 .alert-warn{background:#fffbeb;color:#92400e;border:1px solid #fde68a}
 .tbl-wrap{overflow-x:auto}
-table{width:100%;border-collapse:collapse;font-size:13px;min-width:700px}
+table{width:100%;border-collapse:collapse;font-size:13px;min-width:820px}
 th{background:#1a1a2e;color:#fff;padding:8px 10px;font-size:11px;text-transform:uppercase;letter-spacing:.7px;text-align:left;font-weight:600}
 th.r{text-align:right}
 td{padding:7px 10px;border-bottom:1px solid #f0f0f0;vertical-align:middle}
@@ -44,12 +46,12 @@ tr:last-child td{border-bottom:none}
 tr:hover td{background:#fafafa}
 .r{text-align:right}.num{font-family:monospace;font-weight:600}
 .badge{display:inline-block;border-radius:4px;padding:2px 8px;font-size:10px;font-weight:700;white-space:nowrap}
-.bg-green{background:#d1e7dd;color:#0a5233;border:1px solid #a3cfbb}
 .bg-yellow{background:#fff3cd;color:#856404;border:1px solid #ffc107}
-.bg-gray{background:#f0f2f5;color:#555;border:1px solid #dde}
+.bg-green{background:#d1e7dd;color:#0a5233;border:1px solid #a3cfbb}
+.bg-blue{background:#dbeafe;color:#1e40af;border:1px solid #93c5fd}
 .fb-status{font-size:11px;color:#aaa}
 .fb-ok{color:#2d6a4f}.fb-err{color:#e63946}
-@media(max-width:600px){.row{flex-direction:column;align-items:stretch}}
+@media(max-width:700px){.grid3,.grid4{grid-template-columns:1fr}}
 
 /* ── SESIÓN (login por módulo) ── */
 .session-overlay{position:fixed;inset:0;background:#1a1a2e;z-index:999999;display:none;align-items:center;justify-content:center}
@@ -75,7 +77,7 @@ tr:hover td{background:#fafafa}
 <div class="session-overlay" id="sessionOverlay">
   <div class="session-box">
     <div class="session-logo">MUDANZAS <span>TML</span></div>
-    <div class="session-modulo" id="sessionModuloLabel">Iniciar sesión — Nómina</div>
+    <div class="session-modulo" id="sessionModuloLabel">Iniciar sesión — Pre-carga</div>
     <input type="text" id="sessionUser" class="session-input" placeholder="Usuario" autocomplete="username" onkeydown="if(event.key==='Enter')document.getElementById('sessionPass').focus()">
     <input type="password" id="sessionPass" class="session-input" placeholder="Contraseña" autocomplete="current-password" onkeydown="if(event.key==='Enter')intentarLogin()">
     <button class="session-btn" onclick="intentarLogin()">Entrar</button>
@@ -92,7 +94,7 @@ tr:hover td{background:#fafafa}
 </div>
 
 <header>
-  <div class="logo">MUDANZAS <span>TML</span> <span style="font-size:13px;font-weight:400;color:#aaa;margin-left:8px">· Nómina</span></div>
+  <div class="logo">MUDANZAS <span>TML</span> <span style="font-size:13px;font-weight:400;color:#aaa;margin-left:8px">· Pre-carga de comprobantes</span></div>
   <div style="display:flex;align-items:center;gap:12px">
     <span class="session-user-label" id="sesionUsuarioLabel"></span>
     <button class="session-logout" id="btnCerrarSesion" onclick="cerrarSesionTML()" style="display:none">Cerrar sesión</button>
@@ -101,11 +103,11 @@ tr:hover td{background:#fafafa}
       <a href="https://anticipos.mudanzastml.mx">📋 Anticipos</a>
       <a href="https://cxc.mudanzastml.mx">📄 Ingresos</a>
       <a href="https://liquidaciones.mudanzastml.mx">🚛 Liquidaciones</a>
-      <a href="https://nomina.mudanzastml.mx" class="active">🧾 Nómina</a>
+      <a href="https://nomina.mudanzastml.mx">🧾 Nómina</a>
       <a href="https://incidentes.mudanzastml.mx">🚨 Incidentes</a>
       <a href="https://historial.mudanzastml.mx">🗂️ Historial</a>
       <a href="https://autorizaciones.mudanzastml.mx">🔐 Autorizaciones</a>
-      <a href="https://precarga.mudanzastml.mx">📥 Pre-carga</a>
+      <a href="https://precarga.mudanzastml.mx" class="active">📥 Pre-carga</a>
       <a href="https://usuarios.mudanzastml.mx">👤 Usuarios</a>
     </nav>
   </div>
@@ -113,41 +115,58 @@ tr:hover td{background:#fafafa}
 
 <div class="container">
 
-  <div class="alert alert-info">🧾 Sube aquí el XML del recibo de nómina (CFDI tipo N) de cada operador. Se toma el <strong>Total de Deducciones</strong> del complemento de nómina y queda pendiente para ese operador. Cuando se abra o liquide su siguiente liquidación, esa deducción se descuenta automáticamente de su saldo — una sola vez, hasta que subas otro recibo.</div>
+  <div class="alert alert-info">📥 Sube aquí los XML de casetas, parquímetros o facturas de gastos <strong>antes de que exista la liquidación</strong> del operador (por ejemplo, cuando llegan por adelantado o en lote). En cuanto se abra la liquidación de ese operador, estos comprobantes se jalan automáticamente — no hace falta volver a subirlos ahí. No hay contraseña de acción aquí: quien tenga permiso para entrar a este módulo puede registrar y reasignar libremente.</div>
 
-  <!-- REGISTRO -->
+  <!-- CARGA -->
   <div class="card">
-    <div class="card-title">📋 Subir recibo de nómina</div>
-    <div class="row" style="margin-bottom:12px">
-      <div class="field"><label>Operador</label><select id="nomOp" onchange="renderNomina()"><option value="">— Selecciona —</option></select></div>
+    <div class="card-title">📎 Cargar comprobante</div>
+    <div class="grid3" style="margin-bottom:12px">
+      <div class="field"><label>Tipo de comprobante</label>
+        <select id="pcTipo">
+          <option value="caseta">Caseta / peaje</option>
+          <option value="parquimetro">Parquímetro</option>
+          <option value="factura">Factura de gasto</option>
+        </select>
+      </div>
+      <div class="field"><label>Operador (obligatorio)</label>
+        <select id="pcOperador"><option value="">— Selecciona —</option></select>
+      </div>
+      <div class="field"><label>Unidad manejada (obligatorio)</label>
+        <select id="pcUnidad"><option value="">— Selecciona —</option></select>
+      </div>
     </div>
-    <div class="upload-zone" id="dzNomina" onclick="document.getElementById('fNomina').click()"><div class="icon">🧾</div><p><strong>Arrastra XML de nómina</strong></p></div>
-    <input type="file" id="fNomina" accept=".xml" multiple style="display:none">
-    <div id="nominaXMLInfo" style="display:none;margin-top:10px"></div>
+    <div class="upload-zone" id="dzPrecarga" onclick="document.getElementById('fPrecarga').click()">
+      <div class="icon">📎</div>
+      <p><strong>Arrastra o selecciona el XML del comprobante</strong><br>Puedes subir varios a la vez, uno por uno se registra igual.</p>
+    </div>
+    <input type="file" id="fPrecarga" accept=".xml" multiple style="display:none">
+    <div id="pcInfo" style="display:none;margin-top:10px"></div>
   </div>
 
   <!-- FILTROS -->
   <div class="card">
     <div class="card-title">🔍 Filtros</div>
     <div class="row">
-      <div class="field"><label>Operador</label><select id="filtNomOp" onchange="renderNomina()"><option value="">Todos</option></select></div>
+      <div class="field"><label>Operador</label><select id="filtPcOp" onchange="renderPrecarga()"><option value="">Todos</option></select></div>
       <div class="field"><label>Estatus</label>
-        <select id="filtNomEst" onchange="renderNomina()">
+        <select id="filtPcEst" onchange="renderPrecarga()">
           <option value="">Todos</option>
           <option value="pendiente">Pendiente</option>
-          <option value="liquidado">Liquidado</option>
+          <option value="jalado">Jalado</option>
         </select>
       </div>
-      <button class="btn btn-out btn-sm" onclick="$('filtNomOp').value='';$('filtNomEst').value='';renderNomina();">Limpiar</button>
+      <button class="btn btn-out btn-sm" onclick="$('filtPcOp').value='';$('filtPcEst').value='';renderPrecarga();">Limpiar</button>
     </div>
   </div>
 
   <!-- TABLA -->
   <div class="card">
-    <div class="card-title">🧾 Recibos registrados</div>
+    <div class="card-title">📋 Comprobantes registrados</div>
     <div class="tbl-wrap"><table>
-      <thead><tr><th>Operador</th><th>Fecha pago</th><th>Periodo</th><th>Folio</th><th class="r">Percepciones</th><th class="r">Deducciones</th><th>Estado</th><th></th></tr></thead>
-      <tbody id="tbNomina"></tbody><tfoot id="tfNomina"></tfoot>
+      <thead><tr>
+        <th>Tipo</th><th>Fecha</th><th>Operador / Unidad</th><th class="r">Total</th><th>Conceptos</th><th>Estatus</th><th></th>
+      </tr></thead>
+      <tbody id="tbPrecarga"></tbody>
     </table></div>
   </div>
 
@@ -175,6 +194,15 @@ window.onFBReady=function(cb){if(window._fbInit)cb();else window._fbCallbacks.pu
       getAll:async function(col){
         try{var s=await db.collection(col).get();var r=[];s.forEach(function(d){r.push(Object.assign({id:d.id},d.data()));});return r.sort(function(a,b){return(b.num||0)-(a.num||0);});}
         catch(e){console.error('FB.getAll:',e);return[];}
+      },
+      // Colección completa en vivo (no un solo doc) — usada para la tabla de
+      // comprobantesPrecargados, que puede cambiar desde este módulo o desde
+      // liq.html (al jalar) simultáneamente.
+      listenCollection:function(col,cb){
+        return db.collection(col).onSnapshot(function(snap){
+          var r=[];snap.forEach(function(d){r.push(Object.assign({id:d.id},d.data()));});
+          cb(r);
+        },function(e){console.error('FB.listenCollection:',e);});
       }
     };
     window._fbInit=true;
@@ -186,6 +214,12 @@ window.onFBReady=function(cb){if(window._fbInit)cb();else window._fbCallbacks.pu
 </script>
 
 <script>
+const $=id=>document.getElementById(id);
+const fmtCent=(c,d=2)=>'$'+((parseInt(c||0,10))/100).toLocaleString('es-MX',{minimumFractionDigits:d,maximumFractionDigits:d});
+const hoy=()=>new Date().toISOString().slice(0,10);
+const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2);
+let fbReady=false;
+
 const OPERADORES=[
   {unidad:4521,nombre:'ALEJANDRO RODRIGUEZ GONZALEZ'},{unidad:4522,nombre:'ANDRÉS MARÍA RAMOS'},
   {unidad:4523,nombre:'ANDRÉS NAVARRO RAMÍREZ'},{unidad:4524,nombre:'RAFAEL TAPIA CARREÑO'},
@@ -194,22 +228,26 @@ const OPERADORES=[
   {unidad:533,nombre:'FRANCISCO ARTEMIO PEÑA VAZQUEZ'},{unidad:534,nombre:'MIGUEL ALONSO CALDERON'},
   {unidad:535,nombre:'ISMAEL CONSTANTINO CABRERA'},
 ];
-const $=id=>document.getElementById(id);
-const fmt=(n,d=2)=>'$'+parseFloat(n||0).toLocaleString('es-MX',{minimumFractionDigits:d,maximumFractionDigits:d});
-const hoy=()=>{var d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');};
+// Unidades reales de la flota — lista aparte (hoy coincide con OPERADORES)
+// para poder registrar "operador X manejó la unidad Y" cuando no coincidan.
+const UNIDADES=OPERADORES.map(function(o){return o.unidad;}).slice().sort(function(a,b){return a-b;});
 const TML_RFC='MTM171214PI4';
-let fbReady=false;
-let nominaDB={}; // {unidad:[{id,uuid,folio,fecha,periodoIni,periodoFin,totalPercepciones,totalDeducciones,estado,liqNum}]}
 
 // ══════════════════════════════════════════════
-// SESIÓN (login general con permisos por módulo)
+// SESIÓN (login general con permisos por módulo — mismo patrón que los demás)
+// NOTA IMPORTANTE: este módulo NO implementa Firebase Authentication todavía.
+// El único control de acceso es este login propio (usuario/contraseña +
+// permisos.precarga en el doc de "usuarios"), sin candado de contraseña de
+// acción adicional (no hay "PRE2026" ni similar) — quien entra, puede
+// registrar y reasignar libremente. Cuando se migre a Firebase Auth, ahí se
+// debe implementar el control fino de quién puede VER/EDITAR/JALAR cada
+// comprobante (por ejemplo, con Custom Claims o reglas de Firestore basadas
+// en request.auth), ya que hoy las reglas de Firestore no pueden validar
+// "quién" hizo la petición sin Firebase Auth real.
 // ══════════════════════════════════════════════
-const MODULO_ACTUAL='nom';
+const MODULO_ACTUAL='precarga';
 const NOMBRES_MODULO={ant:'Anticipos',ing:'Ingresos',liq:'Liquidaciones',nom:'Nómina',inc:'Incidentes',hist:'Historial',autoriz:'Autorizaciones',precarga:'Pre-carga'};
 
-// Cookie compartida entre subdominios (.mudanzastml.mx) — reemplaza
-// sessionStorage: cada módulo vive en su propio subdominio (site de
-// Firebase Hosting), así que sessionStorage ya no se comparte entre ellos.
 function tmlSetCookie(name,value,days){
   var expires='';
   if(days){var d=new Date();d.setTime(d.getTime()+days*24*60*60*1000);expires=';expires='+d.toUTCString();}
@@ -291,7 +329,7 @@ function verificarSesionModulo(){
 window.onFBReady(verificarSesionModulo);
 
 function initSelects(){
-  ['nomOp','filtNomOp'].forEach(function(id){
+  ['pcOperador','filtPcOp'].forEach(function(id){
     var s=$(id);if(!s)return;
     OPERADORES.forEach(function(op){
       var o=document.createElement('option');
@@ -299,157 +337,187 @@ function initSelects(){
       s.appendChild(o);
     });
   });
+  var su=$('pcUnidad');
+  UNIDADES.forEach(function(u){
+    var o=document.createElement('option');o.value=u;o.textContent=u;su.appendChild(o);
+  });
 }
 initSelects();
+// Al elegir operador, se propone su unidad "de casa" por default —
+// queda seleccionable aparte por si este periodo manejó otra.
+$('pcOperador').addEventListener('change',function(){
+  var opId=parseInt(this.value||0);
+  if(opId&&$('pcUnidad'))$('pcUnidad').value=opId;
+});
 
-window.onFBReady(async function(){
+let comprobantesDB=[]; // arreglo en vivo de comprobantesPrecargados (getAll/listenCollection)
+
+window.onFBReady(function(){
   fbReady=true;
   $('fbStatus').textContent='✅ Conectado';$('fbStatus').className='fb-status fb-ok';
-  var data=await window.FB.get('estado','nominaDB');
-  if(data&&data.data){var _ln=JSON.parse(data.data);nominaDB=Array.isArray(_ln)?{}:_ln;}
-  renderNomina();
-  window.FB.listen('estado','nominaDB',function(data){
-    if(data&&data.data){var _ln2=JSON.parse(data.data);nominaDB=Array.isArray(_ln2)?{}:_ln2;renderNomina();}
+  window.FB.listenCollection('comprobantesPrecargados',function(rows){
+    comprobantesDB=Array.isArray(rows)?rows:[];
+    renderPrecarga();
   });
 });
 setTimeout(function(){if(!fbReady){$('fbStatus').textContent='❌ Sin conexión';$('fbStatus').className='fb-status fb-err';}},6000);
 
-function guardarNominaDB(){
-  if(fbReady&&window.FB)window.FB.set('estado','nominaDB',{data:JSON.stringify(nominaDB)});
+// ══════════════════════════════════════════════
+// CARGA DE XML
+// ══════════════════════════════════════════════
+const dzPrecarga=$('dzPrecarga');
+dzPrecarga.addEventListener('dragover',function(e){e.preventDefault();dzPrecarga.classList.add('drag');});
+dzPrecarga.addEventListener('dragleave',function(){dzPrecarga.classList.remove('drag');});
+dzPrecarga.addEventListener('drop',function(e){e.preventDefault();dzPrecarga.classList.remove('drag');handleArchivos(e.dataTransfer.files);});
+$('fPrecarga').addEventListener('change',function(e){handleArchivos(e.target.files);});
+
+function handleArchivos(files){
+  Array.from(files).forEach(function(f){
+    var r=new FileReader();
+    r.onload=function(e){procesarXML(e.target.result,f.name);};
+    r.readAsText(f,'UTF-8');
+  });
 }
 
-// Los XML de nómina son facturas que TML EMITE al operador — el emisor del
-// CFDI debe ser Mudanzas TML (al revés que una factura de gasto, donde TML
-// es receptor).
-function validarEmisorTML(doc,fname){
-  var emisor=doc.querySelector('Emisor');
-  var rfcEmisor=emisor?emisor.getAttribute('Rfc')||'':'';
-  if((rfcEmisor||'').toUpperCase()!==TML_RFC){
-    alert('⚠️ '+fname+': el emisor del CFDI es "'+(rfcEmisor||'desconocido')+'", no coincide con Mudanzas TML ('+TML_RFC+'). No se puede cargar este recibo.');
-    return false;
-  }
-  return true;
-}
-// Busca el complemento de nómina por namespace, no por el prefijo literal
-// (nomina12:), ya que distintos emisores pueden declarar otro prefijo para
-// el mismo namespace del SAT. Si por alguna razón el XML no trae el
-// namespace bien declarado, cae de respaldo al nombre de tag literal.
-function getNominaComplemento(doc){
-  var els=doc.getElementsByTagNameNS('http://www.sat.gob.mx/nomina12','Nomina');
-  if(els.length)return els[0];
-  els=doc.getElementsByTagName('nomina12:Nomina');
-  return els.length?els[0]:null;
-}
-// Duplicado: se busca el mismo UUID ya registrado en nominaDB, sin importar
-// el operador (evita subir el mismo recibo dos veces por error).
-function buscarNominaDuplicada(uuid){
-  if(!uuid)return null;
-  uuid=uuid.toUpperCase();
-  for(var key in nominaDB){
-    var enc=(nominaDB[key]||[]).find(function(n){return(n.uuid||'').toUpperCase()===uuid;});
-    if(enc)return{unidad:key,liqNum:enc.liqNum};
-  }
-  return null;
-}
+// Convierte pesos (string/num del XML) a centavos ENTEROS, redondeando para
+// evitar arrastre de error de punto flotante — TODA la matemática de este
+// módulo se guarda en centavos, nunca en pesos con decimales.
+function pesosACentavos(v){return Math.round(parseFloat(v||0)*100);}
 
-const dzNomina=$('dzNomina');
-dzNomina.addEventListener('dragover',function(e){e.preventDefault();dzNomina.classList.add('drag');});
-dzNomina.addEventListener('dragleave',function(){dzNomina.classList.remove('drag');});
-dzNomina.addEventListener('drop',function(e){e.preventDefault();dzNomina.classList.remove('drag');handleNominaXMLFiles(e.dataTransfer.files);});
-$('fNomina').addEventListener('change',function(e){handleNominaXMLFiles(e.target.files);});
+function procesarXML(text,fname){
+  var opId=parseInt($('pcOperador').value||0);
+  var unidad=parseInt($('pcUnidad').value||0);
+  if(!opId||!unidad){alert('Selecciona operador y unidad antes de subir el XML de "'+fname+'".');return;}
+  var tipo=$('pcTipo').value;
 
-function handleNominaXMLFiles(files){Array.from(files).forEach(function(f){const r=new FileReader();r.onload=function(e){parseNominaXML(e.target.result,f.name);};r.readAsText(f,'UTF-8');});}
-
-function parseNominaXML(text,fname){
-  var unidad=parseInt($('nomOp').value||0);
-  if(!unidad){alert('Selecciona primero el operador al que corresponde este recibo de nómina.');return;}
   var doc=new DOMParser().parseFromString(text,'text/xml');
   var comp=doc.querySelector('Comprobante');
-  if(!comp){alert(fname+': no es CFDI válido.');return;}
-  if((comp.getAttribute('TipoDeComprobante')||'')!=='N'){alert(fname+': este CFDI no es de tipo Nómina (N). No se puede registrar aquí.');return;}
-  if(!validarEmisorTML(doc,fname))return;
-  var nomina=getNominaComplemento(doc);
-  if(!nomina){alert(fname+': no se encontró el complemento de nómina en este XML.');return;}
+  if(!comp){alert(fname+': no es un CFDI válido.');return;}
+  var receptor=doc.querySelector('Receptor');
+  var emisor=doc.querySelector('Emisor');
+  var receptorRFC=receptor?receptor.getAttribute('Rfc')||'':'';
+  if(receptorRFC.toUpperCase()!==TML_RFC){
+    alert('🚫 '+fname+': el RECEPTOR de este CFDI es "'+(receptorRFC||'(vacío)')+'", no Mudanzas TML ('+TML_RFC+').\n\nEste XML no parece ser un gasto de la empresa — no se puede pre-cargar aquí.');
+    return;
+  }
   var tfd=doc.querySelector('TimbreFiscalDigital');
-  var uuid=tfd?tfd.getAttribute('UUID')||'':'';
-  if(uuid){
-    var dup=buscarNominaDuplicada(uuid);
-    if(dup){
-      alert('🚫 '+fname+': este recibo ya fue registrado (unidad '+dup.unidad+'). No se puede subir el mismo CFDI dos veces.');
-      $('nominaXMLInfo').style.display='block';
-      $('nominaXMLInfo').innerHTML='<div class="alert alert-warn">🚫 '+fname+' — CFDI duplicado. No se agregó.</div>';
+  var uuid=tfd?(tfd.getAttribute('UUID')||''):'';
+  if(!uuid){alert(fname+': no se encontró el UUID (Timbre Fiscal Digital) de este CFDI. No se puede registrar sin él (se usa para no duplicarlo).');return;}
+
+  // IVA leído dinámicamente del XML (nunca hardcodeado) — se suma cada
+  // Traslado de impuesto 002 (IVA), sea cual sea la tasa real del comprobante.
+  var iva=0;
+  doc.querySelectorAll('Traslado').forEach(function(t){if(t.getAttribute('Impuesto')==='002')iva+=parseFloat(t.getAttribute('Importe')||0);});
+  var subtotal=parseFloat(comp.getAttribute('SubTotal')||0);
+  var total=parseFloat(comp.getAttribute('Total')||0)||(subtotal+iva);
+  var conceptos=[];
+  doc.querySelectorAll('Concepto').forEach(function(c){
+    var d=c.getAttribute('Descripcion')||c.getAttribute('Descripción')||'';
+    if(d)conceptos.push(d);
+  });
+
+  var docData={
+    uuid:uuid,
+    tipo:tipo,
+    operador:opId,
+    unidad:unidad,
+    fecha:(comp.getAttribute('Fecha')||'').slice(0,10),
+    emisorRFC:emisor?emisor.getAttribute('Rfc')||'':'',
+    receptorRFC:receptorRFC,
+    subtotal:pesosACentavos(subtotal),
+    iva:pesosACentavos(iva),
+    total:pesosACentavos(total),
+    conceptos:conceptos,
+    estado:'pendiente',
+    liquidacionId:'',
+    createdAt:new Date().toISOString(),
+    createdBy:(usuarioSesion()||{}).usuario||'',
+    updatedAt:new Date().toISOString()
+  };
+  registrarComprobante(docData,fname);
+}
+
+async function registrarComprobante(docData,fname){
+  try{
+    // Dedup por UUID: el ID del documento ES el uuid, así que basta revisar
+    // si ya existe antes de escribir — nunca se sobreescribe uno existente.
+    var existente=await window.FB.get('comprobantesPrecargados',docData.uuid);
+    if(existente){
+      alert('⚠️ '+fname+': este comprobante (UUID '+docData.uuid.slice(0,8)+'...) ya fue cargado antes (estado: '+(existente.estado||'?')+'). No se duplicó.');
       return;
     }
+    await window.FB.set('comprobantesPrecargados',docData.uuid,docData);
+    $('pcInfo').style.display='block';
+    $('pcInfo').innerHTML='<div class="alert alert-ok">✅ '+fname+' — comprobante registrado ('+fmtCent(docData.total)+'), pendiente de jalarse a una liquidación.</div>';
+  }catch(e){
+    console.error('registrarComprobante:',e);
+    alert('⚠️ Error al registrar '+fname+': '+e.message);
   }
-  var receptor=doc.querySelector('Receptor');
-  var totalDeducciones=parseFloat(nomina.getAttribute('TotalDeducciones')||0);
-  var totalPercepciones=parseFloat(nomina.getAttribute('TotalPercepciones')||0);
-  if(!nominaDB[unidad])nominaDB[unidad]=[];
-  nominaDB[unidad].push({
-    id:'nom-'+Date.now()+'-'+Math.random().toString(36).slice(2),
-    uuid:uuid,
-    folio:(comp.getAttribute('Serie')||'')+(comp.getAttribute('Folio')||''),
-    fecha:(comp.getAttribute('Fecha')||'').slice(0,10),
-    periodoIni:nomina.getAttribute('FechaInicialPago')||'',
-    periodoFin:nomina.getAttribute('FechaFinalPago')||'',
-    totalPercepciones:totalPercepciones,
-    totalDeducciones:totalDeducciones,
-    receptorNombre:receptor?receptor.getAttribute('Nombre')||'':'',
-    receptorRfc:receptor?receptor.getAttribute('Rfc')||'':'',
-    estado:'pendiente',
-    liqNum:null
-  });
-  guardarNominaDB();
-  renderNomina();
-  var opU=OPERADORES.find(function(o){return o.unidad===unidad;});
-  $('nominaXMLInfo').style.display='block';
-  $('nominaXMLInfo').innerHTML='<div class="alert alert-ok">✅ '+fname+' — deducciones de '+fmt(totalDeducciones)+' registradas para '+(opU?opU.nombre:unidad)+'.</div>';
 }
 
-function eliminarNomina(unidad,id){
-  if(!nominaDB[unidad])return;
-  var n=nominaDB[unidad].find(function(x){return x.id===id;});
-  if(!n||n.estado!=='pendiente')return;
-  if(!confirm('¿Eliminar este recibo de nómina ('+fmt(n.totalDeducciones)+')?'))return;
-  nominaDB[unidad]=nominaDB[unidad].filter(function(x){return x.id!==id;});
-  guardarNominaDB();
-  renderNomina();
+// ══════════════════════════════════════════════
+// REASIGNAR (solo mientras estado === 'pendiente')
+// ══════════════════════════════════════════════
+async function reasignar(uuidDoc,campo,valor){
+  var actual=comprobantesDB.find(function(c){return c.id===uuidDoc;});
+  if(!actual){alert('No se encontró el comprobante.');return;}
+  if(actual.estado!=='pendiente'){alert('Este comprobante ya fue jalado a una liquidación — no se puede reasignar.');renderPrecarga();return;}
+  var valorNum=parseInt(valor||0);
+  if(!valorNum){alert('Valor inválido.');renderPrecarga();return;}
+  try{
+    // Leer-modificar-escribir el doc completo (nunca un set en blanco que
+    // borre los demás campos) — se actualiza solo el campo pedido.
+    var fresco=await window.FB.get('comprobantesPrecargados',uuidDoc);
+    if(!fresco){alert('El comprobante ya no existe.');return;}
+    if(fresco.estado!=='pendiente'){alert('Este comprobante ya fue jalado a una liquidación — no se puede reasignar.');return;}
+    fresco[campo]=valorNum;
+    fresco.updatedAt=new Date().toISOString();
+    await window.FB.set('comprobantesPrecargados',uuidDoc,fresco);
+  }catch(e){
+    console.error('reasignar:',e);
+    alert('⚠️ Error al reasignar: '+e.message);
+  }
 }
 
-function renderNomina(){
-  var tb=$('tbNomina'),tf=$('tfNomina');
+// ══════════════════════════════════════════════
+// TABLA
+// ══════════════════════════════════════════════
+function renderPrecarga(){
+  var tb=$('tbPrecarga');
   if(!tb)return;
-  var filtroOp=parseInt($('filtNomOp').value||0);
-  var filtroEst=$('filtNomEst').value||'';
-  var filas=[];
-  Object.keys(nominaDB).forEach(function(key){
-    var unidad=parseInt(key);
-    if(filtroOp&&unidad!==filtroOp)return;
-    (nominaDB[key]||[]).forEach(function(n){
-      if(filtroEst&&n.estado!==filtroEst)return;
-      filas.push(Object.assign({unidad:unidad},n));
-    });
-  });
-  filas.sort(function(a,b){return(b.fecha||'').localeCompare(a.fecha||'');});
+  var filtOp=parseInt($('filtPcOp').value||0);
+  var filtEst=$('filtPcEst').value||'';
+  var filas=(comprobantesDB||[]).filter(function(c){
+    if(filtOp&&parseInt(c.operador)!==filtOp)return false;
+    if(filtEst&&c.estado!==filtEst)return false;
+    return true;
+  }).sort(function(a,b){return(b.fecha||'').localeCompare(a.fecha||'');});
+
   tb.innerHTML='';
-  var totPerc=0,totDed=0;
-  filas.forEach(function(n){
-    totPerc+=n.totalPercepciones||0;totDed+=n.totalDeducciones||0;
-    var op=OPERADORES.find(function(o){return o.unidad===n.unidad;});
-    var estadoCell=n.estado==='liquidado'
-      ?'<span class="badge bg-green">✓ Liquidado #'+n.liqNum+'</span>'
-      :'<span class="badge bg-yellow">Pendiente</span>';
-    tb.innerHTML+='<tr><td style="font-size:12px">'+(op?op.nombre:n.unidad)+'</td>'
-      +'<td style="font-size:11px">'+(n.fecha||'—')+'</td>'
-      +'<td style="font-size:11px">'+(n.periodoIni||'?')+' al '+(n.periodoFin||'?')+'</td>'
-      +'<td style="font-size:11px">'+(n.folio||'—')+'</td>'
-      +'<td class="num r">'+fmt(n.totalPercepciones||0)+'</td>'
-      +'<td class="num r" style="color:#9b1c1c;font-weight:700">'+fmt(n.totalDeducciones||0)+'</td>'
-      +'<td>'+estadoCell+'</td>'
-      +'<td>'+(n.estado==='pendiente'?'<button class="btn btn-sm" style="background:#fde8e8;color:#9b1c1c;border:none;cursor:pointer" onclick="eliminarNomina('+n.unidad+',\''+n.id+'\')">✕</button>':'')+'</td></tr>';
+  if(!filas.length){
+    tb.innerHTML='<tr><td colspan="7" style="text-align:center;color:#aaa;padding:20px">Sin comprobantes registrados.</td></tr>';
+    return;
+  }
+  var opts=function(sel){return UNIDADES.map(function(u){return '<option value="'+u+'"'+(u===sel?' selected':'')+'>'+u+'</option>';}).join('');};
+  var optsOp=function(sel){return OPERADORES.map(function(o){return '<option value="'+o.unidad+'"'+(o.unidad===sel?' selected':'')+'>'+o.unidad+' · '+o.nombre.split(' ').slice(0,2).join(' ')+'</option>';}).join('');};
+  filas.forEach(function(c){
+    var esPend=c.estado==='pendiente';
+    var tipoLabel=c.tipo==='caseta'?'🛣️ Caseta':(c.tipo==='parquimetro'?'🅿️ Parquímetro':'🧾 Factura');
+    tb.innerHTML+='<tr>'
+      +'<td><span class="badge bg-blue">'+tipoLabel+'</span></td>'
+      +'<td style="font-size:11px">'+(c.fecha||'—')+'</td>'
+      +'<td style="font-size:11px">'
+        +(esPend
+          ?'<select class="input-sm" onchange="reasignar(\''+c.id+'\',\'operador\',this.value)" style="border:1.5px solid #dde;border-radius:5px;padding:4px;font-size:11px;margin-bottom:3px;width:100%">'+optsOp(c.operador)+'</select>'
+            +'<select class="input-sm" onchange="reasignar(\''+c.id+'\',\'unidad\',this.value)" style="border:1.5px solid #dde;border-radius:5px;padding:4px;font-size:11px;width:100%">'+opts(c.unidad)+'</select>'
+          :(function(){var op=OPERADORES.find(function(o){return o.unidad===c.operador;});return (op?op.nombre:c.operador)+' · Unidad '+c.unidad;})())
+      +'</td>'
+      +'<td class="num r">'+fmtCent(c.total)+'</td>'
+      +'<td style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px" title="'+(c.conceptos||[]).join(', ').replace(/"/g,'&quot;')+'">'+(c.conceptos||[]).join(', ')+'</td>'
+      +'<td>'+(esPend?'<span class="badge bg-yellow">Pendiente</span>':'<span class="badge bg-green">✓ Jalado'+(c.liquidacionId?' — '+c.liquidacionId:'')+'</span>')+'</td>'
+      +'<td></td>'
+      +'</tr>';
   });
-  if(!filas.length)tb.innerHTML='<tr><td colspan="8" style="text-align:center;color:#aaa;padding:20px">Sin recibos de nómina registrados.</td></tr>';
-  tf.innerHTML='<tr style="background:#f5f5f8;font-weight:700"><td colspan="4">TOTALES</td><td class="num r">'+fmt(totPerc)+'</td><td class="num r" style="color:#9b1c1c">'+fmt(totDed)+'</td><td colspan="2"></td></tr>';
 }
 </script>
 </body>

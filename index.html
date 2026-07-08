@@ -50,6 +50,7 @@ iframe.visible{display:block}
     <a href="https://incidentes.mudanzastml.mx" id="navInc" data-mod="inc">🚨 Incidentes</a>
     <a href="https://historial.mudanzastml.mx" id="navHist" data-mod="hist">🗂️ Historial</a>
     <a href="https://autorizaciones.mudanzastml.mx" id="navAutoriz" data-mod="autoriz">🔐 Autorizaciones</a>
+    <a href="https://precarga.mudanzastml.mx" id="navPrecarga" data-mod="precarga">📥 Pre-carga</a>
     <a href="https://usuarios.mudanzastml.mx" id="navUsuarios" data-mod="usuarios">👤 Usuarios</a>
   </nav>
 </header>
@@ -63,6 +64,7 @@ iframe.visible{display:block}
   <iframe id="fr-inc" src="about:blank" title="Incidentes"></iframe>
   <iframe id="fr-hist" src="about:blank" title="Historial"></iframe>
   <iframe id="fr-autoriz" src="about:blank" title="Autorizaciones"></iframe>
+  <iframe id="fr-precarga" src="about:blank" title="Pre-carga"></iframe>
   <iframe id="fr-usuarios" src="about:blank" title="Usuarios"></iframe>
 </div>
 
@@ -88,8 +90,8 @@ function tmlDeleteCookie(name){
   document.cookie=name+'=;expires=Thu, 01 Jan 1970 00:00:00 GMT;domain=.mudanzastml.mx;path=/;SameSite=Lax;Secure';
 }
 
-var NOMBRES = {ant:'· Anticipos', ing:'· Ingresos', liq:'· Liquidaciones', nom:'· Nómina', inc:'· Incidentes', hist:'· Historial', autoriz:'· Autorizaciones', usuarios:'· Usuarios'};
-var mods = ['ant','ing','liq','nom','inc','hist','autoriz']; // 'usuarios' se maneja aparte (solo admin)
+var NOMBRES = {ant:'· Anticipos', ing:'· Ingresos', liq:'· Liquidaciones', nom:'· Nómina', inc:'· Incidentes', hist:'· Historial', autoriz:'· Autorizaciones', precarga:'· Pre-carga', usuarios:'· Usuarios'};
+var mods = ['ant','ing','liq','nom','inc','hist','autoriz','precarga']; // 'usuarios' se maneja aparte (solo admin)
 
 // URLs reales de cada módulo (subdominios de Firebase Hosting). Los iframes
 // arrancan sin src (about:blank) y solo se cargan la primera vez que el
@@ -104,6 +106,7 @@ var DOMINIOS = {
   inc:'https://incidentes.mudanzastml.mx',
   hist:'https://historial.mudanzastml.mx',
   autoriz:'https://autorizaciones.mudanzastml.mx',
+  precarga:'https://precarga.mudanzastml.mx',
   usuarios:'https://usuarios.mudanzastml.mx'
 };
 

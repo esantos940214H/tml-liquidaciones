@@ -80,6 +80,7 @@ tr:hover td{background:#fafafa}
       <a href="https://incidentes.mudanzastml.mx">🚨 Incidentes</a>
       <a href="https://historial.mudanzastml.mx">🗂️ Historial</a>
       <a href="https://autorizaciones.mudanzastml.mx">🔐 Autorizaciones</a>
+      <a href="https://precarga.mudanzastml.mx">📥 Pre-carga</a>
       <a href="https://usuarios.mudanzastml.mx" class="active">👤 Usuarios</a>
     </nav>
   </div>
@@ -112,6 +113,7 @@ tr:hover td{background:#fafafa}
         <div class="field-check"><input type="checkbox" id="pInc"><label style="text-transform:none;font-weight:600;color:#1a1a2e">🚨 Incidentes</label></div>
         <div class="field-check"><input type="checkbox" id="pHist"><label style="text-transform:none;font-weight:600;color:#1a1a2e">🗂️ Historial</label></div>
         <div class="field-check"><input type="checkbox" id="pAutoriz"><label style="text-transform:none;font-weight:600;color:#1a1a2e">🔐 Autorizaciones</label></div>
+        <div class="field-check"><input type="checkbox" id="pPrecarga"><label style="text-transform:none;font-weight:600;color:#1a1a2e">📥 Pre-carga</label></div>
       </div>
     </div>
     <div class="row">
@@ -202,7 +204,7 @@ async function cargarUsuarios(){
 }
 
 function leerPermisosForm(){
-  return{ant:$('pAnt').checked,ing:$('pIng').checked,liq:$('pLiq').checked,nom:$('pNom').checked,inc:$('pInc').checked,hist:$('pHist').checked,autoriz:$('pAutoriz').checked};
+  return{ant:$('pAnt').checked,ing:$('pIng').checked,liq:$('pLiq').checked,nom:$('pNom').checked,inc:$('pInc').checked,hist:$('pHist').checked,autoriz:$('pAutoriz').checked,precarga:$('pPrecarga').checked};
 }
 
 // Hash SHA-256 de la contraseña — no se guarda en texto plano en Firestore.
@@ -212,7 +214,7 @@ async function sha256Hex(texto){
 }
 
 $('uEsAdmin').addEventListener('change',function(){
-  if(this.checked)['pAnt','pIng','pLiq','pNom','pInc','pHist','pAutoriz'].forEach(function(id){$(id).checked=true;});
+  if(this.checked)['pAnt','pIng','pLiq','pNom','pInc','pHist','pAutoriz','pPrecarga'].forEach(function(id){$(id).checked=true;});
 });
 
 async function guardarUsuario(){
@@ -242,7 +244,7 @@ function editarUsuario(id){
   $('uActivo').checked=u.activo!==false;
   $('uEsAdmin').checked=!!u.esAdmin;
   var p=u.permisos||{};
-  $('pAnt').checked=!!p.ant;$('pIng').checked=!!p.ing;$('pLiq').checked=!!p.liq;$('pNom').checked=!!p.nom;$('pInc').checked=!!p.inc;$('pHist').checked=!!p.hist;$('pAutoriz').checked=!!p.autoriz;
+  $('pAnt').checked=!!p.ant;$('pIng').checked=!!p.ing;$('pLiq').checked=!!p.liq;$('pNom').checked=!!p.nom;$('pInc').checked=!!p.inc;$('pHist').checked=!!p.hist;$('pAutoriz').checked=!!p.autoriz;$('pPrecarga').checked=!!p.precarga;
   $('formTitle').textContent='✏️ Editando: '+u.nombre;
   $('btnCancelarEdicion').style.display='inline-block';
   window.scrollTo({top:0,behavior:'smooth'});
@@ -253,7 +255,7 @@ function cancelarEdicion(){
   $('uUsuario').value='';$('uNombre').value='';$('uPassword').value='';
   $('uPassword').placeholder='Contraseña de acceso';
   $('uActivo').checked=true;$('uEsAdmin').checked=false;
-  ['pAnt','pIng','pLiq','pNom','pInc','pHist','pAutoriz'].forEach(function(id){$(id).checked=false;});
+  ['pAnt','pIng','pLiq','pNom','pInc','pHist','pAutoriz','pPrecarga'].forEach(function(id){$(id).checked=false;});
   $('formTitle').textContent='✏️ Registrar usuario';
   $('btnCancelarEdicion').style.display='none';
 }
@@ -278,7 +280,7 @@ function renderUsuarios(){
     return '<tr'+(u.activo===false?' style="opacity:.5"':'')+'>'
       +'<td><strong>'+u.usuario+'</strong></td>'
       +'<td>'+u.nombre+(u.esAdmin?' <span class="badge bg-yellow">👑 Admin</span>':'')+'</td>'
-      +'<td>'+(u.esAdmin?'<span class="badge bg-green">Todos los módulos</span>':badgePermiso(p.ant,'Anticipos')+badgePermiso(p.ing,'Ingresos')+badgePermiso(p.liq,'Liquidaciones')+badgePermiso(p.nom,'Nómina')+badgePermiso(p.inc,'Incidentes')+badgePermiso(p.hist,'Historial')+badgePermiso(p.autoriz,'Autorizaciones'))+'</td>'
+      +'<td>'+(u.esAdmin?'<span class="badge bg-green">Todos los módulos</span>':badgePermiso(p.ant,'Anticipos')+badgePermiso(p.ing,'Ingresos')+badgePermiso(p.liq,'Liquidaciones')+badgePermiso(p.nom,'Nómina')+badgePermiso(p.inc,'Incidentes')+badgePermiso(p.hist,'Historial')+badgePermiso(p.autoriz,'Autorizaciones')+badgePermiso(p.precarga,'Pre-carga'))+'</td>'
       +'<td>'+(u.activo===false?'<span class="badge bg-red">Inactivo</span>':'<span class="badge bg-green">Activo</span>')+'</td>'
       +'<td><button class="btn-sm" style="background:#f0f2f5;border:none;cursor:pointer;border-radius:4px;padding:3px 8px;margin-right:4px" onclick="editarUsuario(\''+u.id+'\')">✏️ Editar</button>'
       +'<button class="btn-sm" style="background:#fde8e8;color:#9b1c1c;border:none;cursor:pointer;border-radius:4px;padding:3px 8px" onclick="eliminarUsuario(\''+u.id+'\')">✕ Eliminar</button></td>'

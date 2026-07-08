@@ -13,7 +13,8 @@
         "incidentes": ["tml-liquidaciones-incidentes"],
         "historial": ["tml-liquidaciones-historial"],
         "usuarios": ["tml-liquidaciones-usuarios"],
-        "autorizaciones": ["tml-liquidaciones-autorizaciones"]
+        "autorizaciones": ["tml-liquidaciones-autorizaciones"],
+        "precarga": ["tml-liquidaciones-precarga"]
       }
     }
   }

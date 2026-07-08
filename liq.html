@@ -179,6 +179,7 @@ tr:hover td{background:#fafafa}
       <a href="https://incidentes.mudanzastml.mx" style="color:#aaa;text-decoration:none;font-size:11px;padding:5px 10px;border-radius:5px;border:1px solid #333">🚨 Incidentes</a>
       <a href="https://historial.mudanzastml.mx" style="color:#aaa;text-decoration:none;font-size:11px;padding:5px 10px;border-radius:5px;border:1px solid #333">🗂️ Historial</a>
       <a href="https://autorizaciones.mudanzastml.mx" style="color:#aaa;text-decoration:none;font-size:11px;padding:5px 10px;border-radius:5px;border:1px solid #333">🔐 Autorizaciones</a>
+      <a href="https://precarga.mudanzastml.mx" style="color:#aaa;text-decoration:none;font-size:11px;padding:5px 10px;border-radius:5px;border:1px solid #333">📥 Pre-carga</a>
       <a href="https://usuarios.mudanzastml.mx" style="color:#aaa;text-decoration:none;font-size:11px;padding:5px 10px;border-radius:5px;border:1px solid #333">👤 Usuarios</a>
     </nav>
   </div>
@@ -626,6 +627,35 @@ window.onFBReady=function(cb){if(window._fbInit)cb();else window._fbCallbacks.pu
       getAll:async function(col){
         try{var s=await db.collection(col).get();var r=[];s.forEach(function(d){r.push(Object.assign({id:d.id},d.data()));});return r.sort(function(a,b){return(b.num||0)-(a.num||0);});}
         catch(e){console.error('FB.getAll:',e);return[];}
+      },
+      // Comprobantes pre-cargados (precarga.html) pendientes de un operador —
+      // consulta server-side por campos, no trae toda la colección.
+      queryPendientesOperador:async function(operador){
+        try{
+          var s=await db.collection('comprobantesPrecargados').where('operador','==',operador).where('estado','==','pendiente').get();
+          var r=[];s.forEach(function(d){r.push(Object.assign({id:d.id},d.data()));});return r;
+        }catch(e){console.error('FB.queryPendientesOperador:',e);return[];}
+      },
+      // Marca cada comprobante pre-cargado como "jalado" dentro de una
+      // transacción POR DOCUMENTO que revalida estado==='pendiente' antes de
+      // escribir — así, si dos liquidaciones intentaran jalar el mismo
+      // comprobante casi al mismo tiempo, solo una gana; la otra lo reporta
+      // como rechazado en vez de duplicarlo silenciosamente.
+      jalarComprobantes:async function(uuids,liquidacionId){
+        var jalados=[],rechazados=[];
+        for(var i=0;i<uuids.length;i++){
+          var uuid=uuids[i];
+          try{
+            await db.runTransaction(async function(tx){
+              var ref=db.collection('comprobantesPrecargados').doc(uuid);
+              var snap=await tx.get(ref);
+              if(!snap.exists||snap.data().estado!=='pendiente')throw new Error('no-disponible');
+              tx.update(ref,{estado:'jalado',liquidacionId:liquidacionId,updatedAt:new Date().toISOString()});
+            });
+            jalados.push(uuid);
+          }catch(e){rechazados.push(uuid);}
+        }
+        return{jalados:jalados,rechazados:rechazados};
       }
     };
     window._fbInit=true;
@@ -2197,6 +2227,62 @@ function aplicarDatosDDEC(datos,fname){
   $('ddecResumen').style.display='none';
 }
 
+// Comprobantes registrados en precarga.html (casetas/parquímetros/facturas
+// subidos ANTES de que existiera la liquidación) para este operador. Se
+// jalan SOLO al CREAR la liquidación (nunca al abrir/restaurar una ya
+// existente — eso solo pasaría una vez, aquí, no en restaurarUILiquidacion).
+// Se agregan directo a liq.autopistas (casetas) o liq.gastosXML
+// (parquímetro/factura) y se marcan "jalado" en Firestore dentro de una
+// transacción por-documento (ver window.FB.jalarComprobantes) que revalida
+// estado==='pendiente' antes de escribir, para que dos liquidaciones no
+// puedan jalar el mismo comprobante. Los montos llegan en CENTAVOS enteros
+// desde precarga.html — aquí se convierten a pesos (÷100) para encajar con
+// el resto de liq.html, que maneja todo en pesos con decimales.
+async function jalarComprobantesPrecarga(liqObj){
+  if(!fbReady||!window.FB||!window.FB.queryPendientesOperador)return{total:0,rechazados:0};
+  var pendientes=await window.FB.queryPendientesOperador(liqObj.opId);
+  if(!pendientes.length)return{total:0,rechazados:0};
+  var uuids=pendientes.map(function(c){return c.uuid||c.id;});
+  var agregados=[]; // [{uuid,bucket}] — para poder revertir si algún jalado se rechaza
+  pendientes.forEach(function(c){
+    var conceptoTxt=(c.conceptos||[]).join(', ');
+    var uuidC=c.uuid||c.id;
+    if(c.tipo==='caseta'){
+      liqObj.autopistas.push({
+        fecha:c.fecha||'',hora:'',caseta:conceptoTxt||'Caseta',carril:'XML',
+        importe:(c.total||0)/100,pagaOp:true,
+        rfc:c.emisorRFC||'',emisor:'',concepto:conceptoTxt,
+        subtotal:(c.subtotal||0)/100,iva:(c.iva||0)/100,
+        uuid:uuidC,satEstado:null,satCancelado:false,origenPrecarga:true
+      });
+      agregados.push({uuid:uuidC,bucket:'autopistas'});
+    }else{
+      liqObj.gastosXML.push({
+        serie:'',folio:'',fecha:c.fecha||'',proveedor:'',rfc:c.emisorRFC||'',
+        conceptoDesc:conceptoTxt,uuid:uuidC,satEstado:null,satCancelado:false,
+        subtotal:(c.subtotal||0)/100,iva:(c.iva||0)/100,total:(c.total||0)/100,
+        concepto:'GASTO FACTURADO',desc:conceptoTxt||(c.tipo==='parquimetro'?'Parquímetro':'Factura de gasto'),
+        pagaOp:false,tipo:'xml',autorizado:true,origenPrecarga:true
+      });
+      agregados.push({uuid:uuidC,bucket:'gastosXML'});
+    }
+    registrarFacturaUsada(uuidC,liqObj.num,liqObj.unidad,c.tipo==='caseta'?'caseta':'gasto');
+  });
+  var liquidacionId='liq-'+liqObj.num+'-'+liqObj.opId;
+  var resultado=await window.FB.jalarComprobantes(uuids,liquidacionId);
+  if(resultado.rechazados.length){
+    // Alguno se lo ganó otra liquidación entre la consulta y el marcado —
+    // se quita del objeto local para no reclamarlo sin haberlo jalado de verdad.
+    resultado.rechazados.forEach(function(uuidRech){
+      var info=agregados.find(function(a){return a.uuid===uuidRech;});
+      if(!info)return;
+      if(info.bucket==='autopistas')liqObj.autopistas=liqObj.autopistas.filter(function(a){return a.uuid!==uuidRech;});
+      else liqObj.gastosXML=liqObj.gastosXML.filter(function(g){return g.uuid!==uuidRech;});
+    });
+  }
+  return{total:resultado.jalados.length,rechazados:resultado.rechazados.length};
+}
+
 async function iniciarLiquidacion(){
  try{
   const opId=parseInt($('liqOp').value||0);
@@ -2258,8 +2344,9 @@ async function iniciarLiquidacion(){
     costoDiesel:parseFloat($('liqCostoDiesel').value||27),comision:parseFloat($('liqComision').value||12),
     diesel:null,autopistas:[],gastos:[],gastosXML:[],dieselXML:[],casetasNF:[],viajeVacio:{origen:'',destino:'',kms:''},
     fechaApertura:hoy(),advertenciasFecha:[]};
+  var _precarga=await jalarComprobantesPrecarga(liq);
   $('liqInfo').style.display='block';
-  $('liqInfo').innerHTML='<div class="alert alert-ok">✅ Liquidación <strong>#'+num+'</strong> — <strong>'+op.nombre+'</strong> · Unidad '+unidad+' · '+liq.salida+' al '+liq.llegada+(liq.kms?' · '+liq.kms.toLocaleString('es-MX')+' km':'')+(liq.rendimiento?' · '+liq.rendimiento+' km/L':'')+'</div>';
+  $('liqInfo').innerHTML='<div class="alert alert-ok">✅ Liquidación <strong>#'+num+'</strong> — <strong>'+op.nombre+'</strong> · Unidad '+unidad+' · '+liq.salida+' al '+liq.llegada+(liq.kms?' · '+liq.kms.toLocaleString('es-MX')+' km':'')+(liq.rendimiento?' · '+liq.rendimiento+' km/L':'')+(_precarga.total?' · 📥 '+_precarga.total+' comprobante(s) pre-cargado(s) jalado(s) automáticamente':'')+'</div>'+(_precarga.rechazados?'<div class="alert alert-warn">⚠️ '+_precarga.rechazados+' comprobante(s) pre-cargado(s) no se pudieron jalar — otra liquidación los tomó primero.</div>':'');
   ['1','2','3','4'].forEach(function(i){$('liqReqMsg'+i).style.display='none';$('panel'+i+'Content').style.display='block';});
   $('dOpNombre').textContent=op.nombre;$('iaveOpNombre').textContent=op.nombre;
   $('headerInfo').textContent='Liq. #'+num+' · '+op.nombre+' · Unidad '+unidad;
@@ -2861,7 +2948,7 @@ function renderIAVE(){
   var totEmp=0,totOp=0;
   liq.autopistas.forEach(function(a,i){
     if(!a.satCancelado){if(a.pagaOp)totOp+=a.importe;else totEmp+=a.importe;}
-    tb.innerHTML+='<tr'+(a.satCancelado?' style="opacity:.55;text-decoration:line-through"':'')+'><td>'+a.fecha+'</td><td>'+a.hora+'</td><td>'+a.caseta+(a.satCancelado?' <span class="badge bg-red" style="color:#c1121f" title="Cancelado ante el SAT — excluido del cálculo">⚠ CANCELADO SAT</span>':'')+'</td><td>'+a.carril+'</td><td class="num r">'+fmt(a.importe)+'</td>'
+    tb.innerHTML+='<tr'+(a.satCancelado?' style="opacity:.55;text-decoration:line-through"':'')+'><td>'+a.fecha+'</td><td>'+a.hora+'</td><td>'+a.caseta+(a.origenPrecarga?' <span class="badge" style="background:#dbeafe;color:#1e40af;border:1px solid #93c5fd" title="Se jaló automáticamente de precarga.mudanzastml.mx">📥 Pre-cargado</span>':'')+(a.satCancelado?' <span class="badge bg-red" style="color:#c1121f" title="Cancelado ante el SAT — excluido del cálculo">⚠ CANCELADO SAT</span>':'')+'</td><td>'+a.carril+'</td><td class="num r">'+fmt(a.importe)+'</td>'
       +'<td><select class="input-sm" onchange="liq.autopistas['+i+'].pagaOp=this.value===\'si\';renderIAVE();guardarEstado()">'
       +'<option value="no"'+(a.pagaOp?'':' selected')+'>Empresa</option><option value="si"'+(a.pagaOp?' selected':'')+'>Operador</option></select></td>'
       +'<td><button class="btn btn-sm" style="background:#fde8e8;color:#9b1c1c;border:none;cursor:pointer" onclick="eliminarAutopista('+i+')">✕</button></td></tr>';
@@ -3311,7 +3398,7 @@ function renderGastos(){
     const estadoCell=g.satCancelado
       ?'<span class="badge bg-red" style="color:#c1121f" title="Cancelado ante el SAT — excluido del cálculo">⚠ CANCELADO SAT</span>'
       :(g.autorizado?'<span class="badge bg-green">✓ OK</span>':'<span class="badge bg-yellow">Requiere autorización de un supervisor</span>');
-    tb.innerHTML+='<tr'+(g.satCancelado?' style="opacity:.55;text-decoration:line-through"':'')+'><td style="font-size:11px">'+(g.fecha||'—')+'</td><td>'+g.concepto+'</td><td>'+(g.desc||g.conceptoDesc||'')+'</td>'
+    tb.innerHTML+='<tr'+(g.satCancelado?' style="opacity:.55;text-decoration:line-through"':'')+'><td style="font-size:11px">'+(g.fecha||'—')+'</td><td>'+g.concepto+(g.origenPrecarga?' <span class="badge" style="background:#dbeafe;color:#1e40af;border:1px solid #93c5fd" title="Se jaló automáticamente de precarga.mudanzastml.mx">📥</span>':'')+'</td><td>'+(g.desc||g.conceptoDesc||'')+'</td>'
       +'<td style="font-size:11px" title="'+(g.rfc||'')+'">'+(g.proveedor||g.emisor||'—')+'</td>'
       +'<td class="num r" title="'+tituloImp+'">'+fmt(imp)+'</td>'
       +'<td><span class="badge '+(g.tipo==='xml'?'bg-blue':'bg-gray')+'">'+(g.tipo==='xml'?'XML':'Manual')+'</span></td>'
