@@ -497,6 +497,12 @@ function renderCandadoManual(){
     +'</ul></div>';
 }
 // Panel admin: ingresos donde el XML no coincidió con lo capturado a mano.
+// Cuántas veces (en total, resueltas o no) a este usuario se le ha
+// presentado una discrepancia de monto — para avisar si es recurrente.
+function discrepanciasDe(usuario){
+  if(!usuario)return 0;
+  return ingresosDB.filter(function(v){return v.tuvoDiscrepanciaMonto&&v.capturadoPor&&v.capturadoPor.usuario===usuario;}).length;
+}
 function renderConflictosXML(){
   var u=usuarioSesion();
   var card=$('cardConflictosXML');
@@ -510,10 +516,16 @@ function renderConflictosXML(){
   wrap.innerHTML=conflictos.map(function(m){
     var op=OPERADORES.find(function(o){return o.unidad===m.unidad;});
     var xmlRec=ingresosDB.find(function(x){return x.id===m.conflictoXMLId;});
+    var usuarioCap=m.capturadoPor?m.capturadoPor.usuario:null;
+    var nVeces=discrepanciasDe(usuarioCap);
+    var avisoRecurrente=nVeces>1
+      ?'<div class="alert" style="margin:8px 0;background:#fde8e8;color:#9b1c1c;border:1px solid #f9a8a8"><strong>🔁 Situación recurrente:</strong> esta persona ya ha tenido '+nVeces+' discrepancias de monto entre lo capturado a mano y el XML real. Vale la pena hablar con ella sobre por qué está capturando cifras distintas a lo que realmente se factura.</div>'
+      :'';
     return '<div class="alert alert-warn" style="margin-bottom:10px">'
       +'<strong>'+(op?op.nombre:m.unidad)+'</strong> — ID "'+(m.observaciones||'')+'"<br>'
       +'Monto capturado manualmente: <strong>'+fmt(m.total)+'</strong> · Monto real del XML: <strong>'+fmt(xmlRec?xmlRec.total:0)+'</strong><br>'
       +'Capturado por: '+(m.capturadoPor?(m.capturadoPor.nombre||m.capturadoPor.usuario):'?')+' · esta persona está bloqueada para registrar más ingresos sin factura hasta resolver esto.'
+      +avisoRecurrente
       +'<div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap">'
       +'<button class="btn btn-sm btn-red" onclick="resolverConflictoXML(\''+m.id+'\',true)">✅ Usar monto del XML (sustituir)</button>'
       +'<button class="btn btn-sm btn-out" onclick="resolverConflictoXML(\''+m.id+'\',false)">Marcar como resuelta sin cambiar montos</button>'
@@ -1010,6 +1022,11 @@ function guardarDesglose(){
           const idConflicto=uid();
           candidato.requiereRevisionAdmin=true;
           candidato.conflictoXMLId=idConflicto;
+          // Marcador PERMANENTE (no se borra al resolver, a diferencia de
+          // requiereRevisionAdmin) — sirve para detectar si a la misma
+          // persona se le vuelve a presentar esta situación (ver
+          // discrepanciasDe en renderConflictosXML).
+          candidato.tuvoDiscrepanciaMonto=true;
           ingresosDB.push({
             id:idConflicto,unidad:g.unidad,folio:folioCompleto,fecha:dgPend.fecha,cliente:dgPend.cliente,
             tipo:tipoDerivado,
