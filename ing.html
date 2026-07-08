@@ -955,11 +955,17 @@ function guardarDesglose(){
       if(candidato){
         const totalXMLc=g.totC;
         const totalManualC=toCents(candidato.total||0);
-        if(totalXMLc===totalManualC){
-          // Los montos cuadran EXACTAMENTE — se sustituye EN EL MISMO
-          // REGISTRO, conservando id/estado/liqNum tal cual (aunque ya esté
-          // liquidado en una liquidación cerrada) para no mover saldos ni
-          // reabrir nada. Solo se actualizan los datos reales del CFDI.
+        const coincide=totalXMLc===totalManualC;
+        // Si hay diferencia de monto, solo importa cuando el ingreso YA está
+        // liquidado (tiene liqNum: alguna liquidación —abierta o cerrada—
+        // ya calculó un saldo con esta cifra). Si todavía está sin liquidar,
+        // no se ha calculado ningún saldo con el monto manual, así que es
+        // seguro corregirlo automáticamente aunque no coincida exactamente.
+        if(coincide||candidato.estado!=='liquidado'){
+          // Se sustituye EN EL MISMO REGISTRO, conservando id/estado/liqNum
+          // tal cual (aunque ya esté liquidado en una liquidación cerrada,
+          // cuando SÍ coincide el monto) para no mover saldos ni reabrir
+          // nada. Solo se actualizan los datos reales del CFDI.
           candidato.folio=folioCompleto;candidato.fecha=dgPend.fecha;candidato.cliente=dgPend.cliente;
           candidato.tipo=tipoDerivado;
           candidato.subtotal=fromCents(g.montoC);candidato.subtFlete=fromCents(sfC);
@@ -973,13 +979,16 @@ function guardarDesglose(){
           candidato.satEstado=null;candidato.satCancelado=false;
           candidato.sustituidoPorXML=true;
           candidato.observaciones=(candidato.observaciones||'')+' — sustituido por XML '+folioCompleto+' el '+hoy();
-          sustituciones.push('La parte proporcional de este XML sustituye al ingreso identificado con el número de id "'+idSust+'".');
+          sustituciones.push(coincide
+            ?'La parte proporcional de este XML sustituye al ingreso identificado con el número de id "'+idSust+'".'
+            :'⚠️ El monto del XML ('+fmt(fromCents(g.totC))+') no coincidía exactamente con lo capturado a mano ('+fmt(totalManualC/100)+') para el ID "'+idSust+'", pero como todavía no estaba liquidado se corrigió automáticamente con el monto real del XML.');
         }else{
-          // Los montos NO coinciden: un desajuste así puede cambiar el saldo
-          // del operador (a favor vs en contra), así que NUNCA se sustituye
-          // solo automáticamente. Se registra el XML aparte y se marca el
-          // ingreso manual para que un administrador lo revise y decida cómo
-          // corregirlo — mientras tanto, bloquea a quien lo capturó.
+          // Ya está liquidado Y el monto no coincide: un desajuste así puede
+          // cambiar el saldo del operador (a favor vs en contra) que YA se
+          // calculó, así que NUNCA se sustituye solo automáticamente. Se
+          // registra el XML aparte y se marca el ingreso manual para que un
+          // administrador lo revise y decida cómo corregirlo — mientras
+          // tanto, bloquea a quien lo capturó.
           const idConflicto=uid();
           candidato.requiereRevisionAdmin=true;
           candidato.conflictoXMLId=idConflicto;
@@ -996,7 +1005,7 @@ function guardarDesglose(){
             satEstado:null,satCancelado:false,
             esRevisionPendiente:true,conflictoManualId:candidato.id
           });
-          sustituciones.push('⚠️ El monto del XML ('+fmt(fromCents(g.totC))+') NO coincide con el ingreso manual identificado con ID "'+idSust+'" ('+fmt(candidato.total)+'). Se registró el XML aparte y quedó pendiente de revisión por un administrador — NO se sustituyó automáticamente.');
+          sustituciones.push('⚠️ El monto del XML ('+fmt(fromCents(g.totC))+') NO coincide con el ingreso manual identificado con ID "'+idSust+'" ('+fmt(candidato.total)+'), y ese ingreso ya está LIQUIDADO (liq. #'+candidato.liqNum+'). Se registró el XML aparte y quedó pendiente de revisión por un administrador — NO se sustituyó automáticamente.');
         }
       }else{
         ingresosDB.push({
