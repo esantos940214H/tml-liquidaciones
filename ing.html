@@ -305,11 +305,10 @@ const hoy=()=>new Date().toISOString().slice(0,10);
 // cobro real sin CFDI, ver sinFacturaJustificar:false en su registro).
 // ══════════════════════════════════════════════
 const DIAS_HABILES_JUSTIFICAR=7;
-// MODO PRUEBA TEMPORAL — poner en null para producción normal (7 días
-// hábiles). Mientras tenga un número, la fecha límite se calcula en
-// minutos reales en vez de días hábiles, para poder probar el candado sin
-// esperar una semana. ¡RECORDAR QUITARLO (volver a null) después de probar!
-const PRUEBA_MINUTOS_JUSTIFICAR=1;
+// MODO PRUEBA (null = producción normal, 7 días hábiles). Se puede poner
+// un número de minutos aquí temporalmente para probar el candado sin
+// esperar una semana — pero SIEMPRE debe quedar en null en producción.
+const PRUEBA_MINUTOS_JUSTIFICAR=null;
 function sumarDiasHabiles(fechaISO,n){
   var d=new Date((fechaISO||hoy())+'T12:00:00');
   var agregados=0;
