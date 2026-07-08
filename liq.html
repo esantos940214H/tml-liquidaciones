@@ -459,7 +459,7 @@ tr:hover td{background:#fafafa}
     </div>
     <div class="card">
       <div class="card-title">📝 Gastos sin factura</div>
-      <div class="alert alert-info" style="margin-bottom:14px">⚠️ Gastos que paga el <strong>operador</strong> mayores a $<strong id="limiteGastoLabel">500</strong> sin factura se registran igual, pero quedan PENDIENTES y no cuentan en la liquidación hasta que un supervisor los autorice en el módulo "🔐 Autorizaciones" (autorizaciones.mudanzastml.mx). Los gastos que paga la <strong>empresa</strong> no requieren autorización (no afectan el saldo del operador).</div>
+      <div class="alert alert-info" style="margin-bottom:14px">⚠️ Todo gasto que paga el <strong>operador</strong> sin factura, desde $1 en adelante, se registra igual, pero queda PENDIENTE y no cuenta en la liquidación hasta que un supervisor lo autorice en el módulo "🔐 Autorizaciones" (autorizaciones.mudanzastml.mx). Los gastos que paga la <strong>empresa</strong> no requieren autorización (no afectan el saldo del operador).</div>
       <div class="row" style="margin-bottom:12px">
         <div class="field"><label>Concepto</label>
           <select id="gastoConcepto">
@@ -864,8 +864,7 @@ async function buscarUUIDDuplicado(uuid){
   }catch(e){console.error('buscarUUIDDuplicado:',e);}
   return null;
 }
-const LIMITE_GASTO_SIN_FACTURA=500;
-document.getElementById('limiteGastoLabel').textContent=LIMITE_GASTO_SIN_FACTURA;
+const LIMITE_GASTO_SIN_FACTURA=0;
 
 // ══════════════════════════════════════════════
 // VALIDACIÓN DE CFDI VIGENTE ANTE EL SAT
@@ -3179,7 +3178,7 @@ function agregarGasto(){
   renderGastos();
   guardarEstado();
   if(!gasto.autorizado){
-    alert('⏳ Este gasto ('+fmt(importe)+') supera el límite de '+fmt(LIMITE_GASTO_SIN_FACTURA)+' sin factura.\n\nQuedó registrado como PENDIENTE — no se va a contar en la liquidación hasta que un supervisor lo autorice en autorizaciones.mudanzastml.mx.');
+    alert('⏳ Este gasto ('+fmt(importe)+') es sin factura.\n\nQuedó registrado como PENDIENTE — no se va a contar en la liquidación hasta que un supervisor lo autorice en autorizaciones.mudanzastml.mx.');
   }
 }
 
@@ -3679,7 +3678,7 @@ function generarReporte(){
   gastosHTML+='<div style="height:1px;background:#eee;margin:6px 0"></div>'
     +rr('TOTAL GASTOS',totGastosEmpTotal,null,true);
   if(gastosPendientesAutorizacion.length){
-    gastosHTML+='<div class="alert alert-warn" style="margin-top:10px">⏳ Hay '+gastosPendientesAutorizacion.length+' gasto(s) por '+fmt(totGastosPendientes)+' PENDIENTES de autorización (mayores a '+fmt(LIMITE_GASTO_SIN_FACTURA)+' sin factura) — NO están incluidos en este total. Autorízalos en autorizaciones.mudanzastml.mx para que cuenten.</div>';
+    gastosHTML+='<div class="alert alert-warn" style="margin-top:10px">⏳ Hay '+gastosPendientesAutorizacion.length+' gasto(s) por '+fmt(totGastosPendientes)+' PENDIENTES de autorización (sin factura) — NO están incluidos en este total. Autorízalos en autorizaciones.mudanzastml.mx para que cuenten.</div>';
   }
   $('repGastos').innerHTML=gastosHTML;
 
