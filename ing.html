@@ -529,6 +529,7 @@ function renderConflictosXML(){
       +'<div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap">'
       +'<button class="btn btn-sm btn-red" onclick="resolverConflictoXML(\''+m.id+'\',true)">✅ Usar monto del XML (sustituir)</button>'
       +'<button class="btn btn-sm btn-out" onclick="resolverConflictoXML(\''+m.id+'\',false)">Marcar como resuelta sin cambiar montos</button>'
+      +'<button class="btn btn-sm" style="background:#1a1a2e;color:#fff" onclick="generarCargoOperador(\''+m.id+'\')" title="Solo aplica si el operador recibió MÁS crédito del que realmente se facturó">💰 Generar cargo al operador por la diferencia</button>'
       +'</div></div>';
   }).join('');
 }
@@ -563,6 +564,53 @@ function resolverConflictoXML(manualId,aplicarXML){
   candidato.requiereRevisionAdmin=false;
   candidato.conflictoXMLId=null;
   guardar();renderIngresos();
+}
+// Cuando el operador ya recibió crédito de más en una liquidación cerrada
+// (se le reconoció más de lo que realmente se facturó), esta acción genera
+// un cargo — un anticipo pendiente por la diferencia, igual que el
+// mecanismo de "saldo en contra" que ya usa liq.html — para descontárselo
+// en su PRÓXIMA liquidación. El monto capturado a mano se deja tal cual
+// (así quedó históricamente en la liquidación ya cerrada); esto solo
+// corrige el saldo hacia adelante, no reabre ni reescribe nada cerrado.
+// anticiposDB es un doc compartido con ant.html/liq.html — se lee y
+// fusiona, nunca se sobreescribe en bloque.
+async function generarCargoOperador(manualId){
+  var u=usuarioSesion();
+  if(!u||!u.esAdmin){alert('Solo un administrador puede hacer esto.');return;}
+  var candidato=ingresosDB.find(function(v){return v.id===manualId;});
+  if(!candidato){alert('No se encontró el ingreso.');return;}
+  var xmlRec=ingresosDB.find(function(x){return x.id===candidato.conflictoXMLId;});
+  var montoXML=xmlRec?xmlRec.total:0;
+  var diferencia=Math.round(((candidato.total||0)-montoXML)*100)/100;
+  if(diferencia<=0){
+    alert('No aplica generar un cargo: el monto del XML ('+fmt(montoXML)+') no es menor a lo capturado a mano ('+fmt(candidato.total)+'), así que el operador no fue sobrepagado.');
+    return;
+  }
+  var op=OPERADORES.find(function(o){return o.unidad===candidato.unidad;});
+  if(!confirm('Se va a generar un cargo (anticipo pendiente) de '+fmt(diferencia)+' contra '+(op?op.nombre:candidato.unidad)+', por la diferencia entre lo reconocido ('+fmt(candidato.total)+') y lo realmente facturado ('+fmt(montoXML)+') en la liquidación #'+candidato.liqNum+' ya cerrada.\n\nSe descontará de su PRÓXIMA liquidación. ¿Confirmas?'))return;
+  try{
+    var antRes=await window.FB.get('estado','anticiposDB');
+    var antDB=(antRes&&antRes.data)?JSON.parse(antRes.data):{};
+    if(Array.isArray(antDB))antDB={};
+    if(!antDB[candidato.unidad])antDB[candidato.unidad]=[];
+    antDB[candidato.unidad].push({
+      id:'ajuste-disc-'+candidato.id+'-'+Date.now(),
+      fecha:hoy(),fechaStr:new Date().toLocaleDateString('es-MX'),
+      importe:diferencia,
+      concepto:'Ajuste por discrepancia XML vs. manual — ID "'+(candidato.observaciones||'')+'" (liq. #'+candidato.liqNum+')',
+      estado:'pendiente',
+      liqNum:null
+    });
+    await window.FB.set('estado','anticiposDB',{data:JSON.stringify(antDB)});
+    candidato.cargoGenerado=true;
+    candidato.requiereRevisionAdmin=false;
+    candidato.conflictoXMLId=null;
+    guardar();renderIngresos();
+    alert('✅ Se generó un cargo de '+fmt(diferencia)+' para '+(op?op.nombre:candidato.unidad)+', pendiente para su próxima liquidación.');
+  }catch(e){
+    console.error('generarCargoOperador:',e);
+    alert('⚠️ Error al generar el cargo: '+e.message);
+  }
 }
 function verificarSesionModulo(){
   var u=usuarioSesion();
