@@ -455,6 +455,22 @@ function ingresosBloqueantesDe(usuario){
     return !!v.requiereRevisionAdmin||yaVencioLimite(v.fechaLimiteJustificacion);
   });
 }
+// Candado TOTAL: mientras un usuario no-admin tenga algo sin resolver
+// (vencido o con discrepancia de monto), no puede registrar NINGÚN ingreso
+// — ni manual ni por XML (individual o desglose multi-operador) — hasta
+// que se resuelva. El administrador nunca se bloquea. Se llama al inicio
+// de agregarIngresoReal, parseXML, parseXMLMultiOp y guardarDesglose.
+function usuarioBloqueadoIngresos(){
+  var u=usuarioSesion();
+  if(!u||u.esAdmin)return false;
+  var bloqueantes=ingresosBloqueantesDe(u.usuario);
+  if(!bloqueantes.length)return false;
+  alert('🚫 No puedes registrar ningún ingreso (ni manual ni XML) hasta que se resuelva lo siguiente:\n\n'+bloqueantes.map(function(v){
+    var motivo=v.requiereRevisionAdmin?'el monto del XML no coincidió con lo capturado — un administrador debe revisarlo':'vencido hace más de '+DIAS_HABILES_JUSTIFICAR+' días hábiles sin sustituirse con XML';
+    return '- ID "'+(v.observaciones||'')+'" ('+motivo+')';
+  }).join('\n'));
+  return true;
+}
 function renderCandadoManual(){
   var u=usuarioSesion();
   var box=$('candadoSinFacturaInfo');
@@ -463,7 +479,7 @@ function renderCandadoManual(){
   var bloqueantes=ingresosBloqueantesDe(u.usuario);
   if(!bloqueantes.length){box.style.display='none';return;}
   box.style.display='block';
-  box.innerHTML='<div class="alert alert-warn">🚫 No puedes registrar más ingresos sin factura hasta que se resuelva lo siguiente:<ul style="margin:6px 0 0 18px">'
+  box.innerHTML='<div class="alert alert-warn">🚫 No puedes registrar NINGÚN ingreso (ni manual ni XML) hasta que se resuelva lo siguiente:<ul style="margin:6px 0 0 18px">'
     +bloqueantes.map(function(v){
       var motivo=v.requiereRevisionAdmin
         ?'el monto del XML no coincidió con lo capturado — un administrador debe revisarlo'
@@ -638,6 +654,7 @@ function clasificarConceptosCFDI(doc,subtotal){
 }
 
 function parseXML(text,fname,unidad){
+  if(usuarioBloqueadoIngresos())return;
   const doc=new DOMParser().parseFromString(text,'text/xml');
   const comp=doc.querySelector('Comprobante');
   if(!comp){alert(fname+': no es CFDI válido.');return;}
@@ -744,6 +761,7 @@ function toggleMultiOp(){
 }
 
 function parseXMLMultiOp(text,fname){
+  if(usuarioBloqueadoIngresos())return;
   const doc=new DOMParser().parseFromString(text,'text/xml');
   const comp=doc.querySelector('Comprobante');
   if(!comp){alert(fname+': no es CFDI válido.');return;}
@@ -908,6 +926,7 @@ function recalcDesglose(){
 
 function guardarDesglose(){
   if(!dgPend)return;
+  if(usuarioBloqueadoIngresos())return;
   lockRequest('Guardar desglose multi-operador — Ingresos', function(){
     const p=calcularProrrateo();
     // Suma de control final: nunca guardar si algo no cuadra exactamente
@@ -1055,6 +1074,7 @@ function calcSubtotalManual(){
 }
 
 function agregarIngresoReal(){
+  if(usuarioBloqueadoIngresos())return;
   const unidad=parseInt($('ingOp').value||0);
   if(!unidad){alert('Selecciona operador.');return;}
   const subtFlete=parseFloat($('ingFlete').value||0);
@@ -1081,11 +1101,6 @@ function agregarIngresoReal(){
   var _fecha=$('ingFecha').value||hoy();
   var _sinFacturaJustificar=false,_fechaLimite=null,_capturadoPor=null;
   if(!_esAdmin){
-    var _bloqueantes=ingresosBloqueantesDe(_u.usuario);
-    if(_bloqueantes.length){
-      alert('🚫 No puedes registrar más ingresos sin factura: tienes '+_bloqueantes.length+' pendiente(s) sin resolver (vencido(s) o con discrepancia de monto pendiente de revisión por un administrador). Resuélvelo antes de seguir capturando.');
-      return;
-    }
     if(!_obs){
       alert('Escribe el número de pedido/orden de compra para este ingreso sin factura — lo vas a necesitar para que facturación lo sustituya con el XML real.');
       return;
