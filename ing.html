@@ -305,6 +305,11 @@ const hoy=()=>new Date().toISOString().slice(0,10);
 // cobro real sin CFDI, ver sinFacturaJustificar:false en su registro).
 // ══════════════════════════════════════════════
 const DIAS_HABILES_JUSTIFICAR=7;
+// MODO PRUEBA TEMPORAL — poner en null para producción normal (7 días
+// hábiles). Mientras tenga un número, la fecha límite se calcula en
+// minutos reales en vez de días hábiles, para poder probar el candado sin
+// esperar una semana. ¡RECORDAR QUITARLO (volver a null) después de probar!
+const PRUEBA_MINUTOS_JUSTIFICAR=1;
 function sumarDiasHabiles(fechaISO,n){
   var d=new Date((fechaISO||hoy())+'T12:00:00');
   var agregados=0;
@@ -314,6 +319,16 @@ function sumarDiasHabiles(fechaISO,n){
     if(dow!==0&&dow!==6)agregados++;
   }
   return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+}
+// Fecha límite como timestamp ISO completo (no solo fecha) para que el modo
+// de prueba en minutos pueda compararse con precisión. En producción normal
+// equivale al final del día calculado por sumarDiasHabiles.
+function calcularFechaLimiteJustificacion(fechaCapturaISO){
+  if(PRUEBA_MINUTOS_JUSTIFICAR)return new Date(Date.now()+PRUEBA_MINUTOS_JUSTIFICAR*60000).toISOString();
+  return sumarDiasHabiles(fechaCapturaISO,DIAS_HABILES_JUSTIFICAR)+'T23:59:59';
+}
+function yaVencioLimite(fechaLimiteISO){
+  return !!fechaLimiteISO&&new Date(fechaLimiteISO).getTime()<Date.now();
 }
 // Ver ingresosBloqueantesDe() más abajo — junta esta condición (vencido) con
 // la de discrepancia de monto (requiereRevisionAdmin) para el candado.
@@ -434,11 +449,10 @@ function ajustarFormularioSegunPermiso(){
 //     requiereRevisionAdmin y solo un administrador puede resolverlo (ver
 //     renderConflictosXML/resolverConflictoXML).
 function ingresosBloqueantesDe(usuario){
-  var hoyStr=hoy();
   return ingresosDB.filter(function(v){
     if(!v.sinFacturaJustificar||v.sustituidoPorXML)return false;
     if(!v.capturadoPor||v.capturadoPor.usuario!==usuario)return false;
-    return !!v.requiereRevisionAdmin||(v.fechaLimiteJustificacion&&v.fechaLimiteJustificacion<hoyStr);
+    return !!v.requiereRevisionAdmin||yaVencioLimite(v.fechaLimiteJustificacion);
   });
 }
 function renderCandadoManual(){
@@ -1082,7 +1096,7 @@ function agregarIngresoReal(){
       return;
     }
     _sinFacturaJustificar=true;
-    _fechaLimite=sumarDiasHabiles(_fecha,DIAS_HABILES_JUSTIFICAR);
+    _fechaLimite=calcularFechaLimiteJustificacion(_fecha);
     _capturadoPor={usuario:_u.usuario,nombre:_u.nombre};
   }
 
@@ -1094,7 +1108,7 @@ function agregarIngresoReal(){
     total:parseFloat($('ingTotal').value||0),estado:'sin_liquidar',liqNum:null,origen:'manual',ruta:_ruta,observaciones:_obs,
     sinFacturaJustificar:_sinFacturaJustificar,fechaLimiteJustificacion:_fechaLimite,capturadoPor:_capturadoPor,sustituidoPorXML:false});
   limpiarForm();guardar();renderIngresos();
-  if(_sinFacturaJustificar)alert('✅ Registrado. Tienes hasta el '+_fechaLimite+' (7 días hábiles) para que facturación lo sustituya con el XML real usando el ID "'+_obs+'".');
+  if(_sinFacturaJustificar)alert('✅ Registrado. Tienes hasta '+_fechaLimite+(PRUEBA_MINUTOS_JUSTIFICAR?' (MODO PRUEBA: '+PRUEBA_MINUTOS_JUSTIFICAR+' min)':' ('+DIAS_HABILES_JUSTIFICAR+' días hábiles)')+' para que facturación lo sustituya con el XML real usando el ID "'+_obs+'".');
 }
 
 function renderIngresos(){
@@ -1128,7 +1142,7 @@ function renderIngresos(){
     const oCell=so>0?`<td class="num r">${fmt(so)}</td>`:`<td class="num r" style="color:#ccc">—</td>`;
     tb.innerHTML+=`<tr>
       <td style="width:32px;text-align:center"><input type="checkbox" class="chkIng" data-id="${v.id}" ${v.estado!=='sin_liquidar'?'disabled title="No se puede eliminar: ya está liquidado"':''} onchange="actualizarBarraSelIng()"></td>
-      <td class="num">${v.folio}${v.esDesglose?' <span class="badge bg-purple" title="Parte de una factura consolidada desglosada entre varios operadores (mismo CFDI)">🧩</span>':''}${v.observaciones?` <span title="${v.observaciones.replace(/"/g,'&quot;')}">📝</span>`:''}${v.sinFacturaJustificar&&!v.sustituidoPorXML?(v.fechaLimiteJustificacion&&v.fechaLimiteJustificacion<hoy()?' <span class="badge bg-red" style="color:#c1121f" title="Debió sustituirse con XML antes del '+v.fechaLimiteJustificacion+'">⚠ SIN FACTURA VENCIDO</span>':' <span class="badge bg-yellow" title="Debe sustituirse con XML antes del '+v.fechaLimiteJustificacion+'">⏳ Sin factura</span>'):''}${v.sustituidoPorXML?' <span class="badge bg-green" title="Ya se sustituyó con el XML real">✓ Sustituido</span>':''}</td><td>${v.fecha}</td>
+      <td class="num">${v.folio}${v.esDesglose?' <span class="badge bg-purple" title="Parte de una factura consolidada desglosada entre varios operadores (mismo CFDI)">🧩</span>':''}${v.observaciones?` <span title="${v.observaciones.replace(/"/g,'&quot;')}">📝</span>`:''}${v.sinFacturaJustificar&&!v.sustituidoPorXML?(yaVencioLimite(v.fechaLimiteJustificacion)?' <span class="badge bg-red" style="color:#c1121f" title="Debió sustituirse con XML antes de '+v.fechaLimiteJustificacion+'">⚠ SIN FACTURA VENCIDO</span>':' <span class="badge bg-yellow" title="Debe sustituirse con XML antes de '+v.fechaLimiteJustificacion+'">⏳ Sin factura</span>'):''}${v.sustituidoPorXML?' <span class="badge bg-green" title="Ya se sustituyó con el XML real">✓ Sustituido</span>':''}</td><td>${v.fecha}</td>
       <td style="font-size:11px">${op?op.nombre.split(' ').slice(0,2).join(' '):'?'}</td>
       <td style="max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px">${v.cliente}</td>
       ${fCell}${mCell}${oCell}
