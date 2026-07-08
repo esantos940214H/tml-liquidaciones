@@ -457,9 +457,18 @@ function ingresosBloqueantesDe(usuario){
 }
 // Candado TOTAL: mientras un usuario no-admin tenga algo sin resolver
 // (vencido o con discrepancia de monto), no puede registrar NINGÚN ingreso
-// — ni manual ni por XML (individual o desglose multi-operador) — hasta
-// que se resuelva. El administrador nunca se bloquea. Se llama al inicio
-// de agregarIngresoReal, parseXML, parseXMLMultiOp y guardarDesglose.
+// — ni manual ni por XML de un solo operador. El desglose multi-operador
+// es la EXCEPCIÓN: ahí es donde se sustituyen los ingresos sin factura con
+// el XML real, así que bloquearlo por completo dejaría sin forma de
+// resolver el candado. En guardarDesglose(), en vez de bloquear todo, se
+// revisa renglón por renglón (ver estaBloqueado): los que traen un ID a
+// sustituir sí se procesan (es la resolución), los que no, se rechazan si
+// el usuario está bloqueado. El administrador nunca se bloquea.
+function estaBloqueado(){
+  var u=usuarioSesion();
+  if(!u||u.esAdmin)return false;
+  return ingresosBloqueantesDe(u.usuario).length>0;
+}
 function usuarioBloqueadoIngresos(){
   var u=usuarioSesion();
   if(!u||u.esAdmin)return false;
@@ -761,7 +770,9 @@ function toggleMultiOp(){
 }
 
 function parseXMLMultiOp(text,fname){
-  if(usuarioBloqueadoIngresos())return;
+  // Sin candado aquí: hay que poder cargar el XML para llegar a escribir el
+  // ID a sustituir por renglón — el bloqueo real se aplica en
+  // guardarDesglose(), renglón por renglón (ver estaBloqueado).
   const doc=new DOMParser().parseFromString(text,'text/xml');
   const comp=doc.querySelector('Comprobante');
   if(!comp){alert(fname+': no es CFDI válido.');return;}
@@ -926,7 +937,10 @@ function recalcDesglose(){
 
 function guardarDesglose(){
   if(!dgPend)return;
-  if(usuarioBloqueadoIngresos())return;
+  // Sin candado general aquí: este es justo el mecanismo para sustituir
+  // ingresos sin factura con el XML real. El bloqueo se aplica más abajo,
+  // renglón por renglón — solo rechaza los que NO traen un ID a sustituir
+  // (ingresos nuevos sin relación con nada pendiente).
   lockRequest('Guardar desglose multi-operador — Ingresos', function(){
     const p=calcularProrrateo();
     // Suma de control final: nunca guardar si algo no cuadra exactamente
@@ -946,6 +960,11 @@ function guardarDesglose(){
       const tipoDerivado=smC>0&&!sfC?'maniobra':soC>0&&!sfC&&!smC?'otro':'flete_for';
       const destino=g.destinos.join(' / ');
       const idSust=(g.sustituyeIds&&g.sustituyeIds[0])?g.sustituyeIds[0]:'';
+      if(!idSust&&estaBloqueado()){
+        const opNom=(OPERADORES.find(o=>o.unidad===g.unidad)||{}).nombre||g.unidad;
+        sustituciones.push('🚫 No se registró el renglón de '+opNom+': tienes ingresos sin factura pendientes de resolver. Si este XML corresponde a alguno de ellos, escribe su ID en "Sustituye ingreso sin factura (ID)".');
+        continue;
+      }
       let candidato=null;
       if(idSust){
         const idSustNorm=idSust.toUpperCase();
