@@ -435,7 +435,7 @@ function ajustarFormularioSegunPermiso(){
   var lbl=$('ingObsLabel');
   if(lbl)lbl.innerHTML=esAdmin
     ?'Pedido / Orden de compra <span style="font-weight:400;font-size:11px">(opcional)</span>'
-    :'Pedido / Orden de compra — ID único <span style="font-weight:400;font-size:11px;color:#c1121f">(Campo obligatorio para sustitución automática por un CFDI válido en un plazo no mayor a '+DIAS_HABILES_JUSTIFICAR+' días)</span>';
+    :'Pedido / Orden de compra — ID único <span style="font-weight:400;font-size:11px;color:#c1121f">(Campo obligatorio para realizar la sustitución automática. Tienes un plazo no mayor a '+DIAS_HABILES_JUSTIFICAR+' días para sustituir este ingreso por un XML)</span>';
 }
 // Un ingreso manual sin factura bloquea a quien lo capturó por DOS motivos
 // posibles, independientes entre sí:
