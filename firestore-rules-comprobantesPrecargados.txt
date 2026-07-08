@@ -1,0 +1,73 @@
+Reglas de Firestore — colección comprobantesPrecargados
+════════════════════════════════════════════════════════
+
+Este archivo NO se despliega solo. El proyecto no tiene un firestore.rules
+en el repo (las reglas actuales de Firestore se administran directamente
+en la consola de Firebase: https://console.firebase.google.com/ → proyecto
+tml-liquidaciones → Firestore Database → Reglas), y el pipeline de GitHub
+Actions de este repo solo despliega Hosting (`firebase deploy --only
+hosting`), nunca reglas de Firestore.
+
+Por eso este bloque es SOLO para copiar y PEGAR DENTRO de las reglas que
+ya existen en la consola (agregarlo junto a los `match` que ya haya para
+`estado`, `historial`, `usuarios`, `liqActivas`, etc.) — nunca reemplazar
+el archivo completo de reglas con esto, o se perderían las reglas de las
+demás colecciones.
+
+IMPORTANTE — sin Firebase Authentication (ver nota abajo), estas reglas
+NO pueden distinguir "quién" hace la petición (no hay request.auth todavía
+en este proyecto: el login es propio, con cookie de sesión, no Firebase
+Auth). Por ahora solo se puede validar la FORMA de los datos (que
+operador/unidad no vengan vacíos, que no se edite un doc ya "jalado"),
+no el usuario. El control de "quién puede entrar al módulo" vive hoy en
+el login de precarga.html + el campo permisos.precarga en el doc de
+"usuarios" — no en estas reglas.
+
+────────────────────────────────────────────────────────
+match /comprobantesPrecargados/{uuid} {
+
+  // Lectura abierta (igual que el resto de las colecciones de este
+  // proyecto, que no usan Firebase Auth todavía).
+  allow read: if true;
+
+  // Creación: exige que operador y unidad vengan como número y no vacíos/0,
+  // y que el doc nazca en estado "pendiente" con liquidacionId vacío.
+  allow create: if request.resource.data.operador is int
+    && request.resource.data.operador > 0
+    && request.resource.data.unidad is int
+    && request.resource.data.unidad > 0
+    && request.resource.data.estado == 'pendiente'
+    && request.resource.data.liquidacionId == '';
+
+  // Actualización: si el doc YA estaba "jalado", no se puede modificar más
+  // (ni reasignar operador/unidad, ni ningún otro campo) — solo el propio
+  // proceso de liquidación (que transiciona pendiente -> jalado) puede
+  // tocarlo en ese momento exacto de la transición.
+  allow update: if resource.data.estado != 'jalado'
+    // Si esta escritura es justo la que marca "jalado" (transición hecha
+    // por liq.html), se permite aunque el resto de las reglas de "solo
+    // pendiente" ya no aplique después.
+    || (resource.data.estado == 'pendiente' && request.resource.data.estado == 'jalado');
+
+  allow delete: if false; // no se borran comprobantes precargados desde el cliente
+}
+────────────────────────────────────────────────────────
+
+CÓMO APLICARLO:
+  1. Entra a Firebase Console → tml-liquidaciones → Firestore Database → Reglas.
+  2. Copia el bloque `match /comprobantesPrecargados/{uuid} { ... }` de
+     arriba y pégalo DENTRO de tu `service cloud.firestore { match
+     /databases/{database}/documents { ... } }` existente, junto a los
+     demás `match` de otras colecciones.
+  3. Dale "Publicar".
+
+MIGRACIÓN FUTURA A FIREBASE AUTH:
+  Cuando este proyecto implemente Firebase Authentication de verdad, aquí
+  es donde se debe agregar el control fino de permisos por usuario (por
+  ejemplo, exigir request.auth != null, o validar un Custom Claim como
+  request.auth.token.permisos.precarga == true para lectura/escritura,
+  y restringir quién puede reasignar operador/unidad de un comprobante
+  pendiente vs. quién solo puede subir nuevos). Hoy esas reglas no se
+  pueden expresar porque no existe request.auth real — el control de
+  acceso vive enteramente en el login propio de la app (cookie tml_user +
+  permisos.precarga en el doc de usuarios), no en Firestore.

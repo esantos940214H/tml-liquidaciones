@@ -53,6 +53,12 @@
       "public": "dist/autorizaciones",
       "ignore": ["firebase.json", "**/.*"],
       "rewrites": [{ "source": "**", "destination": "/index.html" }]
+    },
+    {
+      "target": "precarga",
+      "public": "dist/precarga",
+      "ignore": ["firebase.json", "**/.*"],
+      "rewrites": [{ "source": "**", "destination": "/index.html" }]
     }
   ]
 }
