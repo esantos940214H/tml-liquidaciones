@@ -304,8 +304,8 @@ const hoy=()=>new Date().toISOString().slice(0,10);
 // El administrador SÍ puede capturar sin factura sin este límite (casos de
 // cobro real sin CFDI, ver sinFacturaJustificar:false en su registro).
 // ══════════════════════════════════════════════
-const DIAS_HABILES_JUSTIFICAR=7;
-// MODO PRUEBA (null = producción normal, 7 días hábiles). Se puede poner
+const DIAS_HABILES_JUSTIFICAR=10;
+// MODO PRUEBA (null = producción normal, 10 días hábiles). Se puede poner
 // un número de minutos aquí temporalmente para probar el candado sin
 // esperar una semana — pero SIEMPRE debe quedar en null en producción.
 const PRUEBA_MINUTOS_JUSTIFICAR=null;
@@ -435,7 +435,7 @@ function ajustarFormularioSegunPermiso(){
   var lbl=$('ingObsLabel');
   if(lbl)lbl.innerHTML=esAdmin
     ?'Pedido / Orden de compra <span style="font-weight:400;font-size:11px">(opcional)</span>'
-    :'Pedido / Orden de compra — ID único <span style="font-weight:400;font-size:11px;color:#c1121f">(obligatorio, para justificar este ingreso con un XML dentro de '+DIAS_HABILES_JUSTIFICAR+' días hábiles)</span>';
+    :'Pedido / Orden de compra — ID único <span style="font-weight:400;font-size:11px;color:#c1121f">(Campo obligatorio para sustitución automática por un CFDI válido en un plazo no mayor a '+DIAS_HABILES_JUSTIFICAR+' días)</span>';
 }
 // Un ingreso manual sin factura bloquea a quien lo capturó por DOS motivos
 // posibles, independientes entre sí:
