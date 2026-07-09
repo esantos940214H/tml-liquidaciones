@@ -2798,8 +2798,17 @@ function calcDiesel(){
     ltsNoComprobados:ltsNoComprobados,importeNoComprobado:importeNoComprobado,
     ltsPend:ltsFinal,importePend:importePend
   };
-  // Persistir cargas Edenred para sobrevivir navegación entre módulos
-  liq.cargasEdenred=cargasOp.map(function(c){return Object.assign({},c);});
+  // Persistir cargas Edenred para sobrevivir navegación entre módulos —
+  // NUNCA sobrescribir con un arreglo vacío si ya había cargas guardadas:
+  // cargasOp es una variable global separada de liq, y si por cualquier
+  // timing (ej. un snapshot de Firestore que reemplazó "liq" en memoria sin
+  // haber vuelto a poblar cargasOp desde el nuevo objeto) calcDiesel() llegara
+  // a correr con cargasOp vacío, esto habría borrado en Firebase las cargas
+  // reales con las que sí contaba la liquidación.
+  var _cargasNuevas=cargasOp.map(function(c){return Object.assign({},c);});
+  if(_cargasNuevas.length||!(liq.cargasEdenred&&liq.cargasEdenred.length)){
+    liq.cargasEdenred=_cargasNuevas;
+  }
   guardarEstado();}
 }
 
