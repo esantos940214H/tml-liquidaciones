@@ -434,10 +434,26 @@ tr:hover td{background:#fafafa}
         <span id="iaveCollapseIcon" style="margin-left:auto;font-size:12px;color:#aaa">▼ colapsar</span>
       </div>
       <div id="iaveTablaWrap">
-        <div class="tbl-wrap"><table>
-          <thead><tr><th>Fecha</th><th>Hora</th><th>Caseta</th><th>Carril</th><th class="r">Importe</th><th>¿Op. paga?</th><th></th></tr></thead>
-          <tbody id="tbIAVE"></tbody><tfoot id="tfIAVE"></tfoot>
-        </table></div>
+        <div style="cursor:pointer;user-select:none;display:flex;align-items:center;gap:8px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#1a1a2e;padding:6px 10px;background:#f0f2f5;border-radius:6px;margin-bottom:8px" onclick="toggleIAVESub('xlsx')">
+          📊 Cruces por Excel/IAVE <span id="iaveXlsxCount" style="font-weight:400;color:#888;text-transform:none;letter-spacing:normal"></span>
+          <span id="iaveXlsxIcon" style="margin-left:auto;font-size:11px;color:#aaa">▼ colapsar</span>
+        </div>
+        <div id="iaveXlsxWrap">
+          <div class="tbl-wrap"><table>
+            <thead><tr><th>Fecha</th><th>Hora</th><th>Caseta</th><th>Carril</th><th class="r">Importe</th><th>¿Op. paga?</th><th></th></tr></thead>
+            <tbody id="tbIAVEXlsx"></tbody><tfoot id="tfIAVEXlsx"></tfoot>
+          </table></div>
+        </div>
+        <div style="cursor:pointer;user-select:none;display:flex;align-items:center;gap:8px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#1a1a2e;padding:6px 10px;background:#f0f2f5;border-radius:6px;margin:14px 0 8px" onclick="toggleIAVESub('xml')">
+          🧾 Cruces por XML (factura) <span id="iaveXmlCount" style="font-weight:400;color:#888;text-transform:none;letter-spacing:normal"></span>
+          <span id="iaveXmlIcon" style="margin-left:auto;font-size:11px;color:#aaa">▼ colapsar</span>
+        </div>
+        <div id="iaveXmlWrap">
+          <div class="tbl-wrap"><table>
+            <thead><tr><th>Fecha</th><th>Hora</th><th>Caseta</th><th>Carril</th><th class="r">Importe</th><th>¿Op. paga?</th><th></th></tr></thead>
+            <tbody id="tbIAVEXml"></tbody><tfoot id="tfIAVEXml"></tfoot>
+          </table></div>
+        </div>
       </div>
       <div class="kpis" id="kpisIAVE"></div>
     </div>
@@ -2868,6 +2884,14 @@ function toggleIAVE(){
   var icon=$('iaveCollapseIcon');
   if(icon)icon.textContent=_iaveCollapsed?'▶ expandir':'▼ colapsar';
 }
+var _iaveSubCollapsed={xlsx:false,xml:false};
+function toggleIAVESub(tipo){
+  _iaveSubCollapsed[tipo]=!_iaveSubCollapsed[tipo];
+  var wrap=$(tipo==='xlsx'?'iaveXlsxWrap':'iaveXmlWrap');
+  if(wrap)wrap.style.display=_iaveSubCollapsed[tipo]?'none':'block';
+  var icon=$(tipo==='xlsx'?'iaveXlsxIcon':'iaveXmlIcon');
+  if(icon)icon.textContent=_iaveSubCollapsed[tipo]?'▶ expandir':'▼ colapsar';
+}
 
 async function parseAutXML(text,fname){
   if(!liq)return;
@@ -2977,18 +3001,30 @@ function eliminarAutopista(i){
   guardarEstado();
 }
 
+// Un cruce es "de XML" (factura) si viene con carril='XML' o trae uuid —
+// así lo marcan parseAutXML/handleAutopistasXMLFiles (facturas de casetas).
+// Los que vienen del CSV/Excel de PASE/IAVE (parseIAVE) no traen ninguno de
+// los dos, así que caen en la lista de Excel/IAVE.
+function esCruceXML(a){return a.carril==='XML'||!!a.uuid;}
+
 function renderIAVE(){
   if(!liq)return;
-  const tb=$('tbIAVE');tb.innerHTML='';
-  var totEmp=0,totOp=0;
+  const tbX=$('tbIAVEXlsx'),tbM=$('tbIAVEXml');
+  tbX.innerHTML='';tbM.innerHTML='';
+  var totEmp=0,totOp=0,nXlsx=0,nXml=0;
   liq.autopistas.forEach(function(a,i){
     if(!a.satCancelado){if(a.pagaOp)totOp+=a.importe;else totEmp+=a.importe;}
-    tb.innerHTML+='<tr'+(a.satCancelado?' style="opacity:.55;text-decoration:line-through"':'')+'><td>'+a.fecha+'</td><td>'+a.hora+'</td><td>'+a.caseta+(a.origenPrecarga?' <span class="badge" style="background:#dbeafe;color:#1e40af;border:1px solid #93c5fd" title="Se jaló automáticamente de precarga.mudanzastml.mx">📥 Pre-cargado</span>':'')+(a.satCancelado?' <span class="badge bg-red" style="color:#c1121f" title="Cancelado ante el SAT — excluido del cálculo">⚠ CANCELADO SAT</span>':'')+'</td><td>'+a.carril+'</td><td class="num r">'+fmt(a.importe)+'</td>'
+    var fila='<tr'+(a.satCancelado?' style="opacity:.55;text-decoration:line-through"':'')+'><td>'+a.fecha+'</td><td>'+a.hora+'</td><td>'+a.caseta+(a.origenPrecarga?' <span class="badge" style="background:#dbeafe;color:#1e40af;border:1px solid #93c5fd" title="Se jaló automáticamente de precarga.mudanzastml.mx">📥 Pre-cargado</span>':'')+(a.satCancelado?' <span class="badge bg-red" style="color:#c1121f" title="Cancelado ante el SAT — excluido del cálculo">⚠ CANCELADO SAT</span>':'')+'</td><td>'+a.carril+'</td><td class="num r">'+fmt(a.importe)+'</td>'
       +'<td><select class="input-sm" onchange="liq.autopistas['+i+'].pagaOp=this.value===\'si\';renderIAVE();guardarEstado()">'
       +'<option value="no"'+(a.pagaOp?'':' selected')+'>Empresa</option><option value="si"'+(a.pagaOp?' selected':'')+'>Operador</option></select></td>'
       +'<td><button class="btn btn-sm" style="background:#fde8e8;color:#9b1c1c;border:none;cursor:pointer" onclick="eliminarAutopista('+i+')">✕</button></td></tr>';
+    if(esCruceXML(a)){tbM.innerHTML+=fila;nXml++;}
+    else{tbX.innerHTML+=fila;nXlsx++;}
   });
-  $('tfIAVE').innerHTML='<tr style="background:#f5f5f8;font-weight:700"><td colspan="4">TOTAL</td><td class="num r">'+fmt(totEmp+totOp)+'</td><td colspan="2"></td></tr>';
+  $('iaveXlsxCount').textContent='('+nXlsx+')';
+  $('iaveXmlCount').textContent='('+nXml+')';
+  $('tfIAVEXlsx').innerHTML=nXlsx?'':'<tr><td colspan="7" style="text-align:center;color:#aaa;padding:10px">Sin cruces por Excel/IAVE.</td></tr>';
+  $('tfIAVEXml').innerHTML=nXml?'':'<tr><td colspan="7" style="text-align:center;color:#aaa;padding:10px">Sin cruces por XML.</td></tr>';
   $('kpisIAVE').innerHTML='<div class="kpi"><div class="v">'+liq.autopistas.length+'</div><div class="k">Cruces</div></div>'
     +'<div class="kpi"><div class="v">'+fmt(totEmp+totOp)+'</div><div class="k">Total</div></div>'
     +'<div class="kpi"><div class="v green">'+fmt(totEmp)+'</div><div class="k">Empresa</div></div>'
