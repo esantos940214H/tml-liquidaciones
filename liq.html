@@ -1852,15 +1852,30 @@ async function onLiqOpChange(){
   $('liqComision').value=op?op.comision:12;
   bloquearComision();
   actualizarArrastreDieselPreview();
-  if(!liq&&opId)$('liqNum').value=siguienteNumLiq(opId);
+  // Previsualiza el folio del operador SELECCIONADO en el combo, aunque en
+  // memoria siga cargada la liquidación activa de OTRO operador — antes solo
+  // se actualizaba si no había ninguna liq activa (!liq), así que si ya
+  // tenías abierta la de Andrés y elegías a Francisco, el campo se quedaba
+  // mostrando el folio de Andrés, dando la falsa impresión de que se iba a
+  // reutilizar/sobreescribir su liquidación.
+  if(opId&&(!liq||liq.opId!==opId))$('liqNum').value=siguienteNumLiq(opId);
   if(opId) refrescarPreview();
 
-  // Si este operador ya tiene una liquidación activa (la está trabajando
-  // otra persona, en otra computadora/sesión, o quedó abierta antes), se
-  // carga aquí automáticamente para poder verla/seguir editándola. Sin
-  // esto, con el candado por operador (ver suscribirLiqActiva), alguien
-  // que solo selecciona el operador desde otra computadora no ve nada
-  // hasta que la primera persona cierre su liquidación.
+  // Si se vuelve a elegir al operador cuya liquidación ya está activa en
+  // memoria, se restaura el aviso normal (por si había quedado el aviso de
+  // "tienes otra liquidación en curso" de una selección anterior).
+  if(liq&&liq.opId===opId&&$('liqInfo')){
+    $('liqInfo').style.display='block';
+    $('liqInfo').innerHTML='<div class="alert alert-ok">✅ Liquidación <strong>#'+liq.num+'</strong> activa — <strong>'+liq.op.nombre+'</strong> · Unidad '+liq.unidad+'</div>';
+  }
+
+  // Puede haber una liquidación activa por operador al mismo tiempo (ver
+  // liqActivas/{opId} y el candado POR OPERADOR, no global) — elegir aquí a
+  // Francisco mientras la de Andrés sigue abierta NUNCA toca ni reemplaza la
+  // de Andrés, solo cambia de cuál se está previsualizando/editando en esta
+  // pantalla. Si el operador elegido ya tiene su propia liquidación activa
+  // (la está trabajando otra persona, en otra computadora/sesión, o quedó
+  // abierta antes), se carga aquí para poder verla/seguir editándola.
   if(opId&&!(liq&&liq.opId===opId)&&fbReady&&window.FB){
     try{
       var _remotaData=await obtenerLiqActivaData(opId);
@@ -1868,6 +1883,16 @@ async function onLiqOpChange(){
         liq=JSON.parse(_remotaData);
         restaurarUILiquidacion();
         suscribirLiqActiva(opId);
+      } else if(liq&&liq.opId!==opId&&$('liqInfo')){
+        // Sin liquidación activa para el operador recién elegido: se avisa
+        // explícitamente que las pestañas Diesel/Autopistas/Gastos/Reporte
+        // todavía muestran la liquidación EN CURSO de otro operador (queda
+        // intacta, guardada aparte) hasta que se presione "Iniciar
+        // liquidación" para el nuevo, momento en que arrancan en blanco solo
+        // para él — así se evita confundir "cambiar de operador en el combo"
+        // con "sobreescribir la liquidación ya abierta".
+        $('liqInfo').style.display='block';
+        $('liqInfo').innerHTML='<div class="alert alert-info">ℹ️ Tienes una liquidación EN CURSO de <strong>'+liq.op.nombre+'</strong> (#'+liq.num+') — sigue intacta y guardada aparte. Las pestañas Diesel/Autopistas/Gastos/Reporte todavía muestran la suya. Presiona "Iniciar liquidación →" para empezar una nueva, independiente, para <strong>'+op.nombre+'</strong>.</div>';
       }
     }catch(e){console.error('onLiqOpChange (cargar activa remota):',e);}
   }
