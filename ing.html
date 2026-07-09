@@ -627,7 +627,7 @@ function verificarSesionModulo(){
 window.onFBReady(verificarSesionModulo);
 
 function initSelects(){
-  ['ingOp','filtOp'].forEach(id=>{
+  ['ingOp','filtOp','modalOpFaltanteSelect'].forEach(id=>{
     const s=$(id);if(!s)return;
     while(s.options.length>1)s.remove(1);
     OPERADORES.forEach(op=>{const o=document.createElement('option');o.value=op.unidad;o.textContent=op.unidad+' · '+op.nombre;s.appendChild(o);});
@@ -793,7 +793,40 @@ function detectarOperadorCartaPorte(doc){
   return {opPorNombre:opPorNombre,opPorPlaca:opPorPlaca,nombreXML:cp.nombreOperador,placa:cp.placa};
 }
 
-function parseXML(text,fname,unidad){
+// Algunas facturas (estadías, repartos, maniobras sueltas) NO traen complemento
+// Carta Porte, así que no hay nada que autodetectar. En vez de rechazar el
+// archivo de una vez y obligar a volver a subirlo después de elegir el
+// operador a mano, se pregunta aquí mismo con un modal — y si se suben varios
+// XML sin Carta Porte de un jalón, los modales se encolan uno por uno (nunca
+// se abren dos al mismo tiempo) en vez de perderse o pisarse entre sí.
+let _colaModalOp=Promise.resolve();
+let _resolverModalOp=null;
+function pedirOperadorManual(fname){
+  const tarea=_colaModalOp.then(function(){
+    return new Promise(function(resolve){
+      _resolverModalOp=resolve;
+      $('modalOpFaltanteDesc').textContent=fname+': este XML no trae Carta Porte (o no se pudo identificar al operador con los datos que trae). Selecciona a quién pertenece:';
+      $('modalOpFaltanteSelect').value='';
+      $('modalOpFaltante').style.display='flex';
+    });
+  });
+  _colaModalOp=tarea.then(function(){},function(){});
+  return tarea;
+}
+function confirmarOperadorFaltante(){
+  const v=parseInt($('modalOpFaltanteSelect').value||0);
+  if(!v){alert('Selecciona un operador, o presiona "Omitir este archivo".');return;}
+  $('modalOpFaltante').style.display='none';
+  if(_resolverModalOp)_resolverModalOp(v);
+  _resolverModalOp=null;
+}
+function cancelarOperadorFaltante(){
+  $('modalOpFaltante').style.display='none';
+  if(_resolverModalOp)_resolverModalOp(null);
+  _resolverModalOp=null;
+}
+
+async function parseXML(text,fname,unidad){
   if(usuarioBloqueadoIngresos())return;
   const doc=new DOMParser().parseFromString(text,'text/xml');
   const comp=doc.querySelector('Comprobante');
@@ -821,8 +854,14 @@ function parseXML(text,fname,unidad){
       avisoAutoOp='✅ Operador autodetectado por la placa de la Carta Porte: '+detOp.opPorPlaca.nombre+'.';
     }
     if(!unidad){
-      alert(fname+': no se pudo autodetectar el operador desde la Carta Porte (no trae el complemento, o no coincide con tu catálogo).\n\nSelecciona el operador manualmente arriba y vuelve a subir este XML.');
-      return;
+      const elegidoManual=await pedirOperadorManual(fname);
+      if(!elegidoManual){
+        alert(fname+': no se registró (se omitió). Puedes capturarlo abajo en "Captura manual" con los datos del PDF/XML.');
+        return;
+      }
+      unidad=elegidoManual;
+      const opElegido=OPERADORES.find(function(o){return o.unidad===elegidoManual;});
+      avisoAutoOp='ℹ️ Este XML no trae Carta Porte (o no se identificó al operador) — se usó '+(opElegido?opElegido.nombre:elegidoManual)+' según tu selección.';
     }
   }
   const serie=comp.getAttribute('Serie')||'';
@@ -1451,6 +1490,19 @@ function agregarIngreso(){
       <button class="lock-cancel" onclick="lockCancel()">Cancelar</button>
     </div>
     <div class="lock-err" id="lockErr">Contraseña incorrecta</div>
+  </div>
+</div>
+
+<!-- MODAL: falta el operador (XML sin Carta Porte o sin match) -->
+<div class="lock-overlay" id="modalOpFaltante" style="display:none">
+  <div class="lock-box">
+    <h3>📄 Falta el operador</h3>
+    <p id="modalOpFaltanteDesc">Este XML no trae Carta Porte (o no se pudo identificar al operador). Selecciona a quién pertenece:</p>
+    <select id="modalOpFaltanteSelect" style="width:100%;border:1.5px solid #dde;border-radius:8px;padding:10px 14px;font-size:14px;margin-bottom:10px"><option value="">— Selecciona —</option></select>
+    <div class="lock-row">
+      <button class="lock-ok" onclick="confirmarOperadorFaltante()">Confirmar</button>
+      <button class="lock-cancel" onclick="cancelarOperadorFaltante()">Omitir este archivo</button>
+    </div>
   </div>
 </div>
 </body>
