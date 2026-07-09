@@ -136,7 +136,6 @@ tr:hover td{background:#fafafa}
   <div class="card">
     <div class="card-title">📄 Registrar viaje / ingreso</div>
     <div class="row" style="margin-bottom:14px">
-      <div class="field"><label>Operador</label><select id="ingOp"><option value="">— Selecciona —</option></select></div>
       <div class="upload-zone" style="flex:1;min-width:160px;padding:14px" id="dzXML" onclick="document.getElementById('fXML').click()">
         <div class="icon">📄</div><p><strong>XML Carta Porte</strong><br><span style="font-size:10px;color:#aaa">Extrae automático</span></p>
       </div>
@@ -146,6 +145,7 @@ tr:hover td{background:#fafafa}
       </div>
       <input type="file" id="fPDF" accept=".pdf" multiple style="display:none">
     </div>
+    <div style="font-size:11px;color:#888;margin:-8px 0 14px">📄 El XML detecta solo al operador desde su Carta Porte. El PDF sí te va a pedir elegirlo abajo, en "Captura manual".</div>
     <label style="display:flex;align-items:center;gap:8px;font-size:12px;font-weight:700;color:#5b21b6;cursor:pointer;margin-bottom:12px">
       <input type="checkbox" id="chkMultiOp" onchange="toggleMultiOp()" style="width:auto">
       🧩 Factura multi-operador (un solo CFDI con maniobras de VARIOS operadores — desglose manual)
@@ -171,6 +171,7 @@ tr:hover td{background:#fafafa}
     <div style="background:#f5f5f8;border-radius:8px;padding:14px">
       <div style="font-size:11px;font-weight:700;text-transform:uppercase;color:#888;margin-bottom:10px">Captura manual / ajuste</div>
       <div class="grid4" style="margin-bottom:10px">
+        <div class="field"><label>Operador</label><select id="ingOp"><option value="">— Selecciona —</option></select></div>
         <div class="field"><label>Folio</label><input type="text" id="ingFolio" placeholder="R2122"></div>
         <div class="field"><label>Fecha</label><input type="date" id="ingFecha"></div>
         <div class="field"><label>Cliente</label><input type="text" id="ingCliente" placeholder="Nombre del cliente"></div>
