@@ -207,6 +207,23 @@ tr:hover td{background:#fafafa}
     <div class="tbl-wrap" id="rvTablaWrap" style="margin-top:10px"></div>
   </div>
 
+  <!-- LIQUIDACIONES EN CURSO (no cerradas todavía) -->
+  <div class="card no-print" id="cardActivas">
+    <div class="card-title">
+      <span>🟢 Liquidaciones en curso <span id="countActivas" style="font-size:11px;font-weight:400;color:#aaa"></span></span>
+      <button class="btn btn-out btn-sm" onclick="cargarActivas()">🔄 Recargar</button>
+    </div>
+    <div style="font-size:12px;color:#666;margin-bottom:10px">Liquidaciones que algún liquidador dejó abiertas sin cerrar (una por operador). Solo puede haber UNA activa por operador a la vez — si ya aparece aquí, el módulo de Liquidaciones no deja abrir otra nueva para ese mismo operador hasta que esta se cierre. Presiona "Continuar" para seguir trabajándola donde se quedó.</div>
+    <div class="tbl-wrap">
+      <table>
+        <thead><tr>
+          <th>#</th><th>Operador</th><th>Unidad</th><th>Abierta desde</th><th></th><th></th>
+        </tr></thead>
+        <tbody id="tbActivas"></tbody>
+      </table>
+    </div>
+  </div>
+
   <!-- LISTA DE LIQUIDACIONES -->
   <div class="card no-print" id="cardLista">
     <div class="card-title">📋 Liquidaciones cerradas <span id="countLiq" style="font-size:11px;font-weight:400;color:#aaa"></span></div>
@@ -465,7 +482,71 @@ window.onFBReady(async function(){
   const i=await window.FB.get('estado','ingresosDB');
   if(i&&i.data)ingresosDB=JSON.parse(i.data);
   buscar();
+  cargarActivas();
 });
+
+// ══════════════════════════════════════════════
+// LIQUIDACIONES EN CURSO (liqActivas/{opId} — una por operador, ver el
+// candado por operador en liq.html). Se muestran aquí junto con las
+// cerradas para que se pueda ver de un vistazo, desde cualquier
+// computadora, quién dejó algo a medias y continuarlo directo desde aquí
+// — sin esto, un admin en otra sucursal no tenía forma de saber que ya
+// había una liquidación abierta de cierto operador antes de intentar
+// abrir una nueva.
+// ══════════════════════════════════════════════
+let activasDB=[];
+
+async function cargarActivas(){
+  const tb=$('tbActivas');
+  if(tb)tb.innerHTML='<tr><td colspan="6" style="text-align:center;color:#aaa;padding:16px">⏳ Cargando...</td></tr>';
+  const rows=await window.FB.getAll('liqActivas');
+  const activas=[];
+  rows.forEach(function(r){
+    if(!r.data)return;
+    try{
+      const l=JSON.parse(r.data);
+      if(l&&l.opId!=null)activas.push(l);
+    }catch(e){}
+  });
+  // Respaldo de compatibilidad: mientras alguna pestaña de Liquidaciones
+  // siga con el código anterior al candado por operador, su liquidación
+  // puede seguir solo en el doc único viejo (estado/liqActiva) — se
+  // incluye aquí también para no dejarla invisible durante la transición.
+  try{
+    const old=await window.FB.get('estado','liqActiva');
+    if(old&&old.data){
+      const lOld=JSON.parse(old.data);
+      if(lOld&&lOld.opId!=null&&!activas.some(function(x){return parseInt(x.opId)===parseInt(lOld.opId);}))activas.push(lOld);
+    }
+  }catch(e){}
+  activasDB=activas.sort(function(x,y){return(x.op&&x.op.nombre||'').localeCompare(y.op&&y.op.nombre||'');});
+  renderActivas();
+}
+
+function renderActivas(){
+  const tb=$('tbActivas');
+  if(!tb)return;
+  $('countActivas').textContent=activasDB.length+' en curso';
+  if(!activasDB.length){
+    tb.innerHTML='<tr><td colspan="6" style="text-align:center;padding:16px"><span style="color:#aaa;font-size:13px">✅ No hay ninguna liquidación abierta en este momento.</span></td></tr>';
+    return;
+  }
+  tb.innerHTML=activasDB.map(function(l){
+    const op=OPERADORES.find(function(o){return o.unidad===parseInt(l.opId||l.unidad);});
+    return '<tr>'
+      +'<td class="num">#'+l.num+'</td>'
+      +'<td>'+(op?op.nombre:(l.op?l.op.nombre:'?'))+'</td>'
+      +'<td>'+l.unidad+'</td>'
+      +'<td style="font-size:12px">'+(l.fechaApertura||'—')+'</td>'
+      +'<td>'+(l.reabierta?'<span class="badge bg-red" title="Se reabrió una liquidación ya cerrada">🔓 Reabierta</span>':'<span class="badge bg-green">Nueva</span>')+'</td>'
+      +'<td><button class="btn btn-sm" style="background:#1a1a2e;color:#fff;border:none;cursor:pointer;border-radius:5px;padding:5px 12px;font-size:11px" onclick="continuarActiva('+parseInt(l.opId||l.unidad)+')">Continuar →</button></td>'
+      +'</tr>';
+  }).join('');
+}
+
+function continuarActiva(opId){
+  location.href='https://liquidaciones.mudanzastml.mx/?liqOp='+opId;
+}
 setTimeout(()=>{if($('fbStatus').textContent==='⏳ Conectando...'){$('fbStatus').textContent='❌ Sin conexión';$('fbStatus').className='fb-status fb-err';}},6000);
 
 function buscar(){
