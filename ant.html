@@ -291,7 +291,10 @@ function dlBlob(c,n,t){const a=document.createElement('a');a.href=URL.createObje
 function norm(s){return(s||'').toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^A-Z0-9 ]/g,' ').replace(/\s+/g,' ').trim();}
 function palabras(s){return norm(s).split(' ').filter(w=>w.length>2);}
 function matchScore(c,n){const cW=palabras(c),oW=palabras(n);if(!oW.length)return 0;return oW.filter(w=>cW.some(x=>x.includes(w)||w.includes(x))).length/oW.length;}
-function esSaldo(c){const n=norm(c);return n.includes('SALDO LIQ')||n.includes('SALDO LIQ')||(n.includes('SALDO')&&n.includes('LIQ'));}
+// Cualquier concepto que mencione "saldo" (saldo, saldo de liq, saldo liq, etc.)
+// corresponde a un saldo generado por una liquidación, no a un anticipo real
+// depositado al operador — se excluye siempre, con o sin la palabra "LIQ".
+function esSaldo(c){return norm(c).includes('SALDO');}
 function matchOp(concepto){
   let best=null,bestS=0;
   OPERADORES.forEach(op=>{
@@ -541,6 +544,7 @@ function agregarManualReal(){
   if(!importe){alert('Ingresa el importe.');return;}
   const fecha=$('mFecha').value||hoy();
   const concepto=$('mConcepto').value||$('mForma').value;
+  if(esSaldo(concepto)){alert('Este concepto corresponde a un saldo de liquidación, no a un anticipo. No se puede registrar aquí.');return;}
   if(!anticiposDB[unidad])anticiposDB[unidad]=[];
   anticiposDB[unidad].push({id:uid(),fecha,importe,concepto,estado:'pendiente',liqNum:null,origen:'manual'});
   guardar();
