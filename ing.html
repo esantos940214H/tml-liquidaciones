@@ -679,10 +679,14 @@ function handleXMLFiles(files){
     });
     return;
   }
-  const unidad=parseInt($('ingOp').value||0);
-  if(!unidad){alert('Selecciona el operador primero.');return;}
+  // Si se seleccionó un operador manualmente, se usa para TODOS los archivos
+  // de esta carga (como antes). Si se deja en blanco, cada XML autodetecta
+  // su propio operador desde su Carta Porte — así se puede subir de un
+  // jalón facturas de varios operadores distintos sin tener que ir
+  // cambiando el combo entre cada una.
+  const unidadManual=parseInt($('ingOp').value||0)||null;
   lockRequest('Subir XML de viaje/flete — Ingresos', function(){
-    Array.from(files).forEach(f=>{const r=new FileReader();r.onload=e=>parseXML(e.target.result,f.name,unidad);r.readAsText(f,'UTF-8');});
+    Array.from(files).forEach(f=>{const r=new FileReader();r.onload=e=>parseXML(e.target.result,f.name,unidadManual);r.readAsText(f,'UTF-8');});
   });
 }
 
@@ -722,11 +726,104 @@ function clasificarConceptosCFDI(doc,subtotal){
   return {subtFlete,subtManiobras,subtOtros};
 }
 
+// ══════════════════════════════════════════════
+// AUTODETECCIÓN DE OPERADOR POR COMPLEMENTO CARTA PORTE
+// El CFDI de ingreso trae, dentro de Carta Porte, el nombre del operador
+// (FiguraTransporte, TipoFigura="01" = Operador) y la placa del vehículo
+// (Autotransporte > IdentificacionVehicular). Se cruzan ambas señales contra
+// el catálogo de operadores para no tener que seleccionarlo a mano cada vez.
+// El NOMBRE es la señal principal (dice literalmente quién manejó el viaje);
+// la PLACA es solo respaldo/verificación cruzada, porque un operador puede
+// cambiar de unidad con el tiempo y entonces la placa ya no reflejaría
+// quién lo maneja hoy (ver PLACA_OPERADOR_NOMBRE — actualizar ahí cuando
+// eso pase, como con Rafael Tapia Carreño: dejó la unidad 524/39BG7V y
+// ahora maneja la 528/84BK3B).
+const PLACA_OPERADOR_NOMBRE={
+  '27AY8M':'ALEJANDRO RODRIGUEZ GONZALEZ',
+  '66AY8X':'ANDRÉS MARÍA RAMOS',
+  '40BG7V':'ANDRÉS NAVARRO RAMÍREZ',
+  '39BG7V':null, // unidad 524 — sin operador asignado actualmente
+  '37BG7V':'EDUARDO HERNÁNDEZ ACEVES',
+  '84BK3B':'RAFAEL TAPIA CARREÑO', // unidad 528 (Rafael ya no maneja la 524)
+  '42BC9V':'OSCAR ISRAEL RAMOS',
+  '17BH8M':'MARTÍN FLORES LUGO',
+  '74BJ6A':'JOSE ROLANDO DOMINGUEZ',
+  '95BK1Z':'FRANCISCO ARTEMIO PEÑA',
+  '96BK1Z':'MIGUEL ALONSO',
+  '18BL9E':'ISMAEL CONSTANTINO',
+  '67AY8X':null, // unidad 1104 — parada, sin operador
+  '38BG7V':null  // unidad 527 — parada, sin operador
+};
+function normPlaca(p){return(p||'').toUpperCase().replace(/[^A-Z0-9]/g,'');}
+function normNombreOp(s){return(s||'').toUpperCase().normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[^A-Z0-9 ]/g,' ').replace(/\s+/g,' ').trim();}
+function palabrasNombreOp(s){return normNombreOp(s).split(' ').filter(function(w){return w.length>2;});}
+function matchOperadorPorNombre(nombreXML){
+  if(!nombreXML)return null;
+  var best=null,bestS=0;
+  var palXML=palabrasNombreOp(nombreXML);
+  OPERADORES.forEach(function(op){
+    var palCat=palabrasNombreOp(op.nombre);
+    if(!palCat.length)return;
+    var score=palCat.filter(function(w){return palXML.some(function(x){return x.includes(w)||w.includes(x);});}).length/palCat.length;
+    if(score>bestS&&score>=0.6){bestS=score;best=op;}
+  });
+  return best;
+}
+function extraerCartaPorteOperador(doc){
+  var vehic=doc.querySelector('IdentificacionVehicular');
+  var placa=vehic?(vehic.getAttribute('Placa')||vehic.getAttribute('PlacaVM')||''):'';
+  var nombreOperador='';
+  doc.querySelectorAll('TiposFigura').forEach(function(fig){
+    if(!nombreOperador&&(fig.getAttribute('TipoFigura')||'')==='01'){
+      nombreOperador=fig.getAttribute('NombreFigura')||'';
+    }
+  });
+  return {placa:placa,nombreOperador:nombreOperador};
+}
+// Cruza nombre (Figura de Transporte) y placa (Identificación Vehicular)
+// contra el catálogo — regresa ambos candidatos por separado para que quien
+// llame decida qué hacer si no coinciden entre sí.
+function detectarOperadorCartaPorte(doc){
+  var cp=extraerCartaPorteOperador(doc);
+  var opPorNombre=matchOperadorPorNombre(cp.nombreOperador);
+  var placaNorm=normPlaca(cp.placa);
+  var nombreEsperado=placaNorm?PLACA_OPERADOR_NOMBRE[placaNorm]:null;
+  var opPorPlaca=nombreEsperado?matchOperadorPorNombre(nombreEsperado):null;
+  return {opPorNombre:opPorNombre,opPorPlaca:opPorPlaca,nombreXML:cp.nombreOperador,placa:cp.placa};
+}
+
 function parseXML(text,fname,unidad){
   if(usuarioBloqueadoIngresos())return;
   const doc=new DOMParser().parseFromString(text,'text/xml');
   const comp=doc.querySelector('Comprobante');
   if(!comp){alert(fname+': no es CFDI válido.');return;}
+  // Sin operador manual seleccionado: autodetectar desde Carta Porte antes de
+  // seguir (todo lo demás de esta función necesita "unidad" ya resuelto).
+  var avisoAutoOp='';
+  if(!unidad){
+    var detOp=detectarOperadorCartaPorte(doc);
+    if(detOp.opPorNombre&&detOp.opPorPlaca){
+      if(detOp.opPorNombre.unidad===detOp.opPorPlaca.unidad){
+        unidad=detOp.opPorNombre.unidad;
+        avisoAutoOp='✅ Operador autodetectado (nombre y placa de la Carta Porte coinciden): '+detOp.opPorNombre.nombre+'.';
+      } else {
+        var usarNombre=confirm('⚠️ '+fname+': la Carta Porte trae al operador "'+detOp.nombreXML+'" (→ '+detOp.opPorNombre.nombre+'), pero la placa '+detOp.placa+' está asignada en tu catálogo a "'+detOp.opPorPlaca.nombre+'".\n\n¿Usar el operador por NOMBRE ('+detOp.opPorNombre.nombre+')?\n\nAceptar = por nombre · Cancelar = por placa ('+detOp.opPorPlaca.nombre+')');
+        var elegidoOp=usarNombre?detOp.opPorNombre:detOp.opPorPlaca;
+        unidad=elegidoOp.unidad;
+        avisoAutoOp='⚠️ Nombre y placa de la Carta Porte no coincidían — se usó '+elegidoOp.nombre+' según tu elección.';
+      }
+    } else if(detOp.opPorNombre){
+      unidad=detOp.opPorNombre.unidad;
+      avisoAutoOp='✅ Operador autodetectado por el nombre en la Carta Porte: '+detOp.opPorNombre.nombre+'.';
+    } else if(detOp.opPorPlaca){
+      unidad=detOp.opPorPlaca.unidad;
+      avisoAutoOp='✅ Operador autodetectado por la placa de la Carta Porte: '+detOp.opPorPlaca.nombre+'.';
+    }
+    if(!unidad){
+      alert(fname+': no se pudo autodetectar el operador desde la Carta Porte (no trae el complemento, o no coincide con tu catálogo).\n\nSelecciona el operador manualmente arriba y vuelve a subir este XML.');
+      return;
+    }
+  }
   const serie=comp.getAttribute('Serie')||'';
   const folio=comp.getAttribute('Folio')||'';
   const fecha=(comp.getAttribute('Fecha')||'').slice(0,10);
@@ -789,7 +886,7 @@ function parseXML(text,fname,unidad){
     estado:'sin_liquidar',liqNum:null,origen:'xml',ruta,
     uuid,rfcEmisor,rfcReceptor,satEstado:null,satCancelado:false});
   guardar();renderIngresos();
-  alert('✅ '+fname+' registrado.'+(ruta.length?' Ruta: '+ruta.length+' tramos.':''));
+  alert((avisoAutoOp?avisoAutoOp+'\n\n':'')+'✅ '+fname+' registrado.'+(ruta.length?' Ruta: '+ruta.length+' tramos.':''));
 }
 
 // ══════════════════════════════════════════════
