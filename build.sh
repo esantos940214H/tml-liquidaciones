@@ -23,4 +23,9 @@ cp precarga.html       dist/precarga/index.html
 # LOGO.png solo lo usa el portal (index.html)
 cp LOGO.png dist/portal/LOGO.png
 
+# shared/: JS común cargado con <script src="shared/...">. Por ahora solo lo
+# usa usuarios.html (Fase 1 de Firebase Auth, ver shared/sesion.js) — cuando
+# otro módulo lo empiece a usar, agregar aquí su propio "cp -r shared/ ..."
+cp -r shared dist/usuarios/shared
+
 echo "build.sh: dist/ generado con 10 sites."
