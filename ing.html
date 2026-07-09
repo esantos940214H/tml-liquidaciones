@@ -1256,7 +1256,7 @@ function renderIngresos(){
       ${fCell}${mCell}${oCell}
       <td class="num r">${fmt(v.subtotal)}</td><td class="num r">${fmt(v.iva)}</td>
       <td class="num r">${fmt(v.ret)}</td><td class="num r">${fmt(v.total)}</td>
-      <td><span class="badge ${v.estado==='sin_liquidar'?'bg-yellow':'bg-green'}">${v.estado==='sin_liquidar'?'Sin liquidar':'Liquidado'}</span>${v.satCancelado?' <span class="badge bg-red" style="color:#c1121f" title="Cancelado ante el SAT — se excluyó del cálculo de su liquidación">⚠ CFDI cancelado</span>':(v.satEstado==='Vigente'?' <span class="badge bg-green" title="Verificado vigente ante el SAT">✓ SAT</span>':'')}</td>
+      <td><span class="badge ${v.estado==='sin_liquidar'?'bg-yellow':'bg-green'}">${v.estado==='sin_liquidar'?'Sin liquidar':'Liquidado'}</span>${v.satCancelado?' <span class="badge bg-red" style="color:#c1121f" title="Cancelado ante el SAT — se excluyó del cálculo de su liquidación">⚠ CFDI cancelado</span>':(v.satEstado==='Vigente'?' <span class="badge bg-green" title="Verificado vigente ante el SAT">✓ CFDI Vigente <span style="font-size:9px;opacity:.7">SAT</span></span>':'')}</td>
       <td style="font-size:11px;color:#aaa">${v.liqNum?'Liq.#'+v.liqNum:'—'}</td>
       <td>${v.estado==='sin_liquidar'?`<button style="background:#fde8e8;color:#9b1c1c;border:none;cursor:pointer;border-radius:4px;padding:3px 8px;font-size:11px" onclick="eliminar('${v.id}')">✕</button>`:'—'}</td>
     </tr>`;
