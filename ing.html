@@ -136,6 +136,7 @@ tr:hover td{background:#fafafa}
   <div class="card">
     <div class="card-title">📄 Registrar viaje / ingreso</div>
     <div class="row" style="margin-bottom:14px">
+      <div class="field"><label>Operador</label><select id="ingOp"><option value="">— Selecciona —</option></select></div>
       <div class="upload-zone" style="flex:1;min-width:160px;padding:14px" id="dzXML" onclick="document.getElementById('fXML').click()">
         <div class="icon">📄</div><p><strong>XML Carta Porte</strong><br><span style="font-size:10px;color:#aaa">Extrae automático</span></p>
       </div>
@@ -145,7 +146,6 @@ tr:hover td{background:#fafafa}
       </div>
       <input type="file" id="fPDF" accept=".pdf" multiple style="display:none">
     </div>
-    <div style="font-size:11px;color:#888;margin:-8px 0 14px">📄 El XML detecta solo al operador desde su Carta Porte. El PDF sí te va a pedir elegirlo abajo, en "Captura manual".</div>
     <label style="display:flex;align-items:center;gap:8px;font-size:12px;font-weight:700;color:#5b21b6;cursor:pointer;margin-bottom:12px">
       <input type="checkbox" id="chkMultiOp" onchange="toggleMultiOp()" style="width:auto">
       🧩 Factura multi-operador (un solo CFDI con maniobras de VARIOS operadores — desglose manual)
@@ -171,7 +171,6 @@ tr:hover td{background:#fafafa}
     <div style="background:#f5f5f8;border-radius:8px;padding:14px">
       <div style="font-size:11px;font-weight:700;text-transform:uppercase;color:#888;margin-bottom:10px">Captura manual / ajuste</div>
       <div class="grid4" style="margin-bottom:10px">
-        <div class="field"><label>Operador</label><select id="ingOp"><option value="">— Selecciona —</option></select></div>
         <div class="field"><label>Folio</label><input type="text" id="ingFolio" placeholder="R2122"></div>
         <div class="field"><label>Fecha</label><input type="date" id="ingFecha"></div>
         <div class="field"><label>Cliente</label><input type="text" id="ingCliente" placeholder="Nombre del cliente"></div>
@@ -627,7 +626,7 @@ function verificarSesionModulo(){
 window.onFBReady(verificarSesionModulo);
 
 function initSelects(){
-  ['ingOp','filtOp','modalOpFaltanteSelect'].forEach(id=>{
+  ['ingOp','filtOp'].forEach(id=>{
     const s=$(id);if(!s)return;
     while(s.options.length>1)s.remove(1);
     OPERADORES.forEach(op=>{const o=document.createElement('option');o.value=op.unidad;o.textContent=op.unidad+' · '+op.nombre;s.appendChild(o);});
@@ -680,14 +679,10 @@ function handleXMLFiles(files){
     });
     return;
   }
-  // Si se seleccionó un operador manualmente, se usa para TODOS los archivos
-  // de esta carga (como antes). Si se deja en blanco, cada XML autodetecta
-  // su propio operador desde su Carta Porte — así se puede subir de un
-  // jalón facturas de varios operadores distintos sin tener que ir
-  // cambiando el combo entre cada una.
-  const unidadManual=parseInt($('ingOp').value||0)||null;
+  const unidad=parseInt($('ingOp').value||0);
+  if(!unidad){alert('Selecciona el operador primero.');return;}
   lockRequest('Subir XML de viaje/flete — Ingresos', function(){
-    Array.from(files).forEach(f=>{const r=new FileReader();r.onload=e=>parseXML(e.target.result,f.name,unidadManual);r.readAsText(f,'UTF-8');});
+    Array.from(files).forEach(f=>{const r=new FileReader();r.onload=e=>parseXML(e.target.result,f.name,unidad);r.readAsText(f,'UTF-8');});
   });
 }
 
@@ -727,143 +722,11 @@ function clasificarConceptosCFDI(doc,subtotal){
   return {subtFlete,subtManiobras,subtOtros};
 }
 
-// ══════════════════════════════════════════════
-// AUTODETECCIÓN DE OPERADOR POR COMPLEMENTO CARTA PORTE
-// El CFDI de ingreso trae, dentro de Carta Porte, el nombre del operador
-// (FiguraTransporte, TipoFigura="01" = Operador) y la placa del vehículo
-// (Autotransporte > IdentificacionVehicular). Se cruzan ambas señales contra
-// el catálogo de operadores para no tener que seleccionarlo a mano cada vez.
-// El NOMBRE es la señal principal (dice literalmente quién manejó el viaje);
-// la PLACA es solo respaldo/verificación cruzada, porque un operador puede
-// cambiar de unidad con el tiempo y entonces la placa ya no reflejaría
-// quién lo maneja hoy (ver PLACA_OPERADOR_NOMBRE — actualizar ahí cuando
-// eso pase, como con Rafael Tapia Carreño: dejó la unidad 524/39BG7V y
-// ahora maneja la 528/84BK3B).
-const PLACA_OPERADOR_NOMBRE={
-  '27AY8M':'ALEJANDRO RODRIGUEZ GONZALEZ',
-  '66AY8X':'ANDRÉS MARÍA RAMOS',
-  '40BG7V':'ANDRÉS NAVARRO RAMÍREZ',
-  '39BG7V':null, // unidad 524 — sin operador asignado actualmente
-  '37BG7V':'EDUARDO HERNANDEZ ACEVES',
-  '84BK3B':'RAFAEL TAPIA CARREÑO', // unidad 528 (Rafael ya no maneja la 524)
-  '42BC9V':'OSCAR ISRAEL RAMOS AYALA',
-  '17BH8M':'MARTÍN FLORES LUGO',
-  '74BJ6A':'JOSE ROLANDO DOMINGUEZ LOPEZ',
-  '95BK1Z':'FRANCISCO ARTEMIO PEÑA VAZQUEZ',
-  '96BK1Z':'MIGUEL ALONSO CALDERON',
-  '18BL9E':'ISMAEL EDUARDO CONSTANTINO CABRERA',
-  '67AY8X':null, // unidad 1104 — parada, sin operador
-  '38BG7V':null  // unidad 527 — parada, sin operador
-};
-function normPlaca(p){return(p||'').toUpperCase().replace(/[^A-Z0-9]/g,'');}
-function normNombreOp(s){return(s||'').toUpperCase().normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[^A-Z0-9 ]/g,' ').replace(/\s+/g,' ').trim();}
-function palabrasNombreOp(s){return normNombreOp(s).split(' ').filter(function(w){return w.length>2;});}
-function matchOperadorPorNombre(nombreXML){
-  if(!nombreXML)return null;
-  var best=null,bestS=0;
-  var palXML=palabrasNombreOp(nombreXML);
-  OPERADORES.forEach(function(op){
-    var palCat=palabrasNombreOp(op.nombre);
-    if(!palCat.length)return;
-    var score=palCat.filter(function(w){return palXML.some(function(x){return x.includes(w)||w.includes(x);});}).length/palCat.length;
-    if(score>bestS&&score>=0.6){bestS=score;best=op;}
-  });
-  return best;
-}
-function extraerCartaPorteOperador(doc){
-  var vehic=doc.querySelector('IdentificacionVehicular');
-  var placa=vehic?(vehic.getAttribute('Placa')||vehic.getAttribute('PlacaVM')||''):'';
-  var nombreOperador='';
-  doc.querySelectorAll('TiposFigura').forEach(function(fig){
-    if(!nombreOperador&&(fig.getAttribute('TipoFigura')||'')==='01'){
-      nombreOperador=fig.getAttribute('NombreFigura')||'';
-    }
-  });
-  return {placa:placa,nombreOperador:nombreOperador};
-}
-// Cruza nombre (Figura de Transporte) y placa (Identificación Vehicular)
-// contra el catálogo — regresa ambos candidatos por separado para que quien
-// llame decida qué hacer si no coinciden entre sí.
-function detectarOperadorCartaPorte(doc){
-  var cp=extraerCartaPorteOperador(doc);
-  var opPorNombre=matchOperadorPorNombre(cp.nombreOperador);
-  var placaNorm=normPlaca(cp.placa);
-  var nombreEsperado=placaNorm?PLACA_OPERADOR_NOMBRE[placaNorm]:null;
-  var opPorPlaca=nombreEsperado?matchOperadorPorNombre(nombreEsperado):null;
-  return {opPorNombre:opPorNombre,opPorPlaca:opPorPlaca,nombreXML:cp.nombreOperador,placa:cp.placa};
-}
-
-// Algunas facturas (estadías, repartos, maniobras sueltas) NO traen complemento
-// Carta Porte, así que no hay nada que autodetectar. En vez de rechazar el
-// archivo de una vez y obligar a volver a subirlo después de elegir el
-// operador a mano, se pregunta aquí mismo con un modal — y si se suben varios
-// XML sin Carta Porte de un jalón, los modales se encolan uno por uno (nunca
-// se abren dos al mismo tiempo) en vez de perderse o pisarse entre sí.
-let _colaModalOp=Promise.resolve();
-let _resolverModalOp=null;
-function pedirOperadorManual(fname){
-  const tarea=_colaModalOp.then(function(){
-    return new Promise(function(resolve){
-      _resolverModalOp=resolve;
-      $('modalOpFaltanteDesc').textContent=fname+': este XML no trae Carta Porte (o no se pudo identificar al operador con los datos que trae). Selecciona a quién pertenece:';
-      $('modalOpFaltanteSelect').value='';
-      $('modalOpFaltante').style.display='flex';
-    });
-  });
-  _colaModalOp=tarea.then(function(){},function(){});
-  return tarea;
-}
-function confirmarOperadorFaltante(){
-  const v=parseInt($('modalOpFaltanteSelect').value||0);
-  if(!v){alert('Selecciona un operador, o presiona "Omitir este archivo".');return;}
-  $('modalOpFaltante').style.display='none';
-  if(_resolverModalOp)_resolverModalOp(v);
-  _resolverModalOp=null;
-}
-function cancelarOperadorFaltante(){
-  $('modalOpFaltante').style.display='none';
-  if(_resolverModalOp)_resolverModalOp(null);
-  _resolverModalOp=null;
-}
-
-async function parseXML(text,fname,unidad){
+function parseXML(text,fname,unidad){
   if(usuarioBloqueadoIngresos())return;
   const doc=new DOMParser().parseFromString(text,'text/xml');
   const comp=doc.querySelector('Comprobante');
   if(!comp){alert(fname+': no es CFDI válido.');return;}
-  // Sin operador manual seleccionado: autodetectar desde Carta Porte antes de
-  // seguir (todo lo demás de esta función necesita "unidad" ya resuelto).
-  var avisoAutoOp='';
-  if(!unidad){
-    var detOp=detectarOperadorCartaPorte(doc);
-    if(detOp.opPorNombre&&detOp.opPorPlaca){
-      if(detOp.opPorNombre.unidad===detOp.opPorPlaca.unidad){
-        unidad=detOp.opPorNombre.unidad;
-        avisoAutoOp='✅ Operador autodetectado (nombre y placa de la Carta Porte coinciden): '+detOp.opPorNombre.nombre+'.';
-      } else {
-        var usarNombre=confirm('⚠️ '+fname+': la Carta Porte trae al operador "'+detOp.nombreXML+'" (→ '+detOp.opPorNombre.nombre+'), pero la placa '+detOp.placa+' está asignada en tu catálogo a "'+detOp.opPorPlaca.nombre+'".\n\n¿Usar el operador por NOMBRE ('+detOp.opPorNombre.nombre+')?\n\nAceptar = por nombre · Cancelar = por placa ('+detOp.opPorPlaca.nombre+')');
-        var elegidoOp=usarNombre?detOp.opPorNombre:detOp.opPorPlaca;
-        unidad=elegidoOp.unidad;
-        avisoAutoOp='⚠️ Nombre y placa de la Carta Porte no coincidían — se usó '+elegidoOp.nombre+' según tu elección.';
-      }
-    } else if(detOp.opPorNombre){
-      unidad=detOp.opPorNombre.unidad;
-      avisoAutoOp='✅ Operador autodetectado por el nombre en la Carta Porte: '+detOp.opPorNombre.nombre+'.';
-    } else if(detOp.opPorPlaca){
-      unidad=detOp.opPorPlaca.unidad;
-      avisoAutoOp='✅ Operador autodetectado por la placa de la Carta Porte: '+detOp.opPorPlaca.nombre+'.';
-    }
-    if(!unidad){
-      const elegidoManual=await pedirOperadorManual(fname);
-      if(!elegidoManual){
-        alert(fname+': no se registró (se omitió). Puedes capturarlo abajo en "Captura manual" con los datos del PDF/XML.');
-        return;
-      }
-      unidad=elegidoManual;
-      const opElegido=OPERADORES.find(function(o){return o.unidad===elegidoManual;});
-      avisoAutoOp='ℹ️ Este XML no trae Carta Porte (o no se identificó al operador) — se usó '+(opElegido?opElegido.nombre:elegidoManual)+' según tu selección.';
-    }
-  }
   const serie=comp.getAttribute('Serie')||'';
   const folio=comp.getAttribute('Folio')||'';
   const fecha=(comp.getAttribute('Fecha')||'').slice(0,10);
@@ -926,7 +789,7 @@ async function parseXML(text,fname,unidad){
     estado:'sin_liquidar',liqNum:null,origen:'xml',ruta,
     uuid,rfcEmisor,rfcReceptor,satEstado:null,satCancelado:false});
   guardar();renderIngresos();
-  alert((avisoAutoOp?avisoAutoOp+'\n\n':'')+'✅ '+fname+' registrado.'+(ruta.length?' Ruta: '+ruta.length+' tramos.':''));
+  alert('✅ '+fname+' registrado.'+(ruta.length?' Ruta: '+ruta.length+' tramos.':''));
 }
 
 // ══════════════════════════════════════════════
@@ -1490,19 +1353,6 @@ function agregarIngreso(){
       <button class="lock-cancel" onclick="lockCancel()">Cancelar</button>
     </div>
     <div class="lock-err" id="lockErr">Contraseña incorrecta</div>
-  </div>
-</div>
-
-<!-- MODAL: falta el operador (XML sin Carta Porte o sin match) -->
-<div class="lock-overlay" id="modalOpFaltante" style="display:none">
-  <div class="lock-box">
-    <h3>📄 Falta el operador</h3>
-    <p id="modalOpFaltanteDesc">Este XML no trae Carta Porte (o no se pudo identificar al operador). Selecciona a quién pertenece:</p>
-    <select id="modalOpFaltanteSelect" style="width:100%;border:1.5px solid #dde;border-radius:8px;padding:10px 14px;font-size:14px;margin-bottom:10px"><option value="">— Selecciona —</option></select>
-    <div class="lock-row">
-      <button class="lock-ok" onclick="confirmarOperadorFaltante()">Confirmar</button>
-      <button class="lock-cancel" onclick="cancelarOperadorFaltante()">Omitir este archivo</button>
-    </div>
   </div>
 </div>
 </body>
