@@ -2593,20 +2593,33 @@ function renderTablaDiesel(){
 }
 
 // ── DIESEL XML (facturas de combustible) ────────────────────────────────────
-function handleDieselXMLFiles(files){
+// Uno por uno (no en paralelo) y con el mismo candado de UUID duplicado que
+// gastos/casetas — antes esta carga no revisaba nada, así que la misma
+// factura de diesel se podía subir dos veces sin aviso.
+async function handleDieselXMLFiles(files){
   if(!liq)return;
   if(!liq.dieselXML)liq.dieselXML=[];
-  Array.from(files).forEach(function(file){
-    var reader=new FileReader();
-    reader.onload=function(e){
+  for(var fi=0;fi<files.length;fi++){
+    var file=files[fi];
+    try{
+      var text=await leerArchivoTexto(file);
       try{
         var parser=new DOMParser();
-        var doc=parser.parseFromString(e.target.result,'text/xml');
+        var doc=parser.parseFromString(text,'text/xml');
         var ns='http://www.sat.gob.mx/cfd/4';
         var ns3='http://www.sat.gob.mx/cfd/3';
         var comp=doc.querySelector('Comprobante')||doc.getElementsByTagNameNS(ns,'Comprobante')[0]||doc.getElementsByTagNameNS(ns3,'Comprobante')[0];
-        if(!comp){alert('No se reconoció el XML: '+file.name);return;}
-        if(!validarReceptorTML(doc,file.name))return;
+        if(!comp){alert('No se reconoció el XML: '+file.name);continue;}
+        if(!validarReceptorTML(doc,file.name))continue;
+        var tfdD=doc.querySelector('TimbreFiscalDigital')||doc.getElementsByTagNameNS(ns,'TimbreFiscalDigital')[0]||doc.getElementsByTagNameNS(ns3,'TimbreFiscalDigital')[0];
+        var uuidD=tfdD?tfdD.getAttribute('UUID')||'':'';
+        if(uuidD){
+          var dupD=await buscarUUIDDuplicado(uuidD);
+          if(dupD){
+            alert('🚫 '+file.name+': esta factura ya fue registrada '+(dupD.actual?'en esta misma liquidación.':'en la liquidación #'+dupD.liqNum+'.')+'\nNo se puede subir el mismo CFDI dos veces.');
+            continue;
+          }
+        }
         var emisor=doc.querySelector('Emisor')||doc.getElementsByTagNameNS(ns,'Emisor')[0]||doc.getElementsByTagNameNS(ns3,'Emisor')[0];
         var conceptos=doc.querySelectorAll('Concepto');
         if(!conceptos.length){conceptos=doc.getElementsByTagNameNS(ns,'Concepto');if(!conceptos.length)conceptos=doc.getElementsByTagNameNS(ns3,'Concepto');}
@@ -2629,24 +2642,23 @@ function handleDieselXMLFiles(files){
         var rfcEmisor=emisor?emisor.getAttribute('Rfc')||'':'';
         var nombreEmisor=emisor?emisor.getAttribute('Nombre')||'':'';
         var conceptoDesc=getConceptoDesc(doc);
-        var tfdD=doc.querySelector('TimbreFiscalDigital')||doc.getElementsByTagNameNS(ns,'TimbreFiscalDigital')[0]||doc.getElementsByTagNameNS(ns3,'TimbreFiscalDigital')[0];
-        if(litrosTot<=0){alert('No se encontraron litros en el XML: '+file.name+'\nVerifica que sea una factura de combustible.');return;}
+        if(litrosTot<=0){alert('No se encontraron litros en el XML: '+file.name+'\nVerifica que sea una factura de combustible.');continue;}
         liq.dieselXML.push({
           id:'dxml-'+Date.now()+'-'+Math.random().toString(36).slice(2),
           fecha:fecha,folio:folio,rfc:rfcEmisor,emisor:nombreEmisor,concepto:conceptoDesc,
-          uuid:tfdD?tfdD.getAttribute('UUID')||'':'',satEstado:null,satCancelado:false,
+          uuid:uuidD,satEstado:null,satCancelado:false,
           litros:litrosTot,precioUnitario:precioUnitario,
           subtotal:subtotalTot,iva:ivaTot,total:total,
           pagaOp:true // default: pagado por operador — usuario puede cambiar
         });
+        if(uuidD)registrarFacturaUsada(uuidD,liq.num,liq.unidad,'diesel');
         renderDieselXML();
         calcDiesel();
         guardarEstado();
         validarCFDIsSATLiquidacion(true);
       }catch(err){alert('Error al parsear XML: '+file.name+'\n'+err.message);}
-    };
-    reader.readAsText(file,'UTF-8');
-  });
+    }catch(e){console.error('handleDieselXMLFiles:',file.name,e);}
+  }
 }
 
 function renderDieselXML(){
@@ -2868,12 +2880,15 @@ dzAutXML.addEventListener('drop',function(e){e.preventDefault();dzAutXML.classLi
 $('fAutXML').addEventListener('change',function(e){handleAutXMLFiles(e.target.files);});
 }
 
-function handleAutXMLFiles(files){
-  Array.from(files).forEach(function(f){
-    var r=new FileReader();
-    r.onload=function(e){parseAutXML(e.target.result,f.name);};
-    r.readAsText(f,'UTF-8');
-  });
+// Procesa uno por uno, no en paralelo — mismo motivo que handleGastoXMLFiles
+// (evitar la carrera que dejaba colar el mismo CFDI subido dos veces).
+async function handleAutXMLFiles(files){
+  for(var i=0;i<files.length;i++){
+    try{
+      var texto=await leerArchivoTexto(files[i]);
+      await parseAutXML(texto,files[i].name);
+    }catch(e){console.error('handleAutXMLFiles:',files[i].name,e);}
+  }
 }
 
 var _iaveCollapsed=false;
@@ -3074,7 +3089,31 @@ if($('bfXML'))$('bfXML').addEventListener('change',function(e){
   r.readAsText(file,'UTF-8');
 });
 
-function handleGastoXMLFiles(files){Array.from(files).forEach(function(f){const r=new FileReader();r.onload=function(e){parseGastoXML(e.target.result,f.name);};r.readAsText(f,'UTF-8');});}
+// Lee un archivo como texto, envuelto en Promise para poder usarlo con await.
+function leerArchivoTexto(file){
+  return new Promise(function(resolve,reject){
+    var r=new FileReader();
+    r.onload=function(e){resolve(e.target.result);};
+    r.onerror=function(){reject(r.error);};
+    r.readAsText(file,'UTF-8');
+  });
+}
+// Procesa los archivos UNO POR UNO (no en paralelo): si se suben varios XML
+// a la vez y dos son el mismo CFDI (mismo UUID, ej. la misma factura
+// descargada dos veces con nombre distinto), procesarlos en paralelo dejaba
+// una ventana donde ambos pasaban la validación de "¿ya existe?" antes de
+// que el primero alcanzara a registrarse — coló duplicados reales aunque el
+// candado sí es por UUID (contenido), no por nombre de archivo. Esperar a
+// que cada archivo termine su registro antes de empezar el siguiente cierra
+// esa ventana.
+async function handleGastoXMLFiles(files){
+  for(var i=0;i<files.length;i++){
+    try{
+      var texto=await leerArchivoTexto(files[i]);
+      await parseGastoXML(texto,files[i].name);
+    }catch(e){console.error('handleGastoXMLFiles:',files[i].name,e);}
+  }
+}
 
 var CLAVES_SAT_COMBUSTIBLE=['15101503','15101504','15101505','15101506','15101507','15111510'];
 function esCombustibleXML(doc){
