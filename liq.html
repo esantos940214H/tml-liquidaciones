@@ -2345,12 +2345,15 @@ async function iniciarLiquidacion(){
   // sobreescribir el folio de otra liquidación) — el número siempre se
   // calcula aquí, no se confía en lo que haya quedado en el input.
   const num=siguienteNumLiq(opId);
-  // Última confirmación antes de crear un objeto de liquidación EN BLANCO:
-  // ya se revisó Firestore (arriba) y no hay ninguna activa de este
-  // operador, pero si por un corte de conexión esa revisión fallara en
-  // silencio, esta pausa evita crear una liquidación fantasma encima de
-  // una real que solo no se pudo consultar a tiempo.
-  if(!confirm('Vas a INICIAR una liquidación NUEVA (#'+num+') para '+op.nombre+'.\n\n¿Confirmas que NO tiene ya una liquidación en curso (por ejemplo, en otra computadora)?'))return;
+  // Ya no se pide confirmación manual aquí: Firestore (arriba, vía
+  // obtenerLiqActivaData) ya es la fuente de verdad de si este operador
+  // tiene o no una liquidación activa en CUALQUIER computadora/sesión — si
+  // la tiene, esta función ya regresó antes de llegar aquí (la carga en
+  // vez de crear una nueva). Preguntar "¿confirmas que no tiene ya una
+  // liquidación en curso?" además de esa revisión automática solo hacía
+  // más lento iniciar una liquidación legítima, sin aportar protección
+  // real: el candado ya es automático, no depende de que la persona
+  // recuerde/adivine si hay una abierta en otro lado.
   $('liqNum').value=num;registrarNumLiqUsado(opId,num);
   // Quién la abrió — para poder ver en Historial/hist.html qué liquidador
   // está trabajando cada liquidación cuando hay varios usuarios liquidando
