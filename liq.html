@@ -1205,7 +1205,15 @@ function guardarEstado(){
   // global. El borrado del doc de un operador se hace explícito en los
   // puntos donde se cierra/elimina/descarta su liquidación (no aquí), para
   // no depender de que "liq" sea null en el momento correcto.
-  if(liq&&liq.opId) window.FB.set('liqActivas',String(liq.opId),{data: JSON.stringify(liq)});
+  if(liq&&liq.opId){
+    // Se refresca en cada guardado (no solo al iniciar) para que quede
+    // visible en Historial/hist.html quién es el liquidador que la está
+    // trabajando AHORA MISMO — útil cuando varios usuarios liquidan a la
+    // vez, o cuando alguien más continúa una que otra persona dejó abierta.
+    var _uGuardar=usuarioSesion();
+    if(_uGuardar)liq.ultimaEdicionPor={usuario:_uGuardar.usuario,nombre:_uGuardar.nombre||_uGuardar.usuario};
+    window.FB.set('liqActivas',String(liq.opId),{data: JSON.stringify(liq)});
+  }
 }
 
 async function cargarEstado(){
@@ -2344,6 +2352,11 @@ async function iniciarLiquidacion(){
   // una real que solo no se pudo consultar a tiempo.
   if(!confirm('Vas a INICIAR una liquidación NUEVA (#'+num+') para '+op.nombre+'.\n\n¿Confirmas que NO tiene ya una liquidación en curso (por ejemplo, en otra computadora)?'))return;
   $('liqNum').value=num;registrarNumLiqUsado(opId,num);
+  // Quién la abrió — para poder ver en Historial/hist.html qué liquidador
+  // está trabajando cada liquidación cuando hay varios usuarios liquidando
+  // a la vez.
+  var _uIniciar=usuarioSesion();
+  var _abiertaPor=_uIniciar?{usuario:_uIniciar.usuario,nombre:_uIniciar.nombre||_uIniciar.usuario}:null;
   // liq.opId = identidad del operador (dueño de anticipos/viajes/nómina).
   // liq.unidad = vehículo manejado este periodo (dueño del arrastre de
   // diesel/casetas) — pueden diferir si el operador cambió de unidad.
@@ -2353,7 +2366,7 @@ async function iniciarLiquidacion(){
     rendimiento:parseFloat($('liqRend').value||4),
     costoDiesel:parseFloat($('liqCostoDiesel').value||27),comision:parseFloat($('liqComision').value||12),
     diesel:null,autopistas:[],gastos:[],gastosXML:[],dieselXML:[],casetasNF:[],viajeVacio:{origen:'',destino:'',kms:''},
-    fechaApertura:hoy(),advertenciasFecha:[]};
+    fechaApertura:hoy(),advertenciasFecha:[],abiertaPor:_abiertaPor,ultimaEdicionPor:_abiertaPor};
   var _precarga=await jalarComprobantesPrecarga(liq);
   $('liqInfo').style.display='block';
   $('liqInfo').innerHTML='<div class="alert alert-ok">✅ Liquidación <strong>#'+num+'</strong> — <strong>'+op.nombre+'</strong> · Unidad '+unidad+' · '+liq.salida+' al '+liq.llegada+(liq.kms?' · '+liq.kms.toLocaleString('es-MX')+' km':'')+(liq.rendimiento?' · '+liq.rendimiento+' km/L':'')+(_precarga.total?' · 📥 '+_precarga.total+' comprobante(s) pre-cargado(s) jalado(s) automáticamente':'')+'</div>'+(_precarga.rechazados?'<div class="alert alert-warn">⚠️ '+_precarga.rechazados+' comprobante(s) pre-cargado(s) no se pudieron jalar — otra liquidación los tomó primero.</div>':'');
@@ -4130,12 +4143,15 @@ async function cerrarLiquidacion(){
   // Se guardan ambos campos (opId y unidad) por separado para no perder el
   // dato de qué vehículo manejó ese periodo.
   if(window.FB){
+    var _uCerrar=usuarioSesion();
     window.FB.set('historial','liq-'+liqCopia.num+'-'+_opIdNum,{
       id:'liq-'+liqCopia.num+'-'+_opIdNum,
       num:liqCopia.num, opId:_opIdNum, unidad:liqCopia.unidad, op:liqCopia.op,
       salida:liqCopia.salida, llegada:liqCopia.llegada, duracion:liqCopia.duracion,
       kms:liqCopia.kms||0, rendimiento:liqCopia.rendimiento||0, comision:liqCopia.comision||12,
       fechaCierre:new Date().toISOString().slice(0,10),
+      abiertaPor:liqCopia.abiertaPor||null,
+      cerradaPor:_uCerrar?{usuario:_uCerrar.usuario,nombre:_uCerrar.nombre||_uCerrar.usuario}:null,
       snapshot:_snap
     });
   }

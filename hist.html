@@ -217,7 +217,7 @@ tr:hover td{background:#fafafa}
     <div class="tbl-wrap">
       <table>
         <thead><tr>
-          <th>#</th><th>Operador</th><th>Unidad</th><th>Abierta desde</th><th></th><th></th>
+          <th>#</th><th>Operador</th><th>Unidad</th><th>Liquidador</th><th>Abierta desde</th><th></th><th></th>
         </tr></thead>
         <tbody id="tbActivas"></tbody>
       </table>
@@ -230,7 +230,7 @@ tr:hover td{background:#fafafa}
     <div class="tbl-wrap">
       <table>
         <thead><tr>
-          <th>#</th><th>Operador</th><th>Unidad</th><th>Salida</th><th>Llegada</th>
+          <th>#</th><th>Operador</th><th>Unidad</th><th>Liquidador</th><th>Salida</th><th>Llegada</th>
           <th>Días</th><th class="r">Ingresos</th><th class="r">Saldo Op.</th><th>Resultado</th><th></th>
         </tr></thead>
         <tbody id="tbHistorial"></tbody>
@@ -498,7 +498,7 @@ let activasDB=[];
 
 async function cargarActivas(){
   const tb=$('tbActivas');
-  if(tb)tb.innerHTML='<tr><td colspan="6" style="text-align:center;color:#aaa;padding:16px">⏳ Cargando...</td></tr>';
+  if(tb)tb.innerHTML='<tr><td colspan="7" style="text-align:center;color:#aaa;padding:16px">⏳ Cargando...</td></tr>';
   const rows=await window.FB.getAll('liqActivas');
   const activas=[];
   rows.forEach(function(r){
@@ -528,15 +528,20 @@ function renderActivas(){
   if(!tb)return;
   $('countActivas').textContent=activasDB.length+' en curso';
   if(!activasDB.length){
-    tb.innerHTML='<tr><td colspan="6" style="text-align:center;padding:16px"><span style="color:#aaa;font-size:13px">✅ No hay ninguna liquidación abierta en este momento.</span></td></tr>';
+    tb.innerHTML='<tr><td colspan="7" style="text-align:center;padding:16px"><span style="color:#aaa;font-size:13px">✅ No hay ninguna liquidación abierta en este momento.</span></td></tr>';
     return;
   }
   tb.innerHTML=activasDB.map(function(l){
     const op=OPERADORES.find(function(o){return o.unidad===parseInt(l.opId||l.unidad);});
+    // ultimaEdicionPor = quién la tocó más recientemente (se actualiza en cada
+    // guardado); abiertaPor = quién la inició/reabrió — de respaldo si la
+    // liquidación es de antes de que existiera ultimaEdicionPor.
+    const liquidador=(l.ultimaEdicionPor&&l.ultimaEdicionPor.nombre)||(l.abiertaPor&&l.abiertaPor.nombre)||'—';
     return '<tr>'
       +'<td class="num">#'+l.num+'</td>'
       +'<td>'+(op?op.nombre:(l.op?l.op.nombre:'?'))+'</td>'
       +'<td>'+l.unidad+'</td>'
+      +'<td style="font-size:12px">'+liquidador+'</td>'
       +'<td style="font-size:12px">'+(l.fechaApertura||'—')+'</td>'
       +'<td>'+(l.reabierta?'<span class="badge bg-red" title="Se reabrió una liquidación ya cerrada">🔓 Reabierta</span>':'<span class="badge bg-green">Nueva</span>')+'</td>'
       +'<td><button class="btn btn-sm" style="background:#1a1a2e;color:#fff;border:none;cursor:pointer;border-radius:5px;padding:5px 12px;font-size:11px" onclick="continuarActiva('+parseInt(l.opId||l.unidad)+')">Continuar →</button></td>'
@@ -568,7 +573,7 @@ function buscar(){
 
   if(!filtrados.length){
     const sinFiltros=!$('busOp').value&&!$('busNum').value&&!$('busDesde').value&&!$('busHasta').value;
-    tb.innerHTML='<tr><td colspan="10" style="text-align:center;padding:24px">'
+    tb.innerHTML='<tr><td colspan="11" style="text-align:center;padding:24px">'
       +(sinFiltros&&!historialDB.length
         ?'<div style="color:#92400e;font-size:13px">⚠️ No hay liquidaciones cerradas en el historial.<br><span style="font-size:11px;color:#aaa;display:block;margin-top:6px">Las nuevas liquidaciones cerradas desde hoy aparecerán aquí automáticamente.</span></div>'
         :'<span style="color:#aaa;font-size:13px">Sin liquidaciones que coincidan con los filtros.</span>')
@@ -581,10 +586,12 @@ function buscar(){
     const snap=l.snapshot||{};
     const saldo=snap.saldoReal||0;
     const ingresos=snap.totIngSubtotal||0;
+    const liquidador=(l.cerradaPor&&l.cerradaPor.nombre)||(l.abiertaPor&&l.abiertaPor.nombre)||'—';
     tb.innerHTML+=`<tr style="cursor:pointer" onclick="verDetalle('${l.id}')">
       <td class="num">#${l.num}</td>
       <td>${op?op.nombre.split(' ').slice(0,2).join(' '):'?'}</td>
       <td>${l.unidad}</td>
+      <td style="font-size:12px">${liquidador}</td>
       <td>${l.salida||''}</td>
       <td>${l.llegada||''}</td>
       <td>${l.duracion||0} días</td>
@@ -654,6 +661,7 @@ function verDetalle(id){
     <div>Duración: <strong>${l.duracion} días</strong></div>
     ${l.kms?'<div>Kms: <strong>'+fmtN(l.kms)+'</strong></div>':''}
     ${l.rendimiento?'<div>Rend.: <strong>'+l.rendimiento+' km/L</strong></div>':''}
+    ${(l.cerradaPor&&l.cerradaPor.nombre)?'<div>Liquidador: <strong>'+l.cerradaPor.nombre+'</strong></div>':''}
     <div style="margin-left:auto;color:#2d6a4f;font-size:11px">✅ Liquidación cerrada el ${l.fechaCierre||l.llegada}</div>
   </div>`;
 
@@ -946,7 +954,11 @@ async function reabrirLiquidacion(){
       diesel:snap.diesel||null,autopistas:autopistas,gastos:gastos,gastosXML:gastosXML,
       dieselXML:dieselXML,casetasNF:casetasNF,viajeVacio:{origen:'',destino:'',kms:''},
       cargasEdenred:snap.cargasDiesel||[],
-      fechaApertura:(function(){var d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');})(),advertenciasFecha:(snap.advertenciasFecha||[]).slice()
+      fechaApertura:(function(){var d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');})(),advertenciasFecha:(snap.advertenciasFecha||[]).slice(),
+      // Quién la reabrió — para que en "Liquidaciones en curso" se vea quién
+      // la está trabajando ahora, no quién la había cerrado originalmente.
+      abiertaPor:{usuario:u.usuario,nombre:u.nombre||u.usuario},
+      ultimaEdicionPor:{usuario:u.usuario,nombre:u.nombre||u.usuario}
     };
 
     // Liberar anticipos, viajes, incidentes y recibos de nómina que esta liquidación había marcado
@@ -1198,11 +1210,12 @@ function generarReporte2(){
 
 function repLiqOp(){
   const liqs=liqsFiltradas().sort((a,b)=>(a.unidad-b.unidad)||(a.num-b.num));
-  const headers=['#Liq','Operador','Unidad','Salida','Llegada','Ingresos','Gastos','Saldo Op.','Resultado'];
+  const headers=['#Liq','Operador','Unidad','Liquidador','Salida','Llegada','Ingresos','Gastos','Saldo Op.','Resultado'];
   const rows=liqs.map(l=>{
     const snap=l.snapshot||{};
     const saldo=snap.saldoReal||0;
-    return ['#'+l.num,opNombre(l.opId||l.unidad),l.unidad,l.salida||'',l.llegada||'',
+    const liquidador=(l.cerradaPor&&l.cerradaPor.nombre)||(l.abiertaPor&&l.abiertaPor.nombre)||'—';
+    return ['#'+l.num,opNombre(l.opId||l.unidad),l.unidad,liquidador,l.salida||'',l.llegada||'',
       fmt(snap.totIngSubtotal||0),fmt(snap.totGastosEmpTotal||0),fmt(Math.abs(saldo)),
       saldo>=0?'A favor op.':'En contra op.'];
   });
