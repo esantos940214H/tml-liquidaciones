@@ -1929,6 +1929,15 @@ function onUnidadRealChange(){
 }
 function actualizarArrastreDieselPreview(){
   var unidadSel=parseInt($('liqUnidad')?$('liqUnidad').value||0:0);
+  // Si YA hay una liquidación activa para esta misma unidad con su propio
+  // diesel inicial ya establecido (liq.diesel.ltsIni), NO tocar el campo —
+  // arrastres[unidad] es el arrastre de SALIDA (lo que queda pendiente al
+  // cerrar), no el de entrada. Sobreescribir aquí con ese valor corrompía el
+  // "Diesel inicial" de la liquidación ya abierta cada vez que se disparaba
+  // esta previsualización (ej. al volver a tocar el selector de operador)
+  // después de haber usado "Guardar arrastre" — mismo criterio que ya usa
+  // restaurarUILiquidacion() al recargar la página.
+  if(liq&&liq.unidad===unidadSel&&liq.diesel&&liq.diesel.ltsIni!=null)return;
   // Siempre reasignar (no solo cuando hay arrastre) para que al cambiar de
   // unidad no se quede pegado el arrastre de la unidad anterior mostrada.
   var arr=arrastres[unidadSel]||arrastres[String(unidadSel)]||{};
