@@ -356,7 +356,6 @@ tr:hover td{background:#fafafa}
       <div class="kpis" id="kpisDiesel"></div>
       <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap">
         <button class="btn btn-dark btn-sm" onclick="exportDieselCSV()">Exportar diesel</button>
-        <button class="btn btn-green btn-sm" onclick="guardarArrastre()">💾 Guardar arrastre</button>
       </div>
     </div></div>
   </div>
@@ -2846,6 +2845,15 @@ function calcDiesel(){
   if(_cargasNuevas.length||!(liq.cargasEdenred&&liq.cargasEdenred.length)){
     liq.cargasEdenred=_cargasNuevas;
   }
+  // Previsualizar/adelantar automáticamente el arrastre de salida de esta
+  // unidad (antes requería presionar "Guardar arrastre" a mano). Sirve para
+  // el caso de que la misma unidad ya vaya a empezar una liquidación nueva
+  // (con otro operador, por ejemplo) antes de que ÉSTA se cierre — al cerrar,
+  // cerrarLiquidacion() vuelve a escribir este mismo valor de forma
+  // definitiva, así que esto es solo un adelanto que se recalcula solo cada
+  // vez que cambia el diesel de esta liquidación.
+  var _prevArr=arrastres[liq.unidad]||{};
+  arrastres[liq.unidad]=Object.assign({},_prevArr,{lts:ltsFinal,precio:ultimoPrecio});
   guardarEstado();}
 }
 
@@ -2859,13 +2867,6 @@ function guardarViajeVacio(){
   guardarEstado();
 }
 
-function guardarArrastre(){
-  if(!liq||!liq.diesel)return;
-  var prev=arrastres[liq.unidad]||{};
-  arrastres[liq.unidad]=Object.assign({},prev,{lts:liq.diesel.ltsPend,precio:liq.diesel.ultimoPrecio});
-  guardarEstado();
-  alert('✅ Arrastre guardado: '+fmtN(liq.diesel.ltsPend)+' lts a '+fmt(liq.diesel.ultimoPrecio)+'/lt (precio última carga)');
-}
 function exportDieselCSV(){
   if(!liq)return;
   var csv='Fecha,Estacion,Litros,Precio/lt,Importe,LtsDejo,LtsApl\n';
