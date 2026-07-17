@@ -23,8 +23,12 @@
 // ── CÓMO CORRERLO ───────────────────────────────────────────────────────────
 // 1. npm install firebase-admin   (una sola vez, en la raíz del repo o donde
 //    prefieras — este script no depende de nada más del proyecto)
-// 2. Abre este archivo y llena los EMAILS y CONTRASEÑAS TEMPORALES marcados
-//    más abajo con "// ← LLENAR AQUÍ" (no dejes las contraseñas de ejemplo).
+// 2. Abre este archivo y llena las CONTRASEÑAS TEMPORALES marcadas más abajo
+//    con "// ← LLENAR AQUÍ" (los emails ya están puestos según la lista que
+//    diste — Firebase Auth NO necesita que el correo reciba nada para poder
+//    iniciar sesión con email+contraseña, así que no hay problema en crear
+//    ya la cuenta de Firebase aunque el buzón real de "tesoreria@..." o
+//    "liquidaciones@..." todavía no exista).
 // 3. node admin/crear-usuarios.js
 // 4. Revisa la salida en consola: confirma "creado"/"actualizado" y los
 //    claims asignados para cada usuario.
@@ -48,47 +52,71 @@ admin.initializeApp({
 });
 
 // ── DEFINICIÓN DE USUARIOS A CREAR/ACTUALIZAR ───────────────────────────────
-// rol: 'admin' | 'cobranza' | 'operaciones' | 'consulta'
-// permisos (candados de ACCIÓN, no de ver módulos — ver shared/sesion.js):
-//   anticipos_editar, ingresos_editar, incidentes_editar, casetas_editar
-// El admin recibe TODOS los permisos true, independientemente de rol==='admin'
-// (que ya de por sí lo deja pasar todo en tienePermiso() — se listan explícitos
-// aquí solo para que quede claro/documentado en los claims).
+// rol: 'admin' | 'cobranza' | 'operaciones' | 'consulta' | 'nomina'
+//   (informativo — el admin siempre pasa todo en tienePermiso(), sin
+//   necesidad de listar cada permiso individual)
+//
+// permisos: dos tipos de banderas en el mismo objeto —
+//   1) VER un módulo (mismo criterio que ya usaba el login viejo en
+//      Firestore/usuarios.permisos): ant, ing, liq, nom, inc, hist,
+//      autoriz, precarga.
+//   2) Candados de ACCIÓN dentro de un módulo (reemplazan las contraseñas
+//      fijas del código): anticipos_editar (antes KM2026 en ant.html),
+//      ingresos_editar (antes RM2026 en ing.html), incidentes_editar
+//      (antes INC2026), casetas_editar (el CAS2026 que vivía dentro de
+//      liq.html ya se quitó del todo en una fase anterior, se deja aquí
+//      solo por si se necesita un candado de acción ahí en el futuro).
+//
+// Lista según la tabla de personal (roles vigentes al día de hoy):
 const USUARIOS = [
   {
-    email: 'EMILIO_EMAIL_AQUI@mudanzastml.mx', // ← LLENAR AQUÍ
-    passwordTemporal: 'CONTRASEÑA_TEMPORAL_EMILIO', // ← LLENAR AQUÍ (cámbiala después de correr el script)
-    nombre: 'Emilio Santos',
+    email: 'emilio@mudandote.mx',
+    passwordTemporal: 'CONTRASEÑA_TEMPORAL_EMILIO', // ← LLENAR AQUÍ
+    nombre: 'Emilio Santos Avila',
     rol: 'admin',
     permisos: {
-      anticipos_editar: true,
-      ingresos_editar: true,
-      incidentes_editar: true,
-      casetas_editar: true
+      ant: true, ing: true, liq: true, nom: true, inc: true, hist: true, autoriz: true, precarga: true,
+      anticipos_editar: true, ingresos_editar: true, incidentes_editar: true, casetas_editar: true
     }
   },
   {
-    email: 'KARLA_EMAIL_AQUI@mudanzastml.mx', // ← LLENAR AQUÍ
-    passwordTemporal: 'CONTRASEÑA_TEMPORAL_KARLA', // ← LLENAR AQUÍ
-    nombre: 'Karla',
-    rol: 'cobranza',
-    permisos: {
-      anticipos_editar: true,
-      ingresos_editar: false,
-      incidentes_editar: false,
-      casetas_editar: false
-    }
-  },
-  {
-    email: 'RAUL_EMAIL_AQUI@mudanzastml.mx', // ← LLENAR AQUÍ
-    passwordTemporal: 'CONTRASEÑA_TEMPORAL_RAUL', // ← LLENAR AQUÍ
-    nombre: 'Raúl',
+    email: 'liquidaciones@mudandote.mx',
+    passwordTemporal: 'CONTRASEÑA_TEMPORAL_MARGARITA', // ← LLENAR AQUÍ
+    nombre: 'Margarita Cordova',
     rol: 'operaciones',
     permisos: {
-      anticipos_editar: false,
-      ingresos_editar: true,
-      incidentes_editar: false,
-      casetas_editar: false
+      ant: false, ing: false, liq: true, nom: false, inc: false, hist: true, autoriz: false, precarga: false,
+      anticipos_editar: false, ingresos_editar: false, incidentes_editar: false, casetas_editar: false
+    }
+  },
+  {
+    email: 'tesoreria@mudandote.mx',
+    passwordTemporal: 'CONTRASEÑA_TEMPORAL_KARLA', // ← LLENAR AQUÍ
+    nombre: 'Karla Morales Sanchez',
+    rol: 'cobranza',
+    permisos: {
+      ant: true, ing: false, liq: false, nom: false, inc: false, hist: false, autoriz: false, precarga: false,
+      anticipos_editar: true, ingresos_editar: false, incidentes_editar: false, casetas_editar: false
+    }
+  },
+  {
+    email: 'raul@mudandote.mx',
+    passwordTemporal: 'CONTRASEÑA_TEMPORAL_RAUL', // ← LLENAR AQUÍ
+    nombre: 'Raúl Marcial González',
+    rol: 'cobranza',
+    permisos: {
+      ant: false, ing: true, liq: false, nom: false, inc: false, hist: false, autoriz: false, precarga: false,
+      anticipos_editar: false, ingresos_editar: true, incidentes_editar: false, casetas_editar: false
+    }
+  },
+  {
+    email: 'contabilidad@mudandote.mx',
+    passwordTemporal: 'CONTRASEÑA_TEMPORAL_RICARDO', // ← LLENAR AQUÍ
+    nombre: 'Ricardo Dominguez',
+    rol: 'nomina',
+    permisos: {
+      ant: false, ing: false, liq: false, nom: true, inc: false, hist: false, autoriz: false, precarga: false,
+      anticipos_editar: false, ingresos_editar: false, incidentes_editar: false, casetas_editar: false
     }
   }
 ];
@@ -123,8 +151,8 @@ async function crearOActualizarUsuario(def) {
 (async function main() {
   console.log('Creando/actualizando usuarios en Firebase Authentication...\n');
   for (const def of USUARIOS) {
-    if (def.email.includes('_EMAIL_AQUI')) {
-      console.warn('⚠️  Saltando "' + def.nombre + '": falta llenar su email/contraseña en este archivo (busca "← LLENAR AQUÍ").');
+    if (def.passwordTemporal.includes('CONTRASEÑA_TEMPORAL')) {
+      console.warn('⚠️  Saltando "' + def.nombre + '": falta llenar su contraseña temporal en este archivo (busca "← LLENAR AQUÍ").');
       continue;
     }
     await crearOActualizarUsuario(def);
