@@ -191,28 +191,29 @@
   // ya usan todos los módulos ({id,usuario,nombre,permisos,esAdmin}), a
   // partir de los custom claims del usuario de Firebase Auth.
   //
-  // LIMITACIÓN CONOCIDA (documentar para la Fase 2): los custom claims
-  // nuevos (permisos.anticipos_editar, ingresos_editar, incidentes_editar,
-  // casetas_editar) son candados de ACCIÓN dentro de un módulo, no permisos
-  // de VER un módulo completo como los que usa hoy el objeto "permisos" del
-  // login viejo (ant, ing, liq, nom, inc, hist, autoriz, precarga). Todavía
-  // no hay una tabla de equivalencia 1 a 1 entre ambos esquemas. Mientras
-  // tanto, el puente es conservador: si rol==='admin' se marca esAdmin:true
-  // (ve todo, como ya hace el sistema viejo con esAdmin); si no es admin, se
-  // deja el objeto de permisos de módulos en falso por default. Esto se
-  // debe resolver por completo cuando cada módulo migre y defina su propio
-  // mapeo real de permisos.
+  // claims.permisos ya trae, desde admin/crear-usuarios.js, TANTO los
+  // permisos de VER un módulo completo (ant, ing, liq, nom, inc, hist,
+  // autoriz, precarga — mismas claves que el objeto "permisos" del login
+  // viejo en Firestore/usuarios) COMO los candados de ACCIÓN dentro de un
+  // módulo (anticipos_editar, ingresos_editar, incidentes_editar,
+  // casetas_editar). Aquí solo se copian las 8 claves de "ver módulo" al
+  // puente — los candados de acción los revisa cada módulo migrado
+  // directamente con tienePermiso(), no a través de esta cookie.
   async function _escribirCookiePuente(user) {
     var resultado = await user.getIdTokenResult();
     var claims = resultado.claims || {};
     var esAdmin = claims.rol === 'admin';
+    var permisosClaim = claims.permisos || {};
+    var CLAVES_MODULO = ['ant', 'ing', 'liq', 'nom', 'inc', 'hist', 'autoriz', 'precarga'];
+    var permisosPuente = {};
+    CLAVES_MODULO.forEach(function (clave) {
+      permisosPuente[clave] = esAdmin || !!permisosClaim[clave];
+    });
     var puente = {
       id: user.uid,
       usuario: user.email,
       nombre: user.displayName || user.email,
-      // Ver limitación arriba: de momento no hay mapeo real a los permisos
-      // de módulo del login viejo — solo se hereda esAdmin.
-      permisos: {},
+      permisos: permisosPuente,
       esAdmin: esAdmin
     };
     tmlSetCookie('tml_user', JSON.stringify(puente));

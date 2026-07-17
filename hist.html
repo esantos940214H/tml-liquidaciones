@@ -100,9 +100,9 @@ tr:hover td{background:#fafafa}
   <div class="session-box">
     <div class="session-logo">MUDANZAS <span>TML</span></div>
     <div class="session-modulo" id="sessionModuloLabel">Iniciar sesión — Historial</div>
-    <input type="text" id="sessionUser" class="session-input" placeholder="Usuario" autocomplete="username" onkeydown="if(event.key==='Enter')document.getElementById('sessionPass').focus()">
-    <input type="password" id="sessionPass" class="session-input" placeholder="Contraseña" autocomplete="current-password" onkeydown="if(event.key==='Enter')intentarLogin()">
-    <button class="session-btn" onclick="intentarLogin()">Entrar</button>
+    <input type="email" id="sessionUser" class="session-input" placeholder="Email" autocomplete="username" onkeydown="if(event.key==='Enter')document.getElementById('sessionPass').focus()">
+    <input type="password" id="sessionPass" class="session-input" placeholder="Contraseña" autocomplete="current-password" onkeydown="if(event.key==='Enter')intentarLoginFirebase()">
+    <button class="session-btn" onclick="intentarLoginFirebase()">Entrar</button>
     <div class="session-err" id="sessionErr" style="display:none"></div>
   </div>
 </div>
@@ -318,6 +318,9 @@ tr:hover td{background:#fafafa}
 <!-- Firebase compat -->
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+<!-- Firebase Auth (login del módulo — ver shared/sesion.js) -->
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
+<script src="shared/sesion.js"></script>
 <script>
 window._fbInit=false;
 window._fbCallbacks=[];
@@ -398,8 +401,9 @@ function tmlDeleteCookie(name){
 function usuarioSesion(){
   try{return JSON.parse(tmlGetCookie('tml_user')||'null');}catch(e){return null;}
 }
-function cerrarSesionTML(){
-  tmlDeleteCookie('tml_user');
+async function cerrarSesionTML(){
+  if(window.TMLSesion) await TMLSesion.cerrarSesion();
+  else tmlDeleteCookie('tml_user');
   location.reload();
 }
 function mostrarLoginModulo(){
@@ -407,6 +411,31 @@ function mostrarLoginModulo(){
   $('sessionOverlay').classList.add('show');
   setTimeout(function(){$('sessionUser').focus();},100);
 }
+async function intentarLoginFirebase(){
+  var email=($('sessionUser').value||'').trim();
+  var pass=$('sessionPass').value||'';
+  var err=$('sessionErr');
+  err.style.display='none';
+  if(!email||!pass){err.textContent='Ingresa tu email y contraseña.';err.style.display='block';return;}
+  try{
+    await TMLSesion.iniciarSesion(email,pass);
+    var u=usuarioSesion();
+    if(!u){err.textContent='No se pudo iniciar sesión.';err.style.display='block';return;}
+    if(!u.esAdmin&&(!u.permisos||!u.permisos[MODULO_ACTUAL])){
+      err.textContent='Tu usuario no tiene permiso para entrar a '+NOMBRES_MODULO[MODULO_ACTUAL]+'.';err.style.display='block';
+      await TMLSesion.cerrarSesion();
+      return;
+    }
+    $('sessionOverlay').classList.remove('show');
+    mostrarSesionEnHeader();
+  }catch(e){
+    err.textContent='No se pudo iniciar sesión: '+(e.message||e.code||'error desconocido');err.style.display='block';
+  }
+}
+// ⚠️ DEPRECADO — login viejo (usuario + hash SHA-256 contra Firestore/usuarios).
+// Ya no se llama desde el formulario (ver intentarLoginFirebase arriba); se
+// deja sin borrar por si hace falta un respaldo mientras se termina de
+// confirmar la migración de todo el equipo a Firebase Auth.
 async function sha256Hex(texto){
   var buf=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(texto));
   return Array.from(new Uint8Array(buf)).map(function(b){return b.toString(16).padStart(2,'0');}).join('');

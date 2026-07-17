@@ -23,9 +23,11 @@ cp precarga.html       dist/precarga/index.html
 # LOGO.png solo lo usa el portal (index.html)
 cp LOGO.png dist/portal/LOGO.png
 
-# shared/: JS común cargado con <script src="shared/...">. Por ahora solo lo
-# usa usuarios.html (Fase 1 de Firebase Auth, ver shared/sesion.js) — cuando
-# otro módulo lo empiece a usar, agregar aquí su propio "cp -r shared/ ..."
-cp -r shared dist/usuarios/shared
+# shared/: JS común cargado con <script src="shared/...">. Todos los módulos
+# lo usan (login con Firebase Auth, ver shared/sesion.js) excepto el portal
+# (index.html no tiene login propio, es solo el menú de acceso a los demás).
+for site in anticipos cxc liquidaciones nomina incidentes historial usuarios autorizaciones precarga; do
+  cp -r shared dist/$site/shared
+done
 
 echo "build.sh: dist/ generado con 10 sites."
