@@ -204,6 +204,16 @@ let editandoId=null;
 window.onAuthReady(async function(){
   var u=await TMLSesion.esperarSesion();
   actualizarUILoginFirebase(u);
+  // Si ya hay sesión de Firebase Auth con rol admin, no tiene caso pedir
+  // ADEMÁS la contraseña ADMIN2026 — se desbloquea el panel solo. Se
+  // revisan los custom claims (no basta con estar autenticado: tiene que
+  // ser específicamente rol==='admin', igual que exige tienePermiso()).
+  if(u){
+    try{
+      var resultado=await u.getIdTokenResult();
+      if(resultado.claims&&resultado.claims.rol==='admin')desbloquearPanelAdmin();
+    }catch(e){console.error('Revisión de claims admin:',e);}
+  }
 });
 function actualizarUILoginFirebase(user){
   var estado=$('loginFBEstadoSesion'),form=$('loginFBForm');
@@ -246,12 +256,13 @@ async function loginFirebaseCerrar(){
 // completo (ADMIN_PASS, pedirAcceso, y el candado genérico lockRequest/
 // lockConfirm/lockCancel de más abajo) se podrá eliminar.
 const ADMIN_PASS='ADMIN2026';
+function desbloquearPanelAdmin(){
+  sessionStorage.setItem('tml_admin_ok','1');
+  $('cAcceso').style.display='none';
+  $('cContenido').style.display='block';
+}
 function pedirAcceso(){
-  lockRequest('Acceso al módulo de Usuarios', function(){
-    sessionStorage.setItem('tml_admin_ok','1');
-    $('cAcceso').style.display='none';
-    $('cContenido').style.display='block';
-  });
+  lockRequest('Acceso al módulo de Usuarios', desbloquearPanelAdmin);
 }
 if(sessionStorage.getItem('tml_admin_ok')==='1'){
   $('cAcceso').style.display='none';
