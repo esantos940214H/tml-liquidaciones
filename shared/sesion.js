@@ -187,6 +187,19 @@
     return !!(claims.permisos && claims.permisos[permiso]);
   }
 
+  // cambiarContrasena(passwordActual, passwordNueva): reautentica al usuario
+  // con su contraseña actual (Firebase exige una sesión "reciente" para dejar
+  // cambiar la contraseña, si no truena con auth/requires-recent-login) y
+  // luego actualiza la contraseña. No toca la cookie-puente ni los custom
+  // claims — solo la contraseña de Firebase Auth.
+  async function cambiarContrasena(passwordActual, passwordNueva) {
+    var user = auth.currentUser;
+    if (!user) throw new Error('No hay sesión activa.');
+    var cred = firebase.auth.EmailAuthProvider.credential(user.email, passwordActual);
+    await user.reauthenticateWithCredential(cred);
+    await user.updatePassword(passwordNueva);
+  }
+
   // _escribirCookiePuente: arma la cookie "tml_user" con la MISMA forma que
   // ya usan todos los módulos ({id,usuario,nombre,permisos,esAdmin}), a
   // partir de los custom claims del usuario de Firebase Auth.
@@ -228,6 +241,7 @@
     usuarioActual: usuarioActual,
     esperarSesion: esperarSesion,
     tienePermiso: tienePermiso,
+    cambiarContrasena: cambiarContrasena,
     // Se exponen por si algún módulo migrado necesita leer/borrar la cookie
     // puente directamente (ej. para depurar o para sincronizar con el login
     // viejo durante la transición).
