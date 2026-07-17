@@ -80,11 +80,25 @@ tr:hover td{background:#fafafa}
     <button class="session-btn" onclick="cerrarSesionTML()">Cerrar sesión</button>
   </div>
 </div>
+<div class="session-overlay" id="modalCambiarPass">
+  <div class="session-box">
+    <div class="session-logo">MUDANZAS <span>TML</span></div>
+    <div class="session-modulo">🔑 Cambiar contraseña</div>
+    <input type="password" id="cpActual" class="session-input" placeholder="Contraseña actual" autocomplete="current-password">
+    <input type="password" id="cpNueva" class="session-input" placeholder="Contraseña nueva (mínimo 6 caracteres)" autocomplete="new-password">
+    <input type="password" id="cpConfirmar" class="session-input" placeholder="Confirmar contraseña nueva" autocomplete="new-password" onkeydown="if(event.key==='Enter')confirmarCambiarPass()">
+    <button class="session-btn" onclick="confirmarCambiarPass()">Guardar</button>
+    <button class="session-logout" style="margin-top:10px" onclick="cerrarModalCambiarPass()">Cancelar</button>
+    <div class="session-err" id="cpErr" style="display:none"></div>
+    <div class="session-err" id="cpOk" style="display:none;color:#2d6a4f">✅ Contraseña actualizada.</div>
+  </div>
+</div>
 
 <header>
   <div class="logo">MUDANZAS <span>TML</span> <span style="font-size:13px;font-weight:400;color:#aaa;margin-left:8px">· Autorizaciones</span></div>
   <div style="display:flex;align-items:center;gap:12px">
     <span class="session-user-label" id="sesionUsuarioLabel"></span>
+    <button class="session-logout" id="btnCambiarPass" onclick="abrirModalCambiarPass()" style="display:none">🔑 Cambiar contraseña</button>
     <button class="session-logout" id="btnCerrarSesion" onclick="cerrarSesionTML()" style="display:none">Cerrar sesión</button>
     <span class="fb-status" id="fbStatus">⏳ Conectando...</span>
     <nav class="nav">
@@ -189,6 +203,37 @@ async function cerrarSesionTML(){
   else tmlDeleteCookie('tml_user');
   location.reload();
 }
+// ── CAMBIAR CONTRASEÑA (Firebase Auth) ───────────────────────────────────
+function abrirModalCambiarPass(){
+  $('cpActual').value='';$('cpNueva').value='';$('cpConfirmar').value='';
+  $('cpErr').style.display='none';$('cpOk').style.display='none';
+  $('modalCambiarPass').classList.add('show');
+  setTimeout(function(){$('cpActual').focus();},100);
+}
+function cerrarModalCambiarPass(){
+  $('modalCambiarPass').classList.remove('show');
+}
+async function confirmarCambiarPass(){
+  var actual=$('cpActual').value||'';
+  var nueva=$('cpNueva').value||'';
+  var confirmar=$('cpConfirmar').value||'';
+  var err=$('cpErr'),ok=$('cpOk');
+  err.style.display='none';ok.style.display='none';
+  if(!actual||!nueva||!confirmar){err.textContent='Llena los tres campos.';err.style.display='block';return;}
+  if(nueva.length<6){err.textContent='La contraseña nueva debe tener al menos 6 caracteres.';err.style.display='block';return;}
+  if(nueva!==confirmar){err.textContent='La confirmación no coincide con la contraseña nueva.';err.style.display='block';return;}
+  try{
+    await TMLSesion.cambiarContrasena(actual,nueva);
+    ok.style.display='block';
+    setTimeout(function(){cerrarModalCambiarPass();},1500);
+  }catch(e){
+    var msg='No se pudo cambiar la contraseña.';
+    if(e.code==='auth/wrong-password'||e.code==='auth/invalid-credential')msg='La contraseña actual no es correcta.';
+    else if(e.code==='auth/weak-password')msg='La contraseña nueva es muy débil (mínimo 6 caracteres).';
+    else if(e.code==='auth/requires-recent-login')msg='Tu sesión es muy antigua — cierra sesión, vuelve a entrar, e intenta de nuevo.';
+    err.textContent=msg;err.style.display='block';
+  }
+}
 function mostrarLoginModulo(){
   $('sessionModuloLabel').textContent='Iniciar sesión — '+NOMBRES_MODULO[MODULO_ACTUAL];
   $('sessionOverlay').classList.add('show');
@@ -261,6 +306,7 @@ function mostrarSesionEnHeader(){
   if(!u)return;
   if($('sesionUsuarioLabel'))$('sesionUsuarioLabel').textContent='👤 '+(u.nombre||u.usuario)+(u.esAdmin?' (admin)':'');
   if($('btnCerrarSesion'))$('btnCerrarSesion').style.display='inline';
+  if($('btnCambiarPass'))$('btnCambiarPass').style.display='inline';
   aplicarPermisosNav(u);
 }
 function verificarSesionModulo(){
