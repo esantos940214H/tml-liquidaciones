@@ -2289,10 +2289,14 @@ async function jalarComprobantesPrecarga(liqObj){
   pendientes.forEach(function(c){
     var conceptoTxt=(c.conceptos||[]).join(', ');
     var uuidC=c.uuid||c.id;
+    // Comprobantes pre-cargados ANTES de que existiera el selector "¿Quién
+    // paga?" en precarga.html no traen pagaOp — se conserva el criterio
+    // viejo (caseta=operador, resto=empresa) solo como respaldo.
+    var pagaOpC=c.pagaOp!=null?c.pagaOp:(c.tipo==='caseta');
     if(c.tipo==='caseta'){
       liqObj.autopistas.push({
         fecha:c.fecha||'',hora:'',caseta:conceptoTxt||'Caseta',carril:'XML',
-        importe:(c.total||0)/100,pagaOp:true,
+        importe:(c.total||0)/100,pagaOp:pagaOpC,
         rfc:c.emisorRFC||'',emisor:'',concepto:conceptoTxt,
         subtotal:(c.subtotal||0)/100,iva:(c.iva||0)/100,
         uuid:uuidC,satEstado:null,satCancelado:false,origenPrecarga:true
@@ -2304,7 +2308,7 @@ async function jalarComprobantesPrecarga(liqObj){
         conceptoDesc:conceptoTxt,uuid:uuidC,satEstado:null,satCancelado:false,
         subtotal:(c.subtotal||0)/100,iva:(c.iva||0)/100,total:(c.total||0)/100,
         concepto:'GASTO FACTURADO',desc:conceptoTxt||(c.tipo==='parquimetro'?'Parquímetro':'Factura de gasto'),
-        pagaOp:false,tipo:'xml',autorizado:true,origenPrecarga:true
+        pagaOp:pagaOpC,tipo:'xml',autorizado:true,origenPrecarga:true
       });
       agregados.push({uuid:uuidC,bucket:'gastosXML'});
     }
