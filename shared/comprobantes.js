@@ -53,23 +53,20 @@
     return '$' + Number(n).toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   }
 
-  // generarPDF(datos): arma un PDF sencillo y legible con los datos YA
-  // EXTRAÍDOS del XML (no vuelve a leer el archivo original) y dispara su
-  // descarga en el navegador. No es la representación impresa oficial del
-  // SAT (para eso existe el XML original, descargable aparte) — es solo un
-  // resumen legible para consulta rápida, generado al momento, sin guardar
-  // ningún PDF en Storage.
+  // construirPDF(datos): arma el documento jsPDF con los datos YA EXTRAÍDOS
+  // del XML (no vuelve a leer el archivo original) — usado tanto para
+  // descargarlo (generarPDF) como para previsualizarlo en pantalla (verPDF).
+  // No es la representación impresa oficial del SAT (para eso existe el XML
+  // original, descargable aparte) — es solo un resumen legible generado al
+  // momento, sin guardar ningún PDF en Storage.
   //
   // datos: {
   //   titulo, folio, fecha, emisorNombre, emisorRFC, receptorRFC,
   //   conceptos: [string], subtotal, iva, total, uuid,
   //   extra: [[label, valor], ...]   (líneas adicionales opcionales)
   // }
-  function generarPDF(datos) {
-    if (!window.jspdf || !window.jspdf.jsPDF) {
-      alert('No se pudo cargar el generador de PDF. Revisa tu conexión e intenta de nuevo.');
-      return;
-    }
+  function construirPDF(datos) {
+    if (!window.jspdf || !window.jspdf.jsPDF) return null;
     var doc = new window.jspdf.jsPDF({ unit: 'mm', format: 'letter' });
     var y = 20;
     doc.setFontSize(14); doc.setFont(undefined, 'bold');
@@ -108,8 +105,65 @@
     }
     y += 10; doc.setFontSize(7); doc.setTextColor(150);
     doc.text('Generado por el sistema de Mudanzas TML a partir de los datos del CFDI. No es una representación impresa oficial del SAT — para eso, descarga el XML original.', 15, y, { maxWidth: 180 });
+    return doc;
+  }
+
+  // generarPDF(datos): arma el PDF y dispara su descarga directa.
+  function generarPDF(datos) {
+    var doc = construirPDF(datos);
+    if (!doc) { alert('No se pudo cargar el generador de PDF. Revisa tu conexión e intenta de nuevo.'); return; }
     doc.save((datos.folio || 'comprobante').replace(/[^a-zA-Z0-9._-]/g, '_') + '.pdf');
   }
 
-  window.TMLComprobantes = { subirXML: subirXML, subirArchivo: subirArchivo, generarPDF: generarPDF };
+  // ── Visor en modal ───────────────────────────────────────────────────────
+  var _modalListo = false;
+  function asegurarModal() {
+    if (_modalListo) return;
+    _modalListo = true;
+    var css = document.createElement('style');
+    css.textContent =
+      '#tmlPdfOverlay{position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:999999;display:none;align-items:center;justify-content:center;padding:20px}' +
+      '#tmlPdfOverlay.show{display:flex}' +
+      '#tmlPdfBox{background:#fff;border-radius:10px;width:100%;max-width:720px;height:90vh;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,.4);overflow:hidden}' +
+      '#tmlPdfBar{display:flex;align-items:center;justify-content:space-between;padding:10px 16px;background:#1a1a2e;color:#fff;font-size:13px;font-weight:700}' +
+      '#tmlPdfBar button{background:none;border:1px solid #555;color:#fff;border-radius:6px;padding:5px 12px;font-size:12px;cursor:pointer;margin-left:8px}' +
+      '#tmlPdfBar button:hover{background:#333}' +
+      '#tmlPdfFrame{flex:1;border:none;width:100%}';
+    document.head.appendChild(css);
+    var overlay = document.createElement('div');
+    overlay.id = 'tmlPdfOverlay';
+    overlay.innerHTML =
+      '<div id="tmlPdfBox">' +
+      '<div id="tmlPdfBar"><span>🧾 Vista previa del comprobante</span>' +
+      '<span><button id="tmlPdfDescargar">⬇️ Descargar</button><button id="tmlPdfCerrar">✕ Cerrar</button></span></div>' +
+      '<iframe id="tmlPdfFrame"></iframe>' +
+      '</div>';
+    document.body.appendChild(overlay);
+    overlay.addEventListener('click', function (e) { if (e.target === overlay) cerrarVisor(); });
+    document.getElementById('tmlPdfCerrar').addEventListener('click', cerrarVisor);
+    document.addEventListener('keydown', function (e) { if (e.key === 'Escape') cerrarVisor(); });
+  }
+  var _urlActual = null;
+  function cerrarVisor() {
+    var overlay = document.getElementById('tmlPdfOverlay');
+    if (overlay) overlay.classList.remove('show');
+    if (_urlActual) { URL.revokeObjectURL(_urlActual); _urlActual = null; }
+  }
+
+  // verPDF(datos): genera el PDF y lo muestra en una ventana emergente
+  // (modal con <iframe>) dentro de la misma página, sin descargar nada de
+  // entrada — desde ahí también se puede descargar con un clic.
+  function verPDF(datos) {
+    var doc = construirPDF(datos);
+    if (!doc) { alert('No se pudo cargar el generador de PDF. Revisa tu conexión e intenta de nuevo.'); return; }
+    asegurarModal();
+    if (_urlActual) URL.revokeObjectURL(_urlActual);
+    _urlActual = doc.output('bloburl');
+    document.getElementById('tmlPdfFrame').src = _urlActual;
+    var btnDescargar = document.getElementById('tmlPdfDescargar');
+    btnDescargar.onclick = function () { doc.save((datos.folio || 'comprobante').replace(/[^a-zA-Z0-9._-]/g, '_') + '.pdf'); };
+    document.getElementById('tmlPdfOverlay').classList.add('show');
+  }
+
+  window.TMLComprobantes = { subirXML: subirXML, subirArchivo: subirArchivo, generarPDF: generarPDF, verPDF: verPDF };
 })();
