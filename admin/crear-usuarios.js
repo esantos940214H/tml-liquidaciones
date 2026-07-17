@@ -71,7 +71,7 @@ admin.initializeApp({
 const USUARIOS = [
   {
     email: 'emilio@mudandote.mx',
-    passwordTemporal: 'CONTRASEÑA_TEMPORAL_EMILIO', // ← LLENAR AQUÍ
+    passwordTemporal: 'saee94$26', // ← LLENAR AQUÍ
     nombre: 'Emilio Santos Avila',
     rol: 'admin',
     permisos: {
@@ -81,7 +81,7 @@ const USUARIOS = [
   },
   {
     email: 'liquidaciones@mudandote.mx',
-    passwordTemporal: 'CONTRASEÑA_TEMPORAL_MARGARITA', // ← LLENAR AQUÍ
+    passwordTemporal: 'M.Cordova$26', // ← LLENAR AQUÍ
     nombre: 'Margarita Cordova',
     rol: 'operaciones',
     permisos: {
@@ -91,7 +91,7 @@ const USUARIOS = [
   },
   {
     email: 'tesoreria@mudandote.mx',
-    passwordTemporal: 'CONTRASEÑA_TEMPORAL_KARLA', // ← LLENAR AQUÍ
+    passwordTemporal: 'k.m2026$', // ← LLENAR AQUÍ
     nombre: 'Karla Morales Sanchez',
     rol: 'cobranza',
     permisos: {
@@ -101,7 +101,7 @@ const USUARIOS = [
   },
   {
     email: 'raul@mudandote.mx',
-    passwordTemporal: 'CONTRASEÑA_TEMPORAL_RAUL', // ← LLENAR AQUÍ
+    passwordTemporal: 'R.m2026&', // ← LLENAR AQUÍ
     nombre: 'Raúl Marcial González',
     rol: 'cobranza',
     permisos: {
@@ -111,7 +111,7 @@ const USUARIOS = [
   },
   {
     email: 'contabilidad@mudandote.mx',
-    passwordTemporal: 'CONTRASEÑA_TEMPORAL_RICARDO', // ← LLENAR AQUÍ
+    passwordTemporal: 'R.d/2026', // ← LLENAR AQUÍ
     nombre: 'Ricardo Dominguez',
     rol: 'nomina',
     permisos: {
