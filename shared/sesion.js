@@ -200,6 +200,15 @@
     await user.updatePassword(passwordNueva);
   }
 
+  // enviarCorreoRecuperacion(email): pide a Firebase Auth que mande el correo
+  // estándar de "restablecer contraseña" (enlace con token, expira solo). No
+  // requiere que el usuario tenga sesión activa — es el flujo para cuando
+  // alguien YA NO recuerda su contraseña actual (a diferencia de
+  // cambiarContrasena(), que sí la necesita).
+  function enviarCorreoRecuperacion(email) {
+    return auth.sendPasswordResetEmail(email);
+  }
+
   // _escribirCookiePuente: arma la cookie "tml_user" con la MISMA forma que
   // ya usan todos los módulos ({id,usuario,nombre,permisos,esAdmin}), a
   // partir de los custom claims del usuario de Firebase Auth.
@@ -242,6 +251,7 @@
     esperarSesion: esperarSesion,
     tienePermiso: tienePermiso,
     cambiarContrasena: cambiarContrasena,
+    enviarCorreoRecuperacion: enviarCorreoRecuperacion,
     // Se exponen por si algún módulo migrado necesita leer/borrar la cookie
     // puente directamente (ej. para depurar o para sincronizar con el login
     // viejo durante la transición).
