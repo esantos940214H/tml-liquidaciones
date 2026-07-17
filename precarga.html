@@ -480,6 +480,34 @@ async function reasignar(uuidDoc,campo,valor){
 }
 
 // ══════════════════════════════════════════════
+// ELIMINAR (solo mientras estado === 'pendiente')
+// Para corregir un error de captura (ej. XML subido al operador
+// equivocado): se borra el comprobante pre-cargado y se vuelve a subir el
+// mismo XML, ahora al operador correcto (el dedup por UUID lo vuelve a
+// aceptar porque ya no existe el documento anterior).
+// ══════════════════════════════════════════════
+async function eliminarComprobante(uuidDoc){
+  var actual=comprobantesDB.find(function(c){return c.id===uuidDoc;});
+  if(!actual){alert('No se encontró el comprobante.');return;}
+  if(actual.estado!=='pendiente'){
+    alert('Este comprobante ya fue jalado a una liquidación — no se puede eliminar desde aquí. Si se asignó al operador equivocado, hay que corregirlo dentro de esa liquidación (pestaña de Gastos o Autopistas), no en Pre-carga.');
+    return;
+  }
+  if(!confirm('¿Eliminar este comprobante pre-cargado ('+fmtCent(actual.total)+' — '+(actual.conceptos||[]).join(', ')+')?\n\nEsta acción no se puede deshacer. Si lo subiste al operador equivocado, bórralo aquí y vuelve a subir el mismo XML al operador correcto.'))return;
+  try{
+    // Releer fresco antes de borrar, por si mientras tanto ya se jaló a una
+    // liquidación desde otra sesión — nunca borrar uno que ya no esté pendiente.
+    var fresco=await window.FB.get('comprobantesPrecargados',uuidDoc);
+    if(!fresco){alert('El comprobante ya no existe.');return;}
+    if(fresco.estado!=='pendiente'){alert('Este comprobante ya fue jalado a una liquidación — no se puede eliminar.');return;}
+    await window.FB.del('comprobantesPrecargados',uuidDoc);
+  }catch(e){
+    console.error('eliminarComprobante:',e);
+    alert('⚠️ Error al eliminar: '+e.message);
+  }
+}
+
+// ══════════════════════════════════════════════
 // TABLA
 // ══════════════════════════════════════════════
 function renderPrecarga(){
@@ -515,7 +543,7 @@ function renderPrecarga(){
       +'<td class="num r">'+fmtCent(c.total)+'</td>'
       +'<td style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px" title="'+(c.conceptos||[]).join(', ').replace(/"/g,'&quot;')+'">'+(c.conceptos||[]).join(', ')+'</td>'
       +'<td>'+(esPend?'<span class="badge bg-yellow">Pendiente</span>':'<span class="badge bg-green">✓ Jalado'+(c.liquidacionId?' — '+c.liquidacionId:'')+'</span>')+'</td>'
-      +'<td></td>'
+      +'<td>'+(esPend?'<button class="btn-sm" style="background:#fde8e8;color:#9b1c1c;border:none;cursor:pointer;border-radius:4px;padding:3px 8px" onclick="eliminarComprobante(\''+c.id+'\')">✕ Eliminar</button>':'')+'</td>'
       +'</tr>';
   });
 }
