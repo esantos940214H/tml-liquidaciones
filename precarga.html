@@ -120,9 +120,9 @@ tr:hover td{background:#fafafa}
   <!-- CARGA -->
   <div class="card">
     <div class="card-title">📎 Cargar comprobante</div>
-    <div class="grid3" style="margin-bottom:12px">
+    <div class="grid4" style="margin-bottom:12px">
       <div class="field"><label>Tipo de comprobante</label>
-        <select id="pcTipo">
+        <select id="pcTipo" onchange="sugerirPagaOp()">
           <option value="caseta">Caseta / peaje</option>
           <option value="parquimetro">Parquímetro</option>
           <option value="factura">Factura de gasto</option>
@@ -134,7 +134,14 @@ tr:hover td{background:#fafafa}
       <div class="field"><label>Unidad manejada (obligatorio)</label>
         <select id="pcUnidad"><option value="">— Selecciona —</option></select>
       </div>
+      <div class="field"><label>¿Quién paga?</label>
+        <select id="pcPagaOp">
+          <option value="si">Operador (afecta su saldo)</option>
+          <option value="no">Empresa (gasto directo, no afecta al operador)</option>
+        </select>
+      </div>
     </div>
+    <div style="font-size:11px;color:#888;margin:-6px 0 12px">💡 "Empresa" es para gastos pagados directamente por Mudanzas TML (ej. facturado a la empresa, sin que el operador haya desembolsado nada) — no se descuenta ni se le reconoce al operador, pero sí entra al resultado de la empresa.</div>
     <div class="upload-zone" id="dzPrecarga" onclick="document.getElementById('fPrecarga').click()">
       <div class="icon">📎</div>
       <p><strong>Arrastra o selecciona el XML del comprobante</strong><br>Puedes subir varios a la vez, uno por uno se registra igual.</p>
@@ -164,7 +171,7 @@ tr:hover td{background:#fafafa}
     <div class="card-title">📋 Comprobantes registrados</div>
     <div class="tbl-wrap"><table>
       <thead><tr>
-        <th>Tipo</th><th>Fecha</th><th>Operador / Unidad</th><th class="r">Total</th><th>Conceptos</th><th>Estatus</th><th></th>
+        <th>Tipo</th><th>Fecha</th><th>Operador / Unidad</th><th class="r">Total</th><th>¿Quién paga?</th><th>Conceptos</th><th>Estatus</th><th></th>
       </tr></thead>
       <tbody id="tbPrecarga"></tbody>
     </table></div>
@@ -384,11 +391,22 @@ function handleArchivos(files){
 // módulo se guarda en centavos, nunca en pesos con decimales.
 function pesosACentavos(v){return Math.round(parseFloat(v||0)*100);}
 
+// Sugerencia de "¿Quién paga?" según el tipo (el usuario la puede cambiar
+// antes de subir el XML) — mismo criterio que ya traía el sistema por
+// default: casetas normalmente las comprueba el operador; parquímetros y
+// facturas normalmente los paga la empresa directo.
+function sugerirPagaOp(){
+  var sel=$('pcPagaOp');
+  if(!sel)return;
+  sel.value=$('pcTipo').value==='caseta'?'si':'no';
+}
+
 function procesarXML(text,fname){
   var opId=parseInt($('pcOperador').value||0);
   var unidad=parseInt($('pcUnidad').value||0);
   if(!opId||!unidad){alert('Selecciona operador y unidad antes de subir el XML de "'+fname+'".');return;}
   var tipo=$('pcTipo').value;
+  var pagaOp=$('pcPagaOp').value==='si';
 
   var doc=new DOMParser().parseFromString(text,'text/xml');
   var comp=doc.querySelector('Comprobante');
@@ -421,6 +439,7 @@ function procesarXML(text,fname){
     tipo:tipo,
     operador:opId,
     unidad:unidad,
+    pagaOp:pagaOp,
     fecha:(comp.getAttribute('Fecha')||'').slice(0,10),
     emisorRFC:emisor?emisor.getAttribute('Rfc')||'':'',
     receptorRFC:receptorRFC,
@@ -478,6 +497,25 @@ async function reasignar(uuidDoc,campo,valor){
     alert('⚠️ Error al reasignar: '+e.message);
   }
 }
+// Igual que reasignar(), pero para el campo pagaOp (booleano, no numérico —
+// por eso no comparte la validación de "valor numérico" de reasignar()).
+async function reasignarPagaOp(uuidDoc,valor){
+  var actual=comprobantesDB.find(function(c){return c.id===uuidDoc;});
+  if(!actual){alert('No se encontró el comprobante.');return;}
+  if(actual.estado!=='pendiente'){alert('Este comprobante ya fue jalado a una liquidación — no se puede reasignar.');renderPrecarga();return;}
+  var pagaOpNuevo=valor==='si';
+  try{
+    var fresco=await window.FB.get('comprobantesPrecargados',uuidDoc);
+    if(!fresco){alert('El comprobante ya no existe.');return;}
+    if(fresco.estado!=='pendiente'){alert('Este comprobante ya fue jalado a una liquidación — no se puede reasignar.');return;}
+    fresco.pagaOp=pagaOpNuevo;
+    fresco.updatedAt=new Date().toISOString();
+    await window.FB.set('comprobantesPrecargados',uuidDoc,fresco);
+  }catch(e){
+    console.error('reasignarPagaOp:',e);
+    alert('⚠️ Error al reasignar: '+e.message);
+  }
+}
 
 // ══════════════════════════════════════════════
 // ELIMINAR (solo mientras estado === 'pendiente')
@@ -523,7 +561,7 @@ function renderPrecarga(){
 
   tb.innerHTML='';
   if(!filas.length){
-    tb.innerHTML='<tr><td colspan="7" style="text-align:center;color:#aaa;padding:20px">Sin comprobantes registrados.</td></tr>';
+    tb.innerHTML='<tr><td colspan="8" style="text-align:center;color:#aaa;padding:20px">Sin comprobantes registrados.</td></tr>';
     return;
   }
   var opts=function(sel){return UNIDADES.map(function(u){return '<option value="'+u+'"'+(u===sel?' selected':'')+'>'+u+'</option>';}).join('');};
@@ -531,6 +569,10 @@ function renderPrecarga(){
   filas.forEach(function(c){
     var esPend=c.estado==='pendiente';
     var tipoLabel=c.tipo==='caseta'?'🛣️ Caseta':(c.tipo==='parquimetro'?'🅿️ Parquímetro':'🧾 Factura');
+    // Comprobantes registrados ANTES de que existiera este campo no traen
+    // pagaOp — se asume el criterio viejo (caseta=operador, resto=empresa)
+    // solo como valor de respaldo para no mostrarlos en blanco.
+    var pagaOpC=c.pagaOp!=null?c.pagaOp:(c.tipo==='caseta');
     tb.innerHTML+='<tr>'
       +'<td><span class="badge bg-blue">'+tipoLabel+'</span></td>'
       +'<td style="font-size:11px">'+(c.fecha||'—')+'</td>'
@@ -541,6 +583,11 @@ function renderPrecarga(){
           :(function(){var op=OPERADORES.find(function(o){return o.unidad===c.operador;});return (op?op.nombre:c.operador)+' · Unidad '+c.unidad;})())
       +'</td>'
       +'<td class="num r">'+fmtCent(c.total)+'</td>'
+      +'<td style="font-size:11px">'
+        +(esPend
+          ?'<select class="input-sm" onchange="reasignarPagaOp(\''+c.id+'\',this.value)" style="border:1.5px solid #dde;border-radius:5px;padding:4px;font-size:11px;width:100%"><option value="si"'+(pagaOpC?' selected':'')+'>Operador</option><option value="no"'+(pagaOpC?'':' selected')+'>Empresa</option></select>'
+          :(pagaOpC?'Operador':'Empresa'))
+      +'</td>'
       +'<td style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px" title="'+(c.conceptos||[]).join(', ').replace(/"/g,'&quot;')+'">'+(c.conceptos||[]).join(', ')+'</td>'
       +'<td>'+(esPend?'<span class="badge bg-yellow">Pendiente</span>':'<span class="badge bg-green">✓ Jalado'+(c.liquidacionId?' — '+c.liquidacionId:'')+'</span>')+'</td>'
       +'<td>'+(esPend?'<button class="btn-sm" style="background:#fde8e8;color:#9b1c1c;border:none;cursor:pointer;border-radius:4px;padding:3px 8px" onclick="eliminarComprobante(\''+c.id+'\')">✕ Eliminar</button>':'')+'</td>'
