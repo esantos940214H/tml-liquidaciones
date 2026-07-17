@@ -465,7 +465,7 @@ tr:hover td{background:#fafafa}
         </div>
         <div id="iaveXmlWrap">
           <div class="tbl-wrap"><table>
-            <thead><tr><th>Fecha</th><th>Hora</th><th>Caseta</th><th>Carril</th><th class="r">Importe</th><th>¿Op. paga?</th><th></th></tr></thead>
+            <thead><tr><th>Fecha</th><th>Hora</th><th>Caseta</th><th>Carril</th><th class="r">Importe</th><th>¿Op. paga?</th><th>Archivo</th><th></th></tr></thead>
             <tbody id="tbIAVEXml"></tbody><tfoot id="tfIAVEXml"></tfoot>
           </table></div>
         </div>
@@ -506,7 +506,7 @@ tr:hover td{background:#fafafa}
         <button class="btn btn-red" style="align-self:flex-end" onclick="agregarGasto()">+ Agregar</button>
       </div>
       <div class="tbl-wrap"><table>
-        <thead><tr><th>Fecha</th><th>Concepto</th><th>Descripción</th><th>Emisor</th><th class="r">Importe</th><th>Tipo</th><th>¿Op. comprueba?</th><th>Estado</th><th></th></tr></thead>
+        <thead><tr><th>Fecha</th><th>Concepto</th><th>Descripción</th><th>Emisor</th><th class="r">Importe</th><th>Tipo</th><th>¿Op. comprueba?</th><th>Estado</th><th>Archivo</th><th></th></tr></thead>
         <tbody id="tbGastos"></tbody><tfoot id="tfGastos"></tfoot>
       </table></div>
     </div>
@@ -622,6 +622,9 @@ tr:hover td{background:#fafafa}
 <!-- Firebase Auth (login del módulo — ver shared/sesion.js) -->
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
 <script src="shared/sesion.js"></script>
+<!-- Guardar XML de comprobantes + generar PDF al vuelo (ver shared/comprobantes.js) -->
+<script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+<script src="shared/comprobantes.js"></script>
 <script>
 window._fbInit=false;
 window._fbCallbacks=[];
@@ -2387,18 +2390,18 @@ async function jalarComprobantesPrecarga(liqObj){
       liqObj.autopistas.push({
         fecha:c.fecha||'',hora:'',caseta:conceptoTxt||'Caseta',carril:'XML',
         importe:(c.total||0)/100,pagaOp:pagaOpC,
-        rfc:c.emisorRFC||'',emisor:'',concepto:conceptoTxt,
+        rfc:c.emisorRFC||'',emisor:c.emisorNombre||'',concepto:conceptoTxt,
         subtotal:(c.subtotal||0)/100,iva:(c.iva||0)/100,
-        uuid:uuidC,satEstado:null,satCancelado:false,origenPrecarga:true
+        uuid:uuidC,satEstado:null,satCancelado:false,origenPrecarga:true,xmlURL:c.xmlURL||null
       });
       agregados.push({uuid:uuidC,bucket:'autopistas'});
     }else{
       liqObj.gastosXML.push({
-        serie:'',folio:'',fecha:c.fecha||'',proveedor:'',rfc:c.emisorRFC||'',
+        serie:'',folio:'',fecha:c.fecha||'',proveedor:c.emisorNombre||'',rfc:c.emisorRFC||'',
         conceptoDesc:conceptoTxt,uuid:uuidC,satEstado:null,satCancelado:false,
         subtotal:(c.subtotal||0)/100,iva:(c.iva||0)/100,total:(c.total||0)/100,
         concepto:'GASTO FACTURADO',desc:conceptoTxt||(c.tipo==='parquimetro'?'Parquímetro':'Factura de gasto'),
-        pagaOp:pagaOpC,tipo:'xml',autorizado:true,origenPrecarga:true
+        pagaOp:pagaOpC,tipo:'xml',autorizado:true,origenPrecarga:true,xmlURL:c.xmlURL||null
       });
       agregados.push({uuid:uuidC,bucket:'gastosXML'});
     }
@@ -2784,10 +2787,11 @@ function renderDieselXML(){
       </select>
     </td>
     <td>${x.satCancelado?'<span class="badge bg-red" style="color:#c1121f" title="Cancelado ante el SAT — excluido del cálculo">⚠ CANCELADO SAT</span>':''}</td>
+    <td>${x.xmlURL?`<a href="${x.xmlURL}" target="_blank" style="font-size:11px;margin-right:6px">📄 XML</a>`:'<span style="font-size:11px;color:#aaa" title="No se guardó el XML de este comprobante">📄 —</span>'}<button class="btn-sm" style="background:none;border:none;cursor:pointer;font-size:11px" onclick="descargarPDFDiesel(${i})" title="Generar PDF a partir de los datos del XML">🧾 PDF</button></td>
     <td><button style="background:#fde8e8;color:#9b1c1c;border:none;cursor:pointer;border-radius:4px;padding:2px 8px;font-size:11px" onclick="eliminarDieselXML(${i})">✕</button></td>
   </tr>`;}).join('');
   cont.innerHTML=`<div class="tbl-wrap"><table>
-    <thead><tr><th>Fecha</th><th>Gasolinera</th><th>Folio</th><th class="r">Litros</th><th class="r">$/lt</th><th class="r">Total</th><th>¿Quién paga?</th><th>Estado SAT</th><th></th></tr></thead>
+    <thead><tr><th>Fecha</th><th>Gasolinera</th><th>Folio</th><th class="r">Litros</th><th class="r">$/lt</th><th class="r">Total</th><th>¿Quién paga?</th><th>Estado SAT</th><th>Archivo</th><th></th></tr></thead>
     <tbody>${rows}</tbody>
   </table></div>
   <div style="display:flex;gap:16px;font-size:12px;margin-top:6px;flex-wrap:wrap">
@@ -2800,6 +2804,17 @@ function toggleDieselXMLPagaOp(i,val){
   if(!liq||!liq.dieselXML)return;
   liq.dieselXML[i].pagaOp=(val==='op');
   renderDieselXML();calcDiesel();guardarEstado();
+}
+function descargarPDFDiesel(i){
+  if(!liq||!liq.dieselXML)return;
+  var x=liq.dieselXML[i];if(!x)return;
+  TMLComprobantes.generarPDF({
+    titulo:'Comprobante de diesel — '+(liq.opNombre||''),
+    folio:x.folio,fecha:x.fecha,emisorNombre:x.emisor,emisorRFC:x.rfc,
+    conceptos:[x.concepto||''],
+    extra:[['Litros',fmtN(x.litros)],['Precio/lt',fmt(x.precioUnitario)]],
+    subtotal:x.subtotal,iva:x.iva,total:x.total,uuid:x.uuid
+  });
 }
 function eliminarDieselXML(i){
   if(!liq||!liq.dieselXML)return;
@@ -3111,6 +3126,16 @@ function parseIAVE(text,fname){
   $('iaveInfo').innerHTML='<div class="alert alert-ok">'+fname+' — '+liq.autopistas.length+' cruces para unidad '+liq.unidad+'.'+(nIaveSkip?' <strong>'+nIaveSkip+' ya liquidados excluidos.</strong>':'')+'</div>';
 }
 
+function descargarPDFCaseta(i){
+  if(!liq||!liq.autopistas)return;
+  var a=liq.autopistas[i];if(!a)return;
+  TMLComprobantes.generarPDF({
+    titulo:'Comprobante de caseta — '+(liq.opNombre||''),
+    fecha:a.fecha,emisorNombre:a.emisor,emisorRFC:a.rfc,
+    conceptos:[a.concepto||a.caseta||''],
+    subtotal:a.subtotal,iva:a.iva,total:a.importe,uuid:a.uuid
+  });
+}
 function eliminarAutopista(i){
   if(!liq||!liq.autopistas)return;
   var _rem=liq.autopistas[i];
@@ -3133,17 +3158,21 @@ function renderIAVE(){
   var totEmp=0,totOp=0,nXlsx=0,nXml=0;
   liq.autopistas.forEach(function(a,i){
     if(!a.satCancelado){if(a.pagaOp)totOp+=a.importe;else totEmp+=a.importe;}
-    var fila='<tr'+(a.satCancelado?' style="opacity:.55;text-decoration:line-through"':'')+'><td>'+a.fecha+'</td><td>'+a.hora+'</td><td>'+a.caseta+(a.origenPrecarga?' <span class="badge" style="background:#dbeafe;color:#1e40af;border:1px solid #93c5fd" title="Se jaló automáticamente de precarga.mudanzastml.mx">📥 Pre-cargado</span>':'')+(a.satCancelado?' <span class="badge bg-red" style="color:#c1121f" title="Cancelado ante el SAT — excluido del cálculo">⚠ CANCELADO SAT</span>':'')+'</td><td>'+a.carril+'</td><td class="num r">'+fmt(a.importe)+'</td>'
+    var filaBase='<tr'+(a.satCancelado?' style="opacity:.55;text-decoration:line-through"':'')+'><td>'+a.fecha+'</td><td>'+a.hora+'</td><td>'+a.caseta+(a.origenPrecarga?' <span class="badge" style="background:#dbeafe;color:#1e40af;border:1px solid #93c5fd" title="Se jaló automáticamente de precarga.mudanzastml.mx">📥 Pre-cargado</span>':'')+(a.satCancelado?' <span class="badge bg-red" style="color:#c1121f" title="Cancelado ante el SAT — excluido del cálculo">⚠ CANCELADO SAT</span>':'')+'</td><td>'+a.carril+'</td><td class="num r">'+fmt(a.importe)+'</td>'
       +'<td><select class="input-sm" onchange="liq.autopistas['+i+'].pagaOp=this.value===\'si\';renderIAVE();guardarEstado()">'
-      +'<option value="no"'+(a.pagaOp?'':' selected')+'>Empresa</option><option value="si"'+(a.pagaOp?' selected':'')+'>Operador</option></select></td>'
-      +'<td><button class="btn btn-sm" style="background:#fde8e8;color:#9b1c1c;border:none;cursor:pointer" onclick="eliminarAutopista('+i+')">✕</button></td></tr>';
-    if(esCruceXML(a)){tbM.innerHTML+=fila;nXml++;}
-    else{tbX.innerHTML+=fila;nXlsx++;}
+      +'<option value="no"'+(a.pagaOp?'':' selected')+'>Empresa</option><option value="si"'+(a.pagaOp?' selected':'')+'>Operador</option></select></td>';
+    var deleteCell='<td><button class="btn btn-sm" style="background:#fde8e8;color:#9b1c1c;border:none;cursor:pointer" onclick="eliminarAutopista('+i+')">✕</button></td></tr>';
+    if(esCruceXML(a)){
+      var archivoCell='<td>'+(a.xmlURL?'<a href="'+a.xmlURL+'" target="_blank" style="font-size:11px;margin-right:6px">📄 XML</a>':'<span style="font-size:11px;color:#aaa" title="No se guardó el XML de este comprobante">📄 —</span>')+'<button class="btn-sm" style="background:none;border:none;cursor:pointer;font-size:11px" onclick="descargarPDFCaseta('+i+')" title="Generar PDF a partir de los datos del XML">🧾 PDF</button></td>';
+      tbM.innerHTML+=filaBase+archivoCell+deleteCell;nXml++;
+    }else{
+      tbX.innerHTML+=filaBase+deleteCell;nXlsx++;
+    }
   });
   $('iaveXlsxCount').textContent='('+nXlsx+')';
   $('iaveXmlCount').textContent='('+nXml+')';
   $('tfIAVEXlsx').innerHTML=nXlsx?'':'<tr><td colspan="7" style="text-align:center;color:#aaa;padding:10px">Sin cruces por Excel/IAVE.</td></tr>';
-  $('tfIAVEXml').innerHTML=nXml?'':'<tr><td colspan="7" style="text-align:center;color:#aaa;padding:10px">Sin cruces por XML.</td></tr>';
+  $('tfIAVEXml').innerHTML=nXml?'':'<tr><td colspan="8" style="text-align:center;color:#aaa;padding:10px">Sin cruces por XML.</td></tr>';
   $('kpisIAVE').innerHTML='<div class="kpi"><div class="v">'+liq.autopistas.length+'</div><div class="k">Cruces</div></div>'
     +'<div class="kpi"><div class="v">'+fmt(totEmp+totOp)+'</div><div class="k">Total</div></div>'
     +'<div class="kpi"><div class="v green">'+fmt(totEmp)+'</div><div class="k">Empresa</div></div>'
@@ -3253,6 +3282,18 @@ function esCasetaXML(doc){
   return false;
 }
 
+// Guarda el XML original en Firebase Storage (para poder verlo/descargarlo
+// después desde la tabla) sin bloquear el registro del gasto/caseta/diesel
+// si falla — el respaldo del XML es un plus, no debe impedir seguir
+// trabajando si Storage no está disponible en ese momento.
+async function subirXMLComprobante(carpeta,uuid,fname,text){
+  try{
+    return await TMLComprobantes.subirXML('comprobantes/'+carpeta+'/'+(uuid||fname)+'.xml',text);
+  }catch(e){
+    console.error('subirXMLComprobante:',e);
+    return null;
+  }
+}
 async function parseGastoXML(text,fname){
   if(!liq)return;
   const doc=new DOMParser().parseFromString(text,'text/xml');
@@ -3285,6 +3326,7 @@ async function parseGastoXML(text,fname){
       if(vu>0)precioUnitario=vu;
     });
     doc.querySelectorAll('Traslado').forEach(function(t){ivaTot+=parseFloat(t.getAttribute('Importe')||0);});
+    var xmlURLDiesel=await subirXMLComprobante('diesel',uuidChk,fname,text);
     liq.dieselXML.push({
       id:'dxml-'+Date.now()+'-'+Math.random().toString(36).slice(2),
       fecha:(comp.getAttribute('Fecha')||'').slice(0,10),
@@ -3297,7 +3339,8 @@ async function parseGastoXML(text,fname){
       litros:litrosTot,precioUnitario:precioUnitario,
       subtotal:subtotalTot,iva:ivaTot,
       total:parseFloat(comp.getAttribute('Total')||0)||subtotalTot+ivaTot,
-      pagaOp:true
+      pagaOp:true,
+      xmlURL:xmlURLDiesel
     });
     registrarFacturaUsada(uuidChk,liq.num,liq.unidad,'diesel');
     renderDieselXML();calcDiesel();guardarEstado();
@@ -3321,9 +3364,10 @@ async function parseGastoXML(text,fname){
     var totalC=parseFloat(comp.getAttribute('Total')||0);
     var subtotalC=parseFloat(comp.getAttribute('SubTotal')||0)||(totalC-ivaC);
     if(!liq.autopistas)liq.autopistas=[];
+    var xmlURLCaseta=await subirXMLComprobante('casetas',uuidChk,fname,text);
     liq.autopistas.push({fecha:(comp.getAttribute('Fecha')||'').slice(0,10),hora:'',caseta:casetaNombre,carril:'XML',importe:totalC,pagaOp:true,
       rfc:rfcEmisorC,emisor:nombreEmisorC,concepto:descC,subtotal:subtotalC,iva:ivaC,
-      uuid:uuidChk,satEstado:null,satCancelado:false});
+      uuid:uuidChk,satEstado:null,satCancelado:false,xmlURL:xmlURLCaseta});
     registrarFacturaUsada(uuidChk,liq.num,liq.unidad,'caseta');
     renderIAVE();guardarEstado();
     validarCFDIsSATLiquidacion(true);
@@ -3340,12 +3384,14 @@ async function parseGastoXML(text,fname){
   const emisor=doc.querySelector('Emisor');
   const conceptoDesc=getConceptoDesc(doc);
   const tfdG=tfdChk;
+  var xmlURLGasto=await subirXMLComprobante('gastos',tfdG?tfdG.getAttribute('UUID')||'':'',fname,text);
   liq.gastosXML.push({serie:comp.getAttribute('Serie')||'',folio:comp.getAttribute('Folio')||'',
     fecha:(comp.getAttribute('Fecha')||'').slice(0,10),proveedor:emisor?emisor.getAttribute('Nombre'):'',
     rfc:emisor?emisor.getAttribute('Rfc')||'':'',conceptoDesc:conceptoDesc,
     uuid:tfdG?tfdG.getAttribute('UUID')||'':'',satEstado:null,satCancelado:false,
     subtotal:subtotal,iva:iva,total:parseFloat(comp.getAttribute('Total')||0),
-    concepto:'GASTO FACTURADO',desc:conceptoDesc||fname,pagaOp:false,tipo:'xml',autorizado:true});
+    concepto:'GASTO FACTURADO',desc:conceptoDesc||fname,pagaOp:false,tipo:'xml',autorizado:true,
+    xmlURL:xmlURLGasto});
   registrarFacturaUsada(tfdG?tfdG.getAttribute('UUID')||'':'',liq.num,liq.unidad,'gasto');
   renderGastos();
   guardarEstado();
@@ -3607,10 +3653,11 @@ function renderGastos(){
         +'<option value="si"'+(g.pagaOp?' selected':'')+'>Operador</option>'
       +'</select></td>'
       +'<td>'+estadoCell+'</td>'
+      +'<td>'+(g.tipo==='xml'?(''+(g.xmlURL?'<a href="'+g.xmlURL+'" target="_blank" style="font-size:11px;margin-right:6px">📄 XML</a>':'<span style="font-size:11px;color:#aaa" title="No se guardó el XML de este comprobante">📄 —</span>')+'<button class="btn-sm" style="background:none;border:none;cursor:pointer;font-size:11px" onclick="descargarPDFGasto('+i+')" title="Generar PDF a partir de los datos del XML">🧾 PDF</button>'):'—')+'</td>'
       +'<td><button class="btn btn-sm" style="background:#fde8e8;color:#9b1c1c;border:none;cursor:pointer" onclick="eliminarGasto('+i+')">✕</button></td></tr>';
   });
   $('tfGastos').innerHTML='<tr style="background:#f5f5f8;font-weight:700"><td colspan="4">TOTALES</td><td class="num r">'+fmt(totOp+totEmp)+'</td>'
-    +'<td colspan="2"><span style="color:#0a5233">Op: '+fmt(totOp)+'</span> · <span style="color:#9b1c1c">Emp: '+fmt(totEmp)+'</span></td><td colspan="2"></td></tr>';
+    +'<td colspan="2"><span style="color:#0a5233">Op: '+fmt(totOp)+'</span> · <span style="color:#9b1c1c">Emp: '+fmt(totEmp)+'</span></td><td colspan="3"></td></tr>';
 }
 
 function toggleGastoPagaOp(i,val){
@@ -3630,6 +3677,22 @@ function toggleGastoPagaOp(i,val){
   renderGastos();guardarEstado();
 }
 
+function descargarPDFGasto(i){
+  if(!liq)return;
+  const todos=liq.gastosXML.concat(liq.gastos);
+  const g=todos[i];
+  if(!g||g.tipo!=='xml')return;
+  TMLComprobantes.generarPDF({
+    titulo:'Comprobante de gasto — '+(liq.opNombre||''),
+    folio:(g.serie||'')+(g.folio||''),
+    fecha:g.fecha,
+    emisorNombre:g.proveedor,
+    emisorRFC:g.rfc,
+    conceptos:[g.conceptoDesc||g.desc||''],
+    subtotal:g.subtotal,iva:g.iva,total:g.total,
+    uuid:g.uuid
+  });
+}
 function eliminarGasto(i){
   if(!liq)return;
   const todos=liq.gastosXML.concat(liq.gastos);

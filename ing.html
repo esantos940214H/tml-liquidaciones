@@ -259,7 +259,7 @@ tr:hover td{background:#fafafa}
           <th style="width:32px"><input type="checkbox" title="Seleccionar todos sin liquidar" onchange="toggleTodosIng(this)"></th>
           <th>Folio</th><th>Fecha</th><th>Operador</th><th>Cliente</th>
           <th class="r">Flete</th><th class="r">Maniobras</th><th class="r">Otros</th><th class="r">Subtotal</th><th class="r">IVA</th><th class="r">Ret.</th><th class="r">Total</th>
-          <th>Estatus</th><th>Liq.</th><th></th>
+          <th>Estatus</th><th>Liq.</th><th>Archivo</th><th></th>
         </tr></thead>
         <tbody id="tbIngresos"></tbody>
       </table>
@@ -272,9 +272,13 @@ tr:hover td{background:#fafafa}
 <!-- Firebase compat -->
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-storage-compat.js"></script>
 <!-- Firebase Auth (login del módulo — ver shared/sesion.js) -->
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
 <script src="shared/sesion.js"></script>
+<!-- Guardar XML/PDF de comprobantes + generar PDF al vuelo (ver shared/comprobantes.js) -->
+<script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+<script src="shared/comprobantes.js"></script>
 <script>
 window._fbInit=false;
 window._fbCallbacks=[];
@@ -812,7 +816,7 @@ function clasificarConceptosCFDI(doc,subtotal){
   return {subtFlete,subtManiobras,subtOtros};
 }
 
-function parseXML(text,fname,unidad){
+async function parseXML(text,fname,unidad){
   if(usuarioBloqueadoIngresos())return;
   const doc=new DOMParser().parseFromString(text,'text/xml');
   const comp=doc.querySelector('Comprobante');
@@ -874,10 +878,13 @@ function parseXML(text,fname,unidad){
     });
   }
   const tipoDerivado=subtManiobras>0&&!subtFlete?'maniobra':subtOtros>0&&!subtFlete&&!subtManiobras?'otro':'flete_for';
+  var xmlURL=null;
+  try{xmlURL=await TMLComprobantes.subirXML('comprobantes/ingresos/'+(uuid||fname)+'.xml',text);}
+  catch(e){console.error('subirXML ingresos:',e);}
   ingresosDB.push({id:uid(),unidad,folio:folioCompleto,fecha,cliente,tipo:tipoDerivado,
     subtotal,subtFlete,subtManiobras,subtOtros,iva,ret,total:parseFloat(comp.getAttribute('Total')||0),
     estado:'sin_liquidar',liqNum:null,origen:'xml',ruta,
-    uuid,rfcEmisor,rfcReceptor,satEstado:null,satCancelado:false});
+    uuid,rfcEmisor,rfcReceptor,satEstado:null,satCancelado:false,xmlURL:xmlURL});
   guardar();renderIngresos();
   alert('✅ '+fname+' registrado.'+(ruta.length?' Ruta: '+ruta.length+' tramos.':''));
 }
@@ -919,7 +926,7 @@ function toggleMultiOp(){
   if($('dgContenido'))$('dgContenido').style.display=(chk.checked&&dgPend)?'block':'none';
 }
 
-function parseXMLMultiOp(text,fname){
+async function parseXMLMultiOp(text,fname){
   // Sin candado aquí: hay que poder cargar el XML para llegar a escribir el
   // ID a sustituir por renglón — el bloqueo real se aplica en
   // guardarDesglose(), renglón por renglón (ver estaBloqueado).
@@ -944,8 +951,12 @@ function parseXMLMultiOp(text,fname){
     if(!confirm('⚠️ '+fname+': este CFDI (UUID '+uuid.slice(0,8)+'...) YA está registrado en Ingresos.\n¿Desglosarlo de todas formas? (podría duplicar el ingreso)'))return;
   }
   const {subtFlete,subtManiobras,subtOtros}=clasificarConceptosCFDI(doc,subtotal);
+  var xmlURLDesglose=null;
+  try{xmlURLDesglose=await TMLComprobantes.subirXML('comprobantes/ingresos/'+(uuid||fname)+'.xml',text);}
+  catch(e){console.error('subirXML multiOp:',e);}
   dgPend={
     fname:fname,
+    xmlURL:xmlURLDesglose,
     serie:comp.getAttribute('Serie')||'',folio:comp.getAttribute('Folio')||'',
     fecha:(comp.getAttribute('Fecha')||'').slice(0,10),
     cliente:receptor?receptor.getAttribute('Nombre')||'':'',
@@ -1146,7 +1157,7 @@ function guardarDesglose(){
           candidato.destino=destino;candidato.pedido=g.pedidos.join(' / ');
           candidato.rfcEmisor=dgPend.rfcEmisor;candidato.rfcReceptor=dgPend.rfcReceptor;
           candidato.satEstado=null;candidato.satCancelado=false;
-          candidato.sustituidoPorXML=true;
+          candidato.sustituidoPorXML=true;candidato.xmlURL=dgPend.xmlURL;
           candidato.observaciones=(candidato.observaciones||'')+' — sustituido por XML '+folioCompleto+' el '+hoy();
           sustituciones.push(coincide
             ?'La parte proporcional de este XML sustituye al ingreso identificado con el número de id "'+idSust+'".'
@@ -1177,7 +1188,7 @@ function guardarDesglose(){
             destino:destino,pedido:g.pedidos.join(' / '),
             rfcEmisor:dgPend.rfcEmisor,rfcReceptor:dgPend.rfcReceptor,
             satEstado:null,satCancelado:false,
-            esRevisionPendiente:true,conflictoManualId:candidato.id
+            esRevisionPendiente:true,conflictoManualId:candidato.id,xmlURL:dgPend.xmlURL
           });
           sustituciones.push('⚠️ El monto del XML ('+fmt(fromCents(g.totC))+') NO coincide con el ingreso manual identificado con ID "'+idSust+'" ('+fmt(candidato.total)+'), y ese ingreso ya está LIQUIDADO (liq. #'+candidato.liqNum+'). Se registró el XML aparte y quedó pendiente de revisión por un administrador — NO se sustituyó automáticamente.');
         }
@@ -1192,7 +1203,7 @@ function guardarDesglose(){
           uuid:dgPend.uuid,facturaUUID:dgPend.uuid,esDesglose:true,
           destino:destino,pedido:g.pedidos.join(' / '),
           rfcEmisor:dgPend.rfcEmisor,rfcReceptor:dgPend.rfcReceptor,
-          satEstado:null,satCancelado:false
+          satEstado:null,satCancelado:false,xmlURL:dgPend.xmlURL
         });
       }
     }
@@ -1221,10 +1232,20 @@ function handlePDFFiles(files){
 
 function fileToBase64(file){return new Promise((res,rej)=>{const r=new FileReader();r.onload=e=>res(e.target.result.split(',')[1]);r.onerror=rej;r.readAsDataURL(file);});}
 
+// Guarda la URL del PDF ya subido a Storage mientras el usuario revisa/ajusta
+// el formulario antes de dar clic en "Registrar" — a diferencia del XML (que
+// se sube automáticamente al registrar), aquí el PDF ES el archivo fuente
+// (no hay XML del cual regenerarlo), así que se conserva tal cual.
+let _pdfURLPendiente=null;
+
 async function leerPDF(file,unidad){
   $('ingInfo').style.display='block';
   $('ingInfo').innerHTML='<div class="alert alert-info">⏳ Analizando PDF con IA...</div>';
+  _pdfURLPendiente=null;
   try{
+    TMLComprobantes.subirArchivo('comprobantes/ingresos-pdf/'+Date.now()+'-'+file.name.replace(/[^a-zA-Z0-9._-]/g,'_'),file)
+      .then(function(url){_pdfURLPendiente=url;})
+      .catch(function(e){console.error('subirArchivo PDF:',e);});
     const base64=await fileToBase64(file);
     const res=await fetch('https://api.anthropic.com/v1/messages',{
       method:'POST',
@@ -1304,7 +1325,9 @@ function agregarIngresoReal(){
     subtotal,subtFlete,subtManiobras,subtOtros,
     iva:parseFloat($('ingIva').value||0),ret:parseFloat($('ingRet').value||0),
     total:parseFloat($('ingTotal').value||0),estado:'sin_liquidar',liqNum:null,origen:'manual',ruta:_ruta,observaciones:_obs,
-    sinFacturaJustificar:_sinFacturaJustificar,fechaLimiteJustificacion:_fechaLimite,capturadoPor:_capturadoPor,sustituidoPorXML:false});
+    sinFacturaJustificar:_sinFacturaJustificar,fechaLimiteJustificacion:_fechaLimite,capturadoPor:_capturadoPor,sustituidoPorXML:false,
+    pdfURL:_pdfURLPendiente});
+  _pdfURLPendiente=null;
   limpiarForm();guardar();renderIngresos();
   if(_sinFacturaJustificar)alert('✅ Registrado. Tienes hasta '+_fechaLimite+(PRUEBA_MINUTOS_JUSTIFICAR?' (MODO PRUEBA: '+PRUEBA_MINUTOS_JUSTIFICAR+' min)':' ('+DIAS_HABILES_JUSTIFICAR+' días hábiles)')+' para que facturación lo sustituya con el XML real usando el ID "'+_obs+'".');
 }
@@ -1325,7 +1348,7 @@ function renderIngresos(){
   }).sort((a,b)=>b.fecha.localeCompare(a.fecha));
 
   const tb=$('tbIngresos');tb.innerHTML='';
-  if(!filtrados.length){tb.innerHTML='<tr><td colspan="15" style="text-align:center;color:#aaa;padding:20px">Sin viajes registrados</td></tr>';return;}
+  if(!filtrados.length){tb.innerHTML='<tr><td colspan="16" style="text-align:center;color:#aaa;padding:20px">Sin viajes registrados</td></tr>';return;}
 
   let totSub=0,totFlete=0,totMan=0,totOtros=0,totTot=0;
   filtrados.forEach(v=>{
@@ -1348,6 +1371,7 @@ function renderIngresos(){
       <td class="num r">${fmt(v.ret)}</td><td class="num r">${fmt(v.total)}</td>
       <td><span class="badge ${v.estado==='sin_liquidar'?'bg-yellow':'bg-green'}">${v.estado==='sin_liquidar'?'Sin liquidar':'Liquidado'}</span>${v.satCancelado?' <span class="badge bg-red" style="color:#c1121f" title="Cancelado ante el SAT — se excluyó del cálculo de su liquidación">⚠ CFDI cancelado</span>':(v.satEstado==='Vigente'?' <span class="badge bg-green" title="Verificado vigente ante el SAT">✓ CFDI Vigente <span style="font-size:9px;opacity:.7">SAT</span></span>':'')}</td>
       <td style="font-size:11px;color:#aaa">${v.liqNum?'Liq.#'+v.liqNum:'—'}</td>
+      <td style="font-size:11px">${v.xmlURL?`<a href="${v.xmlURL}" target="_blank" style="margin-right:6px">📄 XML</a><button class="btn-sm" style="background:none;border:none;cursor:pointer;font-size:11px" onclick="descargarPDFIngreso('${v.id}')" title="Generar PDF a partir de los datos del XML">🧾 PDF</button>`:(v.pdfURL?`<a href="${v.pdfURL}" target="_blank">📎 PDF</a>`:'<span style="color:#aaa">—</span>')}</td>
       <td>${v.estado==='sin_liquidar'?`<button style="background:#fde8e8;color:#9b1c1c;border:none;cursor:pointer;border-radius:4px;padding:3px 8px;font-size:11px" onclick="eliminar('${v.id}')">✕</button>`:'—'}</td>
     </tr>`;
   });
@@ -1361,6 +1385,19 @@ function renderIngresos(){
   </div>`;
 }
 
+function descargarPDFIngreso(id){
+  const v=ingresosDB.find(x=>x.id===id);
+  if(!v)return;
+  const op=OPERADORES.find(o=>o.unidad===v.unidad);
+  TMLComprobantes.generarPDF({
+    titulo:'Comprobante de ingreso — '+(op?op.nombre:'Unidad '+v.unidad),
+    folio:v.folio,fecha:v.fecha,
+    receptorRFC:v.rfcReceptor,
+    extra:[['Cliente',v.cliente],['RFC emisor (TML)',v.rfcEmisor]],
+    conceptos:[],
+    subtotal:v.subtotal,iva:v.iva,total:v.total,uuid:v.uuid
+  });
+}
 function eliminar(id){
   lockRequest('Eliminar viaje/ingreso', function(){
     ingresosDB=ingresosDB.filter(v=>v.id!==id);

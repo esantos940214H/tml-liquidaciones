@@ -187,7 +187,7 @@ tr:hover td{background:#fafafa}
     <div class="card-title">📋 Comprobantes registrados</div>
     <div class="tbl-wrap"><table>
       <thead><tr>
-        <th>Tipo</th><th>Fecha</th><th>Operador / Unidad</th><th class="r">Total</th><th>¿Quién paga?</th><th>Conceptos</th><th>Estatus</th><th></th>
+        <th>Tipo</th><th>Fecha</th><th>Operador / Unidad</th><th class="r">Total</th><th>¿Quién paga?</th><th>Conceptos</th><th>Estatus</th><th>Archivo</th><th></th>
       </tr></thead>
       <tbody id="tbPrecarga"></tbody>
     </table></div>
@@ -198,9 +198,13 @@ tr:hover td{background:#fafafa}
 <!-- Firebase compat -->
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-storage-compat.js"></script>
 <!-- Firebase Auth (login del módulo — ver shared/sesion.js) -->
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
 <script src="shared/sesion.js"></script>
+<!-- Guardar XML de comprobantes + generar PDF al vuelo (ver shared/comprobantes.js) -->
+<script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+<script src="shared/comprobantes.js"></script>
 <script>
 window._fbInit=false;
 window._fbCallbacks=[];
@@ -491,7 +495,7 @@ function sugerirPagaOp(){
   sel.value=$('pcTipo').value==='caseta'?'si':'no';
 }
 
-function procesarXML(text,fname){
+async function procesarXML(text,fname){
   var opId=parseInt($('pcOperador').value||0);
   var unidad=parseInt($('pcUnidad').value||0);
   if(!opId||!unidad){alert('Selecciona operador y unidad antes de subir el XML de "'+fname+'".');return;}
@@ -524,6 +528,13 @@ function procesarXML(text,fname){
     if(d)conceptos.push(d);
   });
 
+  // Guarda el XML original en Firebase Storage para poder verlo/descargarlo
+  // después — si falla (ej. sin conexión a Storage) no bloquea el registro,
+  // el respaldo del XML es un plus, no un requisito.
+  var xmlURL=null;
+  try{xmlURL=await TMLComprobantes.subirXML('comprobantes/precarga/'+uuid+'.xml',text);}
+  catch(e){console.error('subirXML precarga:',e);}
+
   var docData={
     uuid:uuid,
     tipo:tipo,
@@ -532,11 +543,13 @@ function procesarXML(text,fname){
     pagaOp:pagaOp,
     fecha:(comp.getAttribute('Fecha')||'').slice(0,10),
     emisorRFC:emisor?emisor.getAttribute('Rfc')||'':'',
+    emisorNombre:emisor?emisor.getAttribute('Nombre')||'':'',
     receptorRFC:receptorRFC,
     subtotal:pesosACentavos(subtotal),
     iva:pesosACentavos(iva),
     total:pesosACentavos(total),
     conceptos:conceptos,
+    xmlURL:xmlURL,
     estado:'pendiente',
     liquidacionId:'',
     createdAt:new Date().toISOString(),
@@ -614,6 +627,23 @@ async function reasignarPagaOp(uuidDoc,valor){
 // mismo XML, ahora al operador correcto (el dedup por UUID lo vuelve a
 // aceptar porque ya no existe el documento anterior).
 // ══════════════════════════════════════════════
+function descargarPDFComprobante(uuidDoc){
+  var c=comprobantesDB.find(function(x){return x.id===uuidDoc;});
+  if(!c)return;
+  var op=OPERADORES.find(function(o){return o.unidad===c.operador;});
+  TMLComprobantes.generarPDF({
+    titulo:'Comprobante pre-cargado — '+(op?op.nombre:'Unidad '+c.unidad),
+    fecha:c.fecha,
+    emisorNombre:c.emisorNombre,
+    emisorRFC:c.emisorRFC,
+    receptorRFC:c.receptorRFC,
+    conceptos:c.conceptos||[],
+    subtotal:(c.subtotal||0)/100,
+    iva:(c.iva||0)/100,
+    total:(c.total||0)/100,
+    uuid:c.uuid
+  });
+}
 async function eliminarComprobante(uuidDoc){
   var actual=comprobantesDB.find(function(c){return c.id===uuidDoc;});
   if(!actual){alert('No se encontró el comprobante.');return;}
@@ -651,7 +681,7 @@ function renderPrecarga(){
 
   tb.innerHTML='';
   if(!filas.length){
-    tb.innerHTML='<tr><td colspan="8" style="text-align:center;color:#aaa;padding:20px">Sin comprobantes registrados.</td></tr>';
+    tb.innerHTML='<tr><td colspan="9" style="text-align:center;color:#aaa;padding:20px">Sin comprobantes registrados.</td></tr>';
     return;
   }
   var opts=function(sel){return UNIDADES.map(function(u){return '<option value="'+u+'"'+(u===sel?' selected':'')+'>'+u+'</option>';}).join('');};
@@ -680,6 +710,7 @@ function renderPrecarga(){
       +'</td>'
       +'<td style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px" title="'+(c.conceptos||[]).join(', ').replace(/"/g,'&quot;')+'">'+(c.conceptos||[]).join(', ')+'</td>'
       +'<td>'+(esPend?'<span class="badge bg-yellow">Pendiente</span>':'<span class="badge bg-green">✓ Jalado'+(c.liquidacionId?' — '+c.liquidacionId:'')+'</span>')+'</td>'
+      +'<td style="font-size:11px">'+(c.xmlURL?'<a href="'+c.xmlURL+'" target="_blank" style="margin-right:6px">📄 XML</a>':'<span style="color:#aaa" title="No se guardó el XML de este comprobante">📄 —</span>')+'<button class="btn-sm" style="background:none;border:none;cursor:pointer;font-size:11px" onclick="descargarPDFComprobante(\''+c.id+'\')" title="Generar PDF a partir de los datos del XML">🧾 PDF</button></td>'
       +'<td>'+(esPend?'<button class="btn-sm" style="background:#fde8e8;color:#9b1c1c;border:none;cursor:pointer;border-radius:4px;padding:3px 8px" onclick="eliminarComprobante(\''+c.id+'\')">✕ Eliminar</button>':'')+'</td>'
       +'</tr>';
   });
