@@ -528,13 +528,6 @@ async function procesarXML(text,fname){
     if(d)conceptos.push(d);
   });
 
-  // Guarda el XML original en Firebase Storage para poder verlo/descargarlo
-  // después — si falla (ej. sin conexión a Storage) no bloquea el registro,
-  // el respaldo del XML es un plus, no un requisito.
-  var xmlURL=null;
-  try{xmlURL=await TMLComprobantes.subirXML('comprobantes/precarga/'+uuid+'.xml',text);}
-  catch(e){console.error('subirXML precarga:',e);}
-
   var docData={
     uuid:uuid,
     tipo:tipo,
@@ -549,14 +542,25 @@ async function procesarXML(text,fname){
     iva:pesosACentavos(iva),
     total:pesosACentavos(total),
     conceptos:conceptos,
-    xmlURL:xmlURL,
+    xmlURL:null,
     estado:'pendiente',
     liquidacionId:'',
     createdAt:new Date().toISOString(),
     createdBy:(usuarioSesion()||{}).usuario||'',
     updatedAt:new Date().toISOString()
   };
-  registrarComprobante(docData,fname);
+  await registrarComprobante(docData,fname);
+
+  // Sube el XML original a Firebase Storage EN SEGUNDO PLANO, sin bloquear
+  // el registro del comprobante (antes se esperaba esta subida antes de
+  // registrar, y si Storage tardaba o se quedaba colgado — sin red, reglas
+  // mal configuradas, etc. — la pre-carga entera parecía trabada). Si el
+  // comprobante ya se registró, cuando la subida termine solo se le agrega
+  // el xmlURL con una escritura de fusión (merge), nunca un set en blanco
+  // que pudiera borrar los demás campos.
+  TMLComprobantes.subirXML('comprobantes/precarga/'+uuid+'.xml',text).then(function(url){
+    return firebase.firestore().collection('comprobantesPrecargados').doc(uuid).set({xmlURL:url},{merge:true});
+  }).catch(function(e){console.error('subirXML precarga:',e);});
 }
 
 async function registrarComprobante(docData,fname){
