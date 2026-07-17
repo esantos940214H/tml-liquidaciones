@@ -15,13 +15,6 @@ header{background:#1a1a2e;color:#fff;padding:14px 24px;display:flex;align-items:
 .nav a:hover{color:#fff;border-color:#555}
 .nav a.active{color:#fff;background:#e63946;border-color:#e63946}
 .container{max-width:700px;margin:0 auto;padding:20px 16px}
-.card{background:#fff;border-radius:10px;box-shadow:0 2px 12px rgba(0,0,0,.07);padding:24px 28px;margin-bottom:16px}
-.card-title{font-size:15px;font-weight:700;color:#1a1a2e;margin-bottom:14px}
-.card p{font-size:13px;line-height:1.7;color:#444;margin-bottom:10px}
-.card ul{margin:0 0 10px 20px;font-size:13px;line-height:1.8;color:#444}
-.alert{padding:9px 13px;border-radius:7px;font-size:12px;margin-bottom:10px}
-.alert-info{background:#e8f4fd;color:#0369a1;border:1px solid #bae6fd}
-code{background:#f0f2f5;padding:1px 6px;border-radius:4px;font-size:12px}
 </style>
 <script>if(window!==window.top)document.documentElement.className+=' in-iframe';</script>
 </head>
@@ -43,19 +36,7 @@ code{background:#f0f2f5;padding:1px 6px;border-radius:4px;font-size:12px}
   </div>
 </header>
 
-<div class="container">
-  <div class="alert alert-info">ℹ️ Este panel ya no da de alta usuarios ni cambia contraseñas — esa función se movió a Firebase Authentication.</div>
-  <div class="card">
-    <div class="card-title">👤 Administración de usuarios</div>
-    <p>El acceso a cada módulo ahora se controla con <strong>Firebase Authentication</strong> (email + contraseña), no con la tabla de usuarios que manejaba este panel antes. Por eso el formulario de alta/edición que vivía aquí se quitó — ya no tenía ningún efecto sobre quién puede entrar.</p>
-    <p><strong>Cada persona puede resolver su propia contraseña sin ayuda:</strong></p>
-    <ul>
-      <li>Botón <strong>🔑 Cambiar contraseña</strong> (junto a "Cerrar sesión" en cualquier módulo) — para cuando sí recuerda su contraseña actual y quiere ponerse una nueva.</li>
-      <li>Link <strong>¿Olvidaste tu contraseña?</strong> (en la pantalla de inicio de sesión) — Firebase le manda un correo con un enlace para poner una contraseña nueva, sin necesitar la anterior.</li>
-    </ul>
-    <p><strong>Dar de alta a alguien nuevo, o cambiar a qué módulos puede entrar,</strong> sigue requiriendo la clave de administrador de Firebase, que por seguridad nunca puede vivir en el navegador — se hace corriendo <code>admin/crear-usuarios.js</code> desde una computadora con Node.js instalado. Pídeselo a quien tenga acceso a ese script.</p>
-  </div>
-</div>
+<div class="container"></div>
 
 </body>
 </html>
