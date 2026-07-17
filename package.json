@@ -1,0 +1,19 @@
+{
+  "name": "tml-liquidaciones",
+  "version": "1.0.0",
+  "description": "",
+  "main": "sat-cfdi-worker.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "http://local_proxy@127.0.0.1:41729/git/esantos940214H/tml-liquidaciones"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "firebase-admin": "^14.2.0"
+  }
+}

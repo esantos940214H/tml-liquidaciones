@@ -41,6 +41,7 @@
 // ══════════════════════════════════════════════════════════════════════════
 
 const admin = require('firebase-admin');
+const { getAuth } = require('firebase-admin/auth');
 const path = require('path');
 
 // Ruta a la service account key (ver instrucciones arriba). Si la guardaste
@@ -48,8 +49,9 @@ const path = require('path');
 const RUTA_SERVICE_ACCOUNT = path.join(__dirname, '..', 'serviceAccountKey.json');
 
 admin.initializeApp({
-  credential: admin.credential.cert(require(RUTA_SERVICE_ACCOUNT))
+  credential: admin.cert(require(RUTA_SERVICE_ACCOUNT))
 });
+const auth = getAuth();
 
 // ── DEFINICIÓN DE USUARIOS A CREAR/ACTUALIZAR ───────────────────────────────
 // rol: 'admin' | 'cobranza' | 'operaciones' | 'consulta' | 'nomina'
@@ -124,15 +126,15 @@ const USUARIOS = [
 async function crearOActualizarUsuario(def) {
   let userRecord;
   try {
-    userRecord = await admin.auth().getUserByEmail(def.email);
-    await admin.auth().updateUser(userRecord.uid, {
+    userRecord = await auth.getUserByEmail(def.email);
+    await auth.updateUser(userRecord.uid, {
       password: def.passwordTemporal,
       displayName: def.nombre
     });
     console.log('🔄 Actualizado: ' + def.email + ' (uid ' + userRecord.uid + ')');
   } catch (err) {
     if (err.code === 'auth/user-not-found') {
-      userRecord = await admin.auth().createUser({
+      userRecord = await auth.createUser({
         email: def.email,
         password: def.passwordTemporal,
         displayName: def.nombre
@@ -144,7 +146,7 @@ async function crearOActualizarUsuario(def) {
   }
 
   const claims = { rol: def.rol, permisos: def.permisos };
-  await admin.auth().setCustomUserClaims(userRecord.uid, claims);
+  await auth.setCustomUserClaims(userRecord.uid, claims);
   console.log('   Claims asignados: ' + JSON.stringify(claims));
 }
 
