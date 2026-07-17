@@ -816,7 +816,44 @@ function clasificarConceptosCFDI(doc,subtotal){
   return {subtFlete,subtManiobras,subtOtros};
 }
 
-async function parseXML(text,fname,unidad){
+// Sube el XML original a Firebase Storage EN SEGUNDO PLANO, sin bloquear el
+// registro del viaje/ingreso — antes se esperaba (await) esta subida antes
+// de guardar, y si Storage tardaba o se quedaba colgado (sin red, reglas
+// mal configuradas, etc.) el registro completo se quedaba trabado
+// esperando. ingresosDB se guarda como UN solo documento (todo el arreglo en
+// JSON — ver guardar()), así que aquí basta con encontrar la(s) fila(s) por
+// UUID en el arreglo EN MEMORIA y volver a llamar guardar() cuando la subida
+// termine, sin arriesgar sobreescribir nada de lo que se haya capturado
+// mientras tanto.
+function subirXMLIngresoEnSegundoPlano(uuid,fname,text){
+  if(!uuid)return;
+  TMLComprobantes.subirXML('comprobantes/ingresos/'+uuid+'.xml',text).then(function(url){
+    var actualizado=false;
+    ingresosDB.forEach(function(v){
+      if(v.uuid===uuid||v.facturaUUID===uuid){v.xmlURL=url;actualizado=true;}
+    });
+    if(actualizado){guardar();renderIngresos();}
+  }).catch(function(e){console.error('subirXMLIngresoEnSegundoPlano:',e);});
+}
+
+// Variante para el desglose multi-operador: la subida puede terminar ANTES
+// de que se guarde el desglose (dgPend sigue en memoria — se le agrega
+// xmlURL ahí, para que guardarDesglose() lo use al crear los registros) o
+// DESPUÉS (dgPend ya se limpió — entonces se busca por UUID en ingresosDB,
+// igual que en el flujo normal, y se actualiza ahí).
+function subirXMLDesgloseEnSegundoPlano(uuid,fname,text){
+  if(!uuid)return;
+  TMLComprobantes.subirXML('comprobantes/ingresos/'+uuid+'.xml',text).then(function(url){
+    if(dgPend&&dgPend.uuid===uuid)dgPend.xmlURL=url;
+    var actualizado=false;
+    ingresosDB.forEach(function(v){
+      if(v.uuid===uuid||v.facturaUUID===uuid){v.xmlURL=url;actualizado=true;}
+    });
+    if(actualizado){guardar();renderIngresos();}
+  }).catch(function(e){console.error('subirXMLDesgloseEnSegundoPlano:',e);});
+}
+
+function parseXML(text,fname,unidad){
   if(usuarioBloqueadoIngresos())return;
   const doc=new DOMParser().parseFromString(text,'text/xml');
   const comp=doc.querySelector('Comprobante');
@@ -878,14 +915,12 @@ async function parseXML(text,fname,unidad){
     });
   }
   const tipoDerivado=subtManiobras>0&&!subtFlete?'maniobra':subtOtros>0&&!subtFlete&&!subtManiobras?'otro':'flete_for';
-  var xmlURL=null;
-  try{xmlURL=await TMLComprobantes.subirXML('comprobantes/ingresos/'+(uuid||fname)+'.xml',text);}
-  catch(e){console.error('subirXML ingresos:',e);}
   ingresosDB.push({id:uid(),unidad,folio:folioCompleto,fecha,cliente,tipo:tipoDerivado,
     subtotal,subtFlete,subtManiobras,subtOtros,iva,ret,total:parseFloat(comp.getAttribute('Total')||0),
     estado:'sin_liquidar',liqNum:null,origen:'xml',ruta,
-    uuid,rfcEmisor,rfcReceptor,satEstado:null,satCancelado:false,xmlURL:xmlURL});
+    uuid,rfcEmisor,rfcReceptor,satEstado:null,satCancelado:false,xmlURL:null});
   guardar();renderIngresos();
+  subirXMLIngresoEnSegundoPlano(uuid,fname,text);
   alert('✅ '+fname+' registrado.'+(ruta.length?' Ruta: '+ruta.length+' tramos.':''));
 }
 
@@ -926,7 +961,7 @@ function toggleMultiOp(){
   if($('dgContenido'))$('dgContenido').style.display=(chk.checked&&dgPend)?'block':'none';
 }
 
-async function parseXMLMultiOp(text,fname){
+function parseXMLMultiOp(text,fname){
   // Sin candado aquí: hay que poder cargar el XML para llegar a escribir el
   // ID a sustituir por renglón — el bloqueo real se aplica en
   // guardarDesglose(), renglón por renglón (ver estaBloqueado).
@@ -951,12 +986,10 @@ async function parseXMLMultiOp(text,fname){
     if(!confirm('⚠️ '+fname+': este CFDI (UUID '+uuid.slice(0,8)+'...) YA está registrado en Ingresos.\n¿Desglosarlo de todas formas? (podría duplicar el ingreso)'))return;
   }
   const {subtFlete,subtManiobras,subtOtros}=clasificarConceptosCFDI(doc,subtotal);
-  var xmlURLDesglose=null;
-  try{xmlURLDesglose=await TMLComprobantes.subirXML('comprobantes/ingresos/'+(uuid||fname)+'.xml',text);}
-  catch(e){console.error('subirXML multiOp:',e);}
+  subirXMLDesgloseEnSegundoPlano(uuid,fname,text);
   dgPend={
     fname:fname,
-    xmlURL:xmlURLDesglose,
+    xmlURL:null,
     serie:comp.getAttribute('Serie')||'',folio:comp.getAttribute('Folio')||'',
     fecha:(comp.getAttribute('Fecha')||'').slice(0,10),
     cliente:receptor?receptor.getAttribute('Nombre')||'':'',
