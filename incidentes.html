@@ -105,6 +105,8 @@ tr:hover td{background:#fafafa}
     <input type="password" id="sessionPass" class="session-input" placeholder="Contraseña" autocomplete="current-password" onkeydown="if(event.key==='Enter')intentarLoginFirebase()">
     <button class="session-btn" onclick="intentarLoginFirebase()">Entrar</button>
     <div class="session-err" id="sessionErr" style="display:none"></div>
+    <div style="margin-top:10px"><a href="#" onclick="recuperarContrasena();return false;" style="color:#aaa;font-size:11px">¿Olvidaste tu contraseña?</a></div>
+    <div class="session-err" id="sessionRecupMsg" style="display:none"></div>
   </div>
 </div>
 <div class="session-overlay" id="sessionDenied">
@@ -379,6 +381,19 @@ async function intentarLoginFirebase(){
     mostrarSesionEnHeader();
   }catch(e){
     err.textContent='No se pudo iniciar sesión: '+(e.message||e.code||'error desconocido');err.style.display='block';
+  }
+}
+// recuperarContrasena(): manda el correo estándar de Firebase para
+// restablecer contraseña, usando el email ya escrito en el campo de login.
+async function recuperarContrasena(){
+  var email=($('sessionUser').value||'').trim();
+  var msg=$('sessionRecupMsg');
+  if(!email){msg.style.color='#e63946';msg.textContent='Escribe tu email arriba y da clic de nuevo.';msg.style.display='block';return;}
+  try{
+    await TMLSesion.enviarCorreoRecuperacion(email);
+    msg.style.color='#2d6a4f';msg.textContent='✅ Te enviamos un correo a '+email+' con instrucciones para restablecer tu contraseña.';msg.style.display='block';
+  }catch(e){
+    msg.style.color='#e63946';msg.textContent='No se pudo enviar el correo: '+(e.message||e.code||'error desconocido');msg.style.display='block';
   }
 }
 // ⚠️ DEPRECADO — login viejo (usuario + hash SHA-256 contra Firestore/usuarios).
