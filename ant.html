@@ -227,6 +227,8 @@ tr:hover td{background:#fafafa}
       <div class="stat"><div class="n" id="stOps">0</div><div class="l">Operadores</div></div>
       <div class="stat"><div class="n" id="stMovs">0</div><div class="l">Anticipos</div></div>
       <div class="stat"><div class="n" id="stTotal">$0</div><div class="l">Total</div></div>
+      <div class="stat"><div class="n" id="stTotalPend">$0</div><div class="l">Total no liquidado</div></div>
+      <div class="stat"><div class="n" id="stTotalLiq">$0</div><div class="l">Total liquidado</div></div>
       <div class="stat"><div class="n" id="stPend">0</div><div class="l">Pendientes</div></div>
       <div class="stat"><div class="n" id="stLiq">0</div><div class="l">Liquidados</div></div>
       <div class="stat"><div class="n" id="stDup">0</div><div class="l">Duplicados excluidos</div></div>
@@ -675,10 +677,14 @@ function renderAnticipos(){
   const totImporte=todos.reduce((s,a)=>s+a.importe,0);
   const pend=todos.filter(a=>a.estado==='pendiente').length;
   const liqCount=todos.filter(a=>a.estado==='liquidado').length;
+  const totImportePend=todos.filter(a=>a.estado==='pendiente').reduce((s,a)=>s+a.importe,0);
+  const totImporteLiq=todos.filter(a=>a.estado==='liquidado').reduce((s,a)=>s+a.importe,0);
   const ops=new Set(todos.map(a=>a.unidad)).size;
   $('stOps').textContent=ops;
   $('stMovs').textContent=todos.length;
   $('stTotal').textContent=fmt(totImporte);
+  $('stTotalPend').textContent=fmt(totImportePend);
+  $('stTotalLiq').textContent=fmt(totImporteLiq);
   $('stPend').textContent=pend;
   $('stLiq').textContent=liqCount;
   $('stDup').textContent=0;
