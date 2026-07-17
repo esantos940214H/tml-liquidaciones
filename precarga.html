@@ -631,7 +631,7 @@ function descargarPDFComprobante(uuidDoc){
   var c=comprobantesDB.find(function(x){return x.id===uuidDoc;});
   if(!c)return;
   var op=OPERADORES.find(function(o){return o.unidad===c.operador;});
-  TMLComprobantes.generarPDF({
+  TMLComprobantes.verPDF({
     titulo:'Comprobante pre-cargado — '+(op?op.nombre:'Unidad '+c.unidad),
     fecha:c.fecha,
     emisorNombre:c.emisorNombre,
@@ -710,7 +710,7 @@ function renderPrecarga(){
       +'</td>'
       +'<td style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px" title="'+(c.conceptos||[]).join(', ').replace(/"/g,'&quot;')+'">'+(c.conceptos||[]).join(', ')+'</td>'
       +'<td>'+(esPend?'<span class="badge bg-yellow">Pendiente</span>':'<span class="badge bg-green">✓ Jalado'+(c.liquidacionId?' — '+c.liquidacionId:'')+'</span>')+'</td>'
-      +'<td style="font-size:11px">'+(c.xmlURL?'<a href="'+c.xmlURL+'" target="_blank" style="margin-right:6px">📄 XML</a>':'<span style="color:#aaa" title="No se guardó el XML de este comprobante">📄 —</span>')+'<button class="btn-sm" style="background:none;border:none;cursor:pointer;font-size:11px" onclick="descargarPDFComprobante(\''+c.id+'\')" title="Generar PDF a partir de los datos del XML">🧾 PDF</button></td>'
+      +'<td style="font-size:11px">'+(c.xmlURL?'<a href="'+c.xmlURL+'" target="_blank" style="margin-right:6px">📄 XML</a>':'<span style="color:#aaa" title="No se guardó el XML de este comprobante">📄 —</span>')+'<button class="btn-sm" style="background:none;border:none;cursor:pointer;font-size:11px" onclick="descargarPDFComprobante(\''+c.id+'\')" title="Ver el comprobante en PDF (generado a partir de los datos del XML)">🧾 Ver PDF</button></td>'
       +'<td>'+(esPend?'<button class="btn-sm" style="background:#fde8e8;color:#9b1c1c;border:none;cursor:pointer;border-radius:4px;padding:3px 8px" onclick="eliminarComprobante(\''+c.id+'\')">✕ Eliminar</button>':'')+'</td>'
       +'</tr>';
   });

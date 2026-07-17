@@ -2787,7 +2787,7 @@ function renderDieselXML(){
       </select>
     </td>
     <td>${x.satCancelado?'<span class="badge bg-red" style="color:#c1121f" title="Cancelado ante el SAT — excluido del cálculo">⚠ CANCELADO SAT</span>':''}</td>
-    <td>${x.xmlURL?`<a href="${x.xmlURL}" target="_blank" style="font-size:11px;margin-right:6px">📄 XML</a>`:'<span style="font-size:11px;color:#aaa" title="No se guardó el XML de este comprobante">📄 —</span>'}<button class="btn-sm" style="background:none;border:none;cursor:pointer;font-size:11px" onclick="descargarPDFDiesel(${i})" title="Generar PDF a partir de los datos del XML">🧾 PDF</button></td>
+    <td>${x.xmlURL?`<a href="${x.xmlURL}" target="_blank" style="font-size:11px;margin-right:6px">📄 XML</a>`:'<span style="font-size:11px;color:#aaa" title="No se guardó el XML de este comprobante">📄 —</span>'}<button class="btn-sm" style="background:none;border:none;cursor:pointer;font-size:11px" onclick="descargarPDFDiesel(${i})" title="Ver el comprobante en PDF (generado a partir de los datos del XML)">🧾 Ver PDF</button></td>
     <td><button style="background:#fde8e8;color:#9b1c1c;border:none;cursor:pointer;border-radius:4px;padding:2px 8px;font-size:11px" onclick="eliminarDieselXML(${i})">✕</button></td>
   </tr>`;}).join('');
   cont.innerHTML=`<div class="tbl-wrap"><table>
@@ -2808,7 +2808,7 @@ function toggleDieselXMLPagaOp(i,val){
 function descargarPDFDiesel(i){
   if(!liq||!liq.dieselXML)return;
   var x=liq.dieselXML[i];if(!x)return;
-  TMLComprobantes.generarPDF({
+  TMLComprobantes.verPDF({
     titulo:'Comprobante de diesel — '+(liq.opNombre||''),
     folio:x.folio,fecha:x.fecha,emisorNombre:x.emisor,emisorRFC:x.rfc,
     conceptos:[x.concepto||''],
@@ -3129,7 +3129,7 @@ function parseIAVE(text,fname){
 function descargarPDFCaseta(i){
   if(!liq||!liq.autopistas)return;
   var a=liq.autopistas[i];if(!a)return;
-  TMLComprobantes.generarPDF({
+  TMLComprobantes.verPDF({
     titulo:'Comprobante de caseta — '+(liq.opNombre||''),
     fecha:a.fecha,emisorNombre:a.emisor,emisorRFC:a.rfc,
     conceptos:[a.concepto||a.caseta||''],
@@ -3163,7 +3163,7 @@ function renderIAVE(){
       +'<option value="no"'+(a.pagaOp?'':' selected')+'>Empresa</option><option value="si"'+(a.pagaOp?' selected':'')+'>Operador</option></select></td>';
     var deleteCell='<td><button class="btn btn-sm" style="background:#fde8e8;color:#9b1c1c;border:none;cursor:pointer" onclick="eliminarAutopista('+i+')">✕</button></td></tr>';
     if(esCruceXML(a)){
-      var archivoCell='<td>'+(a.xmlURL?'<a href="'+a.xmlURL+'" target="_blank" style="font-size:11px;margin-right:6px">📄 XML</a>':'<span style="font-size:11px;color:#aaa" title="No se guardó el XML de este comprobante">📄 —</span>')+'<button class="btn-sm" style="background:none;border:none;cursor:pointer;font-size:11px" onclick="descargarPDFCaseta('+i+')" title="Generar PDF a partir de los datos del XML">🧾 PDF</button></td>';
+      var archivoCell='<td>'+(a.xmlURL?'<a href="'+a.xmlURL+'" target="_blank" style="font-size:11px;margin-right:6px">📄 XML</a>':'<span style="font-size:11px;color:#aaa" title="No se guardó el XML de este comprobante">📄 —</span>')+'<button class="btn-sm" style="background:none;border:none;cursor:pointer;font-size:11px" onclick="descargarPDFCaseta('+i+')" title="Ver el comprobante en PDF (generado a partir de los datos del XML)">🧾 Ver PDF</button></td>';
       tbM.innerHTML+=filaBase+archivoCell+deleteCell;nXml++;
     }else{
       tbX.innerHTML+=filaBase+deleteCell;nXlsx++;
@@ -3653,7 +3653,7 @@ function renderGastos(){
         +'<option value="si"'+(g.pagaOp?' selected':'')+'>Operador</option>'
       +'</select></td>'
       +'<td>'+estadoCell+'</td>'
-      +'<td>'+(g.tipo==='xml'?(''+(g.xmlURL?'<a href="'+g.xmlURL+'" target="_blank" style="font-size:11px;margin-right:6px">📄 XML</a>':'<span style="font-size:11px;color:#aaa" title="No se guardó el XML de este comprobante">📄 —</span>')+'<button class="btn-sm" style="background:none;border:none;cursor:pointer;font-size:11px" onclick="descargarPDFGasto('+i+')" title="Generar PDF a partir de los datos del XML">🧾 PDF</button>'):'—')+'</td>'
+      +'<td>'+(g.tipo==='xml'?(''+(g.xmlURL?'<a href="'+g.xmlURL+'" target="_blank" style="font-size:11px;margin-right:6px">📄 XML</a>':'<span style="font-size:11px;color:#aaa" title="No se guardó el XML de este comprobante">📄 —</span>')+'<button class="btn-sm" style="background:none;border:none;cursor:pointer;font-size:11px" onclick="descargarPDFGasto('+i+')" title="Ver el comprobante en PDF (generado a partir de los datos del XML)">🧾 Ver PDF</button>'):'—')+'</td>'
       +'<td><button class="btn btn-sm" style="background:#fde8e8;color:#9b1c1c;border:none;cursor:pointer" onclick="eliminarGasto('+i+')">✕</button></td></tr>';
   });
   $('tfGastos').innerHTML='<tr style="background:#f5f5f8;font-weight:700"><td colspan="4">TOTALES</td><td class="num r">'+fmt(totOp+totEmp)+'</td>'
@@ -3682,7 +3682,7 @@ function descargarPDFGasto(i){
   const todos=liq.gastosXML.concat(liq.gastos);
   const g=todos[i];
   if(!g||g.tipo!=='xml')return;
-  TMLComprobantes.generarPDF({
+  TMLComprobantes.verPDF({
     titulo:'Comprobante de gasto — '+(liq.opNombre||''),
     folio:(g.serie||'')+(g.folio||''),
     fecha:g.fecha,
