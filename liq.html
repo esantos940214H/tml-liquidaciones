@@ -650,7 +650,7 @@ tr:hover td{background:#fafafa}
   <div class="card no-print">
     <div class="card-title">📋 Detalle por liquidación cerrada</div>
     <div class="tbl-wrap"><table>
-      <thead><tr><th>Liq. #</th><th>Operador</th><th>Cierre</th><th class="r">Fletes</th><th class="r">Gastos</th><th class="r">Diesel s/comprobar</th><th class="r">Casetas</th><th class="r">Comisión</th><th class="r">Saldo</th></tr></thead>
+      <thead><tr><th>Liq. #</th><th>Operador</th><th>Cierre</th><th class="r">Fletes</th><th class="r">Gastos</th><th class="r">Diesel s/comprobar</th><th class="r">Casetas</th><th class="r">Comisión</th><th class="r">Utilidad</th><th class="r">Saldo</th></tr></thead>
       <tbody id="rgTabla"></tbody>
     </table></div>
   </div>
@@ -4261,7 +4261,7 @@ async function generarReporteGeneral(){
     return true;
   }).sort(function(a,b){return(b.fechaCierre||'').localeCompare(a.fechaCierre||'');});
 
-  var totFletes=0,totGastos=0,totDieselNC=0,totCasetas=0,totComision=0,totNomina=0,totIncidentes=0,totSaldo=0;
+  var totFletes=0,totGastos=0,totDieselNC=0,totCasetas=0,totComision=0,totNomina=0,totIncidentes=0,totSaldo=0,totUtilidad=0;
   var porOpFletes={};
   var filas='';
   filtrado.forEach(function(h){
@@ -4274,15 +4274,23 @@ async function generarReporteGeneral(){
     var nomina=s.totNomina||0;
     var incidentes=s.totIncidentes||0;
     var saldo=s.saldoReal||0;
+    // Utilidad de EMPRESA = ingresos (sin IVA) − TODOS los costos de esa
+    // liquidación ya sumados en totGastosEmpTotal (diesel comprobado, casetas,
+    // gastos, comisión, exceso de diesel, incidentes, casetas sin comprobante)
+    // — mismo cálculo que ya se muestra en la pestaña 💰 Reporte de cada
+    // liquidación individual, aquí solo se recupera y se suma.
+    var utilidad=fletes-(s.totGastosEmpTotal||0);
     totFletes+=fletes;totGastos+=gastos;totDieselNC+=dieselNC;totCasetas+=casetas;
-    totComision+=comision;totNomina+=nomina;totIncidentes+=incidentes;totSaldo+=saldo;
+    totComision+=comision;totNomina+=nomina;totIncidentes+=incidentes;totSaldo+=saldo;totUtilidad+=utilidad;
     porOpFletes[h.opId]=(porOpFletes[h.opId]||0)+fletes;
     var nombreOp=(h.op&&h.op.nombre)||('Operador '+h.opId);
     filas+='<tr><td>#'+h.num+'</td><td style="font-size:11px">'+nombreOp+'</td><td style="font-size:11px">'+(h.fechaCierre||'—')+'</td>'
       +'<td class="num r">'+fmt(fletes)+'</td><td class="num r">'+fmt(gastos)+'</td><td class="num r">'+fmt(dieselNC)+'</td>'
       +'<td class="num r">'+fmt(casetas)+'</td><td class="num r">'+fmt(comision)+'</td>'
+      +'<td class="num r" style="color:'+(utilidad<0?'#c1121f':'#0a5233')+'">'+fmt(utilidad)+'</td>'
       +'<td class="num r" style="color:'+(saldo<0?'#c1121f':'#0a5233')+'">'+fmt(saldo)+'</td></tr>';
   });
+  var margenTotal=totFletes>0?(totUtilidad/totFletes*100):0;
 
   $('rgKPIs').innerHTML=
     '<div class="kpi"><div class="v">'+filtrado.length+'</div><div class="k">Liquidaciones cerradas</div></div>'
@@ -4291,9 +4299,10 @@ async function generarReporteGeneral(){
     +'<div class="kpi"><div class="v">'+fmt(totDieselNC)+'</div><div class="k">Exceso de diesel</div></div>'
     +'<div class="kpi"><div class="v">'+fmt(totCasetas)+'</div><div class="k">Casetas</div></div>'
     +'<div class="kpi"><div class="v">'+fmt(totComision)+'</div><div class="k">Comisión</div></div>'
+    +'<div class="kpi"><div class="v '+(totUtilidad<0?'red':'green')+'">'+fmt(totUtilidad)+'</div><div class="k">Utilidad bruta ('+margenTotal.toFixed(1)+'% margen)</div></div>'
     +'<div class="kpi"><div class="v '+(totSaldo<0?'red':'green')+'">'+fmt(totSaldo)+'</div><div class="k">Saldo total</div></div>';
 
-  $('rgTabla').innerHTML=filas||'<tr><td colspan="9" style="text-align:center;color:#aaa;padding:20px">Sin liquidaciones cerradas en este filtro.</td></tr>';
+  $('rgTabla').innerHTML=filas||'<tr><td colspan="10" style="text-align:center;color:#aaa;padding:20px">Sin liquidaciones cerradas en este filtro.</td></tr>';
 
   if(typeof Chart==='undefined')return; // sin conexión al CDN — se omiten las gráficas sin afectar KPIs/tabla
 
