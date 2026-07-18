@@ -583,7 +583,22 @@ async function registrarComprobante(docData,fname){
 
 // ══════════════════════════════════════════════
 // REASIGNAR (solo mientras estado === 'pendiente')
+// Los selects de Operador/Unidad empiezan bloqueados (candado 🔒) — hay que
+// desbloquearlos con la contraseña de administrador antes de poder
+// cambiarlos, para no mover un comprobante de operador sin querer con un
+// clic accidental. Una vez desbloqueado, el candado queda abierto para ese
+// renglón mientras no se recargue la página (mismo criterio que el candado
+// de % Comisión en liquidaciones.mudanzastml.mx).
 // ══════════════════════════════════════════════
+const ADMIN_PASS_PRECARGA='ADMIN2026';
+var _precargaDesbloqueados={};
+function desbloquearReasignar(uuidDoc){
+  var pass=prompt('Contraseña de administrador para cambiar operador/unidad de este comprobante:');
+  if(pass===null)return;
+  if(pass!==ADMIN_PASS_PRECARGA){alert('Contraseña incorrecta.');return;}
+  _precargaDesbloqueados[uuidDoc]=true;
+  renderPrecarga();
+}
 async function reasignar(uuidDoc,campo,valor){
   var actual=comprobantesDB.find(function(c){return c.id===uuidDoc;});
   if(!actual){alert('No se encontró el comprobante.');return;}
@@ -697,13 +712,17 @@ function renderPrecarga(){
     // pagaOp — se asume el criterio viejo (caseta=operador, resto=empresa)
     // solo como valor de respaldo para no mostrarlos en blanco.
     var pagaOpC=c.pagaOp!=null?c.pagaOp:(c.tipo==='caseta');
+    var opUnDesbloq=!!_precargaDesbloqueados[c.id];
     tb.innerHTML+='<tr>'
       +'<td><span class="badge bg-blue">'+tipoLabel+'</span></td>'
       +'<td style="font-size:11px">'+(c.fecha||'—')+'</td>'
       +'<td style="font-size:11px">'
         +(esPend
-          ?'<select class="input-sm" onchange="reasignar(\''+c.id+'\',\'operador\',this.value)" style="border:1.5px solid #dde;border-radius:5px;padding:4px;font-size:11px;margin-bottom:3px;width:100%">'+optsOp(c.operador)+'</select>'
-            +'<select class="input-sm" onchange="reasignar(\''+c.id+'\',\'unidad\',this.value)" style="border:1.5px solid #dde;border-radius:5px;padding:4px;font-size:11px;width:100%">'+opts(c.unidad)+'</select>'
+          ?'<div style="display:flex;align-items:center;gap:5px;margin-bottom:3px">'
+            +'<select class="input-sm" onchange="reasignar(\''+c.id+'\',\'operador\',this.value)" '+(opUnDesbloq?'':'disabled')+' style="border:1.5px solid #dde;border-radius:5px;padding:4px;font-size:11px;width:100%;'+(opUnDesbloq?'':'background:#f0f2f5;color:#999')+'">'+optsOp(c.operador)+'</select>'
+            +(opUnDesbloq?'':'<span onclick="desbloquearReasignar(\''+c.id+'\')" style="cursor:pointer;font-size:12px" title="Cambiar operador/unidad — requiere contraseña de administrador">🔒</span>')
+            +'</div>'
+            +'<select class="input-sm" onchange="reasignar(\''+c.id+'\',\'unidad\',this.value)" '+(opUnDesbloq?'':'disabled')+' style="border:1.5px solid #dde;border-radius:5px;padding:4px;font-size:11px;width:100%;'+(opUnDesbloq?'':'background:#f0f2f5;color:#999')+'">'+opts(c.unidad)+'</select>'
           :(function(){var op=OPERADORES.find(function(o){return o.unidad===c.operador;});return (op?op.nombre:c.operador)+' · Unidad '+c.unidad;})())
       +'</td>'
       +'<td class="num r">'+fmtCent(c.total)+'</td>'
