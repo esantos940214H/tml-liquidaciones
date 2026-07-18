@@ -238,6 +238,7 @@ tr:hover td{background:#fafafa}
     </div>
     <div class="row">
       <div class="field"><label>Operador</label><select id="filtOp" onchange="renderIngresos()"><option value="">Todos</option></select></div>
+      <div class="field"><label>Mes</label><input type="month" id="filtMes" onchange="aplicarFiltroMes()"></div>
       <div class="field"><label>Desde</label><input type="date" id="filtDesde" onchange="renderIngresos()"></div>
       <div class="field"><label>Hasta</label><input type="date" id="filtHasta" onchange="renderIngresos()"></div>
       <div class="field"><label>Estatus</label>
@@ -284,7 +285,7 @@ tr:hover td{background:#fafafa}
       <div id="repIngKPIs" class="kpis"></div>
       <div class="rep-cols">
         <div>
-          <div class="rep-col-title">Distribución por operador</div>
+          <div class="rep-col-title">Ranking por operador (mayor a menor)</div>
           <div id="repIngChartOpWrap"><canvas id="chartIngOperador" height="220"></canvas></div>
         </div>
         <div>
@@ -1437,19 +1438,27 @@ function renderReporteIngresos(filtrados,filtOp){
     +'<div class="kpi"><div class="v">'+fmt(totIva)+'</div><div class="k">IVA</div></div>'
     +'<div class="kpi"><div class="v">'+fmt(totTot)+'</div><div class="k">Total</div></div>';
 
-  // Pastel por operador — solo tiene sentido con "Todos" seleccionado; con
-  // un operador puesto en el filtro, todo es una sola rebanada.
+  // Ranking por operador (barras horizontales, ordenado de mayor a menor) —
+  // para ver de un vistazo quién generó más y quién menos en el periodo
+  // filtrado. Solo tiene sentido con "Todos" seleccionado en Operador; con
+  // uno solo puesto en el filtro no hay nada que comparar.
   var wrapOp=$('repIngChartOpWrap');
   var unidadesOp=Object.keys(porOp);
-  if(filtOp||unidadesOp.length<2){
+  if(filtOp||!unidadesOp.length){
     if(chartIngOperador){chartIngOperador.destroy();chartIngOperador=null;}
-    wrapOp.innerHTML='<p style="text-align:center;color:#aaa;font-size:12px;padding:40px 10px">'+(filtOp?'Selecciona "Todos" en el filtro de Operador para ver la distribución entre operadores.':'No hay suficientes operadores con ingresos en este filtro.')+'</p>';
+    wrapOp.innerHTML='<p style="text-align:center;color:#aaa;font-size:12px;padding:40px 10px">'+(filtOp?'Selecciona "Todos" en el filtro de Operador para comparar entre operadores.':'Sin ingresos registrados en este filtro.')+'</p>';
   }else{
-    wrapOp.innerHTML='<canvas id="chartIngOperador" height="220"></canvas>';
-    var labelsOp=unidadesOp.map(function(u){var op=OPERADORES.find(function(o){return o.unidad===parseInt(u);});return op?op.nombre.split(' ').slice(0,2).join(' '):('Unidad '+u);});
-    var dataOp=unidadesOp.map(function(u){return porOp[u];});
-    chartIngOperador=new Chart($('chartIngOperador'),{type:'pie',data:{labels:labelsOp,datasets:[{data:dataOp,backgroundColor:PALETA_REPORTES}]},
-      options:{plugins:{legend:{position:'bottom',labels:{boxWidth:11,font:{size:10}}},tooltip:{callbacks:{label:function(ctx){return ctx.label+': '+fmt(ctx.parsed);}}}}}});
+    var ordenado=unidadesOp.map(function(u){
+      var op=OPERADORES.find(function(o){return o.unidad===parseInt(u);});
+      return{label:op?op.nombre.split(' ').slice(0,2).join(' '):('Unidad '+u),total:porOp[u]};
+    }).sort(function(a,b){return b.total-a.total;});
+    wrapOp.innerHTML='<canvas id="chartIngOperador"></canvas>';
+    $('chartIngOperador').height=Math.max(220,ordenado.length*32);
+    if(chartIngOperador)chartIngOperador.destroy();
+    chartIngOperador=new Chart($('chartIngOperador'),{type:'bar',
+      data:{labels:ordenado.map(function(o){return o.label;}),datasets:[{data:ordenado.map(function(o){return o.total;}),backgroundColor:'#e63946'}]},
+      options:{indexAxis:'y',plugins:{legend:{display:false},tooltip:{callbacks:{label:function(ctx){return fmt(ctx.parsed.x);}}}},
+        scales:{x:{ticks:{callback:function(v){return fmt(v);}}}}}});
   }
 
   if(chartIngTipo)chartIngTipo.destroy();
@@ -1568,7 +1577,22 @@ function eliminarSeleccionadosIng(){
 }
 
 function limpiarFiltros(){
-  $('filtOp').value='';$('filtDesde').value='';$('filtHasta').value='';$('filtEst').value='';
+  $('filtOp').value='';$('filtMes').value='';$('filtDesde').value='';$('filtHasta').value='';$('filtEst').value='';
+  renderIngresos();
+}
+
+// aplicarFiltroMes(): al elegir un mes (input type=month), llena Desde/Hasta
+// con el primer y último día de ese mes y dispara el mismo renderIngresos()
+// que ya usan los demás filtros — no es un filtro aparte, solo una forma
+// rápida de llenar Desde/Hasta sin calcular el último día del mes a mano.
+function aplicarFiltroMes(){
+  var val=$('filtMes').value; // "YYYY-MM" o "" si lo borran
+  if(!val){return;}
+  var partes=val.split('-');
+  var anio=parseInt(partes[0],10),mes=parseInt(partes[1],10);
+  var ultimoDia=new Date(anio,mes,0).getDate();
+  $('filtDesde').value=val+'-01';
+  $('filtHasta').value=val+'-'+String(ultimoDia).padStart(2,'0');
   renderIngresos();
 }
 
