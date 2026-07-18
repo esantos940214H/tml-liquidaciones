@@ -251,26 +251,6 @@ tr:hover td{background:#fafafa}
     </div>
   </div>
 
-  <!-- REPORTE -->
-  <div class="card">
-    <div class="card-title" style="cursor:pointer;user-select:none" onclick="toggleReporteIngresos()">
-      <span>📊 Reporte <span id="repIngIcon" style="font-weight:400;color:#888;text-transform:none;letter-spacing:normal">▼ colapsar</span></span>
-    </div>
-    <div id="repIngWrap">
-      <div id="repIngKPIs" class="kpis"></div>
-      <div class="rep-cols">
-        <div>
-          <div class="rep-col-title">Distribución por operador</div>
-          <div id="repIngChartOpWrap"><canvas id="chartIngOperador" height="220"></canvas></div>
-        </div>
-        <div>
-          <div class="rep-col-title">Distribución por tipo (flete / maniobras / otros)</div>
-          <canvas id="chartIngTipo" height="220"></canvas>
-        </div>
-      </div>
-    </div>
-  </div>
-
   <!-- TABLA -->
   <div class="card">
     <div class="card-title" style="display:flex;justify-content:space-between;align-items:center">
@@ -292,6 +272,27 @@ tr:hover td{background:#fafafa}
       </table>
     </div>
     <div id="ingResumen" style="margin-top:10px"></div>
+  </div>
+
+  <!-- REPORTE — colapsado por defecto y hasta abajo para no estorbar la
+       captura diaria de XML/viajes; quien lo quiera ver le da clic. -->
+  <div class="card">
+    <div class="card-title" style="cursor:pointer;user-select:none" onclick="toggleReporteIngresos()">
+      <span>📊 Reporte <span id="repIngIcon" style="font-weight:400;color:#888;text-transform:none;letter-spacing:normal">▶ expandir</span></span>
+    </div>
+    <div id="repIngWrap" style="display:none">
+      <div id="repIngKPIs" class="kpis"></div>
+      <div class="rep-cols">
+        <div>
+          <div class="rep-col-title">Distribución por operador</div>
+          <div id="repIngChartOpWrap"><canvas id="chartIngOperador" height="220"></canvas></div>
+        </div>
+        <div>
+          <div class="rep-col-title">Distribución por tipo (flete / maniobras / otros)</div>
+          <canvas id="chartIngTipo" height="220"></canvas>
+        </div>
+      </div>
+    </div>
   </div>
 
 </div>
@@ -1401,16 +1402,23 @@ function agregarIngresoReal(){
 // ══════════════════════════════════════════════
 var chartIngOperador=null,chartIngTipo=null;
 var PALETA_REPORTES=['#e63946','#2d6a4f','#1e40af','#c87f00','#6b46c1','#0a5233','#856404','#9b1c1c','#0369a1','#5b21b6','#1a1a2e','#c1121f'];
+var _ultimoFiltradosIng=[],_ultimoFiltOpIng=0;
 
 function toggleReporteIngresos(){
   var wrap=$('repIngWrap'),icon=$('repIngIcon');
   var oculto=wrap.style.display==='none';
   wrap.style.display=oculto?'':'none';
   icon.textContent=oculto?'▼ colapsar':'▶ expandir';
+  // Las gráficas de Chart.js no se dibujan bien dentro de un contenedor
+  // display:none (mide 0×0 al crearse) — como el reporte arranca colapsado,
+  // hay que volver a generarlas justo AL EXPANDIR, ya con el espacio visible.
+  if(oculto)renderReporteIngresos(_ultimoFiltradosIng,_ultimoFiltOpIng);
 }
 
 function renderReporteIngresos(filtrados,filtOp){
+  _ultimoFiltradosIng=filtrados;_ultimoFiltOpIng=filtOp;
   if(typeof Chart==='undefined')return; // Chart.js no cargó (sin conexión) — se omite el reporte sin tronar el resto del módulo
+  if($('repIngWrap').style.display==='none')return; // colapsado: no gastar tiempo dibujando gráficas ocultas
   var vivos=filtrados.filter(function(v){return !v.satCancelado;});
 
   var totSub=0,totFlete=0,totMan=0,totOtros=0,totIva=0,totTot=0;
