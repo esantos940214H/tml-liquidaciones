@@ -4286,9 +4286,15 @@ async function generarReporteGeneral(){
     var utilidad=fletes-(s.totGastosEmpTotal||0);
     totFletes+=fletes;totGastos+=gastos;totDieselNC+=dieselNC;totCasetas+=casetas;
     totComision+=comision;totNomina+=nomina;totIncidentes+=incidentes;totSaldo+=saldo;totUtilidad+=utilidad;
-    porOpFletes[h.opId]=(porOpFletes[h.opId]||0)+fletes;
-    porOpUtilidad[h.opId]=(porOpUtilidad[h.opId]||0)+utilidad;
+    // Se agrupa por NOMBRE, no por opId — algunas liquidaciones viejas
+    // guardaron opId con criterios distintos (antes de que ese campo
+    // existiera, se usaba unidad como respaldo), así que el mismo operador
+    // podía terminar repetido con dos identificadores distintos. El nombre
+    // es lo que de verdad se muestra, así que agrupar por ahí siempre junta
+    // bien a la misma persona.
     var nombreOp=(h.op&&h.op.nombre)||('Operador '+h.opId);
+    porOpFletes[nombreOp]=(porOpFletes[nombreOp]||0)+fletes;
+    porOpUtilidad[nombreOp]=(porOpUtilidad[nombreOp]||0)+utilidad;
     filas+='<tr><td>#'+h.num+'</td><td style="font-size:11px">'+nombreOp+'</td><td style="font-size:11px">'+(h.fechaCierre||'—')+'</td>'
       +'<td class="num r">'+fmt(fletes)+'</td><td class="num r">'+fmt(gastos)+'</td><td class="num r">'+fmt(dieselNC)+'</td>'
       +'<td class="num r">'+fmt(casetas)+'</td><td class="num r">'+fmt(comision)+'</td>'
@@ -4318,8 +4324,8 @@ async function generarReporteGeneral(){
     wrapFletes.innerHTML='<p style="text-align:center;color:#aaa;font-size:12px;padding:40px 10px">'+(opFiltro?'Selecciona "Todos" en el filtro de Operador para ver la distribución entre operadores.':'No hay suficientes operadores con liquidaciones cerradas en este filtro.')+'</p>';
   }else{
     wrapFletes.innerHTML='<canvas id="rgChartFletes" height="240"></canvas>';
-    var labelsOp=unidadesOp.map(function(id){var h=filtrado.find(function(x){return String(x.opId)===id;});return h&&h.op&&h.op.nombre?h.op.nombre.split(' ').slice(0,2).join(' '):('Operador '+id);});
-    var dataOp=unidadesOp.map(function(id){return porOpFletes[id];});
+    var labelsOp=unidadesOp.map(function(nombre){return nombre.split(' ').slice(0,2).join(' ');});
+    var dataOp=unidadesOp.map(function(nombre){return porOpFletes[nombre];});
     chartRGFletes=new Chart($('rgChartFletes'),{type:'pie',data:{labels:labelsOp,datasets:[{data:dataOp,backgroundColor:PALETA_REPORTE_GENERAL}]},
       options:{plugins:{legend:{position:'bottom',labels:{boxWidth:11,font:{size:10}}},tooltip:{callbacks:{label:function(ctx){return ctx.label+': '+fmt(ctx.parsed);}}}}}});
   }
@@ -4339,9 +4345,8 @@ async function generarReporteGeneral(){
     if(chartRGUtilidad){chartRGUtilidad.destroy();chartRGUtilidad=null;}
     wrapUtilidad.innerHTML='<p style="text-align:center;color:#aaa;font-size:12px;padding:40px 10px">'+(opFiltro?'Selecciona "Todos" en el filtro de Operador para comparar entre operadores.':'Sin liquidaciones cerradas en este filtro.')+'</p>';
   }else{
-    var ordenadoU=unidadesOpU.map(function(id){
-      var h=filtrado.find(function(x){return String(x.opId)===id;});
-      return{label:h&&h.op&&h.op.nombre?h.op.nombre.split(' ').slice(0,2).join(' '):('Operador '+id),total:porOpUtilidad[id]};
+    var ordenadoU=unidadesOpU.map(function(nombre){
+      return{label:nombre.split(' ').slice(0,2).join(' '),total:porOpUtilidad[nombre]};
     }).sort(function(a,b){return b.total-a.total;});
     wrapUtilidad.innerHTML='<canvas id="rgChartUtilidad"></canvas>';
     $('rgChartUtilidad').height=Math.max(240,ordenadoU.length*32);
