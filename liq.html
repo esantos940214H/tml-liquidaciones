@@ -641,8 +641,12 @@ tr:hover td{background:#fafafa}
         <div id="rgChartFletesWrap"><canvas id="rgChartFletes" height="240"></canvas></div>
       </div>
       <div>
+        <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#888;margin-bottom:8px;text-align:center">Utilidad por operador</div>
+        <div id="rgChartUtilidadWrap"><canvas id="rgChartUtilidad" height="240"></canvas></div>
+      </div>
+      <div style="grid-column:1/-1">
         <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#888;margin-bottom:8px;text-align:center">Composición de gastos totales</div>
-        <div id="rgChartGastosWrap"><canvas id="rgChartGastos" height="240"></canvas></div>
+        <div id="rgChartGastosWrap" style="max-width:420px;margin:0 auto"><canvas id="rgChartGastos" height="240"></canvas></div>
       </div>
     </div>
   </div>
@@ -4240,7 +4244,7 @@ function generarReporte(){
 // calculados al momento de cerrar esa liquidación — aquí solo se suman/
 // agrupan, no se recalcula nada desde cero.
 // ══════════════════════════════════════════════
-var chartRGFletes=null,chartRGGastos=null;
+var chartRGFletes=null,chartRGGastos=null,chartRGUtilidad=null;
 var PALETA_REPORTE_GENERAL=['#e63946','#2d6a4f','#1e40af','#c87f00','#6b46c1','#0a5233','#856404','#9b1c1c','#0369a1','#5b21b6','#1a1a2e','#c1121f'];
 
 function limpiarFiltroReporteGeneral(){
@@ -4262,7 +4266,7 @@ async function generarReporteGeneral(){
   }).sort(function(a,b){return(b.fechaCierre||'').localeCompare(a.fechaCierre||'');});
 
   var totFletes=0,totGastos=0,totDieselNC=0,totCasetas=0,totComision=0,totNomina=0,totIncidentes=0,totSaldo=0,totUtilidad=0;
-  var porOpFletes={};
+  var porOpFletes={},porOpUtilidad={};
   var filas='';
   filtrado.forEach(function(h){
     var s=h.snapshot||{};
@@ -4283,6 +4287,7 @@ async function generarReporteGeneral(){
     totFletes+=fletes;totGastos+=gastos;totDieselNC+=dieselNC;totCasetas+=casetas;
     totComision+=comision;totNomina+=nomina;totIncidentes+=incidentes;totSaldo+=saldo;totUtilidad+=utilidad;
     porOpFletes[h.opId]=(porOpFletes[h.opId]||0)+fletes;
+    porOpUtilidad[h.opId]=(porOpUtilidad[h.opId]||0)+utilidad;
     var nombreOp=(h.op&&h.op.nombre)||('Operador '+h.opId);
     filas+='<tr><td>#'+h.num+'</td><td style="font-size:11px">'+nombreOp+'</td><td style="font-size:11px">'+(h.fechaCierre||'—')+'</td>'
       +'<td class="num r">'+fmt(fletes)+'</td><td class="num r">'+fmt(gastos)+'</td><td class="num r">'+fmt(dieselNC)+'</td>'
@@ -4324,6 +4329,29 @@ async function generarReporteGeneral(){
     data:{labels:['Gastos','Diesel s/comprobar','Casetas','Comisión','Incidentes','Nómina'],
       datasets:[{data:[totGastos,totDieselNC,totCasetas,totComision,totIncidentes,totNomina],backgroundColor:['#9b1c1c','#c87f00','#1e40af','#e63946','#6b46c1','#0a5233']}]},
     options:{plugins:{legend:{position:'bottom',labels:{boxWidth:11,font:{size:10}}},tooltip:{callbacks:{label:function(ctx){return ctx.label+': '+fmt(ctx.parsed);}}}}}});
+
+  // Utilidad por operador — barras (no pastel: la utilidad puede ser
+  // negativa en algún operador, y un pastel no puede representar valores
+  // negativos), ordenado de mayor a menor.
+  var wrapUtilidad=$('rgChartUtilidadWrap');
+  var unidadesOpU=Object.keys(porOpUtilidad);
+  if(opFiltro||!unidadesOpU.length){
+    if(chartRGUtilidad){chartRGUtilidad.destroy();chartRGUtilidad=null;}
+    wrapUtilidad.innerHTML='<p style="text-align:center;color:#aaa;font-size:12px;padding:40px 10px">'+(opFiltro?'Selecciona "Todos" en el filtro de Operador para comparar entre operadores.':'Sin liquidaciones cerradas en este filtro.')+'</p>';
+  }else{
+    var ordenadoU=unidadesOpU.map(function(id){
+      var h=filtrado.find(function(x){return String(x.opId)===id;});
+      return{label:h&&h.op&&h.op.nombre?h.op.nombre.split(' ').slice(0,2).join(' '):('Operador '+id),total:porOpUtilidad[id]};
+    }).sort(function(a,b){return b.total-a.total;});
+    wrapUtilidad.innerHTML='<canvas id="rgChartUtilidad"></canvas>';
+    $('rgChartUtilidad').height=Math.max(240,ordenadoU.length*32);
+    if(chartRGUtilidad)chartRGUtilidad.destroy();
+    chartRGUtilidad=new Chart($('rgChartUtilidad'),{type:'bar',
+      data:{labels:ordenadoU.map(function(o){return o.label;}),datasets:[{data:ordenadoU.map(function(o){return o.total;}),
+        backgroundColor:ordenadoU.map(function(o){return o.total<0?'#c1121f':'#0a5233';})}]},
+      options:{indexAxis:'y',plugins:{legend:{display:false},tooltip:{callbacks:{label:function(ctx){return fmt(ctx.parsed.x);}}}},
+        scales:{x:{ticks:{callback:function(v){return fmt(v);}}}}}});
+  }
 }
 
 // Cargar estado cuando Firebase esté listo
