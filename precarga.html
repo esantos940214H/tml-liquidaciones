@@ -614,6 +614,11 @@ async function reasignar(uuidDoc,campo,valor){
     fresco[campo]=valorNum;
     fresco.updatedAt=new Date().toISOString();
     await window.FB.set('comprobantesPrecargados',uuidDoc,fresco);
+    // Vuelve a cerrar el candado en cuanto se aplica el cambio — no se queda
+    // desbloqueado indefinidamente, hay que volver a pedir la contraseña
+    // para el siguiente cambio.
+    delete _precargaDesbloqueados[uuidDoc];
+    renderPrecarga();
   }catch(e){
     console.error('reasignar:',e);
     alert('⚠️ Error al reasignar: '+e.message);
