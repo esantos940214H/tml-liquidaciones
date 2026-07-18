@@ -238,7 +238,6 @@ tr:hover td{background:#fafafa}
     </div>
     <div class="row">
       <div class="field"><label>Operador</label><select id="filtOp" onchange="renderIngresos()"><option value="">Todos</option></select></div>
-      <div class="field"><label>Mes</label><input type="month" id="filtMes" onchange="aplicarFiltroMes()"></div>
       <div class="field"><label>Desde</label><input type="date" id="filtDesde" onchange="renderIngresos()"></div>
       <div class="field"><label>Hasta</label><input type="date" id="filtHasta" onchange="renderIngresos()"></div>
       <div class="field"><label>Estatus</label>
@@ -1577,22 +1576,7 @@ function eliminarSeleccionadosIng(){
 }
 
 function limpiarFiltros(){
-  $('filtOp').value='';$('filtMes').value='';$('filtDesde').value='';$('filtHasta').value='';$('filtEst').value='';
-  renderIngresos();
-}
-
-// aplicarFiltroMes(): al elegir un mes (input type=month), llena Desde/Hasta
-// con el primer y último día de ese mes y dispara el mismo renderIngresos()
-// que ya usan los demás filtros — no es un filtro aparte, solo una forma
-// rápida de llenar Desde/Hasta sin calcular el último día del mes a mano.
-function aplicarFiltroMes(){
-  var val=$('filtMes').value; // "YYYY-MM" o "" si lo borran
-  if(!val){return;}
-  var partes=val.split('-');
-  var anio=parseInt(partes[0],10),mes=parseInt(partes[1],10);
-  var ultimoDia=new Date(anio,mes,0).getDate();
-  $('filtDesde').value=val+'-01';
-  $('filtHasta').value=val+'-'+String(ultimoDia).padStart(2,'0');
+  $('filtOp').value='';$('filtDesde').value='';$('filtHasta').value='';$('filtEst').value='';
   renderIngresos();
 }
 
