@@ -207,6 +207,7 @@ tr:hover td{background:#fafafa}
   <div class="tab" onclick="showTab(2)">🛣️ Autopistas</div>
   <div class="tab" onclick="showTab(3)">🧾 Gastos</div>
   <div class="tab" onclick="showTab(4)">💰 Reporte</div>
+  <div class="tab" onclick="showTab(5)">📊 Reporte general</div>
 </div>
 
 <!-- ══════════════════════════════════════════════
@@ -615,6 +616,47 @@ tr:hover td{background:#fafafa}
   </div>
 </div></div>
 
+<div id="panel-5" class="panel"><div class="container">
+  <div class="alert alert-info">📊 Reporte agregado sobre TODAS las liquidaciones ya CERRADAS (colección "historial") — a diferencia de la pestaña "💰 Reporte", que solo muestra la liquidación activa en este momento.</div>
+
+  <div class="card no-print">
+    <div class="card-title">🔍 Filtros</div>
+    <div class="row">
+      <div class="field"><label>Operador</label><select id="rgOperador" onchange="generarReporteGeneral()"><option value="">Todos</option></select></div>
+      <div class="field"><label>Desde (fecha de cierre)</label><input type="date" id="rgDesde" onchange="generarReporteGeneral()"></div>
+      <div class="field"><label>Hasta (fecha de cierre)</label><input type="date" id="rgHasta" onchange="generarReporteGeneral()"></div>
+      <button class="btn btn-out btn-sm" onclick="limpiarFiltroReporteGeneral()">Limpiar</button>
+      <button class="btn btn-dark btn-sm" onclick="generarReporteGeneral()">🔄 Recalcular</button>
+    </div>
+  </div>
+
+  <div class="card no-print">
+    <div id="rgKPIs" class="kpis"></div>
+  </div>
+
+  <div class="card no-print">
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
+      <div>
+        <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#888;margin-bottom:8px;text-align:center">Fletes liquidados por operador</div>
+        <div id="rgChartFletesWrap"><canvas id="rgChartFletes" height="240"></canvas></div>
+      </div>
+      <div>
+        <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#888;margin-bottom:8px;text-align:center">Composición de gastos totales</div>
+        <div id="rgChartGastosWrap"><canvas id="rgChartGastos" height="240"></canvas></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card no-print">
+    <div class="card-title">📋 Detalle por liquidación cerrada</div>
+    <div class="tbl-wrap"><table>
+      <thead><tr><th>Liq. #</th><th>Operador</th><th>Cierre</th><th class="r">Fletes</th><th class="r">Gastos</th><th class="r">Diesel s/comprobar</th><th class="r">Casetas</th><th class="r">Comisión</th><th class="r">Saldo</th></tr></thead>
+      <tbody id="rgTabla"></tbody>
+    </table></div>
+  </div>
+
+</div></div>
+
 <!-- Firebase compat -->
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
@@ -625,6 +667,8 @@ tr:hover td{background:#fafafa}
 <!-- Guardar XML de comprobantes + generar PDF al vuelo (ver shared/comprobantes.js) -->
 <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
 <script src="shared/comprobantes.js"></script>
+<!-- Gráficas del reporte general -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
 <script>
 window._fbInit=false;
 window._fbCallbacks=[];
@@ -1585,13 +1629,14 @@ function showTab(i){
   document.querySelectorAll('.panel').forEach((p,j)=>p.classList.toggle('active',j===i));
   document.querySelectorAll('.tab').forEach((t,j)=>t.classList.toggle('active',j===i));
   if(i===4)generarReporte();
+  if(i===5)generarReporteGeneral();
 }
 
 // ══════════════════════════════════════════════
 // INIT SELECTS & TAGS
 // ══════════════════════════════════════════════
 function initSelects(){
-  ['liqOp','ingOp','filtroIngOp'].forEach(function(id){
+  ['liqOp','ingOp','filtroIngOp','rgOperador'].forEach(function(id){
     const s=$(id);if(!s)return;
     OPERADORES.forEach(function(op){
       const o=document.createElement('option');
@@ -4185,6 +4230,91 @@ function generarReporte(){
     casetasNFList:casetasNFAplicar.map(function(a){return{id:a.id,fecha:a.fecha,caseta:a.caseta,monto:a.monto,motivo:a.motivo,evidenciaURL:a.evidenciaURL||null,sinFoto:!!a.sinFoto};}),
     advertenciasFecha:(liq.advertenciasFecha||[]).slice()
   };
+}
+
+// ══════════════════════════════════════════════
+// REPORTE GENERAL (pestaña 📊 Reporte general) — agregado sobre TODAS las
+// liquidaciones ya CERRADAS (colección "historial"), a diferencia de la
+// pestaña 💰 Reporte de arriba, que solo muestra la liquidación activa.
+// Cada doc de "historial" trae un snapshot (_snap) con los totales ya
+// calculados al momento de cerrar esa liquidación — aquí solo se suman/
+// agrupan, no se recalcula nada desde cero.
+// ══════════════════════════════════════════════
+var chartRGFletes=null,chartRGGastos=null;
+var PALETA_REPORTE_GENERAL=['#e63946','#2d6a4f','#1e40af','#c87f00','#6b46c1','#0a5233','#856404','#9b1c1c','#0369a1','#5b21b6','#1a1a2e','#c1121f'];
+
+function limpiarFiltroReporteGeneral(){
+  $('rgOperador').value='';$('rgDesde').value='';$('rgHasta').value='';
+  generarReporteGeneral();
+}
+
+async function generarReporteGeneral(){
+  if(!window.FB)return;
+  var opFiltro=parseInt($('rgOperador').value||0);
+  var desde=$('rgDesde').value;
+  var hasta=$('rgHasta').value;
+  var historial=await window.FB.getAll('historial');
+  var filtrado=(historial||[]).filter(function(h){
+    if(opFiltro&&parseInt(h.opId)!==opFiltro)return false;
+    if(desde&&(h.fechaCierre||'')<desde)return false;
+    if(hasta&&(h.fechaCierre||'')>hasta)return false;
+    return true;
+  }).sort(function(a,b){return(b.fechaCierre||'').localeCompare(a.fechaCierre||'');});
+
+  var totFletes=0,totGastos=0,totDieselNC=0,totCasetas=0,totComision=0,totNomina=0,totIncidentes=0,totSaldo=0;
+  var porOpFletes={};
+  var filas='';
+  filtrado.forEach(function(h){
+    var s=h.snapshot||{};
+    var fletes=s.totIngSubtotal||0;
+    var gastos=(s.totGastosOp||0)+(s.totGastosEmp||0);
+    var dieselNC=s.dieselNoComprobado||0;
+    var casetas=s.totAut||0;
+    var comision=s.totComision||0;
+    var nomina=s.totNomina||0;
+    var incidentes=s.totIncidentes||0;
+    var saldo=s.saldoReal||0;
+    totFletes+=fletes;totGastos+=gastos;totDieselNC+=dieselNC;totCasetas+=casetas;
+    totComision+=comision;totNomina+=nomina;totIncidentes+=incidentes;totSaldo+=saldo;
+    porOpFletes[h.opId]=(porOpFletes[h.opId]||0)+fletes;
+    var nombreOp=(h.op&&h.op.nombre)||('Operador '+h.opId);
+    filas+='<tr><td>#'+h.num+'</td><td style="font-size:11px">'+nombreOp+'</td><td style="font-size:11px">'+(h.fechaCierre||'—')+'</td>'
+      +'<td class="num r">'+fmt(fletes)+'</td><td class="num r">'+fmt(gastos)+'</td><td class="num r">'+fmt(dieselNC)+'</td>'
+      +'<td class="num r">'+fmt(casetas)+'</td><td class="num r">'+fmt(comision)+'</td>'
+      +'<td class="num r" style="color:'+(saldo<0?'#c1121f':'#0a5233')+'">'+fmt(saldo)+'</td></tr>';
+  });
+
+  $('rgKPIs').innerHTML=
+    '<div class="kpi"><div class="v">'+filtrado.length+'</div><div class="k">Liquidaciones cerradas</div></div>'
+    +'<div class="kpi"><div class="v">'+fmt(totFletes)+'</div><div class="k">Fletes liquidados</div></div>'
+    +'<div class="kpi"><div class="v">'+fmt(totGastos)+'</div><div class="k">Gastos</div></div>'
+    +'<div class="kpi"><div class="v">'+fmt(totDieselNC)+'</div><div class="k">Exceso de diesel</div></div>'
+    +'<div class="kpi"><div class="v">'+fmt(totCasetas)+'</div><div class="k">Casetas</div></div>'
+    +'<div class="kpi"><div class="v">'+fmt(totComision)+'</div><div class="k">Comisión</div></div>'
+    +'<div class="kpi"><div class="v '+(totSaldo<0?'red':'green')+'">'+fmt(totSaldo)+'</div><div class="k">Saldo total</div></div>';
+
+  $('rgTabla').innerHTML=filas||'<tr><td colspan="9" style="text-align:center;color:#aaa;padding:20px">Sin liquidaciones cerradas en este filtro.</td></tr>';
+
+  if(typeof Chart==='undefined')return; // sin conexión al CDN — se omiten las gráficas sin afectar KPIs/tabla
+
+  var wrapFletes=$('rgChartFletesWrap');
+  var unidadesOp=Object.keys(porOpFletes);
+  if(opFiltro||unidadesOp.length<2){
+    if(chartRGFletes){chartRGFletes.destroy();chartRGFletes=null;}
+    wrapFletes.innerHTML='<p style="text-align:center;color:#aaa;font-size:12px;padding:40px 10px">'+(opFiltro?'Selecciona "Todos" en el filtro de Operador para ver la distribución entre operadores.':'No hay suficientes operadores con liquidaciones cerradas en este filtro.')+'</p>';
+  }else{
+    wrapFletes.innerHTML='<canvas id="rgChartFletes" height="240"></canvas>';
+    var labelsOp=unidadesOp.map(function(id){var h=filtrado.find(function(x){return String(x.opId)===id;});return h&&h.op&&h.op.nombre?h.op.nombre.split(' ').slice(0,2).join(' '):('Operador '+id);});
+    var dataOp=unidadesOp.map(function(id){return porOpFletes[id];});
+    chartRGFletes=new Chart($('rgChartFletes'),{type:'pie',data:{labels:labelsOp,datasets:[{data:dataOp,backgroundColor:PALETA_REPORTE_GENERAL}]},
+      options:{plugins:{legend:{position:'bottom',labels:{boxWidth:11,font:{size:10}}},tooltip:{callbacks:{label:function(ctx){return ctx.label+': '+fmt(ctx.parsed);}}}}}});
+  }
+
+  if(chartRGGastos)chartRGGastos.destroy();
+  chartRGGastos=new Chart($('rgChartGastos'),{type:'pie',
+    data:{labels:['Gastos','Diesel s/comprobar','Casetas','Comisión','Incidentes','Nómina'],
+      datasets:[{data:[totGastos,totDieselNC,totCasetas,totComision,totIncidentes,totNomina],backgroundColor:['#9b1c1c','#c87f00','#1e40af','#e63946','#6b46c1','#0a5233']}]},
+    options:{plugins:{legend:{position:'bottom',labels:{boxWidth:11,font:{size:10}}},tooltip:{callbacks:{label:function(ctx){return ctx.label+': '+fmt(ctx.parsed);}}}}}});
 }
 
 // Cargar estado cuando Firebase esté listo
