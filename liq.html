@@ -2544,7 +2544,23 @@ async function iniciarLiquidacion(){
   // El campo liqNum es de solo lectura (nunca editable a mano, para no poder
   // sobreescribir el folio de otra liquidación) — el número siempre se
   // calcula aquí, no se confía en lo que haya quedado en el input.
-  const num=siguienteNumLiq(opId);
+  // Además de ultimaLiqNumPorOp (un contador que puede desincronizarse —
+  // ya pasó dos veces: quedó desfasado y volvió a ofrecer un número YA
+  // cerrado de este mismo operador, creando un duplicado), se revisa aquí
+  // el historial real de este operador y se toma el número más alto entre
+  // ambos — así nunca se puede repetir un folio ya cerrado, aunque el
+  // contador se desincronice de nuevo por cualquier motivo.
+  let num=siguienteNumLiq(opId);
+  try{
+    var _histOp=await window.FB.getAll('historial');
+    var _maxHistOp=_histOp.reduce(function(mx,h){
+      return(parseInt(h.opId||h.unidad)===opId&&h.num>mx)?h.num:mx;
+    },0);
+    if(_maxHistOp+1>num){
+      num=_maxHistOp+1;
+      registrarNumLiqUsado(opId,_maxHistOp);
+    }
+  }catch(e){console.error('Verificación de folio contra historial:',e);}
   // Ya no se pide confirmación manual aquí: Firestore (arriba, vía
   // obtenerLiqActivaData) ya es la fuente de verdad de si este operador
   // tiene o no una liquidación activa en CUALQUIER computadora/sesión — si
