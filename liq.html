@@ -1073,6 +1073,17 @@ function suscribirLiqActiva(opId){
         // ceros al recalcular.
         if(noHabiaActiva) restaurarUILiquidacion();
       }
+    } else if(liq&&liq.opId===opId){
+      // El doc liqActivas/{opId} que esta pestaña tenía cargado en memoria
+      // se borró en otro lado (se cerró, se eliminó, o un administrador
+      // corrigió datos) — SIN este aviso, la pestaña seguía creyendo que la
+      // liquidación seguía activa, y cualquier guardarEstado() posterior
+      // (que escribe SIEMPRE lo que hay en memoria, sin comprobar si el doc
+      // remoto cambió) la volvía a crear con datos viejos, "resucitando" una
+      // liquidación que ya se había cerrado/corregido en otra sesión. Se
+      // limpia el estado local para que esto ya no pueda pasar.
+      alert('⚠️ La liquidación #'+liq.num+' de '+(liq.op?liq.op.nombre:'')+' se cerró o se eliminó desde otra sesión — esta pestaña ya no puede seguir editándola. Se recarga la página.');
+      location.reload();
     }
   });
 }
