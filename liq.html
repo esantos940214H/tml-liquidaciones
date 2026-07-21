@@ -3150,7 +3150,13 @@ function parseIAVE(text,fname){
   // el CSV. El filtro por fechas del periodo ya evita jalar cruces de otros
   // periodos. (Mismo criterio que el diesel en liquidaciones reabiertas.)
   var _iaveYaLiq=(liq.reabierta)?[]:((arrastres[liq.unidad]||arrastres[String(liq.unidad)]||{}).iaveYaLiquidadas||[]);
-  liq.autopistas=[];
+  // Solo se reemplazan los cruces que YA venían del Excel/IAVE (re-subir el
+  // mismo archivo, o uno actualizado, hace un full-rebuild de ESOS — no es
+  // aditivo, a propósito). Los que vinieron de un XML de factura o se
+  // jalaron automáticamente de precarga.mudanzastml.mx (esCruceXML) se
+  // conservan — antes esta línea los borraba también sin querer, perdiendo
+  // casetas ya jaladas cada vez que se subía/resubía el Excel.
+  liq.autopistas=(liq.autopistas||[]).filter(function(a){return esCruceXML(a);});
   var nIaveSkip=0;
   for(var i=1;i<lines.length;i++){
     const cols=lines[i].split(',').map(function(c){return c.trim();});
