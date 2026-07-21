@@ -1072,9 +1072,16 @@ async function reabrirLiquidacion(){
     // liquidación se cerró originalmente — hay que insertarlo a propósito.
     let nA=0,nV=0,nI=0;
     var idsAntLiberados=[],idsViajesLiberados=[];
+    // El anticipo "Saldo en contra liq #N" que ESTA MISMA liquidación generó
+    // al cerrarse es la deuda para la SIGUIENTE liquidación del operador —
+    // aunque por algún motivo tuviera liqNum===l.num, nunca se libera aquí
+    // como si fuera un cargo normal de esta liquidación (crearía un cálculo
+    // circular: la liquidación absorbiendo su propia deuda pendiente).
+    var _conceptoSaldoPropio='Saldo en contra liq #'+l.num;
     Object.keys(antDB).forEach(function(key){
       if(parseInt(key)===parseInt(opIdL)){
         (antDB[key]||[]).forEach(function(a){
+          if(a.concepto===_conceptoSaldoPropio)return;
           if(a.liqNum===l.num){a.estado='pendiente';a.liqNum=null;nA++;idsAntLiberados.push(a.id);}
         });
       }
@@ -1137,6 +1144,12 @@ async function reabrirLiquidacion(){
       window.FB.set('estado','nominaDB',{data:JSON.stringify(nomDB)}),
       window.FB.set('estado','arrastres',{data:JSON.stringify(arrDB)}),
       window.FB.set('liqActivas',String(opIdL),{data:JSON.stringify(liqReab)}),
+      // Borrar el registro de "cerrada" en Historial — una liquidación no
+      // puede aparecer como cerrada Y activa al mismo tiempo. Antes esto no
+      // se borraba nunca, así que después de reabrir se veían DOS
+      // liquidaciones con el mismo número (una cerrada "fantasma" y la
+      // activa de verdad).
+      window.FB.del('historial','liq-'+l.num+'-'+opIdL),
     ]);
 
     alert('🔓 Liquidación #'+l.num+' reabierta.\n'+nA+' anticipo(s), '+nV+' viaje(s)'+(nN?', '+nN+' recibo(s) de nómina':'')+(nI?' y '+nI+' incidente(s)':'')+' quedaron pendientes otra vez e incluidos en la liquidación.\n\nSi hay anticipos, viajes o recibos de nómina NUEVOS registrados después del cierre original, no se van a jalar solos — vas a poder insertarlos a propósito con un botón dentro del módulo de Liquidaciones.\n\nAbriendo el módulo de Liquidaciones para editarla...');

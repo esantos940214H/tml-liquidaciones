@@ -2141,7 +2141,19 @@ async function refrescarPreview(){
 // jala automáticamente — hay que insertarlo a propósito con el botón
 // correspondiente. En una liquidación normal (no reabierta) no aplica este
 // filtro: se sigue jalando todo lo pendiente, como siempre.
+// El anticipo "Saldo en contra liq #N" que una liquidación genera al
+// cerrarse con saldo negativo es la deuda que debe descontarse en la
+// SIGUIENTE liquidación de ese operador — nunca en la misma que lo generó.
+// Si esa misma liquidación se reabre, este anticipo NUNCA debe volver a
+// contarse como uno de sus propios cargos (eso produciría un cálculo
+// circular: una liquidación absorbiendo su propia deuda pendiente). Esta
+// verificación aplica siempre, sin excepción — ni por anticiposIncluidos
+// (por si quedó ahí de forma incorrecta) ni por inserción manual.
+function esSaldoEnContraDeEstaMismaLiq(a){
+  return !!(liq&&a&&a.concepto===('Saldo en contra liq #'+liq.num));
+}
 function anticipoIncluido(a){
+  if(esSaldoEnContraDeEstaMismaLiq(a))return false;
   if(!liq||!liq.reabierta||!liq.anticiposIncluidos)return true;
   return liq.anticiposIncluidos.indexOf(a.id)!==-1;
 }
@@ -2185,6 +2197,13 @@ function insertarNomina(id){
 }
 function insertarAnticipo(id){
   if(!liq)return;
+  var _opIdIns=liq.opId||liq.unidad;
+  var _listaAnt=anticiposDB[_opIdIns]||anticiposDB[String(_opIdIns)]||[];
+  var _antObj=_listaAnt.find(function(a){return a.id===id;});
+  if(_antObj&&esSaldoEnContraDeEstaMismaLiq(_antObj)){
+    alert('🚫 Este anticipo ("'+_antObj.concepto+'") es el saldo en contra que ESTA MISMA liquidación #'+liq.num+' generó al cerrarse antes — es la deuda para la SIGUIENTE liquidación de este operador, no se puede incluir aquí otra vez (crearía un cálculo circular).');
+    return;
+  }
   if(!liq.anticiposIncluidos)liq.anticiposIncluidos=[];
   if(liq.anticiposIncluidos.indexOf(id)===-1)liq.anticiposIncluidos.push(id);
   guardarEstado();
