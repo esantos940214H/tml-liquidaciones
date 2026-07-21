@@ -906,11 +906,6 @@ async function buscarUUIDDuplicado(uuid){
     try{
       var activasRaw=await window.FB.getAll('liqActivas');
       var _datasActivas=activasRaw.filter(function(a){return a.data;}).map(function(a){return a.data;});
-      // Respaldo de compatibilidad (ver obtenerLiqActivaData): mientras alguna
-      // pestaña siga con el código anterior al candado por operador, su
-      // liquidación puede seguir solo en el doc único viejo, no en liqActivas.
-      var _old=await window.FB.get('estado','liqActiva');
-      if(_old&&_old.data)_datasActivas.push(_old.data);
       for(var k=0;k<_datasActivas.length;k++){
         var liqR=JSON.parse(_datasActivas[k]);
         if(liq&&liqR.num===liq.num&&liqR.opId===liq.opId)continue;
@@ -1087,25 +1082,9 @@ function suscribirLiqActiva(opId){
     }
   });
 }
-// Puente de compatibilidad: mientras alguna pestaña siga con el código
-// ANTERIOR al candado por operador abierta (no se recarga sola: es un
-// módulo que vive en un iframe/pestaña que no refresca entre clics), sus
-// guardados van a seguir cayendo en el doc único viejo estado/liqActiva,
-// no en liqActivas/{opId}. Este helper busca primero en el lugar nuevo y,
-// si no hay nada, revisa el doc viejo por si es de este mismo operador —
-// así no se “pierde de vista” su avance mientras no recargue su pestaña.
-// Una vez que esa pestaña recargue y vuelva a guardar, ya cae en el lugar
-// nuevo y este respaldo deja de hacer falta (se puede quitar más adelante).
 async function obtenerLiqActivaData(opId){
   var r=await window.FB.get('liqActivas',String(opId));
   if(r&&r.data)return r.data;
-  var old=await window.FB.get('estado','liqActiva');
-  if(old&&old.data){
-    try{
-      var liqOld=JSON.parse(old.data);
-      if(liqOld&&parseInt(liqOld.opId||liqOld.unidad)===parseInt(opId))return old.data;
-    }catch(e){console.error('obtenerLiqActivaData (doc viejo):',e);}
-  }
   return null;
 }
 let arrastres={};
