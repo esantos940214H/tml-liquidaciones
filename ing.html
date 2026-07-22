@@ -76,6 +76,13 @@ tr:hover td{background:#fafafa}
 .lock-ok{background:#e63946;color:#fff}.lock-ok:hover{background:#c1121f}
 .lock-cancel{background:#f0f2f5;color:#555}.lock-cancel:hover{background:#e0e2e5}
 .lock-err{color:#e63946;font-size:11px;margin-top:6px;display:none}
+.divid-box{background:#fff;border-radius:12px;padding:24px;width:340px;box-shadow:0 16px 48px rgba(0,0,0,.3)}
+.divid-box h3{font-size:15px;font-weight:700;margin-bottom:4px;color:#1a1a2e}
+.divid-box p{font-size:12px;color:#888;margin-bottom:14px}
+.divid-box label{font-size:11px;text-transform:uppercase;color:#888;font-weight:700;display:block;margin-bottom:3px}
+.divid-box .field{margin-bottom:10px}
+.divid-box input{width:100%;border:1.5px solid #dde;border-radius:7px;padding:8px 10px;font-size:14px;text-align:right;outline:none;box-sizing:border-box}
+.divid-box input:focus{border-color:#1a4f8a}
 
 /* ── SESIÓN (login por módulo) ── */
 .session-overlay{position:fixed;inset:0;background:#1a1a2e;z-index:999999;display:none;align-items:center;justify-content:center}
@@ -1524,7 +1531,7 @@ function renderIngresos(){
       <td><span class="badge ${v.estado==='sin_liquidar'?'bg-yellow':'bg-green'}">${v.estado==='sin_liquidar'?'Sin liquidar':'Liquidado'}</span>${v.satCancelado?' <span class="badge bg-red" style="color:#c1121f" title="Cancelado ante el SAT — se excluyó del cálculo de su liquidación">⚠ CFDI cancelado</span>':(v.satEstado==='Vigente'?' <span class="badge bg-green" title="Verificado vigente ante el SAT">✓ CFDI Vigente <span style="font-size:9px;opacity:.7">SAT</span></span>':'')}</td>
       <td style="font-size:11px;color:#aaa">${v.liqNum?'Liq.#'+v.liqNum:'—'}</td>
       <td style="font-size:11px">${v.xmlURL?`<a href="${v.xmlURL}" target="_blank" style="margin-right:6px">📄 XML</a><button class="btn-sm" style="background:none;border:none;cursor:pointer;font-size:11px" onclick="descargarPDFIngreso('${v.id}')" title="Ver el comprobante en PDF (generado a partir de los datos del XML)">🧾 Ver PDF</button>`:(v.pdfURL?`<a href="${v.pdfURL}" target="_blank">📎 PDF</a>`:'<span style="color:#aaa">—</span>')}</td>
-      <td>${v.estado==='sin_liquidar'?`<button style="background:#fde8e8;color:#9b1c1c;border:none;cursor:pointer;border-radius:4px;padding:3px 8px;font-size:11px" onclick="eliminar('${v.id}')">✕</button>`:'—'}</td>
+      <td>${v.estado==='sin_liquidar'?`<button style="background:#eef;color:#1a4f8a;border:none;cursor:pointer;border-radius:4px;padding:3px 8px;font-size:11px;margin-right:4px" onclick="abrirDividir('${v.id}')" title="Dividir manualmente este ingreso entre Flete y Maniobras (clientes que facturan todo como un solo concepto)">✂️</button><button style="background:#fde8e8;color:#9b1c1c;border:none;cursor:pointer;border-radius:4px;padding:3px 8px;font-size:11px" onclick="eliminar('${v.id}')">✕</button>`:'—'}</td>
     </tr>`;
   });
   const sinLiq=filtrados.filter(v=>v.estado==='sin_liquidar').length;
@@ -1555,6 +1562,46 @@ function eliminar(id){
     ingresosDB=ingresosDB.filter(v=>v.id!==id);
     guardar();renderIngresos();
   });
+}
+
+// Dividir manualmente un ingreso entre Flete/Maniobras/Otros — para clientes
+// que exigen que TODO se les facture como un solo concepto (normalmente
+// "Flete"), de modo que el XML no trae desglose alguno y todo el subtotal
+// cae en Flete. Sin esto, esos viajes generarían comisión sobre montos que
+// en realidad corresponden a maniobras.
+let _dividirId=null;
+function abrirDividir(id){
+  const v=ingresosDB.find(x=>x.id===id);
+  if(!v)return;
+  if(v.estado!=='sin_liquidar'){alert('Este ingreso ya está liquidado. No se puede modificar su desglose.');return;}
+  _dividirId=id;
+  const sf=v.subtFlete!=null?v.subtFlete:(v.tipo==='flete_for'||v.tipo==='flete_mx'?v.subtotal:0);
+  const sm=v.subtManiobras!=null?v.subtManiobras:(v.tipo==='maniobra'?v.subtotal:0);
+  const so=v.subtOtros!=null?v.subtOtros:(v.tipo==='otro'?v.subtotal:0);
+  $('dividirSubtotal').textContent=fmt(v.subtotal);
+  $('dividirFlete').value=sf.toFixed(2);
+  $('dividirManiobras').value=sm.toFixed(2);
+  $('dividirOtros').value=so.toFixed(2);
+  $('dividirErr').style.display='none';
+  $('dividirModal').style.display='flex';
+}
+function cerrarDividir(){$('dividirModal').style.display='none';_dividirId=null;}
+function confirmarDividir(){
+  const v=ingresosDB.find(x=>x.id===_dividirId);
+  if(!v)return;
+  const sf=parseFloat($('dividirFlete').value||0);
+  const sm=parseFloat($('dividirManiobras').value||0);
+  const so=parseFloat($('dividirOtros').value||0);
+  const suma=Math.round((sf+sm+so)*100)/100;
+  const subt=Math.round(v.subtotal*100)/100;
+  if(Math.abs(suma-subt)>0.01){
+    $('dividirErr').style.display='block';
+    $('dividirErr').textContent='La suma ('+fmt(suma)+') debe ser igual al Subtotal del viaje ('+fmt(subt)+').';
+    return;
+  }
+  v.subtFlete=sf;v.subtManiobras=sm;v.subtOtros=so;
+  guardar();renderIngresos();
+  cerrarDividir();
 }
 
 function actualizarBarraSelIng(){
@@ -1632,6 +1679,22 @@ function agregarIngreso(){
       <button class="lock-cancel" onclick="lockCancel()">Cancelar</button>
     </div>
     <div class="lock-err" id="lockErr">Contraseña incorrecta</div>
+  </div>
+</div>
+
+<!-- MODAL DIVIDIR INGRESO FLETE/MANIOBRAS/OTROS -->
+<div class="lock-overlay" id="dividirModal" style="display:none">
+  <div class="divid-box">
+    <h3>✂️ Dividir ingreso</h3>
+    <p>Subtotal del viaje: <strong id="dividirSubtotal">$0.00</strong> — la suma de los 3 campos debe igualar este monto.</p>
+    <div class="field"><label>Flete</label><input type="number" id="dividirFlete" step="0.01"></div>
+    <div class="field"><label>Maniobras</label><input type="number" id="dividirManiobras" step="0.01"></div>
+    <div class="field"><label>Otros</label><input type="number" id="dividirOtros" step="0.01"></div>
+    <div class="lock-row">
+      <button class="lock-ok" onclick="confirmarDividir()">Guardar</button>
+      <button class="lock-cancel" onclick="cerrarDividir()">Cancelar</button>
+    </div>
+    <div class="lock-err" id="dividirErr">Error</div>
   </div>
 </div>
 </body>
