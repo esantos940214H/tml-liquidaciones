@@ -171,6 +171,7 @@ tr:hover td{background:#fafafa}
         <div class="icon">📄</div><p><strong>XML Carta Porte</strong><br><span style="font-size:10px;color:#aaa">Extrae automático</span></p>
       </div>
       <input type="file" id="fXML" accept=".xml" multiple style="display:none">
+      <input type="file" id="fSustituirXML" accept=".xml" style="display:none" onchange="handleSustituirXMLFile(event)">
       <div class="upload-zone" style="flex:1;min-width:160px;padding:14px" id="dzPDF" onclick="document.getElementById('fPDF').click()">
         <div class="icon">📑</div><p><strong>PDF / Factura global</strong><br><span style="font-size:10px;color:#aaa">IA extrae los datos</span></p>
       </div>
@@ -1531,7 +1532,7 @@ function renderIngresos(){
       <td><span class="badge ${v.estado==='sin_liquidar'?'bg-yellow':'bg-green'}">${v.estado==='sin_liquidar'?'Sin liquidar':'Liquidado'}</span>${v.satCancelado?' <span class="badge bg-red" style="color:#c1121f" title="Cancelado ante el SAT — se excluyó del cálculo de su liquidación">⚠ CFDI cancelado</span>':(v.satEstado==='Vigente'?' <span class="badge bg-green" title="Verificado vigente ante el SAT">✓ CFDI Vigente <span style="font-size:9px;opacity:.7">SAT</span></span>':'')}</td>
       <td style="font-size:11px;color:#aaa">${v.liqNum?'Liq.#'+v.liqNum:'—'}</td>
       <td style="font-size:11px">${v.xmlURL?`<a href="${v.xmlURL}" target="_blank" style="margin-right:6px">📄 XML</a><button class="btn-sm" style="background:none;border:none;cursor:pointer;font-size:11px" onclick="descargarPDFIngreso('${v.id}')" title="Ver el comprobante en PDF (generado a partir de los datos del XML)">🧾 Ver PDF</button>`:(v.pdfURL?`<a href="${v.pdfURL}" target="_blank">📎 PDF</a>`:'<span style="color:#aaa">—</span>')}</td>
-      <td>${v.estado==='sin_liquidar'?`<button style="background:#eef;color:#1a4f8a;border:none;cursor:pointer;border-radius:4px;padding:3px 8px;font-size:11px;margin-right:4px" onclick="abrirDividir('${v.id}')" title="Dividir manualmente este ingreso entre Flete y Maniobras (clientes que facturan todo como un solo concepto)">✂️</button><button style="background:#fde8e8;color:#9b1c1c;border:none;cursor:pointer;border-radius:4px;padding:3px 8px;font-size:11px" onclick="eliminar('${v.id}')">✕</button>`:'—'}</td>
+      <td>${v.estado==='sin_liquidar'?`${v.sinFacturaJustificar&&!v.sustituidoPorXML?`<button style="background:#e8f4fd;color:#0369a1;border:none;cursor:pointer;border-radius:4px;padding:3px 8px;font-size:11px;margin-right:4px" onclick="iniciarSustituirXML('${v.id}')" title="Sustituir este ingreso capturado sin factura por el XML real, cuando ya se tenga">🔄 XML</button>`:''}<button style="background:#eef;color:#1a4f8a;border:none;cursor:pointer;border-radius:4px;padding:3px 8px;font-size:11px;margin-right:4px" onclick="abrirDividir('${v.id}')" title="Dividir manualmente este ingreso entre Flete y Maniobras (clientes que facturan todo como un solo concepto)">✂️</button><button style="background:#fde8e8;color:#9b1c1c;border:none;cursor:pointer;border-radius:4px;padding:3px 8px;font-size:11px" onclick="eliminar('${v.id}')">✕</button>`:'—'}</td>
     </tr>`;
   });
   const sinLiq=filtrados.filter(v=>v.estado==='sin_liquidar').length;
@@ -1610,6 +1611,96 @@ function confirmarDividir(){
   guardar();renderIngresos();
   cerrarDividir();
   alert('✅ Solicitud de división enviada. Un administrador debe autorizarla desde Autorizaciones antes de que se aplique al cálculo de comisión.');
+}
+
+// Sustituir un ingreso capturado "sin factura" (cuando aún no se tenía el
+// pedido/XML — ver sinFacturaJustificar) por el XML real cuando ya se
+// tenga, sin pasar por el flujo de desglose multi-operador (que es para
+// un CFDI consolidado de VARIOS operadores; esto es un solo operador con
+// UN ingreso pendiente puntual). Clasifica Flete/Maniobras/Otros
+// automáticamente del XML (misma lógica que una carga normal); si hace
+// falta ajustar el reparto a mano, se usa después el botón ✂️ (que sí
+// requiere autorización de administrador).
+let _sustituirTargetId=null;
+function iniciarSustituirXML(id){
+  const v=ingresosDB.find(x=>x.id===id);
+  if(!v)return;
+  if(v.sustituidoPorXML){alert('Este ingreso ya fue sustituido con su XML real.');return;}
+  _sustituirTargetId=id;
+  $('fSustituirXML').click();
+}
+function handleSustituirXMLFile(e){
+  const file=e.target.files[0];
+  if(!file)return;
+  const r=new FileReader();
+  r.onload=function(ev){sustituirIngresoConXML(_sustituirTargetId,ev.target.result,file.name);};
+  r.readAsText(file,'UTF-8');
+  e.target.value='';
+}
+function sustituirIngresoConXML(id,text,fname){
+  const candidato=ingresosDB.find(v=>v.id===id);
+  if(!candidato){alert('No se encontró el ingreso a sustituir.');return;}
+  if(candidato.sustituidoPorXML){alert('Este ingreso ya fue sustituido con su XML real.');return;}
+  const doc=new DOMParser().parseFromString(text,'text/xml');
+  const comp=doc.querySelector('Comprobante');
+  if(!comp){alert(fname+': no es CFDI válido.');return;}
+  const emisor=doc.querySelector('Emisor');
+  const rfcEmisor=emisor?emisor.getAttribute('Rfc')||'':'';
+  if(rfcEmisor.toUpperCase()!==TML_RFC){
+    alert('🚫 '+fname+': el emisor de este CFDI es "'+(rfcEmisor||'(vacío)')+'", no Mudanzas TML ('+TML_RFC+').');
+    return;
+  }
+  const subtotal=parseFloat(comp.getAttribute('SubTotal')||0);
+  const impGlobal=doc.querySelector('Comprobante>Impuestos');
+  let iva=0,ret=0;
+  (impGlobal?impGlobal.querySelectorAll('Traslado'):doc.querySelectorAll('Traslado')).forEach(t=>{if(t.getAttribute('Impuesto')==='002')iva+=parseFloat(t.getAttribute('Importe')||0);});
+  (impGlobal?impGlobal.querySelectorAll('Retencion'):doc.querySelectorAll('Retencion')).forEach(r=>{if(r.getAttribute('Impuesto')==='002')ret+=parseFloat(r.getAttribute('Importe')||0);});
+  const receptor=doc.querySelector('Receptor');
+  const tfd=doc.querySelector('TimbreFiscalDigital');
+  const uuid=tfd?tfd.getAttribute('UUID')||'':'';
+  if(uuid&&ingresosDB.some(v=>v.id!==id&&(v.uuid||'')===uuid)){
+    if(!confirm('⚠️ Este CFDI (UUID '+uuid.slice(0,8)+'...) ya está registrado en otro ingreso. ¿Sustituir de todas formas?'))return;
+  }
+  const {subtFlete,subtManiobras,subtOtros}=clasificarConceptosCFDI(doc,subtotal);
+  const total=parseFloat(comp.getAttribute('Total')||0)||(subtotal+iva-ret);
+  const folioCompleto=(comp.getAttribute('Serie')||'')+'-'+(comp.getAttribute('Folio')||'');
+  const fecha=(comp.getAttribute('Fecha')||'').slice(0,10);
+  const cliente=receptor?receptor.getAttribute('Nombre')||'':'';
+  const rfcReceptor=receptor?receptor.getAttribute('Rfc')||'':'';
+  const coincide=Math.abs(total-(candidato.total||0))<0.01;
+  const tipoDerivado=subtManiobras>0&&!subtFlete?'maniobra':subtOtros>0&&!subtFlete&&!subtManiobras?'otro':'flete_for';
+  if(!coincide&&candidato.estado==='liquidado'){
+    // Igual que en el desglose multi-operador: si ya está liquidado y el
+    // monto del XML no coincide con lo capturado a mano, NO se sustituye
+    // solo — se registra aparte y se manda a revisión de administrador
+    // para no mover un saldo que ya se calculó.
+    const idConflicto=uid();
+    candidato.requiereRevisionAdmin=true;
+    candidato.conflictoXMLId=idConflicto;
+    candidato.tuvoDiscrepanciaMonto=true;
+    ingresosDB.push({
+      id:idConflicto,unidad:candidato.unidad,folio:folioCompleto,fecha:fecha,cliente:cliente,tipo:tipoDerivado,
+      subtotal:subtotal,subtFlete:subtFlete,subtManiobras:subtManiobras,subtOtros:subtOtros,
+      iva:iva,ret:ret,total:total,estado:'sin_liquidar',liqNum:null,origen:'xml',
+      uuid:uuid,facturaUUID:uuid,rfcEmisor:rfcEmisor,rfcReceptor:rfcReceptor,
+      satEstado:null,satCancelado:false,esRevisionPendiente:true,conflictoManualId:candidato.id,xmlURL:null
+    });
+    guardar();renderIngresos();
+    subirXMLIngresoEnSegundoPlano(uuid,fname,text);
+    alert('⚠️ El monto del XML ('+fmt(total)+') no coincide con lo capturado a mano ('+fmt(candidato.total||0)+'), y este ingreso ya está liquidado (liq. #'+candidato.liqNum+'). Se registró el XML aparte y quedó pendiente de revisión por un administrador — no se sustituyó automáticamente.');
+    return;
+  }
+  candidato.folio=folioCompleto;candidato.fecha=fecha;candidato.cliente=cliente;candidato.tipo=tipoDerivado;
+  candidato.subtotal=subtotal;candidato.subtFlete=subtFlete;candidato.subtManiobras=subtManiobras;candidato.subtOtros=subtOtros;
+  candidato.iva=iva;candidato.ret=ret;candidato.total=total;
+  candidato.origen='xml';candidato.uuid=uuid;candidato.facturaUUID=uuid;
+  candidato.rfcEmisor=rfcEmisor;candidato.rfcReceptor=rfcReceptor;
+  candidato.satEstado=null;candidato.satCancelado=false;
+  candidato.sustituidoPorXML=true;
+  candidato.observaciones=(candidato.observaciones||'')+' — sustituido por XML '+folioCompleto+' el '+hoy();
+  guardar();renderIngresos();
+  subirXMLIngresoEnSegundoPlano(uuid,fname,text);
+  alert('✅ '+fname+' sustituyó el ingreso capturado sin factura. Se clasificó automáticamente Flete/Maniobras/Otros del XML — si necesitas ajustarlo a mano, usa el botón ✂️ (requiere autorización de administrador).');
 }
 
 function actualizarBarraSelIng(){
