@@ -421,6 +421,24 @@ function validarEmisorTML(doc,fname){
   }
   return true;
 }
+// Detecta automáticamente a qué operador corresponde un recibo de nómina
+// comparando el nombre del Receptor del CFDI (el operador que recibe su
+// pago) contra OPERADORES — sin acentos/mayúsculas para que variaciones de
+// captura no impidan el match. Si hay coincidencia exacta se usa esa; si
+// hay varias coincidencias parciales ambiguas, no se autodetecta (se pide
+// selección manual) para no asignar mal por error.
+function _normNombreNom(s){return(s||'').toUpperCase().normalize('NFD').replace(/[̀-ͯ]/g,'').trim();}
+function detectarOperadorNomina(nombreReceptor){
+  var n=_normNombreNom(nombreReceptor);
+  if(!n)return null;
+  var exacto=OPERADORES.find(function(o){return _normNombreNom(o.nombre)===n;});
+  if(exacto)return exacto;
+  var parciales=OPERADORES.filter(function(o){
+    var on=_normNombreNom(o.nombre);
+    return on.indexOf(n)!==-1||n.indexOf(on)!==-1;
+  });
+  return parciales.length===1?parciales[0]:null;
+}
 // Busca el complemento de nómina por namespace, no por el prefijo literal
 // (nomina12:), ya que distintos emisores pueden declarar otro prefijo para
 // el mismo namespace del SAT. Si por alguna razón el XML no trae el
@@ -452,8 +470,6 @@ $('fNomina').addEventListener('change',function(e){handleNominaXMLFiles(e.target
 function handleNominaXMLFiles(files){Array.from(files).forEach(function(f){const r=new FileReader();r.onload=function(e){parseNominaXML(e.target.result,f.name);};r.readAsText(f,'UTF-8');});}
 
 function parseNominaXML(text,fname){
-  var unidad=parseInt($('nomOp').value||0);
-  if(!unidad){alert('Selecciona primero el operador al que corresponde este recibo de nómina.');return;}
   var doc=new DOMParser().parseFromString(text,'text/xml');
   var comp=doc.querySelector('Comprobante');
   if(!comp){alert(fname+': no es CFDI válido.');return;}
@@ -461,6 +477,11 @@ function parseNominaXML(text,fname){
   if(!validarEmisorTML(doc,fname))return;
   var nomina=getNominaComplemento(doc);
   if(!nomina){alert(fname+': no se encontró el complemento de nómina en este XML.');return;}
+  var receptor=doc.querySelector('Receptor');
+  var nombreReceptor=receptor?receptor.getAttribute('Nombre')||'':'';
+  var opDetectado=detectarOperadorNomina(nombreReceptor);
+  var unidad=opDetectado?opDetectado.unidad:parseInt($('nomOp').value||0);
+  if(!unidad){alert('No se pudo detectar automáticamente al operador de este recibo ("'+(nombreReceptor||'?')+'"). Selecciona el operador manualmente en el select de arriba y vuelve a subir el XML.');return;}
   var tfd=doc.querySelector('TimbreFiscalDigital');
   var uuid=tfd?tfd.getAttribute('UUID')||'':'';
   if(uuid){
@@ -472,7 +493,6 @@ function parseNominaXML(text,fname){
       return;
     }
   }
-  var receptor=doc.querySelector('Receptor');
   var totalDeducciones=parseFloat(nomina.getAttribute('TotalDeducciones')||0);
   var totalPercepciones=parseFloat(nomina.getAttribute('TotalPercepciones')||0);
   if(!nominaDB[unidad])nominaDB[unidad]=[];
@@ -494,7 +514,7 @@ function parseNominaXML(text,fname){
   renderNomina();
   var opU=OPERADORES.find(function(o){return o.unidad===unidad;});
   $('nominaXMLInfo').style.display='block';
-  $('nominaXMLInfo').innerHTML='<div class="alert alert-ok">✅ '+fname+' — deducciones de '+fmt(totalDeducciones)+' registradas para '+(opU?opU.nombre:unidad)+'.</div>';
+  $('nominaXMLInfo').innerHTML='<div class="alert alert-ok">✅ '+fname+' — deducciones de '+fmt(totalDeducciones)+' registradas para '+(opU?opU.nombre:unidad)+(opDetectado?' (detectado automáticamente del XML)':' (operador seleccionado manualmente)')+'.</div>';
 }
 
 function eliminarNomina(unidad,id){
