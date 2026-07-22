@@ -542,7 +542,7 @@ function parseCSV(text){
   const sep=lines[0].includes('\t')?'\t':',';
   const headers=lines[0].split(sep).map(h=>h.trim().replace(/^'/,''));
   const idx=h=>headers.findIndex(x=>x.toLowerCase().includes(h.toLowerCase()));
-  const iFecha=idx('Fecha'),iCA=idx('Cargo'),iImporte=idx('Importe'),iConcepto=idx('Concepto');
+  const iFecha=idx('Fecha'),iCA=idx('Cargo'),iImporte=idx('Importe'),iConcepto=idx('Concepto'),iReferencia=idx('Referencia');
   const rows=[];
   for(let i=1;i<lines.length;i++){
     const cols=lines[i].split(sep).map(clean);
@@ -550,7 +550,14 @@ function parseCSV(text){
     if((cols[iCA]||'').trim()!=='-')continue;
     const fecha=parseFechaCSV(cols[iFecha]);
     if(!fecha)continue;
-    rows.push({fecha,importe:parseFloat((cols[iImporte]||'0').replace(/,/g,'')),concepto:cols[iConcepto]||''});
+    // La columna "Referencia" es un folio único por transacción del banco —
+    // a diferencia de "Concepto", que para transferencias SPEI casi siempre
+    // repite el mismo texto genérico (ej. "NOMBRE REF 0000000" con un
+    // placeholder fijo, no una referencia real) para dos depósitos distintos
+    // al mismo operador el mismo día. Sin esto, un segundo depósito legítimo
+    // con la misma fecha/monto/concepto se detectaba como duplicado y se
+    // perdía (ver procesarRows).
+    rows.push({fecha,importe:parseFloat((cols[iImporte]||'0').replace(/,/g,'')),concepto:cols[iConcepto]||'',referencia:(cols[iReferencia]||'').trim()});
   }
   return rows;
 }
@@ -597,10 +604,21 @@ function procesarRows(rows,fname){
     const op=matchOp(r.concepto);
     if(!op){sinMatch.push(r);return;}
     if(!anticiposDB[op.unidad])anticiposDB[op.unidad]=[];
-    // Verificar duplicado
-    const existe=anticiposDB[op.unidad].some(a=>a.fecha===r.fecha&&Math.abs(a.importe-r.importe)<0.01&&norm(a.concepto)===norm(r.concepto));
+    // Verificar duplicado. Si el archivo trae "Referencia" (folio único del
+    // banco por transacción — ver parseCSV) y el registro existente también
+    // la tiene, comparar SOLO por referencia: dos depósitos reales al mismo
+    // operador el mismo día por el mismo monto son transacciones distintas
+    // aunque el texto de "Concepto" se repita idéntico. Si a alguno le falta
+    // la referencia (captura manual, o un archivo sin esa columna), se cae
+    // al criterio anterior (fecha+monto+concepto) para no perder detección
+    // de duplicados en esos casos.
+    const existe=anticiposDB[op.unidad].some(a=>{
+      if(a.fecha!==r.fecha||Math.abs(a.importe-r.importe)>=0.01)return false;
+      if(a.referencia&&r.referencia)return a.referencia===r.referencia;
+      return norm(a.concepto)===norm(r.concepto);
+    });
     if(existe){duplicados++;return;}
-    anticiposDB[op.unidad].push({id:uid(),fecha:r.fecha,importe:r.importe,concepto:r.concepto,estado:'pendiente',liqNum:null,origen:'archivo'});
+    anticiposDB[op.unidad].push({id:uid(),fecha:r.fecha,importe:r.importe,concepto:r.concepto,referencia:r.referencia||'',estado:'pendiente',liqNum:null,origen:'archivo'});
     nuevos++;
   });
   guardar();
