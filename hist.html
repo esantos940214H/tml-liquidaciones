@@ -1002,7 +1002,14 @@ async function reabrirLiquidacion(){
       // quedaron en 0 y eso ponía las autopistas en $0 al reabrir.
       var _imp=(a.importe!=null&&a.importe>0)?a.importe:((a.subtotal||0)+(a.iva||0));
       var _sub=(a.subtotal!=null&&a.subtotal>0)?a.subtotal:_imp/1.16;
-      return{fecha:a.fecha||'',hora:'',caseta:a.caseta||'',carril:'XML',importe:_imp,
+      // carril NO se guardaba en el snapshot (ver autopistasList en
+      // generarReporte()), así que aquí NO se puede saber el valor original.
+      // Antes se ponía 'XML' a TODAS sin distinción — eso hacía que casetas
+      // de Excel/IAVE (sin uuid real) se mostraran como "factura XML" y,
+      // peor, que esCruceXML() las protegiera de ser reemplazadas al volver
+      // a subir el Excel de esa liquidación reabierta, duplicándolas. Solo
+      // una caseta con uuid real vino de una factura XML de verdad.
+      return{fecha:a.fecha||'',hora:'',caseta:a.caseta||'',carril:(a.uuid?'XML':''),importe:_imp,
         pagaOp:!!a.pagaOp,rfc:a.rfc||'',emisor:a.caseta||'',concepto:a.concepto||'',subtotal:_sub,iva:_imp-_sub,
         uuid:a.uuid||'',satEstado:null,satCancelado:false};
     });
@@ -1053,11 +1060,20 @@ async function reabrirLiquidacion(){
     // aunque por algún motivo tuviera liqNum===l.num, nunca se libera aquí
     // como si fuera un cargo normal de esta liquidación (crearía un cálculo
     // circular: la liquidación absorbiendo su propia deuda pendiente).
+    // Mientras esta liquidación sigue reabierta (posiblemente días, como pasó
+    // con la de Andrés), su saldo en contra se marca "en revisión" en vez de
+    // ocultarse — sigue siendo una deuda real y visible en Anticipos, solo
+    // con una etiqueta para no confundirla con un monto ya definitivo. Se
+    // vuelve a recalcular (y la marca se quita) cuando se cierre de nuevo
+    // (ver cerrarLiquidacion(), que la borra y crea una fresca si aplica).
     var _conceptoSaldoPropio='Saldo en contra liq #'+l.num;
     Object.keys(antDB).forEach(function(key){
       if(parseInt(key)===parseInt(opIdL)){
         (antDB[key]||[]).forEach(function(a){
-          if(a.concepto===_conceptoSaldoPropio)return;
+          if(a.concepto===_conceptoSaldoPropio){
+            if(a.estado==='pendiente')a.enRevisionReapertura=true;
+            return;
+          }
           if(a.liqNum===l.num){a.estado='pendiente';a.liqNum=null;nA++;idsAntLiberados.push(a.id);}
         });
       }
