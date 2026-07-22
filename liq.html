@@ -222,7 +222,7 @@ tr:hover td{background:#fafafa}
       <div class="field"><label>Unidad manejada este periodo</label><select id="liqUnidad" onchange="onUnidadRealChange()"><option value="">— Selecciona —</option></select></div>
       <div class="field"><label>Clave operador</label><input type="text" id="liqClave" readonly style="background:#1a1a2e;color:#aaa;cursor:not-allowed"></div>
       <div class="field"><label>% Comisión fletes <span id="comisionLock" title="Cambiar comisión" onclick="desbloquearComision()" style="cursor:pointer;font-size:13px">🔒</span></label><input type="number" id="liqComision" value="12" step="1" min="0" max="100" readonly style="background:#1a1a2e;color:#aaa;cursor:not-allowed"></div>
-      <div class="field"><label>Costo diesel ($/lt)</label><input type="number" id="liqCostoDiesel" placeholder="Auto al subir Edenred" step="0.0001"></div>
+      <div class="field"><label>Costo diesel ($/lt) <span id="costoDieselLock" title="Cambiar costo diesel" onclick="desbloquearCostoDiesel()" style="cursor:pointer;font-size:13px">🔒</span></label><input type="number" id="liqCostoDiesel" placeholder="Auto al subir Edenred" step="0.0001" readonly style="background:#1a1a2e;color:#aaa;cursor:not-allowed"></div>
     </div>
     <div class="sep"></div>
     <div class="card-title" style="margin-bottom:12px">📊 Escaneo de unidad</div>
@@ -1566,6 +1566,7 @@ function restaurarUILiquidacion(){
   if($('liqComision'))$('liqComision').value=liq.comision||12;
   bloquearComision();
   if($('liqCostoDiesel'))$('liqCostoDiesel').value=liq.costoDiesel||'';
+  bloquearCostoDiesel();
   var _vv=liq.viajeVacio||{};
   if($('vVacioOrigen'))$('vVacioOrigen').value=_vv.origen||'';
   if($('vVacioDestino'))$('vVacioDestino').value=_vv.destino||'';
@@ -2007,6 +2008,7 @@ async function onLiqOpChange(){
   // Comisión: usar valor del operador y re-bloquear
   $('liqComision').value=op?op.comision:12;
   bloquearComision();
+  bloquearCostoDiesel();
   actualizarArrastreDieselPreview();
   // Previsualiza el folio del operador SELECCIONADO en el combo, aunque en
   // memoria siga cargada la liquidación activa de OTRO operador — antes solo
@@ -2109,6 +2111,48 @@ function desbloquearComision(){
     else{$('liqComision').value=liq?liq.comision:12;}
     bloquearComision();
     if($('comisionLock'))$('comisionLock').onclick=desbloquearComision;
+    if(el)el.onchange=null;
+  };
+  setTimeout(function(){el&&el.focus();},50);
+}
+
+// Igual que % Comisión: el costo de diesel se calcula automático al subir
+// el estado de cuenta Edenred (ver ppOp más abajo), así que se deja de
+// solo lectura para que no se cambie por error — mismo candado con
+// contraseña de supervisor.
+var _costoDieselUnlocked=false;
+function bloquearCostoDiesel(){
+  if(_costoDieselUnlocked)return;
+  var el=$('liqCostoDiesel');
+  if(el){el.readOnly=true;el.style.background='#1a1a2e';el.style.color='#aaa';el.style.cursor='not-allowed';}
+  if($('costoDieselLock'))$('costoDieselLock').textContent='🔒';
+}
+function desbloquearCostoDiesel(){
+  var pass=prompt('Contraseña de supervisor para modificar costo diesel:');
+  if(pass!==SUPERVISOR_PASS){alert('Contraseña incorrecta.');return;}
+  _costoDieselUnlocked=true;
+  var el=$('liqCostoDiesel');
+  if(el){
+    el.readOnly=false;el.style.background='';el.style.color='';el.style.cursor='';
+    el.onchange=function(){
+      var val=parseFloat(el.value);
+      if(isNaN(val)||val<=0){
+        alert('Ingresa un costo de diesel válido.');
+        el.value=liq?liq.costoDiesel||'':'';
+        return;
+      }
+      if(liq)liq.costoDiesel=val;
+      guardarEstado();
+    };
+  }
+  if($('costoDieselLock'))$('costoDieselLock').textContent='🔓 (click para cerrar)';
+  if($('costoDieselLock'))$('costoDieselLock').onclick=function(){
+    _costoDieselUnlocked=false;
+    var val=parseFloat($('liqCostoDiesel').value);
+    if(!isNaN(val)&&val>0){if(liq)liq.costoDiesel=val;guardarEstado();}
+    else{$('liqCostoDiesel').value=liq?liq.costoDiesel||'':'';}
+    bloquearCostoDiesel();
+    if($('costoDieselLock'))$('costoDieselLock').onclick=desbloquearCostoDiesel;
     if(el)el.onchange=null;
   };
   setTimeout(function(){el&&el.focus();},50);
