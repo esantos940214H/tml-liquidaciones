@@ -134,9 +134,6 @@ tr:hover td{background:#fafafa}
   <!-- REGISTRO -->
   <div class="card">
     <div class="card-title">📋 Subir recibo de nómina</div>
-    <div class="row" style="margin-bottom:12px">
-      <div class="field"><label>Operador</label><select id="nomOp" onchange="renderNomina()"><option value="">— Selecciona —</option></select></div>
-    </div>
     <div class="upload-zone" id="dzNomina" onclick="document.getElementById('fNomina').click()"><div class="icon">🧾</div><p><strong>Arrastra XML de nómina</strong></p></div>
     <input type="file" id="fNomina" accept=".xml" multiple style="display:none">
     <div id="nominaXMLInfo" style="display:none;margin-top:10px"></div>
@@ -382,7 +379,7 @@ function verificarSesionModulo(){
 window.onFBReady(verificarSesionModulo);
 
 function initSelects(){
-  ['nomOp','filtNomOp'].forEach(function(id){
+  ['filtNomOp'].forEach(function(id){
     var s=$(id);if(!s)return;
     OPERADORES.forEach(function(op){
       var o=document.createElement('option');
@@ -480,8 +477,8 @@ function parseNominaXML(text,fname){
   var receptor=doc.querySelector('Receptor');
   var nombreReceptor=receptor?receptor.getAttribute('Nombre')||'':'';
   var opDetectado=detectarOperadorNomina(nombreReceptor);
-  var unidad=opDetectado?opDetectado.unidad:parseInt($('nomOp').value||0);
-  if(!unidad){alert('No se pudo detectar automáticamente al operador de este recibo ("'+(nombreReceptor||'?')+'"). Selecciona el operador manualmente en el select de arriba y vuelve a subir el XML.');return;}
+  if(!opDetectado){alert('No se pudo detectar automáticamente al operador de este recibo ("'+(nombreReceptor||'?')+'"). Revisa que el nombre del receptor en el XML coincida con el del operador registrado en el sistema.');return;}
+  var unidad=opDetectado.unidad;
   var tfd=doc.querySelector('TimbreFiscalDigital');
   var uuid=tfd?tfd.getAttribute('UUID')||'':'';
   if(uuid){
@@ -514,7 +511,7 @@ function parseNominaXML(text,fname){
   renderNomina();
   var opU=OPERADORES.find(function(o){return o.unidad===unidad;});
   $('nominaXMLInfo').style.display='block';
-  $('nominaXMLInfo').innerHTML='<div class="alert alert-ok">✅ '+fname+' — deducciones de '+fmt(totalDeducciones)+' registradas para '+(opU?opU.nombre:unidad)+(opDetectado?' (detectado automáticamente del XML)':' (operador seleccionado manualmente)')+'.</div>';
+  $('nominaXMLInfo').innerHTML='<div class="alert alert-ok">✅ '+fname+' — deducciones de '+fmt(totalDeducciones)+' registradas para '+(opU?opU.nombre:unidad)+' (detectado automáticamente del XML).</div>';
 }
 
 function eliminarNomina(unidad,id){
