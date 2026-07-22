@@ -819,14 +819,20 @@ function clasificarConceptosCFDI(doc,subtotal){
   let subtFlete=0,subtManiobras=0,subtOtros=0;
   doc.querySelectorAll('Concepto').forEach(c=>{
     const clave=c.getAttribute('ClaveProdServ')||'';
-    const desc=(c.getAttribute('Descripcion')||c.getAttribute('Descripción')||'').toUpperCase();
+    // Se quitan acentos para que "KILÓMETRO"/"KILOMETRO"/"ESTADÍA"/"ESTADIA"
+    // etc. matcheen igual sin tener que listar cada variante acentuada.
+    const desc=(c.getAttribute('Descripcion')||c.getAttribute('Descripción')||'')
+      .toUpperCase().normalize('NFD').replace(/[̀-ͯ]/g,'');
     const imp=parseFloat(c.getAttribute('Importe')||0);
     // 81141601 = "Servicios de logística" (SAT) — código genérico que se usa
     // tanto para km adicionales/estadías (SÍ ganan comisión, van a fletes)
     // como para permisos de tránsito/casetas de servicio dedicado (NO ganan
     // comisión, van a otros). Se distingue por la descripción del concepto.
+    // "KILOMETR" cubre KILOMETRO(S)/KILOMETRAJE/KILOMETRICO en cualquier
+    // redacción que use el facturador; \bKMS?\b cubre "KM"/"KMS" como
+    // palabra/abreviatura suelta (con espacios, puntos o al inicio/fin).
     if(clave==='81141601'){
-      const esKmOEstadia=desc.includes('KILOMETRO')||desc.includes('KILÓMETRO')||desc.includes(' KM ')||desc.includes('ESTADIA')||desc.includes('ESTADÍA');
+      const esKmOEstadia=/KILOMETR/.test(desc)||/\bKMS?\b/.test(desc)||desc.includes('ESTADIA');
       const esPermisoOCaseta=desc.includes('PERMISO')||desc.includes('CASETA');
       if(esKmOEstadia)subtFlete+=imp;
       else if(esPermisoOCaseta)subtOtros+=imp;
@@ -837,7 +843,8 @@ function clasificarConceptosCFDI(doc,subtotal){
       desc.includes('ESTIBA')||desc.includes('CARGA Y DESCARGA')||desc.includes('DESCARGA')||desc.includes('CARGUE');
     const esFlete=!esManiobra&&(clave.startsWith('7810')||clave.startsWith('7811')||clave.startsWith('7813')||
       clave.startsWith('7814')||desc.includes('FLETE')||desc.includes('ACARREO')||desc.includes('ACAREO')||
-      desc.includes('TRASLADO')||desc.includes('TRANSPORTE TERRESTRE'));
+      desc.includes('TRASLADO')||desc.includes('TRANSPORTE TERRESTRE')||
+      /KILOMETR/.test(desc)||/\bKMS?\b/.test(desc));
     if(esManiobra)subtManiobras+=imp;
     else if(esFlete)subtFlete+=imp;
     else subtOtros+=imp;
