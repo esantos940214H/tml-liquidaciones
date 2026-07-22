@@ -1522,7 +1522,7 @@ function renderIngresos(){
     const oCell=so>0?`<td class="num r">${fmt(so)}</td>`:`<td class="num r" style="color:#ccc">—</td>`;
     tb.innerHTML+=`<tr>
       <td style="width:32px;text-align:center"><input type="checkbox" class="chkIng" data-id="${v.id}" ${v.estado!=='sin_liquidar'?'disabled title="No se puede eliminar: ya está liquidado"':''} onchange="actualizarBarraSelIng()"></td>
-      <td class="num">${v.folio}${v.esDesglose?' <span class="badge bg-purple" title="Parte de una factura consolidada desglosada entre varios operadores (mismo CFDI)">🧩</span>':''}${v.observaciones?` <span title="${v.observaciones.replace(/"/g,'&quot;')}">📝</span>`:''}${v.sinFacturaJustificar&&!v.sustituidoPorXML?(yaVencioLimite(v.fechaLimiteJustificacion)?' <span class="badge bg-red" style="color:#c1121f" title="Debió sustituirse con XML antes de '+v.fechaLimiteJustificacion+'">⚠ SIN FACTURA VENCIDO</span>':' <span class="badge bg-yellow" title="Debe sustituirse con XML antes de '+v.fechaLimiteJustificacion+'">⏳ Sin factura</span>'):''}${v.sustituidoPorXML?' <span class="badge bg-green" title="Ya se sustituyó con el XML real">✓ Sustituido</span>':''}</td><td>${v.fecha}</td>
+      <td class="num">${v.folio}${v.esDesglose?' <span class="badge bg-purple" title="Parte de una factura consolidada desglosada entre varios operadores (mismo CFDI)">🧩</span>':''}${v.observaciones?` <span title="${v.observaciones.replace(/"/g,'&quot;')}">📝</span>`:''}${v.sinFacturaJustificar&&!v.sustituidoPorXML?(yaVencioLimite(v.fechaLimiteJustificacion)?' <span class="badge bg-red" style="color:#c1121f" title="Debió sustituirse con XML antes de '+v.fechaLimiteJustificacion+'">⚠ SIN FACTURA VENCIDO</span>':' <span class="badge bg-yellow" title="Debe sustituirse con XML antes de '+v.fechaLimiteJustificacion+'">⏳ Sin factura</span>'):''}${v.sustituidoPorXML?' <span class="badge bg-green" title="Ya se sustituyó con el XML real">✓ Sustituido</span>':''}${v.divisionPendiente?' <span class="badge bg-yellow" title="Solicitud de división Flete/Maniobras pendiente de autorización (solicitada por '+(v.divisionPendiente.solicitadoPor||'?')+')">⏳ División pendiente</span>':''}</td><td>${v.fecha}</td>
       <td style="font-size:11px">${op?op.nombre.split(' ').slice(0,2).join(' '):'?'}</td>
       <td style="max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px">${v.cliente}</td>
       ${fCell}${mCell}${oCell}
@@ -1569,20 +1569,26 @@ function eliminar(id){
 // "Flete"), de modo que el XML no trae desglose alguno y todo el subtotal
 // cae en Flete. Sin esto, esos viajes generarían comisión sobre montos que
 // en realidad corresponden a maniobras.
+// La división NO se aplica de inmediato: queda como "divisionPendiente" en
+// el registro y un administrador debe autorizarla desde Autorizaciones
+// (mismo criterio que gastos/casetas sin comprobante) antes de que afecte
+// el cálculo de comisión de ese viaje.
 let _dividirId=null;
 function abrirDividir(id){
   const v=ingresosDB.find(x=>x.id===id);
   if(!v)return;
   if(v.estado!=='sin_liquidar'){alert('Este ingreso ya está liquidado. No se puede modificar su desglose.');return;}
   _dividirId=id;
-  const sf=v.subtFlete!=null?v.subtFlete:(v.tipo==='flete_for'||v.tipo==='flete_mx'?v.subtotal:0);
-  const sm=v.subtManiobras!=null?v.subtManiobras:(v.tipo==='maniobra'?v.subtotal:0);
-  const so=v.subtOtros!=null?v.subtOtros:(v.tipo==='otro'?v.subtotal:0);
+  const pend=v.divisionPendiente;
+  const sf=pend?pend.subtFlete:(v.subtFlete!=null?v.subtFlete:(v.tipo==='flete_for'||v.tipo==='flete_mx'?v.subtotal:0));
+  const sm=pend?pend.subtManiobras:(v.subtManiobras!=null?v.subtManiobras:(v.tipo==='maniobra'?v.subtotal:0));
+  const so=pend?pend.subtOtros:(v.subtOtros!=null?v.subtOtros:(v.tipo==='otro'?v.subtotal:0));
   $('dividirSubtotal').textContent=fmt(v.subtotal);
   $('dividirFlete').value=sf.toFixed(2);
   $('dividirManiobras').value=sm.toFixed(2);
   $('dividirOtros').value=so.toFixed(2);
   $('dividirErr').style.display='none';
+  $('dividirAviso').style.display=pend?'block':'none';
   $('dividirModal').style.display='flex';
 }
 function cerrarDividir(){$('dividirModal').style.display='none';_dividirId=null;}
@@ -1599,9 +1605,11 @@ function confirmarDividir(){
     $('dividirErr').textContent='La suma ('+fmt(suma)+') debe ser igual al Subtotal del viaje ('+fmt(subt)+').';
     return;
   }
-  v.subtFlete=sf;v.subtManiobras=sm;v.subtOtros=so;
+  const u=usuarioSesion();
+  v.divisionPendiente={subtFlete:sf,subtManiobras:sm,subtOtros:so,solicitadoPor:(u?(u.nombre||u.usuario):'?'),solicitadoEn:new Date().toISOString()};
   guardar();renderIngresos();
   cerrarDividir();
+  alert('✅ Solicitud de división enviada. Un administrador debe autorizarla desde Autorizaciones antes de que se aplique al cálculo de comisión.');
 }
 
 function actualizarBarraSelIng(){
@@ -1687,6 +1695,7 @@ function agregarIngreso(){
   <div class="divid-box">
     <h3>✂️ Dividir ingreso</h3>
     <p>Subtotal del viaje: <strong id="dividirSubtotal">$0.00</strong> — la suma de los 3 campos debe igualar este monto.</p>
+    <div class="alert alert-warn" id="dividirAviso" style="display:none;font-size:11px">⏳ Ya hay una solicitud de división pendiente de autorización para este viaje. Guardar reemplaza esa solicitud.</div>
     <div class="field"><label>Flete</label><input type="number" id="dividirFlete" step="0.01"></div>
     <div class="field"><label>Maniobras</label><input type="number" id="dividirManiobras" step="0.01"></div>
     <div class="field"><label>Otros</label><input type="number" id="dividirOtros" step="0.01"></div>
