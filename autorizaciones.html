@@ -133,6 +133,20 @@ tr:hover td{background:#fafafa}
     </div>
   </div>
 
+  <div class="card">
+    <div class="card-title">
+      <span>✂️ Divisiones de ingresos pendientes <span id="divPendLabel" style="font-weight:400;color:#888;text-transform:none;letter-spacing:normal"></span></span>
+      <button class="btn btn-out btn-sm" onclick="cargarDivisionesPendientes()">🔄 Recargar</button>
+    </div>
+    <div class="alert alert-info" style="font-size:12px">Cuando un cliente exige facturar todo como un solo concepto (normalmente "Flete"), en Ingresos se puede solicitar repartir manualmente el subtotal entre Flete/Maniobras/Otros — pero ese reparto no afecta el cálculo de comisión hasta que se autorice aquí.</div>
+    <div id="divPendWrap"><div style="text-align:center;padding:30px;color:#aaa">Cargando...</div></div>
+    <div id="divPendAcciones" style="margin-top:12px;display:none;gap:8px;flex-wrap:wrap;align-items:center">
+      <button class="btn btn-out btn-sm" onclick="toggleTodosDivPend(this)">Seleccionar todos</button>
+      <button class="btn btn-green btn-sm" onclick="aprobarDivisionesSeleccionadas()">🔓 Autorizar seleccionadas</button>
+      <button class="btn btn-red btn-sm" onclick="rechazarDivisionesSeleccionadas()">✕ Rechazar seleccionadas</button>
+    </div>
+  </div>
+
 </div>
 
 <!-- Firebase compat -->
@@ -175,6 +189,14 @@ window.onFBReady=function(cb){if(window._fbInit)cb();else window._fbCallbacks.pu
 const $=id=>document.getElementById(id);
 const fmt=(n,d=2)=>'$'+parseFloat(n||0).toLocaleString('es-MX',{minimumFractionDigits:d,maximumFractionDigits:d});
 let fbReady=false;
+const OPERADORES=[
+  {unidad:4521,nombre:'ALEJANDRO RODRIGUEZ GONZALEZ'},{unidad:4522,nombre:'ANDRÉS MARÍA RAMOS'},
+  {unidad:4523,nombre:'ANDRÉS NAVARRO RAMÍREZ'},{unidad:4524,nombre:'RAFAEL TAPIA CARREÑO'},
+  {unidad:4526,nombre:'EDUARDO HERNÁNDEZ ACEVES'},{unidad:529,nombre:'OSCAR ISRAEL RAMOS'},
+  {unidad:531,nombre:'MARTÍN FLORES LUGO'},{unidad:532,nombre:'JOSÉ ROLANDO DOMINGUEZ LOPEZ'},
+  {unidad:533,nombre:'FRANCISCO ARTEMIO PEÑA VAZQUEZ'},{unidad:534,nombre:'MIGUEL ALONSO CALDERON'},
+  {unidad:535,nombre:'ISMAEL CONSTANTINO CABRERA'},
+];
 
 // Puede haber varias liquidaciones activas a la vez (una por operador, ver
 // liqActivas/{opId} en Firestore) — este módulo junta los gastos pendientes
@@ -335,6 +357,7 @@ function verificarSesionModulo(){
   }
   mostrarSesionEnHeader();
   cargarPendientes();
+  cargarDivisionesPendientes();
 }
 window.onFBReady(function(){
   fbReady=true;
@@ -469,6 +492,99 @@ async function autorizarSeleccionados(){
   }catch(e){
     console.error('autorizarSeleccionados:',e);
     alert('⚠️ Error al autorizar: '+e.message);
+  }
+}
+
+// ══════════════════════════════════════════════
+// DIVISIONES DE INGRESOS PENDIENTES (Flete/Maniobras/Otros)
+// ingresosDB es UN solo documento (todo el arreglo en JSON, ver estado/
+// ingresosDB) — se relee fresco justo antes de escribir para no pisar
+// cambios hechos mientras tanto desde Ingresos, y se localiza cada
+// registro por su id (estable), nunca por posición en el arreglo.
+// ══════════════════════════════════════════════
+async function cargarDivisionesPendientes(){
+  $('divPendWrap').innerHTML='<div style="text-align:center;padding:30px;color:#aaa">Cargando...</div>';
+  $('divPendAcciones').style.display='none';
+  var data=await window.FB.get('estado','ingresosDB');
+  var ingresosDB=(data&&data.data)?JSON.parse(data.data):[];
+  var pendientes=ingresosDB.filter(function(v){return!!v.divisionPendiente;});
+  if(!pendientes.length){
+    $('divPendLabel').textContent='';
+    $('divPendWrap').innerHTML='<div class="alert alert-ok">✅ Sin divisiones de ingresos pendientes de autorización.</div>';
+    return;
+  }
+  $('divPendLabel').textContent='— '+pendientes.length+' pendiente(s)';
+  $('divPendWrap').innerHTML='<div class="tbl-wrap"><table><thead><tr><th style="width:32px"></th><th>Operador</th><th>Folio</th><th>Cliente</th><th class="r">Actual (F/M/O)</th><th class="r">Solicitado (F/M/O)</th><th>Solicitado por</th></tr></thead><tbody>'
+    +pendientes.map(function(v){
+      var op=OPERADORES.find(function(o){return o.unidad===v.unidad;});
+      var p=v.divisionPendiente;
+      var actualF=v.subtFlete!=null?v.subtFlete:(v.tipo==='flete_for'||v.tipo==='flete_mx'?v.subtotal:0);
+      var actualM=v.subtManiobras!=null?v.subtManiobras:(v.tipo==='maniobra'?v.subtotal:0);
+      var actualO=v.subtOtros!=null?v.subtOtros:(v.tipo==='otro'?v.subtotal:0);
+      return '<tr>'
+        +'<td style="text-align:center"><input type="checkbox" class="chkDivPend" data-id="'+v.id+'"></td>'
+        +'<td style="font-size:12px">'+(op?op.nombre:v.unidad)+'</td>'
+        +'<td class="num">'+v.folio+'</td>'
+        +'<td style="font-size:12px">'+(v.cliente||'')+'</td>'
+        +'<td class="num r" style="font-size:11px">'+fmt(actualF)+' / '+fmt(actualM)+' / '+fmt(actualO)+'</td>'
+        +'<td class="num r" style="font-size:11px;color:#1a4f8a;font-weight:700">'+fmt(p.subtFlete)+' / '+fmt(p.subtManiobras)+' / '+fmt(p.subtOtros)+'</td>'
+        +'<td style="font-size:11px">'+(p.solicitadoPor||'?')+'</td>'
+        +'</tr>';
+    }).join('')
+    +'</tbody></table></div>';
+  $('divPendAcciones').style.display='flex';
+}
+
+function toggleTodosDivPend(btn){
+  var chks=document.querySelectorAll('.chkDivPend');
+  var todosMarcados=Array.from(chks).every(function(c){return c.checked;})&&chks.length>0;
+  chks.forEach(function(c){c.checked=!todosMarcados;});
+}
+
+async function aprobarDivisionesSeleccionadas(){
+  var chks=document.querySelectorAll('.chkDivPend:checked');
+  if(!chks.length){alert('Selecciona al menos una división pendiente.');return;}
+  var ids=Array.from(chks).map(function(c){return c.dataset.id;});
+  try{
+    var data=await window.FB.get('estado','ingresosDB');
+    var ingresosDB=(data&&data.data)?JSON.parse(data.data):[];
+    var n=0;
+    ingresosDB.forEach(function(v){
+      if(ids.indexOf(v.id)!==-1&&v.divisionPendiente){
+        v.subtFlete=v.divisionPendiente.subtFlete;
+        v.subtManiobras=v.divisionPendiente.subtManiobras;
+        v.subtOtros=v.divisionPendiente.subtOtros;
+        delete v.divisionPendiente;
+        n++;
+      }
+    });
+    if(n){await window.FB.set('estado','ingresosDB',{data:JSON.stringify(ingresosDB)});}
+    alert('✅ '+n+' división(es) autorizada(s).');
+    cargarDivisionesPendientes();
+  }catch(e){
+    console.error('aprobarDivisionesSeleccionadas:',e);
+    alert('⚠️ Error al autorizar: '+e.message);
+  }
+}
+
+async function rechazarDivisionesSeleccionadas(){
+  var chks=document.querySelectorAll('.chkDivPend:checked');
+  if(!chks.length){alert('Selecciona al menos una división pendiente.');return;}
+  if(!confirm('¿Rechazar las '+chks.length+' solicitud(es) de división seleccionada(s)? El ingreso se queda como estaba (sin dividir).'))return;
+  var ids=Array.from(chks).map(function(c){return c.dataset.id;});
+  try{
+    var data=await window.FB.get('estado','ingresosDB');
+    var ingresosDB=(data&&data.data)?JSON.parse(data.data):[];
+    var n=0;
+    ingresosDB.forEach(function(v){
+      if(ids.indexOf(v.id)!==-1&&v.divisionPendiente){delete v.divisionPendiente;n++;}
+    });
+    if(n){await window.FB.set('estado','ingresosDB',{data:JSON.stringify(ingresosDB)});}
+    alert('🚫 '+n+' solicitud(es) rechazada(s).');
+    cargarDivisionesPendientes();
+  }catch(e){
+    console.error('rechazarDivisionesSeleccionadas:',e);
+    alert('⚠️ Error al rechazar: '+e.message);
   }
 }
 </script>
