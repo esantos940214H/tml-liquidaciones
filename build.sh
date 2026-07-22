@@ -30,4 +30,12 @@ for site in anticipos cxc liquidaciones nomina incidentes historial usuarios aut
   cp -r shared dist/$site/shared
 done
 
-echo "build.sh: dist/ generado con 10 sites."
+# version.json: identificador único de este despliegue, usado por
+# shared/autoActualizar.js para avisar a pestañas abiertas que hay una
+# versión más nueva del sitio. Se genera fresco en cada build.
+VERSION_ID="$(date -u +%Y%m%d%H%M%S)"
+for site in portal anticipos cxc liquidaciones nomina incidentes historial usuarios autorizaciones precarga; do
+  echo "{\"v\":\"$VERSION_ID\"}" > dist/$site/version.json
+done
+
+echo "build.sh: dist/ generado con 10 sites (version $VERSION_ID)."
