@@ -726,7 +726,7 @@ function renderAnticipos(){
     const rows=grp.items.map(a=>`<tr>
       <td style="width:32px;text-align:center">${a.estado==='pendiente'?`<input type="checkbox" class="chkAnt" data-id="${a.id}" data-unidad="${a.unidad}" onchange="actualizarBarraSelAnt()">`:'—'}</td>
       <td>${a.fecha}</td>
-      <td style="max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${a.concepto}</td>
+      <td style="max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${a.concepto}${a.enRevisionReapertura?' <span class="badge bg-yellow" title="La liquidación que generó este saldo se reabrió y todavía no se vuelve a cerrar — el monto puede cambiar al recalcularse">⏳ en revisión</span>':''}</td>
       <td class="num r">${fmt(a.importe)}</td>
       <td><span class="badge ${a.estado==='pendiente'?'bg-yellow':'bg-green'}">${a.estado==='pendiente'?'PENDIENTE':'LIQUIDADO'+(a.liqNum?' #'+a.liqNum:'')}</span></td>
       <td><span class="badge ${a.origen==='manual'?'bg-blue':'bg-gray'}">${a.origen==='manual'?'MANUAL':'ARCHIVO'}</span></td>
