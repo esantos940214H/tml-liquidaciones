@@ -900,9 +900,15 @@ function parseXML(text,fname,unidad){
   const folio=comp.getAttribute('Folio')||'';
   const fecha=(comp.getAttribute('Fecha')||'').slice(0,10);
   const subtotal=parseFloat(comp.getAttribute('SubTotal')||0);
+  // El CFDI trae Traslados/Retenciones DOS veces: uno por cada Concepto
+  // (desglose) y uno resumen a nivel Comprobante (con el total). Sumar con
+  // querySelectorAll('Traslado') sobre todo el documento cuenta ambos y
+  // duplica el IVA (16% real terminaba mostrándose como 32%). Se toma solo
+  // el nodo Impuestos que es hijo directo de Comprobante (el resumen).
   let iva=0,ret=0;
-  doc.querySelectorAll('Traslado').forEach(t=>{if(t.getAttribute('Impuesto')==='002')iva+=parseFloat(t.getAttribute('Importe')||0);});
-  doc.querySelectorAll('Retencion').forEach(r=>{if(r.getAttribute('Impuesto')==='002')ret+=parseFloat(r.getAttribute('Importe')||0);});
+  const impGlobal=doc.querySelector('Comprobante>Impuestos');
+  (impGlobal?impGlobal.querySelectorAll('Traslado'):doc.querySelectorAll('Traslado')).forEach(t=>{if(t.getAttribute('Impuesto')==='002')iva+=parseFloat(t.getAttribute('Importe')||0);});
+  (impGlobal?impGlobal.querySelectorAll('Retencion'):doc.querySelectorAll('Retencion')).forEach(r=>{if(r.getAttribute('Impuesto')==='002')ret+=parseFloat(r.getAttribute('Importe')||0);});
   const receptor=doc.querySelector('Receptor');
   const cliente=receptor?receptor.getAttribute('Nombre'):'';
   const emisor=doc.querySelector('Emisor');
@@ -1008,9 +1014,12 @@ function parseXMLMultiOp(text,fname){
   if(!comp){alert(fname+': no es CFDI válido.');return;}
   const subtotal=parseFloat(comp.getAttribute('SubTotal')||0);
   if(!subtotal){alert(fname+': el CFDI no tiene subtotal. No se puede desglosar.');return;}
+  // Ver comentario en parseXML(): evitar sumar los Traslados del resumen y
+  // los de cada Concepto (eso duplicaba el IVA a 32%).
   let iva=0,ret=0;
-  doc.querySelectorAll('Traslado').forEach(t=>{if(t.getAttribute('Impuesto')==='002')iva+=parseFloat(t.getAttribute('Importe')||0);});
-  doc.querySelectorAll('Retencion').forEach(r=>{if(r.getAttribute('Impuesto')==='002')ret+=parseFloat(r.getAttribute('Importe')||0);});
+  const impGlobalMulti=doc.querySelector('Comprobante>Impuestos');
+  (impGlobalMulti?impGlobalMulti.querySelectorAll('Traslado'):doc.querySelectorAll('Traslado')).forEach(t=>{if(t.getAttribute('Impuesto')==='002')iva+=parseFloat(t.getAttribute('Importe')||0);});
+  (impGlobalMulti?impGlobalMulti.querySelectorAll('Retencion'):doc.querySelectorAll('Retencion')).forEach(r=>{if(r.getAttribute('Impuesto')==='002')ret+=parseFloat(r.getAttribute('Importe')||0);});
   const receptor=doc.querySelector('Receptor');
   const emisor=doc.querySelector('Emisor');
   const rfcEmisorChk=emisor?emisor.getAttribute('Rfc')||'':'';
