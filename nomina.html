@@ -129,7 +129,7 @@ tr:hover td{background:#fafafa}
 
 <div class="container">
 
-  <div class="alert alert-info">🧾 Sube aquí el XML del recibo de nómina (CFDI tipo N) de cada operador. Se toma el <strong>Total de Deducciones</strong> del complemento de nómina y queda pendiente para ese operador. Cuando se abra o liquide su siguiente liquidación, esa deducción se descuenta automáticamente de su saldo — una sola vez, hasta que subas otro recibo.</div>
+  <div class="alert alert-info">🧾 Sube aquí el XML del recibo de nómina (CFDI tipo N) de cada operador. Se toma el <strong>Total de Deducciones</strong> del complemento de nómina y queda pendiente para ese operador. Cuando se abra o liquide su siguiente liquidación, esa deducción se descuenta automáticamente de su saldo — una sola vez, hasta que subas otro recibo. El XML original se guarda (📄 en la columna Folio) para contabilidad e impuestos.</div>
 
   <!-- REGISTRO -->
   <div class="card">
@@ -169,10 +169,13 @@ tr:hover td{background:#fafafa}
 <!-- Firebase compat -->
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-storage-compat.js"></script>
 <!-- Firebase Auth (login del módulo — ver shared/sesion.js) -->
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
 <script src="shared/sesion.js"></script>
 <script src="shared/autoActualizar.js"></script>
+<!-- Guardar el XML original de cada recibo de nómina (ver shared/comprobantes.js) -->
+<script src="shared/comprobantes.js"></script>
 <script>
 window._fbInit=false;
 window._fbCallbacks=[];
@@ -436,6 +439,22 @@ function detectarOperadorNomina(nombreReceptor){
   });
   return parciales.length===1?parciales[0]:null;
 }
+// Sube el XML original del recibo a Firebase Storage EN SEGUNDO PLANO, sin
+// bloquear el registro (mismo patrón que subirXMLIngresoEnSegundoPlano en
+// ing.html) — se guarda por UUID para contabilidad/impuestos, ya que antes
+// solo se extraían los totales y el XML original se descartaba.
+function subirXMLNominaEnSegundoPlano(uuid,fname,text){
+  if(!uuid||!window.TMLComprobantes)return;
+  TMLComprobantes.subirXML('comprobantes/nomina/'+uuid+'.xml',text).then(function(url){
+    var actualizado=false;
+    Object.keys(nominaDB).forEach(function(key){
+      (nominaDB[key]||[]).forEach(function(n){
+        if(n.uuid===uuid){n.xmlURL=url;actualizado=true;}
+      });
+    });
+    if(actualizado){guardarNominaDB();renderNomina();}
+  }).catch(function(e){console.error('subirXMLNominaEnSegundoPlano:',e);});
+}
 // Busca el complemento de nómina por namespace, no por el prefijo literal
 // (nomina12:), ya que distintos emisores pueden declarar otro prefijo para
 // el mismo namespace del SAT. Si por alguna razón el XML no trae el
@@ -505,10 +524,12 @@ function parseNominaXML(text,fname){
     receptorNombre:receptor?receptor.getAttribute('Nombre')||'':'',
     receptorRfc:receptor?receptor.getAttribute('Rfc')||'':'',
     estado:'pendiente',
-    liqNum:null
+    liqNum:null,
+    xmlURL:null
   });
   guardarNominaDB();
   renderNomina();
+  subirXMLNominaEnSegundoPlano(uuid,fname,text);
   var opU=OPERADORES.find(function(o){return o.unidad===unidad;});
   $('nominaXMLInfo').style.display='block';
   $('nominaXMLInfo').innerHTML='<div class="alert alert-ok">✅ '+fname+' — deducciones de '+fmt(totalDeducciones)+' registradas para '+(opU?opU.nombre:unidad)+' (detectado automáticamente del XML).</div>';
@@ -550,7 +571,7 @@ function renderNomina(){
     tb.innerHTML+='<tr><td style="font-size:12px">'+(op?op.nombre:n.unidad)+'</td>'
       +'<td style="font-size:11px">'+(n.fecha||'—')+'</td>'
       +'<td style="font-size:11px">'+(n.periodoIni||'?')+' al '+(n.periodoFin||'?')+'</td>'
-      +'<td style="font-size:11px">'+(n.folio||'—')+'</td>'
+      +'<td style="font-size:11px">'+(n.folio||'—')+(n.xmlURL?' <a href="'+n.xmlURL+'" target="_blank" title="Ver XML original">📄</a>':'')+'</td>'
       +'<td class="num r">'+fmt(n.totalPercepciones||0)+'</td>'
       +'<td class="num r" style="color:#9b1c1c;font-weight:700">'+fmt(n.totalDeducciones||0)+'</td>'
       +'<td>'+estadoCell+'</td>'
