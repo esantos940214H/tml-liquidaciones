@@ -207,22 +207,6 @@ tr:hover td{background:#fafafa}
     <div class="tbl-wrap" id="repTablaWrap" style="margin-top:10px"></div>
   </div>
 
-  <!-- RECONSTRUIR VIAJES BORRADOS DE UNA LIQUIDACIÓN (temporal, solo admin) -->
-  <div class="card no-print" id="cardReconstruirViajes" style="display:none;border-color:#c1121f">
-    <div class="card-title">🩹 Reconstruir viajes borrados de una liquidación cerrada</div>
-    <div style="font-size:12px;color:#666;margin-bottom:10px">
-      Compara el snapshot guardado al cerrar (que no se toca nunca) contra lo que hay ahora en Ingresos, y te muestra qué viajes de esa liquidación ya no existen — para recrearlos exactamente con los mismos datos, marcados "Liquidado" con el mismo folio de liquidación. Quítate esta tarjeta del código en cuanto ya no la necesites — es una herramienta de un solo uso.
-    </div>
-    <div class="row">
-      <div class="field"><label>Operador</label><select id="rvOp"><option value="">— Selecciona —</option></select></div>
-      <div class="field"><label>No. Liquidación</label><input type="number" id="rvNum" placeholder="Ej: 2"></div>
-      <button class="btn btn-out btn-sm" onclick="previewReconstruirViajes()">🔍 Ver qué falta</button>
-      <button class="btn btn-red btn-sm" id="btnReconstruirViajes" onclick="reconstruirViajesFaltantes()" disabled>🩹 Reconstruir</button>
-    </div>
-    <div id="rvInfo" style="margin-top:10px"></div>
-    <div class="tbl-wrap" id="rvTablaWrap" style="margin-top:10px"></div>
-  </div>
-
   <!-- LIQUIDACIONES EN CURSO (no cerradas todavía) -->
   <div class="card no-print" id="cardActivas">
     <div class="card-title">
@@ -546,7 +530,6 @@ function mostrarSesionEnHeader(){
   if($('sesionUsuarioLabel'))$('sesionUsuarioLabel').textContent='👤 '+(u.nombre||u.usuario)+(u.esAdmin?' (admin)':'');
   if($('btnCerrarSesion'))$('btnCerrarSesion').style.display='inline';
   if($('btnCambiarPass'))$('btnCambiarPass').style.display='inline';
-  if($('cardReconstruirViajes'))$('cardReconstruirViajes').style.display=u.esAdmin?'block':'none';
   aplicarPermisosNav(u);
 }
 function verificarSesionModulo(){
@@ -566,8 +549,6 @@ const s=$('busOp');
 OPERADORES.forEach(op=>{const o=document.createElement('option');o.value=op.unidad;o.textContent=op.unidad+' · '+op.nombre;s.appendChild(o);});
 const sRep=$('repOp');
 OPERADORES.forEach(op=>{const o=document.createElement('option');o.value=op.unidad;o.textContent=op.unidad+' · '+op.nombre;sRep.appendChild(o);});
-const sRV=$('rvOp');
-if(sRV)OPERADORES.forEach(op=>{const o=document.createElement('option');o.value=op.unidad;o.textContent=op.unidad+' · '+op.nombre;sRV.appendChild(o);});
 
 window.onFBReady(async function(){
   $('fbStatus').textContent='✅ Conectado';$('fbStatus').className='fb-status fb-ok';
@@ -1204,84 +1185,6 @@ async function reabrirLiquidacion(){
   }catch(e){
     console.error('reabrirLiquidacion:',e);
     alert('⚠️ Error al reabrir la liquidación: '+e.message);
-  }
-}
-
-// ══════════════════════════════════════════════
-// RECONSTRUIR VIAJES BORRADOS (parche de un solo uso)
-// ══════════════════════════════════════════════
-// Compara snapshot.viajesList (guardado al cerrar, nunca se toca) contra lo
-// que hay ahora en ingresosDB, para detectar viajes que se borraron por
-// error de una liquidación YA CERRADA (ej. el bug del borrado en bloque en
-// Ingresos que sí permitía borrar viajes ya liquidados). Usa el snapshot
-// como fuente exacta — no hay que transcribir montos a mano desde pantalla,
-// que es donde se puede cometer un error en un dato financiero real.
-function uidRV(){return Date.now().toString(36)+Math.random().toString(36).slice(2);}
-let _rvFaltantes=null;
-
-async function previewReconstruirViajes(){
-  var u=usuarioSesion();
-  if(!u||!u.esAdmin){alert('Solo un administrador puede usar esta herramienta.');return;}
-  var opId=parseInt($('rvOp').value||0);
-  var num=parseInt($('rvNum').value||0);
-  if(!opId||!num){alert('Selecciona el operador y escribe el número de liquidación.');return;}
-  if(!window.FB){alert('Sin conexión a Firebase.');return;}
-
-  var fresco=await window.FB.getAll('historial');
-  var l=fresco.find(function(h){return parseInt(h.opId||h.unidad)===opId&&h.num===num;});
-  if(!l){alert('No se encontró la liquidación #'+num+' de ese operador en el historial.');return;}
-  var viajesSnap=(l.snapshot&&l.snapshot.viajesList)||[];
-  if(!viajesSnap.length){alert('Esa liquidación no tiene viajes guardados en su snapshot.');return;}
-
-  var iRes=await window.FB.get('estado','ingresosDB');
-  var ingDB=(iRes&&iRes.data)?JSON.parse(iRes.data):[];
-  var folioActuales=ingDB.filter(function(v){return parseInt(v.unidad)===opId;}).map(function(v){return v.folio;});
-  var faltantes=viajesSnap.filter(function(v){return folioActuales.indexOf(v.folio)===-1;});
-
-  _rvFaltantes={opId:opId,num:num,viajes:faltantes};
-  if(!faltantes.length){
-    $('rvInfo').innerHTML='<div class="alert alert-ok">✅ Los '+viajesSnap.length+' viajes de esta liquidación ya están todos en Ingresos. No falta nada por reconstruir.</div>';
-    $('rvTablaWrap').innerHTML='';
-    $('btnReconstruirViajes').disabled=true;
-    return;
-  }
-  $('rvInfo').innerHTML='<div class="alert alert-warn">⚠️ Faltan '+faltantes.length+' de '+viajesSnap.length+' viajes de la liquidación #'+num+'. Se reconstruirían exactamente con estos datos (tomados del snapshot guardado al cerrar):</div>';
-  $('rvTablaWrap').innerHTML='<table><thead><tr><th>Folio</th><th>Fecha</th><th>Cliente</th><th>Subtotal</th><th>IVA</th><th>Ret.</th><th>Total</th></tr></thead><tbody>'
-    +faltantes.map(function(v){return '<tr><td class="num">'+v.folio+'</td><td>'+(v.fecha||'')+'</td><td>'+(v.cliente||'')+'</td><td class="num r">'+fmt(v.subtotal||0)+'</td><td class="num r">'+fmt(v.iva||0)+'</td><td class="num r">'+fmt(v.ret||0)+'</td><td class="num r">'+fmt(v.total||0)+'</td></tr>';}).join('')
-    +'</tbody></table>';
-  $('btnReconstruirViajes').disabled=false;
-}
-
-async function reconstruirViajesFaltantes(){
-  var u=usuarioSesion();
-  if(!u||!u.esAdmin){alert('Solo un administrador puede usar esta herramienta.');return;}
-  if(!_rvFaltantes||!_rvFaltantes.viajes.length){alert('Primero genera la vista previa.');return;}
-  if(!window.FB){alert('Sin conexión a Firebase.');return;}
-  if(!confirm('¿Reconstruir '+_rvFaltantes.viajes.length+' viaje(s) faltante(s) de la liquidación #'+_rvFaltantes.num+', marcados como Liquidado (Liq.#'+_rvFaltantes.num+')?'))return;
-
-  try{
-    var iRes=await window.FB.get('estado','ingresosDB');
-    var ingDB=(iRes&&iRes.data)?JSON.parse(iRes.data):[];
-    // Revalidar contra datos frescos, no confiar en el preview viejo
-    var folioActuales=ingDB.filter(function(v){return parseInt(v.unidad)===_rvFaltantes.opId;}).map(function(v){return v.folio;});
-    var aReconstruir=_rvFaltantes.viajes.filter(function(v){return folioActuales.indexOf(v.folio)===-1;});
-    aReconstruir.forEach(function(v){
-      ingDB.push({
-        id:uidRV(),unidad:_rvFaltantes.opId,folio:v.folio,fecha:v.fecha||'',cliente:v.cliente||'',
-        tipo:'flete_for',subtotal:v.subtotal||0,subtFlete:v.subtotal||0,subtManiobras:0,subtOtros:0,
-        iva:v.iva||0,ret:v.ret||0,total:v.total||0,
-        estado:'liquidado',liqNum:_rvFaltantes.num,origen:'restaurado',
-        uuid:v.uuid||'',rfcEmisor:v.rfcEmisor||'',rfcReceptor:v.rfcReceptor||'',satCancelado:!!v.satCancelado
-      });
-    });
-    await window.FB.set('estado','ingresosDB',{data:JSON.stringify(ingDB)});
-    $('rvInfo').innerHTML='<div class="alert alert-ok">✅ '+aReconstruir.length+' viaje(s) reconstruido(s) en Ingresos, marcados Liquidado (Liq.#'+_rvFaltantes.num+').</div>';
-    $('rvTablaWrap').innerHTML='';
-    $('btnReconstruirViajes').disabled=true;
-    _rvFaltantes=null;
-  }catch(e){
-    console.error('reconstruirViajesFaltantes:',e);
-    alert('⚠️ Error al reconstruir: '+e.message);
   }
 }
 
