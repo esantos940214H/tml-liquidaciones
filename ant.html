@@ -317,10 +317,16 @@ function matchScore(c,n){const cW=palabras(c),oW=palabras(n);if(!oW.length)retur
 // corresponde a un saldo generado por una liquidación, no a un anticipo real
 // depositado al operador — se excluye siempre, con o sin la palabra "LIQ".
 function esSaldo(c){return norm(c).includes('SALDO');}
-function matchOp(concepto){
+// beneficiario: columna "Nombre Beneficiario" del CSV BBVA — trae el nombre
+// de quien recibe la transferencia, aparte del texto libre de "Concepto"
+// (que a veces no alcanza el score mínimo por sí solo, ej. cuando el
+// concepto es genérico tipo "UTILIDADES 2025"). Se evalúan ambos por
+// separado y se toma el que dé mejor score, sin combinarlos en un solo
+// texto — así uno no diluye al otro si alguno viene vacío o muy corto.
+function matchOp(concepto,beneficiario){
   let best=null,bestS=0;
   OPERADORES.forEach(op=>{
-    const s=matchScore(concepto,op.nombre);
+    const s=Math.max(matchScore(concepto,op.nombre),beneficiario?matchScore(beneficiario,op.nombre):0);
     if(s>bestS&&s>=0.45){bestS=s;best=op;}
   });
   return best;
@@ -542,7 +548,7 @@ function parseCSV(text){
   const sep=lines[0].includes('\t')?'\t':',';
   const headers=lines[0].split(sep).map(h=>h.trim().replace(/^'/,''));
   const idx=h=>headers.findIndex(x=>x.toLowerCase().includes(h.toLowerCase()));
-  const iFecha=idx('Fecha'),iCA=idx('Cargo'),iImporte=idx('Importe'),iConcepto=idx('Concepto'),iReferencia=idx('Referencia');
+  const iFecha=idx('Fecha'),iCA=idx('Cargo'),iImporte=idx('Importe'),iConcepto=idx('Concepto'),iReferencia=idx('Referencia'),iBeneficiario=idx('Nombre Beneficiario');
   const rows=[];
   for(let i=1;i<lines.length;i++){
     const cols=lines[i].split(sep).map(clean);
@@ -557,7 +563,7 @@ function parseCSV(text){
     // al mismo operador el mismo día. Sin esto, un segundo depósito legítimo
     // con la misma fecha/monto/concepto se detectaba como duplicado y se
     // perdía (ver procesarRows).
-    rows.push({fecha,importe:parseFloat((cols[iImporte]||'0').replace(/,/g,'')),concepto:cols[iConcepto]||'',referencia:(cols[iReferencia]||'').trim()});
+    rows.push({fecha,importe:parseFloat((cols[iImporte]||'0').replace(/,/g,'')),concepto:cols[iConcepto]||'',referencia:(cols[iReferencia]||'').trim(),beneficiario:(cols[iBeneficiario]||'').trim()});
   }
   return rows;
 }
@@ -601,7 +607,7 @@ function procesarRows(rows,fname){
   const sinMatch=[];
   rows.forEach(r=>{
     if(esSaldo(r.concepto)){saldosExcl++;return;}
-    const op=matchOp(r.concepto);
+    const op=matchOp(r.concepto,r.beneficiario);
     if(!op){sinMatch.push(r);return;}
     if(!anticiposDB[op.unidad])anticiposDB[op.unidad]=[];
     // Verificar duplicado. Si el archivo trae "Referencia" (folio único del
@@ -628,7 +634,7 @@ function procesarRows(rows,fname){
   // Mostrar sin match
   if(sinMatch.length){
     $('sinMatch').style.display='block';
-    $('listaSM').innerHTML=sinMatch.map(r=>`<li>${r.fecha} · ${fmt(r.importe)} · ${r.concepto.slice(0,60)}</li>`).join('');
+    $('listaSM').innerHTML=sinMatch.map(r=>`<li>${r.fecha} · ${fmt(r.importe)} · ${r.concepto.slice(0,60)}${r.beneficiario?' · Beneficiario: '+r.beneficiario:''}</li>`).join('');
   }
 }
 
