@@ -67,6 +67,13 @@ tr:hover td{background:#fafafa}
 .firma-linea{border-top:1.5px solid #1a1a2e;margin-top:40px;margin-bottom:6px}
 .firma-label{font-size:10px;color:#666;text-transform:uppercase;letter-spacing:.7px;text-align:center}
 .firma-opnombre{font-size:12px;color:#555;text-align:center;font-weight:700;margin-top:4px}
+.recibo-nomina-hoja{page-break-before:always}
+.recibo-box{border:1px solid #ccc;border-radius:8px;padding:16px;margin-bottom:0}
+.recibo-box h4{font-size:13px;margin-bottom:10px;color:#1a1a2e}
+.recibo-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px 18px;font-size:12px;margin-bottom:10px}
+.recibo-grid div span{color:#888}
+.recibo-uuid{font-size:10px;color:#666;word-break:break-all;background:#f7f7f9;border-radius:4px;padding:6px 8px;margin-top:4px}
+.recibo-corte{border-top:1px dashed #999;text-align:center;font-size:10px;color:#999;margin:16px 0;padding-top:4px}
 @media(max-width:600px){.grid2{grid-template-columns:1fr}}
 @media print{
   header,.no-print{display:none!important}
@@ -312,6 +319,12 @@ tr:hover td{background:#fafafa}
         <div id="detFirma"></div>
       </div>
 
+      <!-- Recibo de nómina (hoja aparte, dos tantos con firma) -->
+      <div class="det-section recibo-nomina-hoja" id="secRecibosNomina" style="display:none">
+        <h3>🧾 Recibo de nómina (para firma del operador)</h3>
+        <div id="detRecibosNomina"></div>
+      </div>
+
       <div class="no-print" style="margin-top:16px;display:flex;gap:8px;align-items:center">
         <button class="btn btn-dark btn-sm" onclick="imprimirDetalle()">🖨️ Imprimir</button>
         <button class="btn btn-out btn-sm" id="btnReabrirLiq" style="display:none;border-color:#e63946;color:#e63946" onclick="reabrirLiquidacion()">🔓 Reabrir liquidación (admin)</button>
@@ -378,6 +391,55 @@ function textoFirmaConformidad(saldoVal){
   return 'DEBO Y PAGARÉ INCONDICIONALMENTE POR ESTE PAGARÉ A LA ORDEN DE MUDANZAS TML, S.A. DE C.V. LA CANTIDAD DE '+fmt(Math.abs(saldoVal))+' POR CONCEPTO DE SALDO DEUDOR DE ESTA LIQUIDACIÓN.';
 }
 const fmtN=(n,d=2)=>parseFloat(n||0).toLocaleString('es-MX',{minimumFractionDigits:d,maximumFractionDigits:d});
+
+// Recibo de nómina imprimible — dos tantos por cada recibo de la
+// liquidación, con espacio para firma y fecha. Usa los datos del timbre SAT
+// guardados al momento de subir el XML en Nómina (ver parseNominaXML en
+// nomina.html); si un recibo se registró antes de eso, se muestra igual
+// pero sin el bloque de folio fiscal/timbre.
+function reciboNominaBox(n,opNombre){
+  var neto=(n.totalPercepciones||0)-(n.totalDeducciones||0);
+  var uuidHTML=n.uuid
+    ?'<div class="recibo-uuid">Folio fiscal (UUID): '+n.uuid
+      +(n.fechaTimbrado?'<br>Fecha de timbrado: '+n.fechaTimbrado.replace('T',' '):'')
+      +(n.noCertificadoSAT?'<br>No. Certificado SAT: '+n.noCertificadoSAT:'')
+      +(n.selloSAT?'<br>Sello SAT: '+n.selloSAT.slice(0,20)+'...'+n.selloSAT.slice(-20):'')
+      +'</div>'
+    :'<div style="font-size:11px;color:#aaa;margin-top:6px">⚠️ XML no disponible — este recibo se registró antes de guardar el XML original.</div>';
+  return '<div class="recibo-box">'
+    +'<h4>RECIBO DE NÓMINA — '+(n.emisorNombre||'MUDANZAS TML, S.A. DE C.V.')+'</h4>'
+    +'<div class="recibo-grid">'
+    +'<div><span>Operador:</span> <strong>'+opNombre+'</strong></div>'
+    +'<div><span>RFC operador:</span> <strong>'+(n.receptorRfc||'—')+'</strong></div>'
+    +'<div><span>Periodo:</span> <strong>'+(n.periodoIni||'?')+' al '+(n.periodoFin||'?')+'</strong></div>'
+    +'<div><span>Fecha de pago:</span> <strong>'+(n.fecha||'—')+'</strong></div>'
+    +'<div><span>Folio:</span> <strong>'+(n.folio||'—')+'</strong></div>'
+    +'<div><span>Neto pagado:</span> <strong>'+fmt(neto)+'</strong></div>'
+    +'<div><span>Percepciones:</span> <strong>'+fmt(n.totalPercepciones||0)+'</strong></div>'
+    +'<div><span>Deducciones:</span> <strong>'+fmt(n.totalDeducciones||0)+'</strong></div>'
+    +'</div>'
+    +uuidHTML
+    +'<div class="firma-campos">'
+    +'<div><div class="firma-linea"></div><div class="firma-label">Firma del operador — '+opNombre+'</div></div>'
+    +'<div><div class="firma-linea"></div><div class="firma-label">Fecha</div></div>'
+    +'</div>'
+    +'</div>';
+}
+function renderRecibosNomina(l,snap,op){
+  var lista=snap.nominaList||[];
+  if(!lista.length){if($('secRecibosNomina'))$('secRecibosNomina').style.display='none';return;}
+  if($('secRecibosNomina'))$('secRecibosNomina').style.display='block';
+  var opNombre=op?op.nombre:'';
+  var html='';
+  lista.forEach(function(n,i){
+    html+='<div style="margin-bottom:'+(i<lista.length-1?'24px':'0')+'">'
+      +reciboNominaBox(n,opNombre)
+      +'<div class="recibo-corte">✂ — — — — — recorte aquí · segundo tanto — — — — — ✂</div>'
+      +reciboNominaBox(n,opNombre)
+      +'</div>';
+  });
+  if($('detRecibosNomina'))$('detRecibosNomina').innerHTML=html;
+}
 
 let historialDB=[];
 let anticiposDB={};
@@ -826,11 +888,18 @@ function verDetalle(id){
     +`<div class="kpi"><div class="v">${fmt(snap.totIvaTrasl||0)}</div><div class="k">IVA trasladado</div></div>`
     +`<div class="kpi"><div class="v red">${fmt(snap.totRetTotal||0)}</div><div class="k">IVA retenido</div></div>`;
 
-  // Cuenta operador
+  // Cuenta operador — mismas fórmulas que repCargos en Liquidaciones (usa
+  // snap.diesel, ya guardado): antes solo se mostraban Anticipos y "Diesel
+  // no comprobado" (que ni siquiera es el monto que se suma a TOTAL CARGOS),
+  // y la Nómina cobrada no aparecía en ningún lado aunque sí se restaba.
   const saldo=snap.saldoReal||0;
+  const ltsXmlTodosH=(d.ltsXmlOp||0)+(d.ltsXmlEmp||0);
+  const totalDieselLtsH=Math.max(0,(d.ltsIni||0)+(d.totLtsCarg||0)+ltsXmlTodosH-(d.ltsFinal||0));
+  const totalDieselImporteH=totalDieselLtsH*(d.pp||0);
   $('detCargos').innerHTML=
     dr('Anticipos recibidos',snap.totAnts||0,'cargo')
-    +dr('Diesel no comprobado',snap.dieselNoComprobado||0,'cargo')
+    +dr('Diesel total adelantado ('+fmtN(totalDieselLtsH)+' lts × '+fmt(d.pp||0)+')',totalDieselImporteH,'cargo')
+    +(snap.totNomina?dr('Deducciones de nómina (IMSS, ISR, etc.)',snap.totNomina,'cargo'):'')
     +`<div class="det-row subtotal cargo"><span>TOTAL CARGOS</span><span class="num">${fmt(snap.totalCargosReal||0)}</span></div>`;
 
   // Desglose de "Gastos del operador" por concepto (viáticos, refacciones,
@@ -930,6 +999,8 @@ function verDetalle(id){
     +'<div class="firma-label">Firma y nombre del operador</div>'
     +'<div class="firma-opnombre">'+(op?op.nombre:'')+'</div>'
     +'</div></div>';
+
+  renderRecibosNomina(l,snap,op);
 
   window.scrollTo(0,0);
 }

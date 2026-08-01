@@ -511,6 +511,7 @@ function parseNominaXML(text,fname){
   }
   var totalDeducciones=parseFloat(nomina.getAttribute('TotalDeducciones')||0);
   var totalPercepciones=parseFloat(nomina.getAttribute('TotalPercepciones')||0);
+  var emisor=doc.querySelector('Emisor');
   if(!nominaDB[unidad])nominaDB[unidad]=[];
   nominaDB[unidad].push({
     id:'nom-'+Date.now()+'-'+Math.random().toString(36).slice(2),
@@ -523,6 +524,14 @@ function parseNominaXML(text,fname){
     totalDeducciones:totalDeducciones,
     receptorNombre:receptor?receptor.getAttribute('Nombre')||'':'',
     receptorRfc:receptor?receptor.getAttribute('Rfc')||'':'',
+    // Datos del timbre SAT — guardados aquí, al momento del parseo, para
+    // poder imprimir después una representación del recibo (con folio
+    // fiscal y sello) sin tener que volver a descargar/leer el XML.
+    emisorNombre:emisor?emisor.getAttribute('Nombre')||'':'',
+    emisorRfc:emisor?emisor.getAttribute('Rfc')||'':'',
+    fechaTimbrado:tfd?tfd.getAttribute('FechaTimbrado')||'':'',
+    selloSAT:tfd?tfd.getAttribute('SelloSAT')||'':'',
+    noCertificadoSAT:tfd?tfd.getAttribute('NoCertificadoSAT')||'':'',
     estado:'pendiente',
     liqNum:null,
     xmlURL:null
