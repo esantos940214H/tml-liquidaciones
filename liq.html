@@ -992,9 +992,20 @@ async function validarCFDIsSATLiquidacion(soloNuevos){
   box.style.display='block';
   box.innerHTML='<div class="alert alert-info">⏳ Validando '+total+' CFDI ante el SAT (ingresos, gastos, diesel y casetas)...</div>';
 
+  // Una factura desglosada entre varios operadores (esDesglose) reparte el
+  // mismo UUID en varios registros de ingresosDB, cada uno con solo su
+  // PARTE proporcional del total. El SAT valida contra el total REAL de la
+  // factura completa — mandarle la parte prorrateada de un solo operador
+  // nunca va a coincidir, y siempre responde "No Encontrado" sin importar
+  // cuántas veces se revalide. Aquí se reconstruye el total real sumando
+  // todas las partes que comparten el mismo UUID antes de consultar.
+  function totalRealCFDI(v){
+    if(!v.esDesglose||!v.uuid)return v.total;
+    return ingresosDB.filter(function(x){return(x.uuid||x.facturaUUID)===v.uuid;}).reduce(function(s,x){return s+(x.total||0);},0);
+  }
   var c={nCancelados:0,nErrores:0,porCategoria:{}};
   await validarUnaLista(viajesXML,
-    function(v){return v.rfcEmisor||TML_RFC;},function(v){return v.rfcReceptor||'';},function(v){return v.total;},c,'ingresos');
+    function(v){return v.rfcEmisor||TML_RFC;},function(v){return v.rfcReceptor||'';},totalRealCFDI,c,'ingresos');
   await validarUnaLista(gastosXMLconUUID,
     function(g){return g.rfc||'';},function(){return TML_RFC;},function(g){return g.total;},c,'gastos');
   await validarUnaLista(dieselXMLconUUID,
