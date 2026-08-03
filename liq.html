@@ -2959,7 +2959,15 @@ function calcDiesel(){
   var pendDist=ltsFinal;
   for(var ai=0;ai<cargasOp.length;ai++){
     var cc=cargasOp[ai];
-    if(cc.yaLiquidada){cc.ltsDejoInput=0;continue;}
+    // Edenred a veces registra una reversión/corrección con litros NEGATIVOS
+    // (ej. tarjeta falló y se corrigió minutos después con una recarga real
+    // aparte) — Math.min(pendDist,cc.litros) con un negativo regresaba ese
+    // negativo como "dejoAuto" y esto INCREMENTABA pendDist en vez de
+    // consumirlo, inflando el pendiente de la carga siguiente. Una reversión
+    // no es una carga real de combustible, así que no participa en el
+    // reparto de litros finales en tanque (el neto ya se refleja bien en
+    // totLtsCarg, que solo suma litros tal cual).
+    if(cc.yaLiquidada||cc.litros<=0){cc.ltsDejoInput=0;continue;}
     var dejoAuto=Math.min(pendDist,cc.litros);
     cc.ltsDejoInput=Math.round(dejoAuto*100)/100;
     pendDist=Math.max(0,pendDist-dejoAuto);
