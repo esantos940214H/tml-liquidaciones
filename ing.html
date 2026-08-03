@@ -664,6 +664,7 @@ function renderConflictosXML(){
       +'<button class="btn btn-sm btn-red" onclick="resolverConflictoXML(\''+m.id+'\',true)">✅ Usar monto del XML (sustituir)</button>'
       +'<button class="btn btn-sm btn-out" onclick="resolverConflictoXML(\''+m.id+'\',false)">Marcar como resuelta sin cambiar montos</button>'
       +'<button class="btn btn-sm" style="background:#1a1a2e;color:#fff" onclick="generarCargoOperador(\''+m.id+'\')" title="Solo aplica si el operador recibió MÁS crédito del que realmente se facturó">💰 Generar cargo al operador por la diferencia</button>'
+      +'<button class="btn btn-sm" style="background:#6b46c1;color:#fff" onclick="abrirAjusteManualXML(\''+m.id+'\')" title="Usa el monto real del XML pero conserva el Flete tal como se le liquidó al operador — la diferencia se manda a Maniobras/Otros, afectando solo la utilidad de la empresa, no la comisión ni el saldo del operador">🛠️ Ajustar manualmente con XML</button>'
       +'</div></div>';
   }).join('');
 }
@@ -745,6 +746,62 @@ async function generarCargoOperador(manualId){
     console.error('generarCargoOperador:',e);
     alert('⚠️ Error al generar el cargo: '+e.message);
   }
+}
+// Ajuste manual con XML: para cuando el monto real facturado cambió DESPUÉS
+// de que el operador ya cobró su comisión sobre el monto original (ej. se
+// negoció una tarifa superior con el cliente tras liquidar al operador). El
+// Flete se deja fijo en lo que ya se usó para calcular su comisión/saldo —
+// nunca se toca — y la diferencia contra el subtotal real del XML se reparte
+// a mano entre Maniobras/Otros (que no generan comisión), para que solo
+// cambie la utilidad de la empresa, no la cuenta del operador.
+let _ajusteXMLId=null;
+function abrirAjusteManualXML(manualId){
+  var u=usuarioSesion();
+  if(!u||!u.esAdmin){alert('Solo un administrador puede usar esta herramienta.');return;}
+  var candidato=ingresosDB.find(function(v){return v.id===manualId;});
+  if(!candidato){alert('No se encontró el ingreso.');return;}
+  var xmlRec=ingresosDB.find(function(x){return x.id===candidato.conflictoXMLId;});
+  if(!xmlRec){alert('No se encontró el XML real de este conflicto.');return;}
+  _ajusteXMLId=manualId;
+  var sf=candidato.subtFlete!=null?candidato.subtFlete:(candidato.tipo==='flete_for'||candidato.tipo==='flete_mx'?candidato.subtotal:0);
+  var diff=Math.round((xmlRec.subtotal-sf)*100)/100;
+  $('ajusteXMLTarget').textContent=fmt(xmlRec.subtotal);
+  $('ajusteXMLFlete').value=sf.toFixed(2);
+  $('ajusteXMLManiobras').value='0.00';
+  $('ajusteXMLOtros').value=diff.toFixed(2);
+  $('ajusteXMLErr').style.display='none';
+  $('ajusteXMLModal').style.display='flex';
+}
+function cerrarAjusteXML(){$('ajusteXMLModal').style.display='none';_ajusteXMLId=null;}
+function confirmarAjusteXML(){
+  var candidato=ingresosDB.find(function(v){return v.id===_ajusteXMLId;});
+  if(!candidato)return;
+  var xmlRec=ingresosDB.find(function(x){return x.id===candidato.conflictoXMLId;});
+  if(!xmlRec){alert('No se encontró el XML real de este conflicto.');return;}
+  var sf=parseFloat($('ajusteXMLFlete').value||0);
+  var sm=parseFloat($('ajusteXMLManiobras').value||0);
+  var so=parseFloat($('ajusteXMLOtros').value||0);
+  var suma=Math.round((sf+sm+so)*100)/100;
+  var target=Math.round(xmlRec.subtotal*100)/100;
+  if(Math.abs(suma-target)>0.01){
+    $('ajusteXMLErr').style.display='block';
+    $('ajusteXMLErr').textContent='La suma ('+fmt(suma)+') debe ser igual al subtotal real del XML ('+fmt(target)+').';
+    return;
+  }
+  if(!confirm('¿Aplicar este ajuste? El Flete se queda en '+fmt(sf)+' — no cambia la comisión ni el saldo del operador. La diferencia contra el XML real ('+fmt(target)+') queda en Maniobras/Otros, afectando solo la utilidad de la empresa.'))return;
+  candidato.folio=xmlRec.folio;candidato.fecha=xmlRec.fecha;candidato.cliente=xmlRec.cliente;
+  candidato.subtotal=xmlRec.subtotal;candidato.subtFlete=sf;candidato.subtManiobras=sm;candidato.subtOtros=so;
+  candidato.iva=xmlRec.iva;candidato.ret=xmlRec.ret;candidato.total=xmlRec.total;
+  candidato.tipo=sm>0&&!sf?'maniobra':so>0&&!sf&&!sm?'otro':'flete_for';
+  candidato.origen='xml';candidato.ruta=xmlRec.ruta;candidato.uuid=xmlRec.uuid;candidato.facturaUUID=xmlRec.facturaUUID;candidato.esDesglose=true;
+  candidato.destino=xmlRec.destino;candidato.pedido=xmlRec.pedido;candidato.rfcEmisor=xmlRec.rfcEmisor;candidato.rfcReceptor=xmlRec.rfcReceptor;
+  candidato.satEstado=xmlRec.satEstado;candidato.satCancelado=xmlRec.satCancelado;
+  candidato.sustituidoPorXML=true;candidato.resueltoManualmentePorAdmin=true;candidato.ajusteManualPostLiquidacion=true;
+  candidato.requiereRevisionAdmin=false;candidato.conflictoXMLId=null;
+  ingresosDB=ingresosDB.filter(function(x){return x.id!==xmlRec.id;});
+  guardar();renderIngresos();renderConflictosXML();
+  cerrarAjusteXML();
+  alert('✅ Ajuste aplicado. El flete del operador no cambió; la diferencia se registró en Maniobras/Otros.');
 }
 function verificarSesionModulo(){
   var u=usuarioSesion();
@@ -1795,6 +1852,22 @@ function agregarIngreso(){
       <button class="lock-cancel" onclick="cerrarDividir()">Cancelar</button>
     </div>
     <div class="lock-err" id="dividirErr">Error</div>
+  </div>
+</div>
+
+<!-- MODAL AJUSTE MANUAL CON XML (conflicto XML vs. manual) -->
+<div class="lock-overlay" id="ajusteXMLModal" style="display:none">
+  <div class="divid-box">
+    <h3>🛠️ Ajustar manualmente con XML</h3>
+    <p>Subtotal real del XML: <strong id="ajusteXMLTarget">$0.00</strong> — la suma de los 3 campos debe igualar este monto. El Flete no se puede tocar: ya se usó para calcular la comisión y el saldo del operador.</p>
+    <div class="field"><label>Flete (no se modifica)</label><input type="number" id="ajusteXMLFlete" step="0.01" readonly style="background:#f0f2f5;color:#888;cursor:not-allowed"></div>
+    <div class="field"><label>Maniobras</label><input type="number" id="ajusteXMLManiobras" step="0.01"></div>
+    <div class="field"><label>Otros</label><input type="number" id="ajusteXMLOtros" step="0.01"></div>
+    <div class="lock-row">
+      <button class="lock-ok" onclick="confirmarAjusteXML()">Guardar</button>
+      <button class="lock-cancel" onclick="cerrarAjusteXML()">Cancelar</button>
+    </div>
+    <div class="lock-err" id="ajusteXMLErr">Error</div>
   </div>
 </div>
 </body>
