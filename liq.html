@@ -1009,6 +1009,11 @@ async function validarCFDIsSATLiquidacion(soloNuevos){
   renderGastos();
   renderDieselXML();calcDiesel();
   renderIAVE();
+  // La tabla de "Viajes sin liquidar del operador" (mostrarPreviewLiq) nunca
+  // se refrescaba aquí — el resultado quedaba guardado pero la pantalla
+  // seguía mostrando "Sin verificar" hasta que algo MÁS disparara un
+  // repintado (ej. el listener de ingresosDB, que puede tardar o no llegar).
+  if(liq)mostrarPreviewLiq(liq.opId||liq.unidad);
   var tabActivo=document.querySelector('.tab.active');
   var tabs=document.querySelectorAll('.tab');
   if(Array.from(tabs).indexOf(tabActivo)===4)generarReporte();
