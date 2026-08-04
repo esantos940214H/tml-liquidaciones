@@ -957,29 +957,50 @@ async function consultarEstadoSAT(item){
 // Se ejecuta al abrir la liquidación: valida ingresos (viajes XML) y gastos
 // facturados (XML) de la unidad ante el SAT, y marca/excluye los cancelados.
 // Nunca bloquea la liquidación si el proxy falla — solo avisa que no se pudo verificar.
+// Antes esto consultaba UNA POR UNA (await en un for), en serie — con
+// liquidaciones que traen decenas o cientos de CFDI (ej. 199 ingresos, 60
+// casetas) cada consulta espera una ida y vuelta a un Worker externo que a
+// su vez consulta al SAT, así que abrir/reabrir una liquidación grande podía
+// tardar minutos y sentirse como que el sistema se trababa. Ahora corre
+// varias consultas al mismo tiempo (un pool de "workers" concurrentes) en
+// vez de esperar cada una por turno.
 async function validarUnaLista(lista,mapRfcEmisor,mapRfcReceptor,mapTotal,contadores,etiqueta){
-  for(var i=0;i<lista.length;i++){
-    var item=lista[i];
-    var _req={uuid:item.uuid,rfcEmisor:mapRfcEmisor(item),rfcReceptor:mapRfcReceptor(item),total:mapTotal(item)};
-    var r=await consultarEstadoSAT(_req);
-    item.satEstado=r.estado;item.satCancelado=!!r.cancelado;
-    if(r.error){
-      contadores.nErrores++;
-      contadores.porCategoria[etiqueta]=(contadores.porCategoria[etiqueta]||0)+1;
-      // Diagnóstico: por qué falló exactamente esta consulta (ej. falta
-      // rfcReceptor en un ingreso viejo capturado antes de guardar ese
-      // campo) — visible en la consola del navegador (F12 → Console).
-      console.error('SAT: no se pudo validar UUID '+item.uuid+' ('+etiqueta+') — '+(r.mensaje||r.estado)+' · datos enviados:',_req);
-    }else if(r.cancelado)contadores.nCancelados++;
+  var CONCURRENCIA=6;
+  var idx=0;
+  async function worker(){
+    while(idx<lista.length){
+      var item=lista[idx++];
+      var _req={uuid:item.uuid,rfcEmisor:mapRfcEmisor(item),rfcReceptor:mapRfcReceptor(item),total:mapTotal(item)};
+      var r=await consultarEstadoSAT(_req);
+      item.satEstado=r.estado;item.satCancelado=!!r.cancelado;
+      if(r.error){
+        contadores.nErrores++;
+        contadores.porCategoria[etiqueta]=(contadores.porCategoria[etiqueta]||0)+1;
+        // Diagnóstico: por qué falló exactamente esta consulta (ej. falta
+        // rfcReceptor en un ingreso viejo capturado antes de guardar ese
+        // campo) — visible en la consola del navegador (F12 → Console).
+        console.error('SAT: no se pudo validar UUID '+item.uuid+' ('+etiqueta+') — '+(r.mensaje||r.estado)+' · datos enviados:',_req);
+      }else if(r.cancelado)contadores.nCancelados++;
+    }
   }
+  var workers=[];
+  for(var w=0;w<Math.min(CONCURRENCIA,lista.length);w++)workers.push(worker());
+  await Promise.all(workers);
 }
 
 // soloNuevos=true → solo valida CFDI que nunca se han checado (satEstado null), para
 // poder llamarse automáticamente cada vez que se sube un XML nuevo sin repetir consultas.
 // soloNuevos=false (default) → revalida TODO, incluso lo ya marcado vigente (por si se
 // canceló después) — se usa al abrir la liquidación y en el botón "Revalidar".
+// ingresosDB es un doc COMPARTIDO — cada vez que cualquiera (en cualquier
+// pestaña/módulo) le guarda algo, el listener de todos dispara esta función
+// otra vez (ver el listener de 'estado','ingresosDB' más abajo). Sin este
+// guardia, dos disparos casi simultáneos corrían dos validaciones completas
+// a la vez, duplicando las consultas al proxy del SAT sin necesidad.
+var _validandoSATEnCurso=false;
 async function validarCFDIsSATLiquidacion(soloNuevos){
   if(!liq)return;
+  if(_validandoSATEnCurso)return;
   var box=$('satValidandoInfo');
   if(!box)return;
   var viajesXML=ingresosDB.filter(function(v){return parseInt(v.unidad)===parseInt(liq.opId||liq.unidad)&&v.estado==='sin_liquidar'&&v.origen==='xml'&&v.uuid&&(!soloNuevos||v.satEstado==null);});
@@ -989,53 +1010,58 @@ async function validarCFDIsSATLiquidacion(soloNuevos){
   var total=viajesXML.length+gastosXMLconUUID.length+dieselXMLconUUID.length+autopistasXMLconUUID.length;
   if(!total)return;
 
-  box.style.display='block';
-  box.innerHTML='<div class="alert alert-info">⏳ Validando '+total+' CFDI ante el SAT (ingresos, gastos, diesel y casetas)...</div>';
+  _validandoSATEnCurso=true;
+  try{
+    box.style.display='block';
+    box.innerHTML='<div class="alert alert-info">⏳ Validando '+total+' CFDI ante el SAT (ingresos, gastos, diesel y casetas)...</div>';
 
-  // Una factura desglosada entre varios operadores (esDesglose) reparte el
-  // mismo UUID en varios registros de ingresosDB, cada uno con solo su
-  // PARTE proporcional del total. El SAT valida contra el total REAL de la
-  // factura completa — mandarle la parte prorrateada de un solo operador
-  // nunca va a coincidir, y siempre responde "No Encontrado" sin importar
-  // cuántas veces se revalide. Aquí se reconstruye el total real sumando
-  // todas las partes que comparten el mismo UUID antes de consultar.
-  function totalRealCFDI(v){
-    if(!v.esDesglose||!v.uuid)return v.total;
-    return ingresosDB.filter(function(x){return(x.uuid||x.facturaUUID)===v.uuid;}).reduce(function(s,x){return s+(x.total||0);},0);
-  }
-  var c={nCancelados:0,nErrores:0,porCategoria:{}};
-  await validarUnaLista(viajesXML,
-    function(v){return v.rfcEmisor||TML_RFC;},function(v){return v.rfcReceptor||'';},totalRealCFDI,c,'ingresos');
-  await validarUnaLista(gastosXMLconUUID,
-    function(g){return g.rfc||'';},function(){return TML_RFC;},function(g){return g.total;},c,'gastos');
-  await validarUnaLista(dieselXMLconUUID,
-    function(g){return g.rfc||'';},function(){return TML_RFC;},function(g){return g.total;},c,'diesel');
-  await validarUnaLista(autopistasXMLconUUID,
-    function(a){return a.rfc||'';},function(){return TML_RFC;},function(a){return a.importe;},c,'casetas');
+    // Una factura desglosada entre varios operadores (esDesglose) reparte el
+    // mismo UUID en varios registros de ingresosDB, cada uno con solo su
+    // PARTE proporcional del total. El SAT valida contra el total REAL de la
+    // factura completa — mandarle la parte prorrateada de un solo operador
+    // nunca va a coincidir, y siempre responde "No Encontrado" sin importar
+    // cuántas veces se revalide. Aquí se reconstruye el total real sumando
+    // todas las partes que comparten el mismo UUID antes de consultar.
+    var totalRealCFDI=function(v){
+      if(!v.esDesglose||!v.uuid)return v.total;
+      return ingresosDB.filter(function(x){return(x.uuid||x.facturaUUID)===v.uuid;}).reduce(function(s,x){return s+(x.total||0);},0);
+    };
+    var c={nCancelados:0,nErrores:0,porCategoria:{}};
+    await validarUnaLista(viajesXML,
+      function(v){return v.rfcEmisor||TML_RFC;},function(v){return v.rfcReceptor||'';},totalRealCFDI,c,'ingresos');
+    await validarUnaLista(gastosXMLconUUID,
+      function(g){return g.rfc||'';},function(){return TML_RFC;},function(g){return g.total;},c,'gastos');
+    await validarUnaLista(dieselXMLconUUID,
+      function(g){return g.rfc||'';},function(){return TML_RFC;},function(g){return g.total;},c,'diesel');
+    await validarUnaLista(autopistasXMLconUUID,
+      function(a){return a.rfc||'';},function(){return TML_RFC;},function(a){return a.importe;},c,'casetas');
 
-  // ingresosDB es compartido con ant.html/ing.html/hist.html — se guarda completo
-  // (ya sincronizado por el listener en vivo) para reflejar el estado SAT ahí también.
-  if(fbReady)window.FB.set('estado','ingresosDB',{data:JSON.stringify(ingresosDB)});
-  guardarEstado();
-  renderGastos();
-  renderDieselXML();calcDiesel();
-  renderIAVE();
-  // La tabla de "Viajes sin liquidar del operador" (mostrarPreviewLiq) nunca
-  // se refrescaba aquí — el resultado quedaba guardado pero la pantalla
-  // seguía mostrando "Sin verificar" hasta que algo MÁS disparara un
-  // repintado (ej. el listener de ingresosDB, que puede tardar o no llegar).
-  if(liq)mostrarPreviewLiq(liq.opId||liq.unidad);
-  var tabActivo=document.querySelector('.tab.active');
-  var tabs=document.querySelectorAll('.tab');
-  if(Array.from(tabs).indexOf(tabActivo)===4)generarReporte();
+    // ingresosDB es compartido con ant.html/ing.html/hist.html — se guarda completo
+    // (ya sincronizado por el listener en vivo) para reflejar el estado SAT ahí también.
+    if(fbReady)window.FB.set('estado','ingresosDB',{data:JSON.stringify(ingresosDB)});
+    guardarEstado();
+    renderGastos();
+    renderDieselXML();calcDiesel();
+    renderIAVE();
+    // La tabla de "Viajes sin liquidar del operador" (mostrarPreviewLiq) nunca
+    // se refrescaba aquí — el resultado quedaba guardado pero la pantalla
+    // seguía mostrando "Sin verificar" hasta que algo MÁS disparara un
+    // repintado (ej. el listener de ingresosDB, que puede tardar o no llegar).
+    if(liq)mostrarPreviewLiq(liq.opId||liq.unidad);
+    var tabActivo=document.querySelector('.tab.active');
+    var tabs=document.querySelectorAll('.tab');
+    if(Array.from(tabs).indexOf(tabActivo)===4)generarReporte();
 
-  var _detalleErrores=Object.keys(c.porCategoria).map(function(k){return c.porCategoria[k]+' de '+k;}).join(', ');
-  if(c.nErrores===total){
-    box.innerHTML='<div class="alert alert-warn">⚠️ No se pudo validar ningún CFDI ante el SAT ('+_detalleErrores+'). Revisa la consola del navegador (F12) para el detalle exacto de cada uno. Los CFDI se consideran vigentes mientras no se puedan verificar.</div>';
-  } else if(c.nCancelados){
-    box.innerHTML='<div class="alert alert-warn">⚠️ Se encontraron '+c.nCancelados+' CFDI cancelado(s) ante el SAT — se excluyeron del cálculo de esta liquidación.'+(c.nErrores?' ('+c.nErrores+' no se pudieron verificar: '+_detalleErrores+'.)':'')+'</div>';
-  } else {
-    box.innerHTML='<div class="alert alert-ok">✅ CFDI verificados vigentes ante el SAT.'+(c.nErrores?' ('+c.nErrores+' no se pudieron verificar: '+_detalleErrores+'.)':'')+'</div>';
+    var _detalleErrores=Object.keys(c.porCategoria).map(function(k){return c.porCategoria[k]+' de '+k;}).join(', ');
+    if(c.nErrores===total){
+      box.innerHTML='<div class="alert alert-warn">⚠️ No se pudo validar ningún CFDI ante el SAT ('+_detalleErrores+'). Revisa la consola del navegador (F12) para el detalle exacto de cada uno. Los CFDI se consideran vigentes mientras no se puedan verificar.</div>';
+    } else if(c.nCancelados){
+      box.innerHTML='<div class="alert alert-warn">⚠️ Se encontraron '+c.nCancelados+' CFDI cancelado(s) ante el SAT — se excluyeron del cálculo de esta liquidación.'+(c.nErrores?' ('+c.nErrores+' no se pudieron verificar: '+_detalleErrores+'.)':'')+'</div>';
+    } else {
+      box.innerHTML='<div class="alert alert-ok">✅ CFDI verificados vigentes ante el SAT.'+(c.nErrores?' ('+c.nErrores+' no se pudieron verificar: '+_detalleErrores+'.)':'')+'</div>';
+    }
+  } finally {
+    _validandoSATEnCurso=false;
   }
 }
 
