@@ -245,7 +245,7 @@ tr:hover td{background:#fafafa}
       <button class="btn btn-dark btn-sm" onclick="exportarCSV()">Exportar CSV</button>
     </div>
     <div class="row">
-      <div class="field" style="flex:2;min-width:220px"><label>Buscar</label><input type="text" id="filtBusca" placeholder="Folio, cliente, operador, fecha o importe..." oninput="renderIngresos()"></div>
+      <div class="field" style="flex:2;min-width:220px"><label>Buscar</label><input type="text" id="filtBusca" placeholder="Folio, cliente, operador, fecha o importe..." oninput="renderIngresosDebounced()"></div>
       <div class="field"><label>Operador</label><select id="filtOp" onchange="renderIngresos()"><option value="">Todos</option></select></div>
       <div class="field"><label>Desde</label><input type="date" id="filtDesde" onchange="renderIngresos()"></div>
       <div class="field"><label>Hasta</label><input type="date" id="filtHasta" onchange="renderIngresos()"></div>
@@ -1567,6 +1567,15 @@ function renderReporteIngresos(filtrados,filtOp){
     options:{plugins:{legend:{position:'bottom'},tooltip:{callbacks:{label:function(ctx){return ctx.label+': '+fmt(ctx.parsed);}}}}}});
 }
 
+// renderIngresos() reconstruye toda la tabla Y las gráficas (Chart.js) —
+// llamarlo en cada tecla mientras se escribe en el buscador se sentía como
+// que la pantalla se trababa. Se espera a que la persona deje de teclear
+// un momento antes de recalcular todo.
+let _debounceBuscaIng=null;
+function renderIngresosDebounced(){
+  clearTimeout(_debounceBuscaIng);
+  _debounceBuscaIng=setTimeout(renderIngresos,300);
+}
 // Quita acentos/mayúsculas para que la búsqueda no dependa de escribir
 // exactamente igual (ej. "jose" encuentra "JOSÉ").
 function normBusca(s){return(s==null?'':String(s)).toUpperCase().normalize('NFD').replace(/[̀-ͯ]/g,'');}
