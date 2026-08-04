@@ -252,8 +252,27 @@ tr:hover td{background:#fafafa}
       <div class="field"><label>Estatus</label>
         <select id="filtEst" onchange="renderIngresos()">
           <option value="">Todos</option>
-          <option value="sin_liquidar">Sin liquidar</option>
-          <option value="liquidado">Liquidado</option>
+          <optgroup label="Liquidación">
+            <option value="sin_liquidar">Sin liquidar</option>
+            <option value="liquidado">Liquidado</option>
+          </optgroup>
+          <optgroup label="Factura / XML">
+            <option value="con_xml">Con XML</option>
+            <option value="sin_xml">Sin XML (manual)</option>
+            <option value="sin_factura">Sin factura pendiente</option>
+            <option value="sin_factura_vencido">Sin factura vencida</option>
+            <option value="sustituido">Ya sustituido con XML real</option>
+            <option value="desglose">Parte de factura desglosada</option>
+          </optgroup>
+          <optgroup label="Revisión / conflictos">
+            <option value="revision_admin">Discrepancia pendiente (admin)</option>
+            <option value="division_pendiente">División Flete/Maniobras pendiente</option>
+          </optgroup>
+          <optgroup label="Estado ante el SAT">
+            <option value="vigente_sat">✓ Vigente ante el SAT</option>
+            <option value="cancelado_sat">⚠ Cancelado ante el SAT</option>
+            <option value="sin_verificar_sat">Sin verificar ante el SAT</option>
+          </optgroup>
         </select>
       </div>
       <button class="btn btn-out btn-sm" onclick="limpiarFiltros()">Limpiar</button>
@@ -1560,6 +1579,27 @@ function coincideBusqueda(v,q){
   var campos=[v.folio,v.cliente,op?op.nombre:'',v.fecha,v.subtotal,v.total,v.importe];
   return campos.some(function(c){return c!=null&&normBusca(c).indexOf(q)!==-1;});
 }
+// Todas las variantes de "estatus" que existen realmente en un ingreso —
+// no solo sin_liquidar/liquidado, sino también su relación con el XML/SAT.
+function coincideEstatus(v,filtro){
+  switch(filtro){
+    case'':return true;
+    case'sin_liquidar':return v.estado==='sin_liquidar';
+    case'liquidado':return v.estado==='liquidado';
+    case'con_xml':return v.origen==='xml';
+    case'sin_xml':return v.origen!=='xml';
+    case'sin_factura':return!!v.sinFacturaJustificar&&!v.sustituidoPorXML;
+    case'sin_factura_vencido':return!!v.sinFacturaJustificar&&!v.sustituidoPorXML&&yaVencioLimite(v.fechaLimiteJustificacion);
+    case'sustituido':return!!v.sustituidoPorXML;
+    case'desglose':return!!v.esDesglose;
+    case'revision_admin':return!!v.requiereRevisionAdmin;
+    case'division_pendiente':return!!v.divisionPendiente;
+    case'vigente_sat':return v.satEstado==='Vigente';
+    case'cancelado_sat':return!!v.satCancelado;
+    case'sin_verificar_sat':return v.origen==='xml'&&!!v.uuid&&!v.satCancelado&&v.satEstado!=='Vigente';
+    default:return true;
+  }
+}
 function renderIngresos(){
   renderCandadoManual();
   renderConflictosXML();
@@ -1572,7 +1612,7 @@ function renderIngresos(){
     if(filtOp&&v.unidad!==filtOp)return false;
     if(filtDesde&&v.fecha<filtDesde)return false;
     if(filtHasta&&v.fecha>filtHasta)return false;
-    if(filtEst&&v.estado!==filtEst)return false;
+    if(!coincideEstatus(v,filtEst))return false;
     if(!coincideBusqueda(v,filtBusca))return false;
     return true;
   }).sort((a,b)=>b.fecha.localeCompare(a.fecha));
