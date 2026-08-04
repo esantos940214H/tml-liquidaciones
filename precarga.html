@@ -203,9 +203,30 @@ tr:hover td{background:#fafafa}
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
 <script src="shared/sesion.js"></script>
 <script src="shared/autoActualizar.js"></script>
-<!-- Guardar XML de comprobantes + generar PDF al vuelo (ver shared/comprobantes.js) -->
-<script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+<!-- Guardar XML de comprobantes (ver shared/comprobantes.js). jsPDF ya NO
+     se carga aquí de entrada — bloqueaba el arranque de la página con una
+     solicitud más a un CDN externo aunque casi nadie pide ver un PDF justo
+     al entrar. Se carga solo cuando de verdad se usa. -->
 <script src="shared/comprobantes.js"></script>
+<script>
+// Carga un <script> externo una sola vez (cachea la promesa) — usado para
+// no bloquear el arranque de la página con jsPDF.
+var _lazyScripts={};
+function cargarScriptUnaVez(src){
+  if(_lazyScripts[src])return _lazyScripts[src];
+  _lazyScripts[src]=new Promise(function(resolve,reject){
+    var s=document.createElement('script');
+    s.src=src;s.onload=resolve;s.onerror=reject;
+    document.head.appendChild(s);
+  });
+  return _lazyScripts[src];
+}
+async function asegurarJsPDF(){
+  if(window.jspdf&&window.jspdf.jsPDF)return true;
+  try{await cargarScriptUnaVez('https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js');return true;}
+  catch(e){console.error('No se pudo cargar jsPDF:',e);alert('No se pudo cargar el generador de PDF. Revisa tu conexión e intenta de nuevo.');return false;}
+}
+</script>
 <script>
 window._fbInit=false;
 window._fbCallbacks=[];
@@ -652,9 +673,10 @@ async function reasignarPagaOp(uuidDoc,valor){
 // mismo XML, ahora al operador correcto (el dedup por UUID lo vuelve a
 // aceptar porque ya no existe el documento anterior).
 // ══════════════════════════════════════════════
-function descargarPDFComprobante(uuidDoc){
+async function descargarPDFComprobante(uuidDoc){
   var c=comprobantesDB.find(function(x){return x.id===uuidDoc;});
   if(!c)return;
+  if(!(await asegurarJsPDF()))return;
   var op=OPERADORES.find(function(o){return o.unidad===c.operador;});
   TMLComprobantes.verPDF({
     titulo:'Comprobante pre-cargado — '+(op?op.nombre:'Unidad '+c.unidad),

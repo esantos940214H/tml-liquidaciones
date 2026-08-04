@@ -669,11 +669,26 @@ tr:hover td{background:#fafafa}
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
 <script src="shared/sesion.js"></script>
 <script src="shared/autoActualizar.js"></script>
-<!-- Guardar XML de comprobantes + generar PDF al vuelo (ver shared/comprobantes.js) -->
-<script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+<!-- Guardar XML de comprobantes (ver shared/comprobantes.js). jsPDF y
+     Chart.js YA NO se cargan aquí de entrada — bloqueaban el arranque de
+     la página con 2 solicitudes más a un CDN externo aunque casi nadie
+     pide un PDF o abre el Reporte general justo al entrar. Se cargan solo
+     cuando de verdad se usan (ver cargarScriptUnaVez). -->
 <script src="shared/comprobantes.js"></script>
-<!-- Gráficas del reporte general -->
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+<script>
+// Carga un <script> externo una sola vez (cachea la promesa) — usado para
+// no bloquear el arranque de la página con jsPDF/Chart.js.
+var _lazyScripts={};
+function cargarScriptUnaVez(src){
+  if(_lazyScripts[src])return _lazyScripts[src];
+  _lazyScripts[src]=new Promise(function(resolve,reject){
+    var s=document.createElement('script');
+    s.src=src;s.onload=resolve;s.onerror=reject;
+    document.head.appendChild(s);
+  });
+  return _lazyScripts[src];
+}
+</script>
 <script>
 window._fbInit=false;
 window._fbCallbacks=[];
@@ -2970,9 +2985,15 @@ function toggleDieselXMLPagaOp(i,val){
   liq.dieselXML[i].pagaOp=(val==='op');
   renderDieselXML();calcDiesel();guardarEstado();
 }
-function descargarPDFDiesel(i){
+async function asegurarJsPDF(){
+  if(window.jspdf&&window.jspdf.jsPDF)return true;
+  try{await cargarScriptUnaVez('https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js');return true;}
+  catch(e){console.error('No se pudo cargar jsPDF:',e);alert('No se pudo cargar el generador de PDF. Revisa tu conexión e intenta de nuevo.');return false;}
+}
+async function descargarPDFDiesel(i){
   if(!liq||!liq.dieselXML)return;
   var x=liq.dieselXML[i];if(!x)return;
+  if(!(await asegurarJsPDF()))return;
   TMLComprobantes.verPDF({
     titulo:'Comprobante de diesel — '+(liq.opNombre||''),
     folio:x.folio,fecha:x.fecha,emisorNombre:x.emisor,emisorRFC:x.rfc,
@@ -3305,9 +3326,10 @@ function parseIAVE(text,fname){
   $('iaveInfo').innerHTML='<div class="alert alert-ok">'+fname+' — '+liq.autopistas.length+' cruces para unidad '+liq.unidad+'.'+(nIaveSkip?' <strong>'+nIaveSkip+' ya liquidados excluidos.</strong>':'')+'</div>';
 }
 
-function descargarPDFCaseta(i){
+async function descargarPDFCaseta(i){
   if(!liq||!liq.autopistas)return;
   var a=liq.autopistas[i];if(!a)return;
+  if(!(await asegurarJsPDF()))return;
   TMLComprobantes.verPDF({
     titulo:'Comprobante de caseta — '+(liq.opNombre||''),
     fecha:a.fecha,emisorNombre:a.emisor,emisorRFC:a.rfc,
@@ -3860,11 +3882,12 @@ function toggleGastoPagaOp(i,val){
   renderGastos();guardarEstado();
 }
 
-function descargarPDFGasto(i){
+async function descargarPDFGasto(i){
   if(!liq)return;
   const todos=liq.gastosXML.concat(liq.gastos);
   const g=todos[i];
   if(!g||g.tipo!=='xml')return;
+  if(!(await asegurarJsPDF()))return;
   TMLComprobantes.verPDF({
     titulo:'Comprobante de gasto — '+(liq.opNombre||''),
     folio:(g.serie||'')+(g.folio||''),
@@ -4387,6 +4410,12 @@ function limpiarFiltroReporteGeneral(){
 
 async function generarReporteGeneral(){
   if(!window.FB)return;
+  // Chart.js se carga aquí (bajo demanda) — esta pestaña casi nunca se abre
+  // justo al entrar, así que no tiene caso bloquear el arranque de la
+  // página por ella.
+  if(typeof Chart==='undefined'){
+    try{await cargarScriptUnaVez('https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js');}catch(e){console.error('No se pudo cargar Chart.js:',e);}
+  }
   var opFiltro=parseInt($('rgOperador').value||0);
   var desde=$('rgDesde').value;
   var hasta=$('rgHasta').value;
