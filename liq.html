@@ -1489,10 +1489,14 @@ async function cargarEstado(){
 
     // Completar el registro global de facturas usadas con lo que falte del
     // historial y de la liquidación abierta (cubre liquidaciones cerradas
-    // antes de que existiera este registro). Se espera a que termine antes
-    // de seguir, para no dejar una ventana donde se pueda subir un XML
-    // duplicado mientras el registro todavía se está reconstruyendo.
-    await reconstruirFacturasUsadas();
+    // antes de que existiera este registro). Ya NO se espera a que termine:
+    // descarga TODO el historial completo (crece para siempre, con arreglos
+    // grandes por dentro) y con el tiempo eso empezó a sentirse como que el
+    // sistema se trababa al entrar. facturasUsadas ya se cargó arriba desde
+    // su propio caché (rápido), y buscarUUIDDuplicado() igual revisa
+    // liqActivas/historial directo como respaldo — así que dejar esto
+    // corriendo en segundo plano no abre riesgo real de duplicados.
+    reconstruirFacturasUsadas();
     window.FB.listen('estado','facturasUsadas', function(data){
       if(data&&data.data)facturasUsadas=JSON.parse(data.data);
     });
