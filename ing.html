@@ -245,6 +245,7 @@ tr:hover td{background:#fafafa}
       <button class="btn btn-dark btn-sm" onclick="exportarCSV()">Exportar CSV</button>
     </div>
     <div class="row">
+      <div class="field" style="flex:2;min-width:220px"><label>Buscar</label><input type="text" id="filtBusca" placeholder="Folio, cliente, operador, fecha o importe..." oninput="renderIngresos()"></div>
       <div class="field"><label>Operador</label><select id="filtOp" onchange="renderIngresos()"><option value="">Todos</option></select></div>
       <div class="field"><label>Desde</label><input type="date" id="filtDesde" onchange="renderIngresos()"></div>
       <div class="field"><label>Hasta</label><input type="date" id="filtHasta" onchange="renderIngresos()"></div>
@@ -1547,6 +1548,18 @@ function renderReporteIngresos(filtrados,filtOp){
     options:{plugins:{legend:{position:'bottom'},tooltip:{callbacks:{label:function(ctx){return ctx.label+': '+fmt(ctx.parsed);}}}}}});
 }
 
+// Quita acentos/mayúsculas para que la búsqueda no dependa de escribir
+// exactamente igual (ej. "jose" encuentra "JOSÉ").
+function normBusca(s){return(s==null?'':String(s)).toUpperCase().normalize('NFD').replace(/[̀-ͯ]/g,'');}
+// Un solo cuadro de búsqueda libre que compara contra folio, cliente,
+// nombre del operador, fecha y los importes (subtotal/total) — así no hace
+// falta saber en qué filtro exacto buscar cada dato.
+function coincideBusqueda(v,q){
+  if(!q)return true;
+  var op=OPERADORES.find(function(o){return o.unidad===v.unidad;});
+  var campos=[v.folio,v.cliente,op?op.nombre:'',v.fecha,v.subtotal,v.total,v.importe];
+  return campos.some(function(c){return c!=null&&normBusca(c).indexOf(q)!==-1;});
+}
 function renderIngresos(){
   renderCandadoManual();
   renderConflictosXML();
@@ -1554,11 +1567,13 @@ function renderIngresos(){
   const filtDesde=$('filtDesde').value;
   const filtHasta=$('filtHasta').value;
   const filtEst=$('filtEst').value;
+  const filtBusca=normBusca(($('filtBusca')?$('filtBusca').value:'').trim());
   const filtrados=ingresosDB.filter(v=>{
     if(filtOp&&v.unidad!==filtOp)return false;
     if(filtDesde&&v.fecha<filtDesde)return false;
     if(filtHasta&&v.fecha>filtHasta)return false;
     if(filtEst&&v.estado!==filtEst)return false;
+    if(!coincideBusqueda(v,filtBusca))return false;
     return true;
   }).sort((a,b)=>b.fecha.localeCompare(a.fecha));
 
@@ -1797,6 +1812,7 @@ function eliminarSeleccionadosIng(){
 
 function limpiarFiltros(){
   $('filtOp').value='';$('filtDesde').value='';$('filtHasta').value='';$('filtEst').value='';
+  if($('filtBusca'))$('filtBusca').value='';
   renderIngresos();
 }
 
