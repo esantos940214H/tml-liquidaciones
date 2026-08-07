@@ -68,17 +68,25 @@ tr:hover td{background:#fafafa}
 .firma-label{font-size:10px;color:#666;text-transform:uppercase;letter-spacing:.7px;text-align:center}
 .firma-opnombre{font-size:12px;color:#555;text-align:center;font-weight:700;margin-top:4px}
 .recibo-nomina-hoja{page-break-before:always}
-.recibo-box{border:1px solid #ccc;border-radius:8px;padding:16px;margin-bottom:0}
-.recibo-box h4{font-size:13px;margin-bottom:10px;color:#1a1a2e}
-.recibo-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px 18px;font-size:12px;margin-bottom:10px}
+/* Cada PAR (original+copia) ocupa una hoja carta completa (11in), partida
+   exactamente a la mitad (5.5in c/u) — para que al imprimir en carta y
+   cortar por la línea punteada, cada mitad sea un recibo completo:
+   original para el operador, copia para el expediente de la liquidación.
+   Un segundo/tercer recibo (si hay más de una deducción de nómina en la
+   misma liquidación) siempre arranca en su propia hoja nueva. */
+.recibo-nomina-par{display:flex;flex-direction:column;height:11in;box-sizing:border-box;page-break-inside:avoid}
+.recibo-nomina-par:not(:first-child){page-break-before:always}
+.recibo-box{border:1px solid #ccc;border-radius:8px;padding:14px;flex:1 1 0;box-sizing:border-box;overflow:hidden;font-size:11px}
+.recibo-box h4{font-size:12px;margin-bottom:8px;color:#1a1a2e}
+.recibo-grid{display:grid;grid-template-columns:1fr 1fr;gap:5px 18px;font-size:11px;margin-bottom:8px}
 .recibo-grid div span{color:#888}
-.recibo-uuid{font-size:10px;color:#666;word-break:break-all;background:#f7f7f9;border-radius:4px;padding:6px 8px;margin-top:4px}
-.recibo-cadena{font-size:9px;color:#666;word-break:break-all;font-family:monospace;background:#f7f7f9;border-radius:4px;padding:6px 8px;margin-top:6px}
-.recibo-top{display:flex;gap:14px;align-items:flex-start;justify-content:space-between}
+.recibo-uuid{font-size:9px;color:#666;word-break:break-all;background:#f7f7f9;border-radius:4px;padding:5px 7px;margin-top:4px}
+.recibo-cadena{font-size:8px;color:#666;word-break:break-all;font-family:monospace;background:#f7f7f9;border-radius:4px;padding:5px 7px;margin-top:5px}
+.recibo-top{display:flex;gap:12px;align-items:flex-start;justify-content:space-between}
 .recibo-datos{flex:1;min-width:0}
 .recibo-qr{flex-shrink:0;text-align:center}
-.recibo-qr img{border:1px solid #eee;border-radius:4px}
-.recibo-corte{border-top:1px dashed #999;text-align:center;font-size:10px;color:#999;margin:16px 0;padding-top:4px}
+.recibo-qr img{border:1px solid #eee;border-radius:4px;width:85px;height:85px}
+.recibo-corte{flex:0 0 auto;border-top:1px dashed #999;text-align:center;font-size:9px;color:#999;margin:0;padding:3px 0}
 @media(max-width:600px){.grid2{grid-template-columns:1fr}}
 @media print{
   header,.no-print{display:none!important}
@@ -407,10 +415,9 @@ async function renderRecibosNomina(l,snap,op){
   if($('detRecibosNomina'))$('detRecibosNomina').innerHTML='<p style="font-size:12px;color:#aaa">Generando recibo(s)...</p>';
   var bloques=await Promise.all(lista.map(async function(n){
     var box=await window.TMLReciboNomina.construirHTML(n,opNombre);
-    return box+'<div class="recibo-corte">✂ — — — — — recorte aquí · segundo tanto — — — — — ✂</div>'+box;
+    return '<div class="recibo-nomina-par">'+box+'<div class="recibo-corte">✂ — — — — — recorte aquí · original arriba (operador) · copia abajo (liquidación) — — — — — ✂</div>'+box+'</div>';
   }));
-  var html=bloques.map(function(b,i){return '<div style="margin-bottom:'+(i<bloques.length-1?'24px':'0')+'">'+b+'</div>';}).join('');
-  if($('detRecibosNomina'))$('detRecibosNomina').innerHTML=html;
+  if($('detRecibosNomina'))$('detRecibosNomina').innerHTML=bloques.join('');
 }
 
 let historialDB=[];
