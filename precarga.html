@@ -125,6 +125,7 @@ tr:hover td{background:#fafafa}
       <a href="https://autorizaciones.mudanzastml.mx">🔐 Autorizaciones</a>
       <a href="https://precarga.mudanzastml.mx" class="active">📥 Pre-carga</a>
       <a href="https://usuarios.mudanzastml.mx">👤 Usuarios</a>
+      <a href="https://usuarios.mudanzastml.mx/flota.html">🚚 Flota</a>
     </nav>
   </div>
 </header>
@@ -202,6 +203,7 @@ tr:hover td{background:#fafafa}
 <!-- Firebase Auth (login del módulo — ver shared/sesion.js) -->
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
 <script src="shared/sesion.js"></script>
+<script src="shared/operadores.js"></script>
 <script src="shared/autoActualizar.js"></script>
 <!-- Guardar XML de comprobantes (ver shared/comprobantes.js). jsPDF ya NO
      se carga aquí de entrada — bloqueaba el arranque de la página con una
@@ -272,17 +274,10 @@ const hoy=()=>new Date().toISOString().slice(0,10);
 const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2);
 let fbReady=false;
 
-const OPERADORES=[
-  {unidad:4521,nombre:'ALEJANDRO RODRIGUEZ GONZALEZ'},{unidad:4522,nombre:'ANDRÉS MARÍA RAMOS'},
-  {unidad:4523,nombre:'ANDRÉS NAVARRO RAMÍREZ'},{unidad:4524,nombre:'RAFAEL TAPIA CARREÑO'},
-  {unidad:4526,nombre:'EDUARDO HERNÁNDEZ ACEVES'},{unidad:529,nombre:'OSCAR ISRAEL RAMOS'},
-  {unidad:531,nombre:'MARTÍN FLORES LUGO'},{unidad:532,nombre:'JOSÉ ROLANDO DOMINGUEZ LOPEZ'},
-  {unidad:533,nombre:'FRANCISCO ARTEMIO PEÑA VAZQUEZ'},{unidad:534,nombre:'MIGUEL ALONSO CALDERON'},
-  {unidad:535,nombre:'ISMAEL CONSTANTINO CABRERA'},
-];
+let OPERADORES=[];
 // Unidades reales de la flota — lista aparte (hoy coincide con OPERADORES)
 // para poder registrar "operador X manejó la unidad Y" cuando no coincidan.
-const UNIDADES=OPERADORES.map(function(o){return o.unidad;}).slice().sort(function(a,b){return a-b;});
+let UNIDADES=[];
 const TML_RFC='MTM171214PI4';
 
 // ══════════════════════════════════════════════
@@ -430,6 +425,8 @@ function aplicarPermisosNav(u){
   });
   var usuariosLink=document.querySelector('nav a[href="https://usuarios.mudanzastml.mx"]');
   if(usuariosLink)usuariosLink.style.display='none';
+  var flotaLink=document.querySelector('nav a[href="https://usuarios.mudanzastml.mx/flota.html"]');
+  if(flotaLink)flotaLink.style.display='none';
 }
 function mostrarSesionEnHeader(){
   var u=usuarioSesion();
@@ -465,7 +462,6 @@ function initSelects(){
     var o=document.createElement('option');o.value=u;o.textContent=u;su.appendChild(o);
   });
 }
-initSelects();
 // Al elegir operador, se propone su unidad "de casa" por default —
 // queda seleccionable aparte por si este periodo manejó otra.
 $('pcOperador').addEventListener('change',function(){
@@ -475,7 +471,10 @@ $('pcOperador').addEventListener('change',function(){
 
 let comprobantesDB=[]; // arreglo en vivo de comprobantesPrecargados (getAll/listenCollection)
 
-window.onFBReady(function(){
+window.onFBReady(async function(){
+  OPERADORES=await window.cargarOperadores();
+  UNIDADES=OPERADORES.map(function(o){return o.unidad;}).slice().sort(function(a,b){return a-b;});
+  initSelects();
   fbReady=true;
   $('fbStatus').textContent='✅ Conectado';$('fbStatus').className='fb-status fb-ok';
   window.FB.listenCollection('comprobantesPrecargados',function(rows){
