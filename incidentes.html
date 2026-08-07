@@ -148,6 +148,7 @@ tr:hover td{background:#fafafa}
       <a href="https://autorizaciones.mudanzastml.mx">🔐 Autorizaciones</a>
       <a href="https://precarga.mudanzastml.mx">📥 Pre-carga</a>
       <a href="https://usuarios.mudanzastml.mx">👤 Usuarios</a>
+      <a href="https://usuarios.mudanzastml.mx/flota.html">🚚 Flota</a>
     </nav>
   </div>
 </header>
@@ -232,6 +233,7 @@ tr:hover td{background:#fafafa}
 <!-- Firebase Auth (login del módulo — ver shared/sesion.js) -->
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
 <script src="shared/sesion.js"></script>
+<script src="shared/operadores.js"></script>
 <script src="shared/autoActualizar.js"></script>
 <script>
 window._fbInit=false;
@@ -263,19 +265,7 @@ window.onFBReady=function(cb){if(window._fbInit)cb();else window._fbCallbacks.pu
 </script>
 
 <script>
-const OPERADORES=[
-  {unidad:4521,nombre:'ALEJANDRO RODRIGUEZ GONZALEZ'},
-  {unidad:4522,nombre:'ANDRÉS MARÍA RAMOS'},
-  {unidad:4523,nombre:'ANDRÉS NAVARRO RAMÍREZ'},
-  {unidad:4524,nombre:'RAFAEL TAPIA CARREÑO'},
-  {unidad:4526,nombre:'EDUARDO HERNÁNDEZ ACEVES'},
-  {unidad:529, nombre:'OSCAR ISRAEL RAMOS'},
-  {unidad:531, nombre:'MARTÍN FLORES LUGO'},
-  {unidad:532, nombre:'JOSÉ ROLANDO DOMINGUEZ LOPEZ'},
-  {unidad:533, nombre:'FRANCISCO ARTEMIO PEÑA VAZQUEZ'},
-  {unidad:534, nombre:'MIGUEL ALONSO CALDERON'},
-  {unidad:535, nombre:'ISMAEL CONSTANTINO CABRERA'},
-];
+let OPERADORES=[];
 
 const $=id=>document.getElementById(id);
 const fmt=(n,d=2)=>'$'+parseFloat(n||0).toLocaleString('es-MX',{minimumFractionDigits:d,maximumFractionDigits:d});
@@ -437,6 +427,8 @@ function aplicarPermisosNav(u){
   });
   var usuariosLink=document.querySelector('nav a[href="https://usuarios.mudanzastml.mx"]');
   if(usuariosLink)usuariosLink.style.display='none';
+  var flotaLink=document.querySelector('nav a[href="https://usuarios.mudanzastml.mx/flota.html"]');
+  if(flotaLink)flotaLink.style.display='none';
 }
 function mostrarSesionEnHeader(){
   var u=usuarioSesion();
@@ -469,7 +461,6 @@ function initSelects(){
     });
   });
 }
-initSelects();
 $('iFechaEvento').value=new Date().toISOString().slice(0,16);
 
 function actualizarPreviewMonto(){
@@ -485,6 +476,8 @@ actualizarPreviewMonto();
 
 // Firebase
 window.onFBReady(async function(){
+  OPERADORES=await window.cargarOperadores();
+  initSelects();
   fbReady=true;
   $('fbStatus').textContent='✅ Conectado';
   $('fbStatus').className='fb-status fb-ok';

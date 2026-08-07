@@ -197,6 +197,7 @@ tr:hover td{background:#fafafa}
       <a href="https://autorizaciones.mudanzastml.mx" style="color:#aaa;text-decoration:none;font-size:11px;padding:5px 10px;border-radius:5px;border:1px solid #333">🔐 Autorizaciones</a>
       <a href="https://precarga.mudanzastml.mx" style="color:#aaa;text-decoration:none;font-size:11px;padding:5px 10px;border-radius:5px;border:1px solid #333">📥 Pre-carga</a>
       <a href="https://usuarios.mudanzastml.mx" style="color:#aaa;text-decoration:none;font-size:11px;padding:5px 10px;border-radius:5px;border:1px solid #333">👤 Usuarios</a>
+      <a href="https://usuarios.mudanzastml.mx/flota.html" style="color:#aaa;text-decoration:none;font-size:11px;padding:5px 10px;border-radius:5px;border:1px solid #333">🚚 Flota</a>
     </nav>
   </div>
 </header>
@@ -668,6 +669,7 @@ tr:hover td{background:#fafafa}
 <!-- Firebase Auth (login del módulo — ver shared/sesion.js) -->
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
 <script src="shared/sesion.js"></script>
+<script src="shared/operadores.js"></script>
 <script src="shared/autoActualizar.js"></script>
 <!-- Guardar XML de comprobantes (ver shared/comprobantes.js). jsPDF y
      Chart.js YA NO se cargan aquí de entrada — bloqueaban el arranque de
@@ -764,24 +766,12 @@ window.onFBReady=function(cb){if(window._fbInit)cb();else window._fbCallbacks.pu
 // selecciona aparte al iniciar cada liquidación (ver UNIDADES), porque los
 // operadores a veces cambian de unidad y el arrastre de diesel/casetas debe
 // quedarse con el vehículo, no con el operador.
-const OPERADORES=[
-  {unidad:4521,nombre:'ALEJANDRO RODRIGUEZ GONZALEZ',comision:12,clave:'OPE-001'},
-  {unidad:4522,nombre:'ANDRÉS MARÍA RAMOS',comision:12,clave:'OPE-002'},
-  {unidad:4523,nombre:'ANDRÉS NAVARRO RAMÍREZ',comision:12,clave:'OPE-003'},
-  {unidad:4524,nombre:'RAFAEL TAPIA CARREÑO',comision:12,clave:'OPE-004'},
-  {unidad:4526,nombre:'EDUARDO HERNÁNDEZ ACEVES',comision:12,clave:'OPE-005'},
-  {unidad:529, nombre:'OSCAR ISRAEL RAMOS',comision:12,clave:'OPE-006'},
-  {unidad:531, nombre:'MARTÍN FLORES LUGO',comision:12,clave:'OPE-007'},
-  {unidad:532, nombre:'JOSÉ ROLANDO DOMINGUEZ LOPEZ',comision:12,clave:'OPE-008'},
-  {unidad:533, nombre:'FRANCISCO ARTEMIO PEÑA VAZQUEZ',comision:12,clave:'OPE-009'},
-  {unidad:534, nombre:'MIGUEL ALONSO CALDERON',comision:12,clave:'OPE-010'},
-  {unidad:535, nombre:'ISMAEL CONSTANTINO CABRERA',comision:12,clave:'OPE-011'},
-];
+let OPERADORES=[];
 // Unidades/vehículos reales de la flota — independiente de qué operador las
 // maneje en un periodo dado. Se deriva del mismo catálogo (hoy coinciden 1
 // a 1 con los operadores), pero es una lista aparte para poder elegir
 // "operador X maneja la unidad Y" cuando ya no coincidan.
-const UNIDADES=OPERADORES.map(function(o){return o.unidad;}).slice().sort(function(a,b){return a-b;});
+let UNIDADES=[];
 
 const SUPERVISOR_PASS='tml2026';
 const TML_RFC='MTM171214PI4';
@@ -1377,6 +1367,8 @@ function aplicarPermisosNav(u){
   });
   var usuariosLink=document.querySelector('nav a[href="https://usuarios.mudanzastml.mx"]');
   if(usuariosLink)usuariosLink.style.display='none';
+  var flotaLink=document.querySelector('nav a[href="https://usuarios.mudanzastml.mx/flota.html"]');
+  if(flotaLink)flotaLink.style.display='none';
 }
 function mostrarSesionEnHeader(){
   var u=usuarioSesion();
@@ -1710,8 +1702,6 @@ function initSelects(){
     });
   }
 }
-initSelects();
-
 function renderTags(){
   const c=$('opsTags');if(!c)return;c.innerHTML='';
   OPERADORES.forEach(function(op){
@@ -1722,7 +1712,6 @@ function renderTags(){
     c.appendChild(t);
   });
 }
-renderTags();
 
 function actualizarBadges(){
   const pendAnts=Object.values(anticiposDB).reduce(function(s,arr){return s+arr.filter(function(a){return a.estado==='pendiente';}).length;},0);
@@ -4522,7 +4511,11 @@ async function generarReporteGeneral(){
 }
 
 // Cargar estado cuando Firebase esté listo
-window.onFBReady(function(){
+window.onFBReady(async function(){
+  OPERADORES=await window.cargarOperadores();
+  UNIDADES=OPERADORES.map(function(o){return o.unidad;}).slice().sort(function(a,b){return a-b;});
+  initSelects();
+  renderTags();
   fbReady = true;
   cargarEstado();
 });

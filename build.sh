@@ -17,6 +17,7 @@ cp nomina.html         dist/nomina/index.html
 cp incidentes.html     dist/incidentes/index.html
 cp hist.html           dist/historial/index.html
 cp usuarios.html       dist/usuarios/index.html
+cp flota.html          dist/usuarios/flota.html
 cp autorizaciones.html dist/autorizaciones/index.html
 cp precarga.html       dist/precarga/index.html
 

@@ -1,0 +1,696 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TML · Flota</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Segoe UI',Arial,sans-serif;background:#f0f2f5;color:#1a1a2e;min-height:100vh}
+html.in-iframe header{display:none!important}
+header{background:#1a1a2e;color:#fff;padding:14px 24px;display:flex;align-items:center;justify-content:space-between;border-bottom:3px solid #e63946;flex-wrap:wrap;gap:10px}
+.logo{font-size:18px;font-weight:800}.logo span{color:#e63946}
+.nav{display:flex;gap:8px;flex-wrap:wrap}
+.nav a{color:#aaa;text-decoration:none;font-size:12px;padding:6px 12px;border-radius:5px;border:1px solid #333;transition:all .15s}
+.nav a:hover{color:#fff;border-color:#555}
+.nav a.active{color:#fff;background:#e63946;border-color:#e63946}
+.container{max-width:1100px;margin:0 auto;padding:20px 16px}
+.card{background:#fff;border-radius:10px;box-shadow:0 2px 12px rgba(0,0,0,.07);padding:20px 24px;margin-bottom:16px}
+.card-title{font-size:12px;font-weight:700;color:#1a1a2e;margin-bottom:14px;text-transform:uppercase;letter-spacing:1px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px}
+.field{display:flex;flex-direction:column;gap:4px}
+.field label{font-size:11px;font-weight:700;color:#666;text-transform:uppercase;letter-spacing:.5px}
+.field input,.field select{border:1.5px solid #dde;border-radius:6px;padding:8px 10px;font-size:13px;color:#1a1a2e;background:#fafafa;width:100%}
+.field input:focus,.field select:focus{outline:none;border-color:#e63946}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end}
+.btn{padding:8px 18px;border-radius:6px;border:none;font-size:12px;font-weight:700;cursor:pointer;transition:all .15s;text-transform:uppercase;letter-spacing:.5px}
+.btn-red{background:#e63946;color:#fff}.btn-red:hover{background:#c1121f}
+.btn-dark{background:#1a1a2e;color:#fff}.btn-dark:hover{background:#0d0d1a}
+.btn-out{background:#fff;color:#1a1a2e;border:1.5px solid #1a1a2e}.btn-out:hover{background:#f0f2f5}
+.btn-sm{padding:5px 11px;font-size:11px}
+.alert{padding:9px 13px;border-radius:7px;font-size:12px;margin-bottom:10px}
+.alert-info{background:#e8f4fd;color:#0369a1;border:1px solid #bae6fd}
+.alert-ok{background:#d1e7dd;color:#0a5233;border:1px solid #a3cfbb}
+.alert-warn{background:#fffbeb;color:#92400e;border:1px solid #fde68a}
+.tbl-wrap{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:13px;min-width:640px}
+th{background:#1a1a2e;color:#fff;padding:8px 10px;font-size:11px;text-transform:uppercase;letter-spacing:.7px;text-align:left;font-weight:600}
+th.r{text-align:right}
+td{padding:7px 10px;border-bottom:1px solid #f0f0f0;vertical-align:middle}
+tr:last-child td{border-bottom:none}
+tr:hover td{background:#fafafa}
+.r{text-align:right}.num{font-family:monospace;font-weight:600}
+.badge{display:inline-block;border-radius:4px;padding:2px 8px;font-size:10px;font-weight:700;white-space:nowrap}
+.bg-green{background:#d1e7dd;color:#0a5233;border:1px solid #a3cfbb}
+.bg-yellow{background:#fff3cd;color:#856404;border:1px solid #ffc107}
+.bg-gray{background:#f0f2f5;color:#555;border:1px solid #dde}
+.fb-status{font-size:11px;color:#aaa}
+.fb-ok{color:#2d6a4f}.fb-err{color:#e63946}
+.tabs{display:flex;gap:6px;margin-bottom:16px;flex-wrap:wrap}
+.tab{padding:9px 16px;border-radius:7px;border:1.5px solid #dde;background:#fff;font-size:12px;font-weight:700;cursor:pointer;color:#666}
+.tab.active{background:#1a1a2e;color:#fff;border-color:#1a1a2e}
+.tabpanel{display:none}
+.tabpanel.active{display:block}
+@media(max-width:600px){.row{flex-direction:column;align-items:stretch}}
+
+/* ── SESIÓN (login por módulo) ── */
+.session-overlay{position:fixed;inset:0;background:#1a1a2e;z-index:999999;display:none;align-items:center;justify-content:center}
+.session-overlay.show{display:flex}
+.session-box{background:#fff;border-radius:14px;padding:36px;width:320px;box-shadow:0 20px 60px rgba(0,0,0,.4);text-align:center}
+.session-logo{font-size:20px;font-weight:800;margin-bottom:4px;color:#1a1a2e}
+.session-logo span{color:#e63946}
+.session-modulo{font-size:13px;color:#666;margin-bottom:18px;font-weight:700}
+.session-input{width:100%;border:1.5px solid #dde;border-radius:8px;padding:10px 14px;font-size:14px;margin-bottom:10px;outline:none}
+.session-input:focus{border-color:#e63946}
+.session-btn{width:100%;padding:11px;background:#e63946;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer}
+.session-btn:hover{background:#c1121f}
+.session-err{color:#e63946;font-size:12px;margin-top:8px}
+.session-user-label{font-size:11px;color:#aaa}
+.session-logout{font-size:11px;color:#aaa;text-decoration:underline;cursor:pointer;background:none;border:none}
+.session-logout:hover{color:#fff}
+</style>
+<script>if(window!==window.top)document.documentElement.className+=' in-iframe';</script>
+</head>
+<body>
+
+<!-- OVERLAY DE SESIÓN -->
+<div class="session-overlay" id="sessionOverlay">
+  <div class="session-box">
+    <div class="session-logo">MUDANZAS <span>TML</span></div>
+    <div class="session-modulo" id="sessionModuloLabel">Iniciar sesión — Flota</div>
+    <input type="email" id="sessionUser" class="session-input" placeholder="Email" autocomplete="username" onkeydown="if(event.key==='Enter')document.getElementById('sessionPass').focus()">
+    <input type="password" id="sessionPass" class="session-input" placeholder="Contraseña" autocomplete="current-password" onkeydown="if(event.key==='Enter')intentarLoginFirebase()">
+    <button class="session-btn" onclick="intentarLoginFirebase()">Entrar</button>
+    <div class="session-err" id="sessionErr" style="display:none"></div>
+    <div style="margin-top:10px"><a href="#" onclick="recuperarContrasena();return false;" style="color:#aaa;font-size:11px">¿Olvidaste tu contraseña?</a></div>
+    <div class="session-err" id="sessionRecupMsg" style="display:none"></div>
+  </div>
+</div>
+<div class="session-overlay" id="sessionDenied">
+  <div class="session-box">
+    <div class="session-logo">MUDANZAS <span>TML</span></div>
+    <div class="session-modulo">⛔ Solo un administrador puede entrar a este módulo.</div>
+    <div style="font-size:12px;color:#888;margin-bottom:16px">Sesión iniciada como <strong id="sessionDeniedUser"></strong></div>
+    <button class="session-btn" onclick="cerrarSesionTML()">Cerrar sesión</button>
+  </div>
+</div>
+<div class="session-overlay" id="modalCambiarPass">
+  <div class="session-box">
+    <div class="session-logo">MUDANZAS <span>TML</span></div>
+    <div class="session-modulo">🔑 Cambiar contraseña</div>
+    <input type="password" id="cpActual" class="session-input" placeholder="Contraseña actual" autocomplete="current-password">
+    <input type="password" id="cpNueva" class="session-input" placeholder="Contraseña nueva (mínimo 6 caracteres)" autocomplete="new-password">
+    <input type="password" id="cpConfirmar" class="session-input" placeholder="Confirmar contraseña nueva" autocomplete="new-password" onkeydown="if(event.key==='Enter')confirmarCambiarPass()">
+    <button class="session-btn" onclick="confirmarCambiarPass()">Guardar</button>
+    <button class="session-logout" style="margin-top:10px" onclick="cerrarModalCambiarPass()">Cancelar</button>
+    <div class="session-err" id="cpErr" style="display:none"></div>
+    <div class="session-err" id="cpOk" style="display:none;color:#2d6a4f">✅ Contraseña actualizada.</div>
+  </div>
+</div>
+
+<header>
+  <div class="logo">MUDANZAS <span>TML</span> <span style="font-size:13px;font-weight:400;color:#aaa;margin-left:8px">· Flota</span></div>
+  <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+    <span class="session-user-label" id="sesionUsuarioLabel"></span>
+    <button class="session-logout" id="btnCambiarPass" onclick="abrirModalCambiarPass()" style="display:none">🔑 Cambiar contraseña</button>
+    <button class="session-logout" id="btnCerrarSesion" onclick="cerrarSesionTML()" style="display:none">Cerrar sesión</button>
+    <span class="fb-status" id="fbStatus">⏳ Conectando...</span>
+    <nav class="nav">
+      <a href="https://anticipos.mudanzastml.mx">📋 Anticipos</a>
+      <a href="https://cxc.mudanzastml.mx">📄 Ingresos</a>
+      <a href="https://liquidaciones.mudanzastml.mx">🚛 Liquidaciones</a>
+      <a href="https://nomina.mudanzastml.mx">🧾 Nómina</a>
+      <a href="https://incidentes.mudanzastml.mx">🚨 Incidentes</a>
+      <a href="https://historial.mudanzastml.mx">🗂️ Historial</a>
+      <a href="https://autorizaciones.mudanzastml.mx">🔐 Autorizaciones</a>
+      <a href="https://precarga.mudanzastml.mx">📥 Pre-carga</a>
+      <a href="https://usuarios.mudanzastml.mx">👤 Usuarios</a>
+      <a href="https://usuarios.mudanzastml.mx/flota.html" class="active">🚚 Flota</a>
+    </nav>
+  </div>
+</header>
+
+<div class="container">
+
+  <div class="alert alert-info">🚚 Alta y baja de operadores y unidades, asignación/reasignación entre ellos, y checklist de diesel en tanque al entregar/recibir una unidad — todo sin tocar código. Solo administradores.</div>
+
+  <div class="tabs">
+    <button class="tab active" id="tabBtnOperadores" onclick="cambiarTab('operadores')">👤 Operadores</button>
+    <button class="tab" id="tabBtnUnidades" onclick="cambiarTab('unidades')">🚛 Unidades</button>
+    <button class="tab" id="tabBtnAsignar" onclick="cambiarTab('asignar')">🔄 Asignar / Reasignar</button>
+    <button class="tab" id="tabBtnHistorial" onclick="cambiarTab('historial')">🗂️ Historial de asignaciones</button>
+  </div>
+
+  <!-- OPERADORES -->
+  <div class="tabpanel active" id="panelOperadores">
+    <div class="card">
+      <div class="card-title">➕ Dar de alta un operador</div>
+      <div class="row">
+        <div class="field" style="flex:2;min-width:200px"><label>Nombre completo</label><input type="text" id="nuevoOpNombre" placeholder="Nombre del operador"></div>
+        <div class="field"><label>% Comisión</label><input type="number" id="nuevoOpComision" value="12" step="1" min="0" max="100"></div>
+        <div class="field"><label>Clave (opcional)</label><input type="text" id="nuevoOpClave" placeholder="OPE-012"></div>
+        <button class="btn btn-red btn-sm" onclick="altaOperador()">Dar de alta</button>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-title">👤 Operadores registrados</div>
+      <div class="tbl-wrap"><table>
+        <thead><tr><th>Nombre</th><th>Clave</th><th class="r">Comisión</th><th>Unidad actual</th><th>Estado</th><th></th></tr></thead>
+        <tbody id="tbOperadores"></tbody>
+      </table></div>
+    </div>
+  </div>
+
+  <!-- UNIDADES -->
+  <div class="tabpanel" id="panelUnidades">
+    <div class="card">
+      <div class="card-title">➕ Dar de alta una unidad</div>
+      <div class="row">
+        <div class="field"><label>Número de unidad</label><input type="number" id="nuevaUnNumero" placeholder="Ej: 536"></div>
+        <div class="field"><label>Placas</label><input type="text" id="nuevaUnPlacas" placeholder="ABC-1234"></div>
+        <div class="field" style="flex:2;min-width:220px"><label>Capacidad de tanque(s), en litros</label><input type="text" id="nuevaUnTanques" placeholder="Ej: 200 o 200,100 si son varios"></div>
+        <button class="btn btn-red btn-sm" onclick="altaUnidad()">Dar de alta</button>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-title">🚛 Unidades registradas</div>
+      <div class="tbl-wrap"><table>
+        <thead><tr><th>Número</th><th>Placas</th><th>Tanque(s)</th><th>Operador actual</th><th>Estado</th><th></th></tr></thead>
+        <tbody id="tbUnidades"></tbody>
+      </table></div>
+    </div>
+  </div>
+
+  <!-- ASIGNAR / REASIGNAR -->
+  <div class="tabpanel" id="panelAsignar">
+    <div class="card">
+      <div class="card-title">🔄 Asignar operador a unidad</div>
+      <div class="alert alert-info">Si el operador ya tenía otra unidad, o la unidad ya tenía otro operador, se desasignan automáticamente. Los litros que reciba el operador entrante quedan como "diesel inicial" de su siguiente liquidación en esa unidad.</div>
+      <div class="row">
+        <div class="field" style="flex:1;min-width:220px"><label>Operador</label><select id="asigOperador" onchange="onCambioAsignacion()"><option value="">— Selecciona —</option></select></div>
+        <div class="field" style="flex:1;min-width:220px"><label>Unidad</label><select id="asigUnidad" onchange="onCambioAsignacion()"><option value="">— Selecciona —</option></select></div>
+      </div>
+      <div class="row" style="margin-top:10px">
+        <div class="field" id="wrapLitrosEntrega" style="display:none">
+          <label id="asigLitrosEntregaLabel">Litros que deja el operador saliente</label>
+          <input type="number" id="asigLitrosEntrega" step="0.01" placeholder="0.00">
+        </div>
+        <div class="field"><label>Litros que recibe el operador entrante</label><input type="number" id="asigLitrosRecibe" step="0.01" placeholder="0.00"></div>
+        <div class="field"><label>Precio diesel actual ($/lt)</label><input type="number" id="asigPrecio" step="0.0001" placeholder="27.00"></div>
+        <button class="btn btn-red btn-sm" onclick="confirmarAsignacion()">Confirmar asignación</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- HISTORIAL -->
+  <div class="tabpanel" id="panelHistorial">
+    <div class="card">
+      <div class="card-title">🗂️ Historial de asignaciones <button class="btn btn-out btn-sm" onclick="cargarAsignaciones()">🔄 Recargar</button></div>
+      <div class="tbl-wrap"><table>
+        <thead><tr><th>Fecha</th><th>Operador</th><th>Unidad</th><th class="r">Litros entrega</th><th class="r">Litros recibe</th><th class="r">Precio/lt</th><th>Registró</th></tr></thead>
+        <tbody id="tbAsignaciones"></tbody>
+      </table></div>
+    </div>
+  </div>
+
+</div>
+
+<!-- Firebase compat -->
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+<!-- Firebase Auth (login del módulo — ver shared/sesion.js) -->
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
+<script src="shared/sesion.js"></script>
+<script src="shared/autoActualizar.js"></script>
+<script src="shared/operadores.js"></script>
+<script>
+window._fbInit=false;
+window._fbCallbacks=[];
+window.onFBReady=function(cb){if(window._fbInit)cb();else window._fbCallbacks.push(cb);};
+(function(){
+  try{
+    var cfg={apiKey:"AIzaSyDqlhREJFVFLGzz7bVlPcNl1Uba9HI3r8s",authDomain:"tml-liquidaciones.firebaseapp.com",
+      projectId:"tml-liquidaciones",storageBucket:"tml-liquidaciones.firebasestorage.app",
+      messagingSenderId:"268455373953",appId:"1:268455373953:web:ad359c5dbcba9f53557180"};
+    if(!firebase.apps.length)firebase.initializeApp(cfg);
+    var db=firebase.firestore();
+    window.FB={
+      set:function(col,id,data){return db.collection(col).doc(id).set(data);},
+      get:async function(col,id){try{var s=await db.collection(col).doc(id).get();return s.exists?s.data():null;}catch(e){console.error('FB.get:',e);return null;}},
+      del:function(col,id){return db.collection(col).doc(id).delete();},
+      listen:function(col,id,cb){return db.collection(col).doc(id).onSnapshot(function(s){cb(s.exists?s.data():null);});},
+      getAll:async function(col){
+        try{var s=await db.collection(col).get();var r=[];s.forEach(function(d){r.push(Object.assign({id:d.id},d.data()));});return r.sort(function(a,b){return(b.num||0)-(a.num||0);});}
+        catch(e){console.error('FB.getAll:',e);return[];}
+      }
+    };
+    window._fbInit=true;
+    window._fbCallbacks.forEach(function(cb){try{cb();}catch(e){console.error(e);}});
+    window._fbCallbacks=[];
+    setTimeout(function(){window.dispatchEvent(new Event('firebase-ready'));},0);
+  }catch(e){console.error('Firebase init error:',e);}
+})();
+</script>
+
+<script>
+const $=id=>document.getElementById(id);
+const fmt=(n,d=2)=>'$'+parseFloat(n||0).toLocaleString('es-MX',{minimumFractionDigits:d,maximumFractionDigits:d});
+const fmtN=(n,d=2)=>parseFloat(n||0).toLocaleString('es-MX',{minimumFractionDigits:d,maximumFractionDigits:d});
+const hoy=()=>{var d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');};
+let fbReady=false;
+let operadoresRaw=[]; // TODOS los operadores (activos e inactivos) — a diferencia de cargarOperadores(), que solo trae activos con unidad
+let unidadesRaw=[];
+let asignacionesLog=[];
+
+// ══════════════════════════════════════════════
+// SESIÓN — este módulo es SOLO ADMIN (no usa permisos[modulo] como los
+// demás, porque no hay una clave de permiso "flota" en el esquema de
+// claims — se gatea directo por esAdmin).
+// ══════════════════════════════════════════════
+function tmlSetCookie(name,value,days){
+  var expires='';
+  if(days){var d=new Date();d.setTime(d.getTime()+days*24*60*60*1000);expires=';expires='+d.toUTCString();}
+  document.cookie=name+'='+encodeURIComponent(value)+expires+';domain=.mudanzastml.mx;path=/;SameSite=Lax;Secure';
+}
+function tmlGetCookie(name){
+  var m=document.cookie.match('(^|;\\s*)'+name+'=([^;]*)');
+  return m?decodeURIComponent(m[2]):null;
+}
+function tmlDeleteCookie(name){
+  document.cookie=name+'=;expires=Thu, 01 Jan 1970 00:00:00 GMT;domain=.mudanzastml.mx;path=/;SameSite=Lax;Secure';
+}
+function usuarioSesion(){
+  try{return JSON.parse(tmlGetCookie('tml_user')||'null');}catch(e){return null;}
+}
+async function cerrarSesionTML(){
+  if(window.TMLSesion) await TMLSesion.cerrarSesion();
+  else tmlDeleteCookie('tml_user');
+  location.reload();
+}
+function abrirModalCambiarPass(){
+  $('cpActual').value='';$('cpNueva').value='';$('cpConfirmar').value='';
+  $('cpErr').style.display='none';$('cpOk').style.display='none';
+  $('modalCambiarPass').classList.add('show');
+  setTimeout(function(){$('cpActual').focus();},100);
+}
+function cerrarModalCambiarPass(){
+  $('modalCambiarPass').classList.remove('show');
+}
+async function confirmarCambiarPass(){
+  var actual=$('cpActual').value||'';
+  var nueva=$('cpNueva').value||'';
+  var confirmar=$('cpConfirmar').value||'';
+  var err=$('cpErr'),ok=$('cpOk');
+  err.style.display='none';ok.style.display='none';
+  if(!actual||!nueva||!confirmar){err.textContent='Llena los tres campos.';err.style.display='block';return;}
+  if(nueva.length<6){err.textContent='La contraseña nueva debe tener al menos 6 caracteres.';err.style.display='block';return;}
+  if(nueva!==confirmar){err.textContent='La confirmación no coincide con la contraseña nueva.';err.style.display='block';return;}
+  try{
+    await TMLSesion.cambiarContrasena(actual,nueva);
+    ok.style.display='block';
+    setTimeout(function(){cerrarModalCambiarPass();},1500);
+  }catch(e){
+    var msg='No se pudo cambiar la contraseña.';
+    if(e.code==='auth/wrong-password'||e.code==='auth/invalid-credential')msg='La contraseña actual no es correcta.';
+    else if(e.code==='auth/weak-password')msg='La contraseña nueva es muy débil (mínimo 6 caracteres).';
+    else if(e.code==='auth/requires-recent-login')msg='Tu sesión es muy antigua — cierra sesión, vuelve a entrar, e intenta de nuevo.';
+    err.textContent=msg;err.style.display='block';
+  }
+}
+function mostrarLoginModulo(){
+  $('sessionModuloLabel').textContent='Iniciar sesión — Flota';
+  $('sessionOverlay').classList.add('show');
+  setTimeout(function(){$('sessionUser').focus();},100);
+}
+async function intentarLoginFirebase(){
+  var email=($('sessionUser').value||'').trim();
+  var pass=$('sessionPass').value||'';
+  var err=$('sessionErr');
+  err.style.display='none';
+  if(!email||!pass){err.textContent='Ingresa tu email y contraseña.';err.style.display='block';return;}
+  try{
+    await TMLSesion.iniciarSesion(email,pass);
+    var u=usuarioSesion();
+    if(!u){err.textContent='No se pudo iniciar sesión.';err.style.display='block';return;}
+    if(!u.esAdmin){
+      err.textContent='Solo un administrador puede entrar a Flota.';err.style.display='block';
+      await TMLSesion.cerrarSesion();
+      return;
+    }
+    $('sessionOverlay').classList.remove('show');
+    mostrarSesionEnHeader();
+  }catch(e){
+    err.textContent='No se pudo iniciar sesión: '+(e.message||e.code||'error desconocido');err.style.display='block';
+  }
+}
+async function recuperarContrasena(){
+  var email=($('sessionUser').value||'').trim();
+  var msg=$('sessionRecupMsg');
+  if(!email){msg.style.color='#e63946';msg.textContent='Escribe tu email arriba y da clic de nuevo.';msg.style.display='block';return;}
+  try{
+    await TMLSesion.enviarCorreoRecuperacion(email);
+    msg.style.color='#2d6a4f';msg.textContent='✅ Te enviamos un correo a '+email+' con instrucciones para restablecer tu contraseña.';msg.style.display='block';
+  }catch(e){
+    msg.style.color='#e63946';msg.textContent='No se pudo enviar el correo: '+(e.message||e.code||'error desconocido');msg.style.display='block';
+  }
+}
+function mostrarSesionEnHeader(){
+  var u=usuarioSesion();
+  if(!u)return;
+  if($('sesionUsuarioLabel'))$('sesionUsuarioLabel').textContent='👤 '+(u.nombre||u.usuario)+' (admin)';
+  if($('btnCerrarSesion'))$('btnCerrarSesion').style.display='inline';
+  if($('btnCambiarPass'))$('btnCambiarPass').style.display='inline';
+}
+function verificarSesionModulo(){
+  var u=usuarioSesion();
+  if(!u){mostrarLoginModulo();return;}
+  if(!u.esAdmin){
+    $('sessionDeniedUser').textContent=u.nombre||u.usuario;
+    $('sessionDenied').classList.add('show');
+    return;
+  }
+  mostrarSesionEnHeader();
+  cargarTodo();
+  cargarAsignaciones();
+}
+window.onFBReady(function(){
+  fbReady=true;
+  $('fbStatus').textContent='✅ Conectado';
+  $('fbStatus').className='fb-status fb-ok';
+  verificarSesionModulo();
+});
+setTimeout(function(){if(!fbReady){$('fbStatus').textContent='❌ Sin conexión';$('fbStatus').className='fb-status fb-err';}},6000);
+
+// ══════════════════════════════════════════════
+// TABS
+// ══════════════════════════════════════════════
+function cambiarTab(nombre){
+  ['operadores','unidades','asignar','historial'].forEach(function(t){
+    $('panel'+t.charAt(0).toUpperCase()+t.slice(1)).classList.toggle('active',t===nombre);
+    $('tabBtn'+t.charAt(0).toUpperCase()+t.slice(1)).classList.toggle('active',t===nombre);
+  });
+}
+
+// ══════════════════════════════════════════════
+// CARGA DE DATOS
+// ══════════════════════════════════════════════
+async function cargarTodo(){
+  var db=firebase.firestore();
+  var snapOp=await db.collection('operadores').get();
+  operadoresRaw=[];
+  snapOp.forEach(function(d){operadoresRaw.push(Object.assign({id:d.id},d.data()));});
+  operadoresRaw.sort(function(a,b){return(a.nombre||'').localeCompare(b.nombre||'');});
+
+  var snapUn=await db.collection('unidades').get();
+  unidadesRaw=[];
+  snapUn.forEach(function(d){unidadesRaw.push(Object.assign({id:d.id},d.data()));});
+  unidadesRaw.sort(function(a,b){return(a.numero||0)-(b.numero||0);});
+
+  renderOperadores();
+  renderUnidades();
+  llenarSelectsAsignacion();
+}
+
+async function cargarAsignaciones(){
+  var db=firebase.firestore();
+  var snap=await db.collection('asignaciones').orderBy('fecha','desc').limit(50).get();
+  asignacionesLog=[];
+  snap.forEach(function(d){asignacionesLog.push(d.data());});
+  renderAsignaciones();
+}
+
+// ══════════════════════════════════════════════
+// OPERADORES
+// ══════════════════════════════════════════════
+async function siguienteOperadorId(){
+  // Los operadores ya existentes usan el mismo número que su unidad (500s y
+  // 4500s) — los nuevos empiezan en 9000 para nunca chocar con un número
+  // de unidad real.
+  var max=8999;
+  operadoresRaw.forEach(function(o){var n=parseInt(o.id);if(!isNaN(n)&&n>max)max=n;});
+  return max+1;
+}
+async function altaOperador(){
+  var nombre=($('nuevoOpNombre').value||'').trim().toUpperCase();
+  var comision=parseFloat($('nuevoOpComision').value||12);
+  var clave=($('nuevoOpClave').value||'').trim();
+  if(!nombre){alert('Escribe el nombre del operador.');return;}
+  try{
+    var db=firebase.firestore();
+    var nuevoId=await siguienteOperadorId();
+    await db.collection('operadores').doc(String(nuevoId)).set({
+      nombre:nombre,comision:comision||12,clave:clave||('OPE-'+nuevoId),
+      unidadActual:null,activo:true,fechaAlta:hoy(),fechaBaja:null
+    });
+    $('nuevoOpNombre').value='';$('nuevoOpComision').value='12';$('nuevoOpClave').value='';
+    alert('✅ Operador dado de alta. Asígnale una unidad en la pestaña "Asignar / Reasignar" para que empiece a aparecer en el resto del sistema.');
+    await cargarTodo();
+  }catch(e){console.error('altaOperador:',e);alert('⚠️ Error: '+e.message);}
+}
+async function editarOperador(id){
+  var op=operadoresRaw.find(function(o){return o.id===id;});
+  if(!op)return;
+  var nombre=prompt('Nombre:',op.nombre);
+  if(nombre===null)return;
+  var comisionTxt=prompt('% Comisión:',op.comision);
+  if(comisionTxt===null)return;
+  var clave=prompt('Clave:',op.clave||'');
+  if(clave===null)return;
+  try{
+    await firebase.firestore().collection('operadores').doc(id).update({
+      nombre:nombre.trim().toUpperCase(),comision:parseFloat(comisionTxt)||12,clave:clave.trim()
+    });
+    if(window.cargarOperadores)window.cargarOperadores(true);
+    await cargarTodo();
+  }catch(e){console.error('editarOperador:',e);alert('⚠️ Error: '+e.message);}
+}
+async function toggleActivoOperador(id){
+  var op=operadoresRaw.find(function(o){return o.id===id;});
+  if(!op)return;
+  var nuevoEstado=!op.activo;
+  var msg=(nuevoEstado?'¿Reactivar a ':'¿Dar de baja a ')+op.nombre+'?';
+  if(!nuevoEstado&&op.unidadActual)msg+='\n\nSigue asignado a la unidad '+op.unidadActual+' — se le va a desasignar también.';
+  if(!confirm(msg))return;
+  try{
+    var db=firebase.firestore();
+    var batch=db.batch();
+    var upd={activo:nuevoEstado,fechaBaja:nuevoEstado?null:hoy()};
+    if(!nuevoEstado&&op.unidadActual){
+      upd.unidadActual=null;
+      batch.update(db.collection('unidades').doc(String(op.unidadActual)),{operadorActual:null});
+    }
+    batch.update(db.collection('operadores').doc(id),upd);
+    await batch.commit();
+    if(window.cargarOperadores)window.cargarOperadores(true);
+    await cargarTodo();
+  }catch(e){console.error('toggleActivoOperador:',e);alert('⚠️ Error: '+e.message);}
+}
+function renderOperadores(){
+  var tb=$('tbOperadores');
+  tb.innerHTML=operadoresRaw.map(function(o){
+    return '<tr>'
+      +'<td>'+o.nombre+'</td>'
+      +'<td>'+(o.clave||'—')+'</td>'
+      +'<td class="num r">'+(o.comision!=null?o.comision+'%':'—')+'</td>'
+      +'<td>'+(o.unidadActual?('Unidad '+o.unidadActual):'<span style="color:#aaa">Sin asignar</span>')+'</td>'
+      +'<td><span class="badge '+(o.activo?'bg-green':'bg-gray')+'">'+(o.activo?'Activo':'Baja')+'</span></td>'
+      +'<td style="white-space:nowrap">'
+        +'<button class="btn-sm btn-out" onclick="editarOperador(\''+o.id+'\')">✏️</button> '
+        +'<button class="btn-sm" style="background:'+(o.activo?'#fde8e8':'#d1e7dd')+';color:'+(o.activo?'#9b1c1c':'#0a5233')+';border:none;cursor:pointer" onclick="toggleActivoOperador(\''+o.id+'\')">'+(o.activo?'Dar de baja':'Reactivar')+'</button>'
+      +'</td>'
+      +'</tr>';
+  }).join('')||'<tr><td colspan="6" style="text-align:center;color:#aaa;padding:20px">Sin operadores registrados.</td></tr>';
+}
+
+// ══════════════════════════════════════════════
+// UNIDADES
+// ══════════════════════════════════════════════
+async function altaUnidad(){
+  var numero=parseInt($('nuevaUnNumero').value||0);
+  var placas=($('nuevaUnPlacas').value||'').trim().toUpperCase();
+  var tanquesTxt=($('nuevaUnTanques').value||'').trim();
+  if(!numero){alert('Escribe el número de unidad.');return;}
+  var tanques=tanquesTxt?tanquesTxt.split(',').map(function(s){return parseFloat(s.trim())||0;}).filter(function(n){return n>0;}):[];
+  try{
+    var db=firebase.firestore();
+    var ref=db.collection('unidades').doc(String(numero));
+    var existe=await ref.get();
+    if(existe.exists){alert('Ya existe una unidad con ese número.');return;}
+    await ref.set({numero:numero,activa:true,placas:placas,tanques:tanques,operadorActual:null});
+    $('nuevaUnNumero').value='';$('nuevaUnPlacas').value='';$('nuevaUnTanques').value='';
+    alert('✅ Unidad dada de alta. Asígnale un operador en la pestaña "Asignar / Reasignar".');
+    await cargarTodo();
+  }catch(e){console.error('altaUnidad:',e);alert('⚠️ Error: '+e.message);}
+}
+async function editarUnidad(id){
+  var un=unidadesRaw.find(function(u){return u.id===id;});
+  if(!un)return;
+  var placas=prompt('Placas:',un.placas||'');
+  if(placas===null)return;
+  var tanquesTxt=prompt('Capacidad de tanque(s) en litros, separados por coma si son varios (ej. 200,100):',(un.tanques||[]).join(','));
+  if(tanquesTxt===null)return;
+  var tanques=tanquesTxt.split(',').map(function(s){return parseFloat(s.trim())||0;}).filter(function(n){return n>0;});
+  try{
+    await firebase.firestore().collection('unidades').doc(id).update({placas:placas.trim().toUpperCase(),tanques:tanques});
+    await cargarTodo();
+  }catch(e){console.error('editarUnidad:',e);alert('⚠️ Error: '+e.message);}
+}
+async function toggleActivaUnidad(id){
+  var un=unidadesRaw.find(function(u){return u.id===id;});
+  if(!un)return;
+  var nuevoEstado=!un.activa;
+  var msg=(nuevoEstado?'¿Reactivar la unidad ':'¿Dar de baja la unidad ')+un.numero+'?';
+  if(!nuevoEstado&&un.operadorActual)msg+='\n\nTiene un operador asignado — se le va a desasignar también.';
+  if(!confirm(msg))return;
+  try{
+    var db=firebase.firestore();
+    var batch=db.batch();
+    var upd={activa:nuevoEstado};
+    if(!nuevoEstado&&un.operadorActual){
+      batch.update(db.collection('operadores').doc(String(un.operadorActual)),{unidadActual:null});
+    }
+    batch.update(db.collection('unidades').doc(id),upd);
+    await batch.commit();
+    if(window.cargarOperadores)window.cargarOperadores(true);
+    await cargarTodo();
+  }catch(e){console.error('toggleActivaUnidad:',e);alert('⚠️ Error: '+e.message);}
+}
+function renderUnidades(){
+  var tb=$('tbUnidades');
+  tb.innerHTML=unidadesRaw.map(function(u){
+    var op=operadoresRaw.find(function(o){return o.id===String(u.operadorActual);});
+    return '<tr>'
+      +'<td>'+u.numero+'</td>'
+      +'<td>'+(u.placas||'—')+'</td>'
+      +'<td>'+((u.tanques&&u.tanques.length)?u.tanques.map(function(t){return fmtN(t)+' L';}).join(' + '):'—')+'</td>'
+      +'<td>'+(op?op.nombre:'<span style="color:#aaa">Sin operador</span>')+'</td>'
+      +'<td><span class="badge '+(u.activa?'bg-green':'bg-gray')+'">'+(u.activa?'Activa':'Baja')+'</span></td>'
+      +'<td style="white-space:nowrap">'
+        +'<button class="btn-sm btn-out" onclick="editarUnidad(\''+u.id+'\')">✏️</button> '
+        +'<button class="btn-sm" style="background:'+(u.activa?'#fde8e8':'#d1e7dd')+';color:'+(u.activa?'#9b1c1c':'#0a5233')+';border:none;cursor:pointer" onclick="toggleActivaUnidad(\''+u.id+'\')">'+(u.activa?'Dar de baja':'Reactivar')+'</button>'
+      +'</td>'
+      +'</tr>';
+  }).join('')||'<tr><td colspan="6" style="text-align:center;color:#aaa;padding:20px">Sin unidades registradas.</td></tr>';
+}
+
+// ══════════════════════════════════════════════
+// ASIGNAR / REASIGNAR (con checklist de diesel)
+// ══════════════════════════════════════════════
+function llenarSelectsAsignacion(){
+  var sOp=$('asigOperador'),sUn=$('asigUnidad');
+  var valOp=sOp.value,valUn=sUn.value;
+  sOp.innerHTML='<option value="">— Selecciona —</option>'+operadoresRaw.filter(function(o){return o.activo;}).map(function(o){
+    return '<option value="'+o.id+'">'+o.nombre+(o.unidadActual?' (hoy: unidad '+o.unidadActual+')':' (sin unidad)')+'</option>';
+  }).join('');
+  sUn.innerHTML='<option value="">— Selecciona —</option>'+unidadesRaw.filter(function(u){return u.activa;}).map(function(u){
+    var op=operadoresRaw.find(function(o){return o.id===String(u.operadorActual);});
+    return '<option value="'+u.numero+'">Unidad '+u.numero+(op?' (hoy: '+op.nombre+')':' (sin operador)')+'</option>';
+  }).join('');
+  sOp.value=valOp;sUn.value=valUn;
+  onCambioAsignacion();
+}
+function onCambioAsignacion(){
+  var unidadNum=parseInt($('asigUnidad').value||0);
+  var operadorId=parseInt($('asigOperador').value||0);
+  var unidad=unidadesRaw.find(function(u){return u.numero===unidadNum;});
+  var wrapEntrega=$('wrapLitrosEntrega');
+  if(unidad&&unidad.operadorActual&&parseInt(unidad.operadorActual)!==operadorId){
+    var opSaliente=operadoresRaw.find(function(o){return o.id===String(unidad.operadorActual);});
+    wrapEntrega.style.display='block';
+    $('asigLitrosEntregaLabel').textContent='Litros que deja '+(opSaliente?opSaliente.nombre:'el operador actual')+' en el tanque';
+  } else {
+    wrapEntrega.style.display='none';
+  }
+}
+async function confirmarAsignacion(){
+  var operadorId=parseInt($('asigOperador').value||0);
+  var unidadNum=parseInt($('asigUnidad').value||0);
+  if(!operadorId||!unidadNum){alert('Selecciona operador y unidad.');return;}
+  var litrosRecibe=parseFloat($('asigLitrosRecibe').value||0);
+  var precio=parseFloat($('asigPrecio').value||0);
+  if(!precio){alert('Captura el precio actual del diesel ($/lt).');return;}
+
+  var operador=operadoresRaw.find(function(o){return o.id===String(operadorId);});
+  var unidad=unidadesRaw.find(function(u){return u.numero===unidadNum;});
+  if(!operador||!unidad){alert('No se encontró el operador o la unidad.');return;}
+
+  var unidadAnteriorDelOperador=operador.unidadActual;
+  var operadorAnteriorDeLaUnidad=unidad.operadorActual?parseInt(unidad.operadorActual):null;
+  var haySaliente=operadorAnteriorDeLaUnidad&&operadorAnteriorDeLaUnidad!==operadorId;
+
+  var litrosEntrega=null;
+  if(haySaliente)litrosEntrega=parseFloat($('asigLitrosEntrega').value||0);
+
+  var msgConfirm='¿Confirmar que '+operador.nombre+' queda asignado a la unidad '+unidadNum+'?';
+  if(haySaliente){
+    var opSaliente=operadoresRaw.find(function(o){return o.id===String(operadorAnteriorDeLaUnidad);});
+    msgConfirm+='\n\nEsto desasigna a '+(opSaliente?opSaliente.nombre:'el operador actual')+' de esa unidad.';
+  }
+  if(unidadAnteriorDelOperador&&unidadAnteriorDelOperador!==unidadNum){
+    msgConfirm+='\n\n'+operador.nombre+' deja de estar asignado a la unidad '+unidadAnteriorDelOperador+'.';
+  }
+  if(!confirm(msgConfirm))return;
+
+  try{
+    var db=firebase.firestore();
+    var batch=db.batch();
+    if(unidadAnteriorDelOperador&&unidadAnteriorDelOperador!==unidadNum){
+      batch.update(db.collection('unidades').doc(String(unidadAnteriorDelOperador)),{operadorActual:null});
+    }
+    if(haySaliente){
+      batch.update(db.collection('operadores').doc(String(operadorAnteriorDeLaUnidad)),{unidadActual:null});
+    }
+    batch.update(db.collection('operadores').doc(String(operadorId)),{unidadActual:unidadNum});
+    batch.update(db.collection('unidades').doc(String(unidadNum)),{operadorActual:operadorId});
+    await batch.commit();
+
+    var u=usuarioSesion();
+    await db.collection('asignaciones').add({
+      operadorId:operadorId,operadorNombre:operador.nombre,
+      unidad:unidadNum,
+      fecha:hoy(),
+      litrosEntrega:litrosEntrega,
+      litrosRecibe:litrosRecibe,
+      precioDiesel:precio,
+      registradoPor:u?{usuario:u.usuario,nombre:u.nombre}:null
+    });
+
+    // Arrastre de diesel de esta unidad: se lee TODO el doc, se modifica
+    // SOLO la entrada de esta unidad, se guarda completo — nunca se
+    // sobreescribe en bloque (ver CLAUDE.md).
+    var arRes=await window.FB.get('estado','arrastres');
+    var arrastres=(arRes&&arRes.data)?JSON.parse(arRes.data):{};
+    if(Array.isArray(arrastres))arrastres={};
+    arrastres[unidadNum]={lts:litrosRecibe,precio:precio,cargasYaLiquidadas:[],iaveYaLiquidadas:[]};
+    await window.FB.set('estado','arrastres',{data:JSON.stringify(arrastres)});
+
+    alert('✅ '+operador.nombre+' quedó asignado a la unidad '+unidadNum+'. El diesel inicial de su siguiente liquidación en esa unidad ya quedó registrado.');
+    $('asigLitrosEntrega').value='';$('asigLitrosRecibe').value='';$('asigPrecio').value='';
+    if(window.cargarOperadores)window.cargarOperadores(true);
+    await cargarTodo();
+    await cargarAsignaciones();
+  }catch(e){
+    console.error('confirmarAsignacion:',e);
+    alert('⚠️ Error al asignar: '+e.message);
+  }
+}
+
+// ══════════════════════════════════════════════
+// HISTORIAL DE ASIGNACIONES
+// ══════════════════════════════════════════════
+function renderAsignaciones(){
+  var tb=$('tbAsignaciones');
+  tb.innerHTML=asignacionesLog.map(function(a){
+    return '<tr>'
+      +'<td>'+(a.fecha||'')+'</td>'
+      +'<td>'+(a.operadorNombre||'')+'</td>'
+      +'<td>'+(a.unidad||'')+'</td>'
+      +'<td class="num r">'+(a.litrosEntrega!=null?fmtN(a.litrosEntrega)+' L':'—')+'</td>'
+      +'<td class="num r">'+fmtN(a.litrosRecibe||0)+' L</td>'
+      +'<td class="num r">'+fmt(a.precioDiesel||0)+'</td>'
+      +'<td style="font-size:11px">'+(a.registradoPor?(a.registradoPor.nombre||a.registradoPor.usuario):'—')+'</td>'
+      +'</tr>';
+  }).join('')||'<tr><td colspan="7" style="text-align:center;color:#aaa;padding:20px">Sin asignaciones registradas.</td></tr>';
+}
+</script>
+</body>
+</html>
