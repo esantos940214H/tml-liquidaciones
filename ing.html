@@ -189,7 +189,7 @@ tr:hover td{background:#fafafa}
         <div id="dgResumenXML" style="background:#fff;border-radius:6px;padding:10px;font-size:12px;margin-bottom:10px"></div>
         <div id="dgContadores" style="display:flex;gap:14px;flex-wrap:wrap;margin-bottom:10px"></div>
         <div class="tbl-wrap"><table style="min-width:640px">
-          <thead><tr><th>Operador</th><th class="r">Monto (sin IVA)</th><th>Destino</th><th>Pedido/ref.</th><th>Sustituye ingreso sin factura (ID)</th><th></th></tr></thead>
+          <thead><tr><th>Operador</th><th class="r">Monto (sin IVA)</th><th></th><th></th></tr></thead>
           <tbody id="tbDgRows"></tbody>
         </table></div>
         <button class="btn btn-out btn-sm" style="margin:8px 0" onclick="dgAgregarRenglon()">+ Agregar renglón</button>
@@ -1175,17 +1175,38 @@ function dgUpd(i,campo,valor){
 
 // Re-dibuja solo los renglones editables (al agregar/quitar) — al teclear NO
 // se re-dibuja para no perder el foco; solo se recalculan contadores/preview.
+// Destino/Pedido-ref/Sustituye-ID quedan colapsados detrás de un botón
+// "Detalles" por renglón — son opcionales y casi nunca se usan los tres a
+// la vez, así que mostrarlos siempre en la fila principal solo estorbaba
+// al capturar (eran 5 campos por renglón para lo que en la práctica es
+// nomás Operador + Monto).
 function renderDgRows(){
   const tb=$('tbDgRows');if(!tb)return;
   const opts=u=>'<option value="">— Operador —</option>'+OPERADORES.map(o=>'<option value="'+o.unidad+'"'+(o.unidad===u?' selected':'')+'>'+o.unidad+' · '+o.nombre+'</option>').join('');
-  tb.innerHTML=dgRows.map((r,i)=>'<tr>'
-    +'<td><select onchange="dgUpd('+i+',\'unidad\',this.value)" style="border:1.5px solid #dde;border-radius:5px;padding:6px;font-size:12px;background:#fafafa;min-width:190px">'+opts(r.unidad)+'</select></td>'
-    +'<td class="r"><input type="number" step="0.01" min="0" value="'+(r.monto||'')+'" placeholder="0.00" oninput="dgUpd('+i+',\'monto\',this.value)" style="border:1.5px solid #dde;border-radius:5px;padding:6px;font-size:12px;background:#fafafa;width:110px;text-align:right"></td>'
-    +'<td><input type="text" value="'+(r.destino||'').replace(/"/g,'&quot;')+'" placeholder="Destino" oninput="dgUpd('+i+',\'destino\',this.value)" style="border:1.5px solid #dde;border-radius:5px;padding:6px;font-size:12px;background:#fafafa;width:140px"></td>'
-    +'<td><input type="text" value="'+(r.pedido||'').replace(/"/g,'&quot;')+'" placeholder="Pedido/ref." oninput="dgUpd('+i+',\'pedido\',this.value)" style="border:1.5px solid #dde;border-radius:5px;padding:6px;font-size:12px;background:#fafafa;width:120px"></td>'
-    +'<td><input type="text" value="'+(r.sustituyeId||'').replace(/"/g,'&quot;')+'" placeholder="Opcional" title="Si este operador tiene un ingreso sin factura pendiente con este mismo ID en Observaciones, se sustituye en vez de crear uno nuevo" oninput="dgUpd('+i+',\'sustituyeId\',this.value)" style="border:1.5px solid #dde;border-radius:5px;padding:6px;font-size:12px;background:#fafafa;width:140px"></td>'
-    +'<td><button style="background:#fde8e8;color:#9b1c1c;border:none;cursor:pointer;border-radius:4px;padding:4px 9px" onclick="dgEliminarRenglon('+i+')">✕</button></td>'
-    +'</tr>').join('');
+  tb.innerHTML=dgRows.map((r,i)=>{
+    const abierto=!!r._detalleAbierto;
+    const tieneOpcionales=!!(r.destino||r.pedido||r.sustituyeId);
+    let html='<tr>'
+      +'<td><select onchange="dgUpd('+i+',\'unidad\',this.value)" style="border:1.5px solid #dde;border-radius:5px;padding:6px;font-size:12px;background:#fafafa;min-width:190px">'+opts(r.unidad)+'</select></td>'
+      +'<td class="r"><input type="number" step="0.01" min="0" value="'+(r.monto||'')+'" placeholder="0.00" oninput="dgUpd('+i+',\'monto\',this.value)" style="border:1.5px solid #dde;border-radius:5px;padding:6px;font-size:12px;background:#fafafa;width:110px;text-align:right"></td>'
+      +'<td><button type="button" onclick="dgToggleDetalle('+i+')" title="Destino, pedido/ref. y sustitución de un ingreso sin factura — todo opcional" style="background:'+(tieneOpcionales?'#ede9fe':'#f0f2f5')+';color:'+(tieneOpcionales?'#5b21b6':'#666')+';border:none;cursor:pointer;border-radius:4px;padding:4px 9px;font-size:11px;white-space:nowrap">'+(tieneOpcionales?'✓ ':'')+'Detalles '+(abierto?'▲':'▾')+'</button></td>'
+      +'<td><button style="background:#fde8e8;color:#9b1c1c;border:none;cursor:pointer;border-radius:4px;padding:4px 9px" onclick="dgEliminarRenglon('+i+')">✕</button></td>'
+      +'</tr>';
+    if(abierto){
+      html+='<tr><td colspan="4" style="background:#faf9ff;padding:8px 10px 12px">'
+        +'<div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end">'
+        +'<div><label style="font-size:10px;color:#888;display:block;margin-bottom:3px">Destino (opcional)</label><input type="text" value="'+(r.destino||'').replace(/"/g,'&quot;')+'" placeholder="Municipio, Estado" oninput="dgUpd('+i+',\'destino\',this.value)" style="border:1.5px solid #dde;border-radius:5px;padding:6px;font-size:12px;background:#fff;width:160px"></div>'
+        +'<div><label style="font-size:10px;color:#888;display:block;margin-bottom:3px">Pedido/ref. (opcional)</label><input type="text" value="'+(r.pedido||'').replace(/"/g,'&quot;')+'" placeholder="Pedido/ref." oninput="dgUpd('+i+',\'pedido\',this.value)" style="border:1.5px solid #dde;border-radius:5px;padding:6px;font-size:12px;background:#fff;width:140px"></div>'
+        +'<div><label style="font-size:10px;color:#888;display:block;margin-bottom:3px">Sustituye ingreso sin factura (ID)</label><input type="text" value="'+(r.sustituyeId||'').replace(/"/g,'&quot;')+'" placeholder="Solo si aplica" title="Si este operador tiene un ingreso sin factura pendiente con este mismo ID en Observaciones, se sustituye en vez de crear uno nuevo" oninput="dgUpd('+i+',\'sustituyeId\',this.value)" style="border:1.5px solid #dde;border-radius:5px;padding:6px;font-size:12px;background:#fff;width:170px"></div>'
+        +'</div></td></tr>';
+    }
+    return html;
+  }).join('');
+}
+function dgToggleDetalle(i){
+  if(!dgRows[i])return;
+  dgRows[i]._detalleAbierto=!dgRows[i]._detalleAbierto;
+  renderDgRows();
 }
 
 // Agrupa los renglones válidos por operador (varios renglones del mismo
