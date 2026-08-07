@@ -529,6 +529,12 @@ function parseNominaXML(text,fname){
     fechaTimbrado:tfd?tfd.getAttribute('FechaTimbrado')||'':'',
     selloSAT:tfd?tfd.getAttribute('SelloSAT')||'':'',
     noCertificadoSAT:tfd?tfd.getAttribute('NoCertificadoSAT')||'':'',
+    // Para reconstruir el QR de verificación y la cadena original del
+    // complemento de certificación (ver shared/reciboNomina.js) al imprimir
+    // el recibo — no se usaban antes porque no había representación impresa.
+    rfcProvCertif:tfd?tfd.getAttribute('RfcProvCertif')||'':'',
+    selloCFD:tfd?tfd.getAttribute('SelloCFD')||'':'',
+    total:parseFloat(comp.getAttribute('Total')||0),
     estado:'pendiente',
     liqNum:null,
     xmlURL:null
