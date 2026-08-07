@@ -137,6 +137,7 @@ tr:hover td{background:#fafafa}
     <button class="tab active" id="tabBtnOperadores" onclick="cambiarTab('operadores')">👤 Operadores</button>
     <button class="tab" id="tabBtnUnidades" onclick="cambiarTab('unidades')">🚛 Unidades</button>
     <button class="tab" id="tabBtnAsignar" onclick="cambiarTab('asignar')">🔄 Asignar / Reasignar</button>
+    <button class="tab" id="tabBtnRevision" onclick="cambiarTab('revision')">🔍 Revisión de unidad</button>
     <button class="tab" id="tabBtnHistorial" onclick="cambiarTab('historial')">🗂️ Historial de asignaciones</button>
   </div>
 
@@ -168,13 +169,15 @@ tr:hover td{background:#fafafa}
         <div class="field"><label>Número de unidad</label><input type="number" id="nuevaUnNumero" placeholder="Ej: 536"></div>
         <div class="field"><label>Placas</label><input type="text" id="nuevaUnPlacas" placeholder="ABC-1234"></div>
         <div class="field" style="flex:2;min-width:220px"><label>Capacidad de tanque(s), en litros</label><input type="text" id="nuevaUnTanques" placeholder="Ej: 200 o 200,100 si son varios"></div>
+        <div class="field"><label>Colchonetas esperadas</label><input type="number" id="nuevaUnColch" placeholder="30"></div>
+        <div class="field"><label>Extintores esperados</label><input type="number" id="nuevaUnExt" placeholder="2"></div>
         <button class="btn btn-red btn-sm" onclick="altaUnidad()">Dar de alta</button>
       </div>
     </div>
     <div class="card">
       <div class="card-title">🚛 Unidades registradas</div>
       <div class="tbl-wrap"><table>
-        <thead><tr><th>Número</th><th>Placas</th><th>Tanque(s)</th><th>Operador actual</th><th>Estado</th><th></th></tr></thead>
+        <thead><tr><th>Número</th><th>Placas</th><th>Tanque(s)</th><th class="r">Colch.</th><th class="r">Ext.</th><th>Operador actual</th><th>Estado</th><th></th></tr></thead>
         <tbody id="tbUnidades"></tbody>
       </table></div>
     </div>
@@ -198,6 +201,59 @@ tr:hover td{background:#fafafa}
         <div class="field"><label>Precio diesel actual ($/lt)</label><input type="number" id="asigPrecio" step="0.0001" placeholder="27.00"></div>
         <button class="btn btn-red btn-sm" onclick="confirmarAsignacion()">Confirmar asignación</button>
       </div>
+    </div>
+  </div>
+
+  <!-- REVISIÓN DE UNIDAD -->
+  <div class="tabpanel" id="panelRevision">
+    <div class="card">
+      <div class="card-title">🔍 Nueva revisión de unidad</div>
+      <div class="alert alert-info">Se puede hacer en cualquier momento, no solo al entregar/recibir la unidad. Si faltan colchonetas/extintores o hay daños, se genera un cargo pendiente que se aplica solo en la siguiente liquidación del operador asignado a la unidad — nunca de golpe, se avisa aquí mismo.</div>
+      <div class="row">
+        <div class="field" style="flex:1;min-width:200px"><label>Unidad</label><select id="revUnidad" onchange="onCambioRevUnidad()"><option value="">— Selecciona —</option></select></div>
+        <div class="field"><label>Tipo de revisión</label><select id="revTipo"><option value="libre">Revisión libre</option><option value="entrega">Entrega de unidad</option><option value="recibe">Recepción de unidad</option></select></div>
+        <div class="field"><label>Fecha</label><input type="date" id="revFecha"></div>
+      </div>
+      <div id="revOperadorInfo" style="font-size:12px;color:#666;margin-top:6px"></div>
+
+      <div class="row" style="margin-top:14px">
+        <div class="field"><label>Diesel en tanque(s) (litros)</label><input type="number" id="revDiesel" step="0.01" placeholder="0.00"></div>
+      </div>
+
+      <div class="row" style="margin-top:14px">
+        <div class="field"><label>Colchonetas esperadas</label><input type="number" id="revColchEsp" oninput="calcFaltantes()"></div>
+        <div class="field"><label>Colchonetas encontradas</label><input type="number" id="revColchEnc" oninput="calcFaltantes()"></div>
+        <div class="field"><label>Faltantes</label><input type="text" id="revColchFalt" disabled></div>
+        <div class="field" id="wrapCargoColch" style="display:none"><label>Cargo por colchonetas faltantes ($)</label><input type="number" id="revCargoColch" step="0.01" placeholder="0.00"></div>
+      </div>
+
+      <div class="row" style="margin-top:8px">
+        <div class="field"><label>Extintores esperados</label><input type="number" id="revExtEsp" oninput="calcFaltantes()"></div>
+        <div class="field"><label>Extintores encontrados</label><input type="number" id="revExtEnc" oninput="calcFaltantes()"></div>
+        <div class="field"><label>Faltantes</label><input type="text" id="revExtFalt" disabled></div>
+        <div class="field" id="wrapCargoExt" style="display:none"><label>Cargo por extintores faltantes ($)</label><input type="number" id="revCargoExt" step="0.01" placeholder="0.00"></div>
+      </div>
+
+      <div class="field" style="margin-top:14px">
+        <label>Condición general de la unidad</label>
+        <textarea id="revCondicion" rows="2" style="border:1.5px solid #dde;border-radius:6px;padding:8px 10px;font-size:13px;font-family:inherit;width:100%" placeholder="Golpes, rayones, estado de llantas, etc."></textarea>
+      </div>
+
+      <div class="card-title" style="margin-top:18px">🔧 Daños o faltantes adicionales <button class="btn btn-out btn-sm" onclick="agregarDanio()">+ Agregar</button></div>
+      <div class="alert alert-warn" style="margin-top:8px">Si el operador SÍ avisó del daño a tiempo, cobra normalmente 30–50% del monto estimado. Si NO avisó, se cobra el 100%. El % es editable caso por caso.</div>
+      <div id="listaDanios"></div>
+
+      <div class="row" style="margin-top:16px">
+        <button class="btn btn-red btn-sm" onclick="guardarRevision()">Guardar revisión</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">🗂️ Historial de revisiones <button class="btn btn-out btn-sm" onclick="cargarRevisiones()">🔄 Recargar</button></div>
+      <div class="tbl-wrap"><table>
+        <thead><tr><th>Fecha</th><th>Unidad</th><th>Tipo</th><th>Operador</th><th class="r">Cargo generado</th><th>Revisó</th><th></th></tr></thead>
+        <tbody id="tbRevisiones"></tbody>
+      </table></div>
     </div>
   </div>
 
@@ -371,6 +427,9 @@ function verificarSesionModulo(){
   mostrarSesionEnHeader();
   cargarTodo();
   cargarAsignaciones();
+  cargarRevisiones();
+  $('revFecha').value=hoy();
+  renderDanios();
 }
 window.onFBReady(function(){
   fbReady=true;
@@ -384,7 +443,7 @@ setTimeout(function(){if(!fbReady){$('fbStatus').textContent='❌ Sin conexión'
 // TABS
 // ══════════════════════════════════════════════
 function cambiarTab(nombre){
-  ['operadores','unidades','asignar','historial'].forEach(function(t){
+  ['operadores','unidades','asignar','revision','historial'].forEach(function(t){
     $('panel'+t.charAt(0).toUpperCase()+t.slice(1)).classList.toggle('active',t===nombre);
     $('tabBtn'+t.charAt(0).toUpperCase()+t.slice(1)).classList.toggle('active',t===nombre);
   });
@@ -408,6 +467,7 @@ async function cargarTodo(){
   renderOperadores();
   renderUnidades();
   llenarSelectsAsignacion();
+  llenarSelectRevision();
 }
 
 async function cargarAsignaciones(){
@@ -508,6 +568,8 @@ async function altaUnidad(){
   var numero=parseInt($('nuevaUnNumero').value||0);
   var placas=($('nuevaUnPlacas').value||'').trim().toUpperCase();
   var tanquesTxt=($('nuevaUnTanques').value||'').trim();
+  var colchEsp=parseInt($('nuevaUnColch').value||0)||0;
+  var extEsp=parseInt($('nuevaUnExt').value||0)||0;
   if(!numero){alert('Escribe el número de unidad.');return;}
   var tanques=tanquesTxt?tanquesTxt.split(',').map(function(s){return parseFloat(s.trim())||0;}).filter(function(n){return n>0;}):[];
   try{
@@ -515,8 +577,8 @@ async function altaUnidad(){
     var ref=db.collection('unidades').doc(String(numero));
     var existe=await ref.get();
     if(existe.exists){alert('Ya existe una unidad con ese número.');return;}
-    await ref.set({numero:numero,activa:true,placas:placas,tanques:tanques,operadorActual:null});
-    $('nuevaUnNumero').value='';$('nuevaUnPlacas').value='';$('nuevaUnTanques').value='';
+    await ref.set({numero:numero,activa:true,placas:placas,tanques:tanques,colchonetasEsperadas:colchEsp,extintoresEsperados:extEsp,operadorActual:null});
+    $('nuevaUnNumero').value='';$('nuevaUnPlacas').value='';$('nuevaUnTanques').value='';$('nuevaUnColch').value='';$('nuevaUnExt').value='';
     alert('✅ Unidad dada de alta. Asígnale un operador en la pestaña "Asignar / Reasignar".');
     await cargarTodo();
   }catch(e){console.error('altaUnidad:',e);alert('⚠️ Error: '+e.message);}
@@ -528,9 +590,16 @@ async function editarUnidad(id){
   if(placas===null)return;
   var tanquesTxt=prompt('Capacidad de tanque(s) en litros, separados por coma si son varios (ej. 200,100):',(un.tanques||[]).join(','));
   if(tanquesTxt===null)return;
+  var colchTxt=prompt('Colchonetas esperadas:',un.colchonetasEsperadas!=null?un.colchonetasEsperadas:0);
+  if(colchTxt===null)return;
+  var extTxt=prompt('Extintores esperados:',un.extintoresEsperados!=null?un.extintoresEsperados:0);
+  if(extTxt===null)return;
   var tanques=tanquesTxt.split(',').map(function(s){return parseFloat(s.trim())||0;}).filter(function(n){return n>0;});
   try{
-    await firebase.firestore().collection('unidades').doc(id).update({placas:placas.trim().toUpperCase(),tanques:tanques});
+    await firebase.firestore().collection('unidades').doc(id).update({
+      placas:placas.trim().toUpperCase(),tanques:tanques,
+      colchonetasEsperadas:parseInt(colchTxt)||0,extintoresEsperados:parseInt(extTxt)||0
+    });
     await cargarTodo();
   }catch(e){console.error('editarUnidad:',e);alert('⚠️ Error: '+e.message);}
 }
@@ -562,6 +631,8 @@ function renderUnidades(){
       +'<td>'+u.numero+'</td>'
       +'<td>'+(u.placas||'—')+'</td>'
       +'<td>'+((u.tanques&&u.tanques.length)?u.tanques.map(function(t){return fmtN(t)+' L';}).join(' + '):'—')+'</td>'
+      +'<td class="num r">'+(u.colchonetasEsperadas!=null?u.colchonetasEsperadas:'—')+'</td>'
+      +'<td class="num r">'+(u.extintoresEsperados!=null?u.extintoresEsperados:'—')+'</td>'
       +'<td>'+(op?op.nombre:'<span style="color:#aaa">Sin operador</span>')+'</td>'
       +'<td><span class="badge '+(u.activa?'bg-green':'bg-gray')+'">'+(u.activa?'Activa':'Baja')+'</span></td>'
       +'<td style="white-space:nowrap">'
@@ -569,7 +640,7 @@ function renderUnidades(){
         +'<button class="btn-sm" style="background:'+(u.activa?'#fde8e8':'#d1e7dd')+';color:'+(u.activa?'#9b1c1c':'#0a5233')+';border:none;cursor:pointer" onclick="toggleActivaUnidad(\''+u.id+'\')">'+(u.activa?'Dar de baja':'Reactivar')+'</button>'
       +'</td>'
       +'</tr>';
-  }).join('')||'<tr><td colspan="6" style="text-align:center;color:#aaa;padding:20px">Sin unidades registradas.</td></tr>';
+  }).join('')||'<tr><td colspan="8" style="text-align:center;color:#aaa;padding:20px">Sin unidades registradas.</td></tr>';
 }
 
 // ══════════════════════════════════════════════
@@ -690,6 +761,200 @@ function renderAsignaciones(){
       +'<td style="font-size:11px">'+(a.registradoPor?(a.registradoPor.nombre||a.registradoPor.usuario):'—')+'</td>'
       +'</tr>';
   }).join('')||'<tr><td colspan="7" style="text-align:center;color:#aaa;padding:20px">Sin asignaciones registradas.</td></tr>';
+}
+
+// ══════════════════════════════════════════════
+// REVISIÓN DE UNIDAD (diesel, colchonetas, extintores, condición general,
+// daños) — a diferencia del checklist de "Asignar/Reasignar" (que solo pasa
+// al cambiar de operador), esta se puede hacer en cualquier momento. Si
+// faltan colchonetas/extintores o hay daños, genera un cargo PENDIENTE para
+// el operador asignado actualmente a la unidad — se guarda en
+// estado/cargosFlotaDB, con la MISMA forma/ciclo de vida que
+// estado/incidentesDB (pendiente→aplicado/descartado, liqNum), para que
+// liq.html lo aplique en la siguiente liquidación de ese operador, igual
+// que ya hace con los incidentes de vialidad.
+// ══════════════════════════════════════════════
+function llenarSelectRevision(){
+  var s=$('revUnidad');
+  var val=s.value;
+  s.innerHTML='<option value="">— Selecciona —</option>'+unidadesRaw.filter(function(u){return u.activa;}).map(function(u){
+    return '<option value="'+u.numero+'">Unidad '+u.numero+'</option>';
+  }).join('');
+  s.value=val;
+  onCambioRevUnidad();
+}
+function onCambioRevUnidad(){
+  var numero=parseInt($('revUnidad').value||0);
+  var unidad=unidadesRaw.find(function(u){return u.numero===numero;});
+  if(!unidad){$('revOperadorInfo').textContent='';return;}
+  var op=operadoresRaw.find(function(o){return o.id===String(unidad.operadorActual);});
+  $('revOperadorInfo').textContent=op?('Operador actual: '+op.nombre+' — cualquier cargo generado aquí se le aplicará a él.'):'⚠️ Esta unidad no tiene operador asignado — si faltan cosas o hay daños no se podrá generar un cargo (no hay a quién cobrarle).';
+  $('revColchEsp').value=unidad.colchonetasEsperadas!=null?unidad.colchonetasEsperadas:'';
+  $('revExtEsp').value=unidad.extintoresEsperados!=null?unidad.extintoresEsperados:'';
+  $('revColchEnc').value='';$('revExtEnc').value='';
+  calcFaltantes();
+}
+function calcFaltantes(){
+  var ce=parseInt($('revColchEsp').value||0),cc=parseInt($('revColchEnc').value||0);
+  var faltC=Math.max(0,ce-cc);
+  $('revColchFalt').value=faltC;
+  $('wrapCargoColch').style.display=faltC>0?'block':'none';
+  var ee=parseInt($('revExtEsp').value||0),ec=parseInt($('revExtEnc').value||0);
+  var faltE=Math.max(0,ee-ec);
+  $('revExtFalt').value=faltE;
+  $('wrapCargoExt').style.display=faltE>0?'block':'none';
+}
+function round2(n){return Math.round((n+Number.EPSILON)*100)/100;}
+
+let _daniosActuales=[];
+function agregarDanio(){
+  _daniosActuales.push({descripcion:'',reportado:false,monto:0,porcentaje:100});
+  renderDanios();
+}
+function quitarDanio(i){
+  _daniosActuales.splice(i,1);
+  renderDanios();
+}
+function actualizarDanio(i,campo,valor){
+  _daniosActuales[i][campo]=valor;
+  if(campo==='reportado')_daniosActuales[i].porcentaje=valor?40:100;
+  renderDanios();
+}
+function cargoDanio(d){
+  return round2((parseFloat(d.monto)||0)*(parseFloat(d.porcentaje)||0)/100);
+}
+function renderDanios(){
+  var c=$('listaDanios');
+  if(!c)return;
+  if(!_daniosActuales.length){c.innerHTML='<div style="color:#aaa;font-size:12px;padding:8px 0">Sin daños o faltantes adicionales registrados en esta revisión.</div>';return;}
+  c.innerHTML=_daniosActuales.map(function(d,i){
+    return '<div class="row" style="border-top:1px solid #f0f0f0;padding-top:10px;margin-top:10px">'
+      +'<div class="field" style="flex:2;min-width:200px"><label>Descripción</label><input type="text" value="'+(d.descripcion||'').replace(/"/g,'&quot;')+'" oninput="actualizarDanio('+i+',\'descripcion\',this.value)" placeholder="Ej: espejo lateral roto"></div>'
+      +'<div class="field" style="max-width:150px"><label>Monto estimado ($)</label><input type="number" step="0.01" value="'+(d.monto||0)+'" oninput="actualizarDanio('+i+',\'monto\',parseFloat(this.value)||0)"></div>'
+      +'<div class="field"><label style="text-transform:none;letter-spacing:0"><input type="checkbox" '+(d.reportado?'checked':'')+' onchange="actualizarDanio('+i+',\'reportado\',this.checked)" style="width:auto;vertical-align:middle"> El operador lo reportó a tiempo</label></div>'
+      +'<div class="field" style="max-width:110px"><label>% a cobrar</label><input type="number" min="0" max="100" step="1" value="'+d.porcentaje+'" oninput="actualizarDanio('+i+',\'porcentaje\',parseFloat(this.value)||0)"></div>'
+      +'<div class="field" style="max-width:120px"><label>Cargo</label><input type="text" disabled value="'+fmt(cargoDanio(d))+'"></div>'
+      +'<button class="btn-sm" style="background:#fde8e8;color:#9b1c1c;border:none;cursor:pointer" onclick="quitarDanio('+i+')">✕</button>'
+      +'</div>';
+  }).join('');
+}
+
+async function guardarRevision(){
+  var numero=parseInt($('revUnidad').value||0);
+  if(!numero){alert('Selecciona una unidad.');return;}
+  var unidad=unidadesRaw.find(function(u){return u.numero===numero;});
+  if(!unidad){alert('No se encontró la unidad.');return;}
+  var op=operadoresRaw.find(function(o){return o.id===String(unidad.operadorActual);});
+
+  var colchEsp=parseInt($('revColchEsp').value||0),colchEnc=parseInt($('revColchEnc').value||0);
+  var faltC=Math.max(0,colchEsp-colchEnc);
+  var cargoColch=faltC>0?(parseFloat($('revCargoColch').value||0)):0;
+  var extEsp=parseInt($('revExtEsp').value||0),extEnc=parseInt($('revExtEnc').value||0);
+  var faltE=Math.max(0,extEsp-extEnc);
+  var cargoExt=faltE>0?(parseFloat($('revCargoExt').value||0)):0;
+  var danios=_daniosActuales.filter(function(d){return(d.descripcion||'').trim()||d.monto>0;});
+  var totalCargo=round2(cargoColch+cargoExt+danios.reduce(function(s,d){return s+cargoDanio(d);},0));
+
+  if(totalCargo>0&&!op){
+    if(!confirm('Esta unidad no tiene operador asignado — no hay a quién cobrarle. ¿Guardar la revisión de todos modos, SIN generar ningún cargo?'))return;
+  }
+
+  var fecha=$('revFecha').value||hoy();
+  var u=usuarioSesion();
+  var revisionId='rev-'+numero+'-'+Date.now();
+  var revision={
+    id:revisionId,fecha:fecha,unidad:numero,
+    operadorId:op?parseInt(op.id):null,operadorNombre:op?op.nombre:null,
+    tipo:$('revTipo').value,
+    dieselLitros:parseFloat($('revDiesel').value||0),
+    colchonetas:{esperadas:colchEsp,encontradas:colchEnc,faltante:faltC},
+    extintores:{esperados:extEsp,encontrados:extEnc,faltante:faltE},
+    condicionGeneral:($('revCondicion').value||'').trim(),
+    danios:danios.map(function(d){return{descripcion:d.descripcion,reportado:!!d.reportado,monto:d.monto,porcentaje:d.porcentaje,cargo:cargoDanio(d)};}),
+    cargoColchonetas:cargoColch,cargoExtintores:cargoExt,totalCargo:totalCargo,
+    revisadoPor:u?(u.nombre||u.usuario):'—'
+  };
+
+  try{
+    // Leer y fusionar — nunca sobrescribir el blob completo (ver CLAUDE.md).
+    var rRes=await window.FB.get('estado','revisionesFlotaDB');
+    var revisiones=(rRes&&rRes.data)?JSON.parse(rRes.data):{};
+    if(Array.isArray(revisiones))revisiones={};
+    if(!revisiones[numero])revisiones[numero]=[];
+    revisiones[numero].push(revision);
+    await window.FB.set('estado','revisionesFlotaDB',{data:JSON.stringify(revisiones)});
+
+    if(op&&totalCargo>0){
+      var cRes=await window.FB.get('estado','cargosFlotaDB');
+      var cargosFlota=(cRes&&cRes.data)?JSON.parse(cRes.data):{};
+      if(Array.isArray(cargosFlota))cargosFlota={};
+      var opId=parseInt(op.id);
+      if(!cargosFlota[opId])cargosFlota[opId]=[];
+      var conceptos=[];
+      if(cargoColch>0)conceptos.push('Colchonetas faltantes ('+faltC+') — unidad '+numero+'|'+cargoColch);
+      if(cargoExt>0)conceptos.push('Extintores faltantes ('+faltE+') — unidad '+numero+'|'+cargoExt);
+      danios.forEach(function(d){
+        var c=cargoDanio(d);
+        if(c>0)conceptos.push('Daño'+(d.reportado?' (reportado)':' (NO reportado)')+': '+(d.descripcion||'sin descripción')+' — unidad '+numero+'|'+c);
+      });
+      conceptos.forEach(function(cn){
+        var partes=cn.split('|');
+        cargosFlota[opId].push({
+          id:'cf-'+numero+'-'+Date.now()+'-'+Math.random().toString(36).slice(2,6),
+          fecha:fecha,unidad:numero,concepto:partes[0],importe:parseFloat(partes[1]),
+          revisionId:revisionId,estado:'pendiente',liqNum:null
+        });
+      });
+      await window.FB.set('estado','cargosFlotaDB',{data:JSON.stringify(cargosFlota)});
+    }
+
+    alert('✅ Revisión guardada.'+(totalCargo>0?(op?(' Se generó un cargo pendiente de '+fmt(totalCargo)+' para '+op.nombre+' — se aplicará en su siguiente liquidación.'):' No se generó cargo (sin operador asignado).'):''));
+    $('revDiesel').value='';$('revColchEnc').value='';$('revExtEnc').value='';$('revCondicion').value='';
+    $('revCargoColch').value='';$('revCargoExt').value='';
+    _daniosActuales=[];renderDanios();calcFaltantes();
+    await cargarRevisiones();
+  }catch(e){console.error('guardarRevision:',e);alert('⚠️ Error al guardar: '+e.message);}
+}
+
+let revisionesLog=[];
+async function cargarRevisiones(){
+  var r=await window.FB.get('estado','revisionesFlotaDB');
+  var data=(r&&r.data)?JSON.parse(r.data):{};
+  if(Array.isArray(data))data={};
+  var todas=[];
+  Object.keys(data).forEach(function(u){(data[u]||[]).forEach(function(rv){todas.push(rv);});});
+  todas.sort(function(a,b){return(b.fecha||'').localeCompare(a.fecha||'')||(b.id||'').localeCompare(a.id||'');});
+  revisionesLog=todas.slice(0,80);
+  renderRevisiones();
+}
+function renderRevisiones(){
+  var tb=$('tbRevisiones');
+  if(!tb)return;
+  tb.innerHTML=revisionesLog.map(function(rv){
+    var tipoLabel={libre:'Revisión libre',entrega:'Entrega',recibe:'Recepción'}[rv.tipo]||rv.tipo;
+    return '<tr>'
+      +'<td>'+(rv.fecha||'')+'</td>'
+      +'<td>'+rv.unidad+'</td>'
+      +'<td>'+tipoLabel+'</td>'
+      +'<td>'+(rv.operadorNombre||'—')+'</td>'
+      +'<td class="num r">'+(rv.totalCargo?fmt(rv.totalCargo):'—')+'</td>'
+      +'<td style="font-size:11px">'+(rv.revisadoPor||'—')+'</td>'
+      +'<td><button class="btn-sm btn-out" onclick="verDetalleRevision(\''+rv.id+'\')">👁️</button></td>'
+      +'</tr>';
+  }).join('')||'<tr><td colspan="7" style="text-align:center;color:#aaa;padding:20px">Sin revisiones registradas.</td></tr>';
+}
+function verDetalleRevision(id){
+  var rv=revisionesLog.find(function(r){return r.id===id;});
+  if(!rv)return;
+  var txt='Unidad '+rv.unidad+' — '+(rv.fecha||'')+'\n'
+    +'Operador: '+(rv.operadorNombre||'—')+'\n'
+    +'Diesel en tanque: '+fmtN(rv.dieselLitros||0)+' L\n'
+    +'Colchonetas: '+rv.colchonetas.encontradas+'/'+rv.colchonetas.esperadas+(rv.colchonetas.faltante?(' (faltan '+rv.colchonetas.faltante+')'):'')+'\n'
+    +'Extintores: '+rv.extintores.encontrados+'/'+rv.extintores.esperados+(rv.extintores.faltante?(' (faltan '+rv.extintores.faltante+')'):'')+'\n'
+    +(rv.condicionGeneral?('Condición general: '+rv.condicionGeneral+'\n'):'')
+    +(rv.danios&&rv.danios.length?('\nDaños:\n'+rv.danios.map(function(d){return'- '+d.descripcion+' ('+(d.reportado?'reportado':'NO reportado')+', '+d.porcentaje+'%): '+fmt(d.cargo);}).join('\n')):'')
+    +'\n\nCargo total generado: '+fmt(rv.totalCargo||0);
+  alert(txt);
 }
 </script>
 </body>

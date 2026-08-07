@@ -520,6 +520,14 @@ tr:hover td{background:#fafafa}
         <tbody id="tbIncidentesLiq"></tbody><tfoot id="tfIncidentesLiq"></tfoot>
       </table></div>
     </div>
+    <div class="card" id="cardCargosFlotaLiq" style="display:none">
+      <div class="card-title">🔧 Cargos de mantenimiento/flota pendientes</div>
+      <div class="alert alert-info" style="margin-bottom:10px">Se generan en el módulo <strong>Flota</strong> cuando el encargado de mantenimiento revisa la unidad (colchonetas/extintores faltantes, daños no reportados, etc.) — no se capturan manualmente aquí. Todos los pendientes se aplican en esta liquidación, sin tope.</div>
+      <div class="tbl-wrap"><table>
+        <thead><tr><th>Fecha</th><th>Concepto</th><th class="r">Importe</th></tr></thead>
+        <tbody id="tbCargosFlotaLiq"></tbody><tfoot id="tfCargosFlotaLiq"></tfoot>
+      </table></div>
+    </div>
   </div>
 </div></div>
 
@@ -1086,6 +1094,7 @@ let csvRows=[];
 let anticiposDB={};   // {unidad:[{...anticipo,estado,liqNum}]}
 let ingresosDB=[];    // [{id,unidad,folio,fecha,cliente,tipo,subtotal,iva,ret,total,estado,liqNum,origen}]
 let incidentesDB={};  // {unidad:[{...incidente,montoReconocido,estado,liqNum}]} — módulo incidentes.html (independiente)
+let cargosFlotaDB={};  // {opId:[{...cargo,concepto,importe,estado,liqNum}]} — módulo flota.html (checklist de colchonetas/extintores/daños), independiente
 let nominaDB={};       // {unidad:[{id,uuid,folio,fecha,periodoIni,periodoFin,totalPercepciones,totalDeducciones,estado,liqNum}]}
 let liq=null;
 // El candado de "una liquidación activa a la vez" es POR OPERADOR (ver
@@ -1565,6 +1574,18 @@ async function cargarEstado(){
         if(Array.from(tabs).indexOf(tabActivo)===4) generarReporte();
       }
     });
+    // cargosFlotaDB: SOLO lectura desde liq.html — flota.html es dueño de la captura
+    // (revisión de colchonetas/extintores/daños). Sin tope: se aplica el total pendiente.
+    window.FB.listen('estado','cargosFlotaDB', function(data){
+      if(data&&data.data){
+        var _cf=JSON.parse(data.data);
+        cargosFlotaDB=Array.isArray(_cf)?{}:_cf;
+        renderCargosFlotaLiq();
+        var tabActivo=document.querySelector('.tab.active');
+        var tabs=document.querySelectorAll('.tab');
+        if(Array.from(tabs).indexOf(tabActivo)===4) generarReporte();
+      }
+    });
     // Suscribirse en vivo al doc liqActivas/{opId} del operador que quedó
     // cargado (si lo hay), para reflejar cambios hechos desde otra pestaña/
     // usuario o desde "Reabrir" en Historial.
@@ -1629,6 +1650,7 @@ function restaurarUILiquidacion(){
   if($('liqClave'))$('liqClave').value=_opRest?_opRest.clave:'';
   if(liq.gastosXML||liq.gastos) renderGastos();
   renderIncidentesLiq();
+  renderCargosFlotaLiq();
   if(!liq.casetasNF)liq.casetasNF=[];
   renderCasetasNF();
   if($('btnRevalidarSATWrap'))$('btnRevalidarSATWrap').style.display='block';
@@ -2676,6 +2698,7 @@ async function iniciarLiquidacion(){
   mostrarPreviewLiq(opId);
   renderGastos();
   renderIncidentesLiq();
+  renderCargosFlotaLiq();
   renderCasetasNF();
   if($('btnRevalidarSATWrap'))$('btnRevalidarSATWrap').style.display='block';
   actualizarBotonEliminarLiq();
@@ -2724,6 +2747,7 @@ function eliminarLiquidacionActual(){
   liq=null;
   cargasOp=[];
   renderIncidentesLiq();
+  renderCargosFlotaLiq();
   if($('btnRevalidarSATWrap'))$('btnRevalidarSATWrap').style.display='none';
   if($('btnEliminarLiqWrap'))$('btnEliminarLiqWrap').style.display='none';
   if($('satValidandoInfo'))$('satValidandoInfo').style.display='none';
@@ -3690,6 +3714,37 @@ function renderIncidentesLiq(){
 }
 
 // ══════════════════════════════════════════════
+// CARGOS DE MANTENIMIENTO/FLOTA
+// (se generan en flota.html cuando el encargado de mantenimiento revisa
+// la unidad — colchonetas/extintores faltantes, daños no reportados, etc.
+// liq.html solo lee los "pendiente" del operador activo y los aplica al
+// cerrar la liquidación, sin tope — a diferencia de los incidentes de
+// vialidad, no hay un límite de negocio definido para esto.)
+// ══════════════════════════════════════════════
+function cargosFlotaPendientesLiq(){
+  if(!liq)return[];
+  var opId=liq.opId||liq.unidad;
+  return(cargosFlotaDB[opId]||cargosFlotaDB[String(opId)]||[]).filter(function(a){return a.estado==='pendiente';});
+}
+function totCargosFlotaPendientes(){
+  return cargosFlotaPendientesLiq().reduce(function(s,a){return s+(a.importe||0);},0);
+}
+function renderCargosFlotaLiq(){
+  if(!liq){
+    if($('cardCargosFlotaLiq'))$('cardCargosFlotaLiq').style.display='none';
+    return;
+  }
+  var pend=cargosFlotaPendientesLiq();
+  var cardF=$('cardCargosFlotaLiq');
+  if(!cardF)return;
+  cardF.style.display=pend.length?'block':'none';
+  $('tbCargosFlotaLiq').innerHTML=pend.map(function(a){
+    return '<tr><td style="font-size:11px">'+(a.fecha||'')+'</td><td>'+(a.concepto||'')+'</td><td class="num r">'+fmt(a.importe)+'</td></tr>';
+  }).join('');
+  $('tfCargosFlotaLiq').innerHTML='<tr style="background:#f5f5f8;font-weight:700"><td colspan="2">TOTAL A APLICAR</td><td class="num r">'+fmt(totCargosFlotaPendientes())+'</td></tr>';
+}
+
+// ══════════════════════════════════════════════
 // CASETAS SIN COMPROBANTE
 // (se capturan aquí mismo, dentro de la liquidación activa — viven en
 // liq.casetasNF, igual que liq.autopistas. No hay colección global de
@@ -4047,6 +4102,11 @@ function generarReporte(){
   const _incTope=incidentesConTope();
   const incidentesAplicar=_incTope.aplicar;
   const totIncidentes=_incTope.totAplicado;
+  // Cargos de mantenimiento/flota (módulo flota.html, independiente) — sin
+  // tope, se aplican todos los pendientes. A diferencia de los incidentes
+  // (que la empresa RECONOCE/reembolsa al operador), esto es un CARGO en
+  // contra del operador, así que entra del lado de totalCargos, no de abonos.
+  const totCargosFlota=totCargosFlotaPendientes();
   // Casetas sin comprobante — se capturan dentro de esta misma liquidación (liq.casetasNF),
   // igual que autopistas. Conceptos de gasto separados, independientes del 2% (totGastos1).
   // Las que paga el operador quedan autorizado:false hasta que un supervisor las
@@ -4071,7 +4131,7 @@ function generarReporte(){
   const utilidad=totIngSubtotal-totGastosEmpTotal;
 
   // Cuenta operador
-  const totalCargos=totAnts+dieselNoComprobado;
+  const totalCargos=totAnts+dieselNoComprobado+totCargosFlota;
   const totalAbonos=totComision+totGastos1+dieselComprobado+totAutOp+totGastosOp+totIncidentes+totCasetasNFOp;
   const saldo=totalAbonos-totalCargos;
 
@@ -4177,7 +4237,7 @@ function generarReporte(){
   const ltsNoCombprobados=Math.max(0,totalDieselLts-ltsECMRep);
   const importeNoComprobadoTot=ltsNoCombprobados*(d.pp||0);
 
-  const totalCargosReal=totAnts+totalDieselImporte+totNomina;
+  const totalCargosReal=totAnts+totalDieselImporte+totNomina+totCargosFlota;
   const totalAbonosReal=totComision+totGastos1+importeComprobadoTot+totAutOp+totGastosOp+totIncidentes+totCasetasNFOp;
   const saldoReal=totalAbonosReal-totalCargosReal;
 
@@ -4192,6 +4252,7 @@ function generarReporte(){
     +(ltsXmlTodos>0?rrDetail('  Edenred: '+fmtN(Math.max(0,(d.ltsIni||0)+(d.totLtsCarg||0)-(d.ltsFinal||0)))+' lts',0):'')
     +detalleXml
     +(totNomina?rr('Deducciones de nómina (IMSS, ISR, etc.)',totNomina,'cargo'):'')
+    +(totCargosFlota?rr('Cargos de mantenimiento/flota',totCargosFlota,'cargo'):'')
     +'<div class="rep-row subtotal cargo"><span>TOTAL CARGOS</span><span class="num">'+fmt(totalCargosReal)+'</span></div>';
 
   $('repAbonos').innerHTML=
@@ -4376,6 +4437,8 @@ function generarReporte(){
     autopistasList:(liq.autopistas||[]).filter(function(a){return!a.satCancelado;}).map(function(a){return{fecha:a.fecha||'',caseta:a.caseta||'',rfc:a.rfc||'',concepto:a.concepto||'',uuid:a.uuid||'',subtotal:a.subtotal||0,iva:a.iva||0,importe:a.importe||0,pagaOp:!!a.pagaOp};}),
     totIncidentes:totIncidentes, totCasetasNF:totCasetasNF,
     incidentesList:incidentesAplicar.map(function(a){return{id:a.id,fechaEvento:a.fechaEvento,causa:a.causa,montoReportado:a.montoReportado,montoReconocido:a.montoReconocido,fueraDeTiempo:!!a.fueraDeTiempo};}),
+    totCargosFlota:totCargosFlota,
+    cargosFlotaList:cargosFlotaPendientesLiq().map(function(a){return{id:a.id,fecha:a.fecha,concepto:a.concepto,importe:a.importe};}),
     casetasNFList:casetasNFAplicar.map(function(a){return{id:a.id,fecha:a.fecha,caseta:a.caseta,monto:a.monto,motivo:a.motivo,evidenciaURL:a.evidenciaURL||null,sinFoto:!!a.sinFoto};}),
     advertenciasFecha:(liq.advertenciasFecha||[]).slice()
   };
@@ -4634,6 +4697,22 @@ async function cerrarLiquidacion(){
       });
     }
   });
+  // Marcar como "aplicado" exactamente los cargos de flota que ya se contaron
+  // en el reporte (sin tope, así que son todos los "pendiente" del operador).
+  var _idsCFAplicar={};
+  cargosFlotaPendientesLiq().forEach(function(a){_idsCFAplicar[a.id]=true;});
+  var nCFMarcados=0;
+  Object.keys(cargosFlotaDB).forEach(function(key){
+    if(parseInt(key)===_opIdNum){
+      (cargosFlotaDB[key]||[]).forEach(function(a){
+        if(a.estado==='pendiente'&&_idsCFAplicar[a.id]){
+          a.estado='aplicado';
+          a.liqNum=liqCopia.num;
+          nCFMarcados++;
+        }
+      });
+    }
+  });
   // Marcar recibos de nómina: idem, exactamente los ids ya contados en el reporte
   var idsNominaCerrar=window._idsNominaReporte||[];
   var nNMarcados=0;
@@ -4718,6 +4797,7 @@ async function cerrarLiquidacion(){
     window.FB.set('estado','anticiposDB',{data: JSON.stringify(anticiposDB)});
     window.FB.set('estado','ingresosDB',{data: JSON.stringify(ingresosDB)});
     window.FB.set('estado','incidentesDB',{data: JSON.stringify(incidentesDB)});
+    window.FB.set('estado','cargosFlotaDB',{data: JSON.stringify(cargosFlotaDB)});
     window.FB.set('estado','nominaDB',{data: JSON.stringify(nominaDB)});
     window.FB.del('liqActivas',String(_opIdNum)); // eliminar ANTES del alert para que persista
   }
@@ -4743,12 +4823,13 @@ async function cerrarLiquidacion(){
     });
   }
 
-  alert('✅ Liquidación #'+liqCopia.num+' cerrada.\n'+nAMarcados+' anticipos, '+nVMarcados+' viajes'+(nNMarcados?', '+nNMarcados+' recibo(s) de nómina':'')+(nIMarcados?', '+nIMarcados+' incidente(s) de vialidad':'')+(nCMarcados?' y '+nCMarcados+' caseta(s) sin comprobante':'')+' incluidos.'+(nIDescartados?'\n⚠️ '+nIDescartados+' incidente(s) excedieron el tope de $1,500 de esta liquidación y se descartaron (no se pagan).':''));
+  alert('✅ Liquidación #'+liqCopia.num+' cerrada.\n'+nAMarcados+' anticipos, '+nVMarcados+' viajes'+(nNMarcados?', '+nNMarcados+' recibo(s) de nómina':'')+(nIMarcados?', '+nIMarcados+' incidente(s) de vialidad':'')+(nCFMarcados?', '+nCFMarcados+' cargo(s) de mantenimiento/flota':'')+(nCMarcados?' y '+nCMarcados+' caseta(s) sin comprobante':'')+' incluidos.'+(nIDescartados?'\n⚠️ '+nIDescartados+' incidente(s) excedieron el tope de $1,500 de esta liquidación y se descartaron (no se pagan).':''));
 
   suscribirLiqActiva(null);
   liq=null;
   cargasOp=[];
   renderIncidentesLiq();
+  renderCargosFlotaLiq();
   if($('btnRevalidarSATWrap'))$('btnRevalidarSATWrap').style.display='none';
   if($('btnEliminarLiqWrap'))$('btnEliminarLiqWrap').style.display='none';
   if($('satValidandoInfo'))$('satValidandoInfo').style.display='none';

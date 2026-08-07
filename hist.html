@@ -901,6 +901,7 @@ function verDetalle(id){
     dr('Anticipos recibidos',snap.totAnts||0,'cargo')
     +dr('Diesel total adelantado ('+fmtN(totalDieselLtsH)+' lts × '+fmt(d.pp||0)+')',totalDieselImporteH,'cargo')
     +(snap.totNomina?dr('Deducciones de nómina (IMSS, ISR, etc.)',snap.totNomina,'cargo'):'')
+    +(snap.totCargosFlota?dr('Cargos de mantenimiento/flota',snap.totCargosFlota,'cargo'):'')
     +`<div class="det-row subtotal cargo"><span>TOTAL CARGOS</span><span class="num">${fmt(snap.totalCargosReal||0)}</span></div>`;
 
   // Desglose de "Gastos del operador" por concepto (viáticos, refacciones,
