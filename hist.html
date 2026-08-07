@@ -73,6 +73,11 @@ tr:hover td{background:#fafafa}
 .recibo-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px 18px;font-size:12px;margin-bottom:10px}
 .recibo-grid div span{color:#888}
 .recibo-uuid{font-size:10px;color:#666;word-break:break-all;background:#f7f7f9;border-radius:4px;padding:6px 8px;margin-top:4px}
+.recibo-cadena{font-size:9px;color:#666;word-break:break-all;font-family:monospace;background:#f7f7f9;border-radius:4px;padding:6px 8px;margin-top:6px}
+.recibo-top{display:flex;gap:14px;align-items:flex-start;justify-content:space-between}
+.recibo-datos{flex:1;min-width:0}
+.recibo-qr{flex-shrink:0;text-align:center}
+.recibo-qr img{border:1px solid #eee;border-radius:4px}
 .recibo-corte{border-top:1px dashed #999;text-align:center;font-size:10px;color:#999;margin:16px 0;padding-top:4px}
 @media(max-width:600px){.grid2{grid-template-columns:1fr}}
 @media print{
@@ -342,6 +347,7 @@ tr:hover td{background:#fafafa}
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
 <script src="shared/sesion.js"></script>
 <script src="shared/operadores.js"></script>
+<script src="shared/reciboNomina.js"></script>
 <script src="shared/autoActualizar.js"></script>
 <script>
 window._fbInit=false;
@@ -388,51 +394,22 @@ function textoFirmaConformidad(saldoVal){
 const fmtN=(n,d=2)=>parseFloat(n||0).toLocaleString('es-MX',{minimumFractionDigits:d,maximumFractionDigits:d});
 
 // Recibo de nómina imprimible — dos tantos por cada recibo de la
-// liquidación, con espacio para firma y fecha. Usa los datos del timbre SAT
-// guardados al momento de subir el XML en Nómina (ver parseNominaXML en
-// nomina.html); si un recibo se registró antes de eso, se muestra igual
-// pero sin el bloque de folio fiscal/timbre.
-function reciboNominaBox(n,opNombre){
-  var neto=(n.totalPercepciones||0)-(n.totalDeducciones||0);
-  var uuidHTML=n.uuid
-    ?'<div class="recibo-uuid">Folio fiscal (UUID): '+n.uuid
-      +(n.fechaTimbrado?'<br>Fecha de timbrado: '+n.fechaTimbrado.replace('T',' '):'')
-      +(n.noCertificadoSAT?'<br>No. Certificado SAT: '+n.noCertificadoSAT:'')
-      +(n.selloSAT?'<br>Sello SAT: '+n.selloSAT.slice(0,20)+'...'+n.selloSAT.slice(-20):'')
-      +'</div>'
-    :'<div style="font-size:11px;color:#aaa;margin-top:6px">⚠️ XML no disponible — este recibo se registró antes de guardar el XML original.</div>';
-  return '<div class="recibo-box">'
-    +'<h4>RECIBO DE NÓMINA — '+(n.emisorNombre||'MUDANZAS TML, S.A. DE C.V.')+'</h4>'
-    +'<div class="recibo-grid">'
-    +'<div><span>Operador:</span> <strong>'+opNombre+'</strong></div>'
-    +'<div><span>RFC operador:</span> <strong>'+(n.receptorRfc||'—')+'</strong></div>'
-    +'<div><span>Periodo:</span> <strong>'+(n.periodoIni||'?')+' al '+(n.periodoFin||'?')+'</strong></div>'
-    +'<div><span>Fecha de pago:</span> <strong>'+(n.fecha||'—')+'</strong></div>'
-    +'<div><span>Folio:</span> <strong>'+(n.folio||'—')+'</strong></div>'
-    +'<div><span>Neto pagado:</span> <strong>'+fmt(neto)+'</strong></div>'
-    +'<div><span>Percepciones:</span> <strong>'+fmt(n.totalPercepciones||0)+'</strong></div>'
-    +'<div><span>Deducciones:</span> <strong>'+fmt(n.totalDeducciones||0)+'</strong></div>'
-    +'</div>'
-    +uuidHTML
-    +'<div class="firma-campos">'
-    +'<div><div class="firma-linea"></div><div class="firma-label">Firma del operador — '+opNombre+'</div></div>'
-    +'<div><div class="firma-linea"></div><div class="firma-label">Fecha</div></div>'
-    +'</div>'
-    +'</div>';
-}
-function renderRecibosNomina(l,snap,op){
+// liquidación, con espacio para firma y fecha, más QR de verificación del
+// SAT y la cadena original del complemento de certificación (ver
+// shared/reciboNomina.js). Los datos vienen del timbre SAT guardados al
+// momento de subir el XML en Nómina (ver parseNominaXML en nomina.html); si
+// un recibo se registró antes de eso, se muestra igual pero sin QR/cadena.
+async function renderRecibosNomina(l,snap,op){
   var lista=snap.nominaList||[];
   if(!lista.length){if($('secRecibosNomina'))$('secRecibosNomina').style.display='none';return;}
   if($('secRecibosNomina'))$('secRecibosNomina').style.display='block';
   var opNombre=op?op.nombre:'';
-  var html='';
-  lista.forEach(function(n,i){
-    html+='<div style="margin-bottom:'+(i<lista.length-1?'24px':'0')+'">'
-      +reciboNominaBox(n,opNombre)
-      +'<div class="recibo-corte">✂ — — — — — recorte aquí · segundo tanto — — — — — ✂</div>'
-      +reciboNominaBox(n,opNombre)
-      +'</div>';
-  });
+  if($('detRecibosNomina'))$('detRecibosNomina').innerHTML='<p style="font-size:12px;color:#aaa">Generando recibo(s)...</p>';
+  var bloques=await Promise.all(lista.map(async function(n){
+    var box=await window.TMLReciboNomina.construirHTML(n,opNombre);
+    return box+'<div class="recibo-corte">✂ — — — — — recorte aquí · segundo tanto — — — — — ✂</div>'+box;
+  }));
+  var html=bloques.map(function(b,i){return '<div style="margin-bottom:'+(i<bloques.length-1?'24px':'0')+'">'+b+'</div>';}).join('');
   if($('detRecibosNomina'))$('detRecibosNomina').innerHTML=html;
 }
 
