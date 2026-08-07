@@ -207,10 +207,28 @@ tr:hover td{background:#fafafa}
         <div class="field"><label>Fecha</label><input type="date" id="ingFecha"></div>
         <div class="field"><label>Cliente</label><input type="text" id="ingCliente" placeholder="Nombre del cliente"></div>
       </div>
+      <label style="display:flex;align-items:center;gap:8px;font-size:12px;font-weight:700;color:#5b21b6;cursor:pointer;margin-bottom:10px">
+        <input type="checkbox" id="chkMultiOpManual" onchange="toggleMultiOpManual()" style="width:auto">
+        🧩 Repartir esta captura entre varios operadores (mismo folio/cliente, un renglón de Flete/Maniobras/Otros por operador)
+      </label>
+      <div id="mcUnOperador">
+        <div class="grid4" style="margin-bottom:6px">
+          <div class="field"><label>Flete</label><input type="number" id="ingFlete" placeholder="0.00" step="0.01" oninput="calcSubtotalManual()"></div>
+          <div class="field"><label>Maniobras</label><input type="number" id="ingManiobras" placeholder="0.00" step="0.01" oninput="calcSubtotalManual()"></div>
+          <div class="field"><label>Otros</label><input type="number" id="ingOtros" placeholder="0.00" step="0.01" oninput="calcSubtotalManual()"></div>
+        </div>
+      </div>
+      <div id="mcMultiWrap" style="display:none;background:#fff;border:1.5px solid #c4b5fd;border-radius:8px;padding:12px;margin-bottom:10px">
+        <div style="font-size:11px;font-weight:700;text-transform:uppercase;color:#5b21b6;margin-bottom:8px">Reparto por operador</div>
+        <div class="tbl-wrap"><table style="min-width:520px">
+          <thead><tr><th>Operador</th><th class="r">Flete</th><th class="r">Maniobras</th><th class="r">Otros</th><th></th></tr></thead>
+          <tbody id="tbMcRows"></tbody>
+          <tfoot id="tfMcRows"></tfoot>
+        </table></div>
+        <button class="btn btn-out btn-sm" style="margin-top:8px" onclick="mcAgregarRenglon()">+ Agregar operador</button>
+        <p style="font-size:11px;color:#888;margin-top:8px">El IVA/Retención de abajo se prorratea entre los operadores según lo que le toca a cada quien.</p>
+      </div>
       <div class="grid4" style="margin-bottom:6px">
-        <div class="field"><label>Flete</label><input type="number" id="ingFlete" placeholder="0.00" step="0.01" oninput="calcSubtotalManual()"></div>
-        <div class="field"><label>Maniobras</label><input type="number" id="ingManiobras" placeholder="0.00" step="0.01" oninput="calcSubtotalManual()"></div>
-        <div class="field"><label>Otros</label><input type="number" id="ingOtros" placeholder="0.00" step="0.01" oninput="calcSubtotalManual()"></div>
         <div class="field"><label>Subtotal</label><input type="number" id="ingSubtotal" placeholder="0.00" step="0.01" readonly style="background:#f5f5f8"></div>
       </div>
       <div class="grid4">
@@ -881,6 +899,12 @@ function calcTotales(){
 function limpiarForm(){
   ['ingFolio','ingFecha','ingCliente','ingFlete','ingManiobras','ingOtros','ingSubtotal','ingIva','ingRet','ingTotal','ingOrigen','ingDestino','ingDistKms','ingObs'].forEach(id=>{if($(id))$(id).value='';});
   $('ingInfo').style.display='none';
+  mcRows=[];
+  if($('chkMultiOpManual'))$('chkMultiOpManual').checked=false;
+  mcMultiOp=false;
+  if($('mcUnOperador'))$('mcUnOperador').style.display='';
+  if($('mcMultiWrap'))$('mcMultiWrap').style.display='none';
+  if($('ingOp'))$('ingOp').disabled=false;
 }
 
 // XML
@@ -1476,8 +1500,149 @@ function calcSubtotalManual(){
   calcTotales();
 }
 
+// ══════════════════════════════════════════════
+// CAPTURA MANUAL MULTI-OPERADOR (varios operadores, cada uno con su propio
+// Flete/Maniobras/Otros, bajo el mismo folio/cliente/fecha) — mismo
+// principio que el desglose de XML consolidado, pero sin XML: aquí los
+// montos por operador SON la fuente, no hay nada externo contra qué cuadrar.
+// El IVA/Retención capturado una sola vez arriba se prorratea entre los
+// operadores según su parte del subtotal, con el mismo ajuste de redondeo
+// en centavos que usa calcularProrrateo() para el desglose de XML.
+// ══════════════════════════════════════════════
+let mcMultiOp=false;
+let mcRows=[];
+function toggleMultiOpManual(){
+  const chk=$('chkMultiOpManual');if(!chk)return;
+  mcMultiOp=chk.checked;
+  if($('mcUnOperador'))$('mcUnOperador').style.display=mcMultiOp?'none':'';
+  if($('mcMultiWrap'))$('mcMultiWrap').style.display=mcMultiOp?'block':'none';
+  if($('ingOp'))$('ingOp').disabled=mcMultiOp;
+  if(mcMultiOp){
+    if(!mcRows.length)mcRows=[{unidad:0,flete:'',maniobras:'',otros:''}];
+    $('ingFlete').value='';$('ingManiobras').value='';$('ingOtros').value='';
+    renderMcRows();mcRecalc();
+  }else{
+    mcRows=[];
+    calcSubtotalManual();
+  }
+}
+function mcAgregarRenglon(){
+  mcRows.push({unidad:0,flete:'',maniobras:'',otros:''});
+  renderMcRows();mcRecalc();
+}
+function mcEliminarRenglon(i){
+  mcRows.splice(i,1);
+  if(!mcRows.length)mcRows.push({unidad:0,flete:'',maniobras:'',otros:''});
+  renderMcRows();mcRecalc();
+}
+function mcUpd(i,campo,valor){
+  if(!mcRows[i])return;
+  mcRows[i][campo]=campo==='unidad'?parseInt(valor||0):valor;
+  mcRecalc();
+}
+// No se vuelve a dibujar la tabla al teclear (solo al agregar/quitar
+// renglón) para no perder el foco — igual que renderDgRows().
+function renderMcRows(){
+  const tb=$('tbMcRows');if(!tb)return;
+  const opts=u=>'<option value="">— Operador —</option>'+OPERADORES.map(o=>'<option value="'+o.unidad+'"'+(o.unidad===u?' selected':'')+'>'+o.unidad+' · '+o.nombre+'</option>').join('');
+  tb.innerHTML=mcRows.map((r,i)=>'<tr>'
+    +'<td><select onchange="mcUpd('+i+',\'unidad\',this.value)" style="border:1.5px solid #dde;border-radius:5px;padding:6px;font-size:12px;background:#fafafa;min-width:190px">'+opts(r.unidad)+'</select></td>'
+    +'<td class="r"><input type="number" step="0.01" min="0" value="'+(r.flete||'')+'" placeholder="0.00" oninput="mcUpd('+i+',\'flete\',this.value)" style="border:1.5px solid #dde;border-radius:5px;padding:6px;font-size:12px;background:#fafafa;width:100px;text-align:right"></td>'
+    +'<td class="r"><input type="number" step="0.01" min="0" value="'+(r.maniobras||'')+'" placeholder="0.00" oninput="mcUpd('+i+',\'maniobras\',this.value)" style="border:1.5px solid #dde;border-radius:5px;padding:6px;font-size:12px;background:#fafafa;width:100px;text-align:right"></td>'
+    +'<td class="r"><input type="number" step="0.01" min="0" value="'+(r.otros||'')+'" placeholder="0.00" oninput="mcUpd('+i+',\'otros\',this.value)" style="border:1.5px solid #dde;border-radius:5px;padding:6px;font-size:12px;background:#fafafa;width:100px;text-align:right"></td>'
+    +'<td><button style="background:#fde8e8;color:#9b1c1c;border:none;cursor:pointer;border-radius:4px;padding:4px 9px" onclick="mcEliminarRenglon('+i+')">✕</button></td>'
+    +'</tr>').join('');
+}
+function mcRecalc(){
+  let sf=0,sm=0,so=0;
+  mcRows.forEach(r=>{sf+=parseFloat(r.flete)||0;sm+=parseFloat(r.maniobras)||0;so+=parseFloat(r.otros)||0;});
+  const sub=sf+sm+so;
+  if($('tfMcRows'))$('tfMcRows').innerHTML='<tr style="font-weight:700;background:#f5f5f8"><td>TOTAL</td><td class="num r">'+fmt(sf)+'</td><td class="num r">'+fmt(sm)+'</td><td class="num r">'+fmt(so)+'</td><td></td></tr>';
+  if($('ingSubtotal'))$('ingSubtotal').value=sub.toFixed(2);
+  calcTotales();
+}
+// Arma un grupo por renglón válido (con operador y algún monto) y prorratea
+// IVA/Retención en centavos, ajustando el redondeo en el ÚLTIMO renglón
+// para que la suma cuadre exacto contra lo capturado arriba.
+function mcCalcularGrupos(){
+  const ivaC=toCents(parseFloat($('ingIva').value||0));
+  const retC=toCents(parseFloat($('ingRet').value||0));
+  const grupos=[];
+  let subtotalTotalC=0;
+  mcRows.forEach(r=>{
+    const sfC=toCents(r.flete),smC=toCents(r.maniobras),soC=toCents(r.otros);
+    const montoC=sfC+smC+soC;
+    if(!r.unidad||montoC<=0)return;
+    grupos.push({unidad:r.unidad,sfC:sfC,smC:smC,soC:soC,montoC:montoC});
+    subtotalTotalC+=montoC;
+  });
+  let sIva=0,sRet=0;
+  grupos.forEach((g,idx)=>{
+    const ultimo=idx===grupos.length-1;
+    if(ultimo){
+      g.ivaC=ivaC-sIva;g.retC=retC-sRet;
+    }else{
+      g.ivaC=subtotalTotalC>0?Math.round(g.montoC*ivaC/subtotalTotalC):0;
+      g.retC=subtotalTotalC>0?Math.round(g.montoC*retC/subtotalTotalC):0;
+    }
+    g.totC=g.montoC+g.ivaC-g.retC;
+    sIva+=g.ivaC;sRet+=g.retC;
+  });
+  return{grupos:grupos,subtotalTotalC:subtotalTotalC};
+}
+function agregarIngresoManualMultiOp(){
+  const {grupos}=mcCalcularGrupos();
+  if(!grupos.length){alert('Agrega al menos un renglón con operador y algún monto (Flete, Maniobras u Otros).');return;}
+  const folioBase=$('ingFolio').value||('MAN-'+uid().slice(0,6).toUpperCase());
+  const _origen=($('ingOrigen').value||'').trim();
+  const _destino=($('ingDestino').value||'').trim();
+  const _kms=($('ingDistKms').value||'').trim();
+  const _ruta=(_origen&&_destino)?[{origen:_origen,destino:_destino,kms:_kms}]:[];
+  const _obs=($('ingObs').value||'').trim();
+  const _fecha=$('ingFecha').value||hoy();
+  const _u=usuarioSesion();
+  const _esAdmin=!!(_u&&_u.esAdmin);
+
+  if(!_esAdmin&&!_obs){
+    alert('Escribe el número de pedido/orden de compra para este ingreso sin factura — lo vas a necesitar para que facturación lo sustituya con el XML real.');
+    return;
+  }
+  const yaFolio=grupos.filter(g=>ingresosDB.some(v=>v.folio===folioBase&&v.unidad===g.unidad));
+  if(yaFolio.length&&!confirm('⚠️ El folio '+folioBase+' ya tiene registro para '+yaFolio.length+' de estos operadores. ¿Continuar de todas formas?'))return;
+
+  if(!_esAdmin&&_obs){
+    const _obsNorm=_obs.toUpperCase();
+    if(ingresosDB.some(function(v){return v.sinFacturaJustificar&&!v.sustituidoPorXML&&(v.observaciones||'').trim().toUpperCase()===_obsNorm;})){
+      alert('Ese ID/número de pedido ya está en uso por otro ingreso sin factura pendiente de justificar. Usa uno distinto.');
+      return;
+    }
+  }
+
+  let nCreados=0;
+  grupos.forEach(function(g){
+    const tipoDerivado=g.smC>0&&!g.sfC?'maniobra':g.soC>0&&!g.sfC&&!g.smC?'otro':'flete_for';
+    let _sinFacturaJustificar=false,_fechaLimite=null,_capturadoPor=null;
+    if(!_esAdmin){
+      _sinFacturaJustificar=true;
+      _fechaLimite=calcularFechaLimiteJustificacion(_fecha);
+      _capturadoPor={usuario:_u.usuario,nombre:_u.nombre};
+    }
+    ingresosDB.push({id:uid(),unidad:g.unidad,folio:folioBase,fecha:_fecha,
+      cliente:$('ingCliente').value||'Sin cliente',tipo:tipoDerivado,
+      subtotal:fromCents(g.montoC),subtFlete:fromCents(g.sfC),subtManiobras:fromCents(g.smC),subtOtros:fromCents(g.soC),
+      iva:fromCents(g.ivaC),ret:fromCents(g.retC),total:fromCents(g.totC),
+      estado:'sin_liquidar',liqNum:null,origen:'manual',ruta:_ruta,observaciones:_obs,
+      sinFacturaJustificar:_sinFacturaJustificar,fechaLimiteJustificacion:_fechaLimite,capturadoPor:_capturadoPor,sustituidoPorXML:false,
+      pdfURL:null});
+    nCreados++;
+  });
+  limpiarForm();guardar();renderIngresos();
+  alert('✅ Se registraron '+nCreados+' ingreso(s), uno por operador.'+(!_esAdmin?(' Tienes hasta '+calcularFechaLimiteJustificacion(_fecha)+(PRUEBA_MINUTOS_JUSTIFICAR?' (MODO PRUEBA: '+PRUEBA_MINUTOS_JUSTIFICAR+' min)':' ('+DIAS_HABILES_JUSTIFICAR+' días hábiles)')+' para que facturación los sustituya con el XML real usando el ID "'+_obs+'".'):''));
+}
+
 function agregarIngresoReal(){
   if(usuarioBloqueadoIngresos())return;
+  if(mcMultiOp){agregarIngresoManualMultiOp();return;}
   const unidad=parseInt($('ingOp').value||0);
   if(!unidad){alert('Selecciona operador.');return;}
   const subtFlete=parseFloat($('ingFlete').value||0);
