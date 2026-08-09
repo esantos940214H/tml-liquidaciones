@@ -79,11 +79,47 @@
     return '$' + Number(v || 0).toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   }
 
+  // CSS del desglose de percepciones/deducciones — se inyecta una sola vez,
+  // aquí mismo, para no tener que duplicar estas reglas en el <style> de
+  // cada módulo que use este archivo (liq.html, hist.html).
+  var _cssListo = false;
+  function asegurarCSS() {
+    if (_cssListo) return;
+    _cssListo = true;
+    var css = document.createElement('style');
+    css.textContent =
+      '.recibo-desglose{display:flex;gap:14px;margin-top:8px}' +
+      '.recibo-desglose-col{flex:1;min-width:0}' +
+      '.recibo-desglose-title{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#666;margin-bottom:3px;border-bottom:1px solid #ddd;padding-bottom:2px}' +
+      '.recibo-desglose-table{width:100%;border-collapse:collapse;font-size:10px}' +
+      '.recibo-desglose-table td{padding:2px 0}' +
+      '.recibo-desglose-table td.imp{text-align:right;font-family:monospace;white-space:nowrap}' +
+      '.recibo-desglose-table tr.tot td{border-top:1px solid #ccc;font-weight:700;padding-top:3px}';
+    document.head.appendChild(css);
+  }
+
+  // tablaDesglose(titulo, renglones, total): arma la columna de Percepciones
+  // o Deducciones. Si el XML no traía el desglose por renglón (recibos
+  // capturados antes de que se guardara, o CFDIs que no lo incluyen), cae de
+  // respaldo a un solo renglón "Total" con el monto guardado, para no dejar
+  // la columna vacía.
+  function tablaDesglose(titulo, renglones, total) {
+    var filas = (renglones && renglones.length)
+      ? renglones.map(function (r) { return '<tr><td>' + (r.concepto || r.clave || '—') + '</td><td class="imp">' + fmtMoneda(r.importe) + '</td></tr>'; }).join('')
+      : '<tr><td>Total</td><td class="imp">' + fmtMoneda(total) + '</td></tr>';
+    return '<div class="recibo-desglose-col">'
+      + '<div class="recibo-desglose-title">' + titulo + '</div>'
+      + '<table class="recibo-desglose-table">' + filas
+      + '<tr class="tot"><td>Total</td><td class="imp">' + fmtMoneda(total) + '</td></tr>'
+      + '</table></div>';
+  }
+
   // construirHTML(n, opNombre): arma el bloque imprimible de UN recibo (un
   // tanto). Quien lo llame decide si lo repite dos veces para los dos
   // tantos (operador + liquidación) — así el QR solo se genera una vez y se
   // reutiliza en ambas copias, en vez de pedirlo dos veces al CDN.
   async function construirHTML(n, opNombre) {
+    asegurarCSS();
     var neto = (n.totalPercepciones || 0) - (n.totalDeducciones || 0);
     var cadena = cadenaOriginal(n);
     var urlVerif = urlVerificacion(n);
@@ -98,7 +134,7 @@
         + (n.rfcProvCertif ? '<br>RFC Prov. Certif.: ' + n.rfcProvCertif : '')
         + '</div>'
         + (cadena ? '<div class="recibo-cadena"><strong>Cadena original del complemento de certificación digital del SAT:</strong><br>' + cadena + '</div>' : '')
-      : '<div style="font-size:11px;color:#aaa;margin-top:6px">⚠️ XML no disponible — este recibo se registró antes de guardar los datos completos del timbre.</div>';
+      : '<div style="font-size:11px;color:#aaa;margin-top:6px">⚠️ Este recibo se registró antes de guardar los datos completos del timbre — vuelve a subir el mismo XML en Nómina para completarlo (QR/cadena/desglose).</div>';
     var qrHTML = qrImg ? '<div class="recibo-qr"><img src="' + qrImg + '" width="110" height="110" alt="QR de verificación SAT"><div style="font-size:8px;color:#999;margin-top:3px;max-width:110px">Verificar en el SAT</div></div>' : '';
     return '<div class="recibo-box">'
       + '<div class="recibo-top">'
@@ -111,11 +147,13 @@
       + '<div><span>Fecha de pago:</span> <strong>' + (n.fecha || '—') + '</strong></div>'
       + '<div><span>Folio:</span> <strong>' + (n.folio || '—') + '</strong></div>'
       + '<div><span>Neto pagado:</span> <strong>' + fmtMoneda(neto) + '</strong></div>'
-      + '<div><span>Percepciones:</span> <strong>' + fmtMoneda(n.totalPercepciones || 0) + '</strong></div>'
-      + '<div><span>Deducciones:</span> <strong>' + fmtMoneda(n.totalDeducciones || 0) + '</strong></div>'
       + '</div>'
       + '</div>'
       + qrHTML
+      + '</div>'
+      + '<div class="recibo-desglose">'
+      + tablaDesglose('Percepciones', n.percepciones, n.totalPercepciones || 0)
+      + tablaDesglose('Deducciones', n.deducciones, n.totalDeducciones || 0)
       + '</div>'
       + uuidHTML
       + '<div class="firma-campos">'
