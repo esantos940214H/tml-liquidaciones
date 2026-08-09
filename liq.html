@@ -130,6 +130,21 @@ tr:hover td{background:#fafafa}
 .firma-linea{border-top:1.5px solid #1a1a2e;margin-bottom:6px;margin-top:40px}
 .firma-label{font-size:10px;color:#666;text-transform:uppercase;letter-spacing:.7px;text-align:center}
 .firma-opnombre{font-size:12px;color:#555;margin-top:4px;text-align:center;font-weight:700}
+/* ── RECIBO DE NÓMINA IMPRIMIBLE (original+copia en media carta) ── */
+.recibo-nomina-hoja{page-break-before:always}
+.recibo-nomina-par{display:flex;flex-direction:column;height:11in;box-sizing:border-box;page-break-inside:avoid}
+.recibo-nomina-par:not(:first-child){page-break-before:always}
+.recibo-box{border:1px solid #ccc;border-radius:8px;padding:14px;flex:1 1 0;box-sizing:border-box;overflow:hidden;font-size:11px}
+.recibo-box h4{font-size:12px;margin-bottom:8px;color:#1a1a2e}
+.recibo-grid{display:grid;grid-template-columns:1fr 1fr;gap:5px 18px;font-size:11px;margin-bottom:8px}
+.recibo-grid div span{color:#888}
+.recibo-uuid{font-size:9px;color:#666;word-break:break-all;background:#f7f7f9;border-radius:4px;padding:5px 7px;margin-top:4px}
+.recibo-cadena{font-size:8px;color:#666;word-break:break-all;font-family:monospace;background:#f7f7f9;border-radius:4px;padding:5px 7px;margin-top:5px}
+.recibo-top{display:flex;gap:12px;align-items:flex-start;justify-content:space-between}
+.recibo-datos{flex:1;min-width:0}
+.recibo-qr{flex-shrink:0;text-align:center}
+.recibo-qr img{border:1px solid #eee;border-radius:4px;width:85px;height:85px}
+.recibo-corte{flex:0 0 auto;border-top:1px dashed #999;text-align:center;font-size:9px;color:#999;margin:0;padding:3px 0}
 @media print{
   header,.tabs,.no-print,#liqReqMsg4{display:none!important}
   .card{box-shadow:none!important;border:1px solid #ccc;margin-bottom:10px!important}
@@ -620,6 +635,11 @@ tr:hover td{background:#fafafa}
           <div class="firma-opnombre" id="repFirmaOpNombre"></div>
         </div>
       </div>
+
+      <!-- RECIBO(S) DE NÓMINA — para firmar antes de cerrar la liquidación -->
+      <div id="secRecibosNominaLiq" class="recibo-nomina-hoja" style="display:none">
+        <div id="detRecibosNominaLiq"></div>
+      </div>
     </div>
 
   </div>
@@ -678,6 +698,7 @@ tr:hover td{background:#fafafa}
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
 <script src="shared/sesion.js"></script>
 <script src="shared/operadores.js"></script>
+<script src="shared/reciboNomina.js"></script>
 <script src="shared/autoActualizar.js"></script>
 <!-- Guardar XML de comprobantes (ver shared/comprobantes.js). jsPDF y
      Chart.js YA NO se cargan aquí de entrada — bloqueaban el arranque de
@@ -3967,6 +3988,27 @@ function guardarNominaDB(){
   if(fbReady&&window.FB)window.FB.set('estado','nominaDB',{data:JSON.stringify(nominaDB)});
 }
 
+// Recibo(s) de nómina imprimibles dentro del Reporte, ANTES de cerrar la
+// liquidación — mismo QR de verificación SAT/cadena original/dos tantos en
+// media carta que ya se genera en Historial (ver shared/reciboNomina.js),
+// pero aquí a partir de los recibos de nómina PENDIENTES de esta liquidación
+// activa (nomPend), no de un snapshot ya cerrado — así el operador puede
+// firmarlos junto con el resto del reporte y la liquidación se cierra
+// después, ya con la firma en mano.
+async function renderRecibosNominaLiq(nomPend,opNombre){
+  var sec=$('secRecibosNominaLiq');
+  if(!sec)return;
+  if(!nomPend||!nomPend.length){sec.style.display='none';return;}
+  sec.style.display='block';
+  var wrap=$('detRecibosNominaLiq');
+  if(wrap)wrap.innerHTML='<p style="font-size:12px;color:#aaa">Generando recibo(s)...</p>';
+  var bloques=await Promise.all(nomPend.map(async function(n){
+    var box=await window.TMLReciboNomina.construirHTML(n,opNombre);
+    return '<div class="recibo-nomina-par">'+box+'<div class="recibo-corte">✂ — — — — — recorte aquí · original arriba (operador) · copia abajo (liquidación) — — — — — ✂</div>'+box+'</div>';
+  }));
+  if(wrap)wrap.innerHTML=bloques.join('');
+}
+
 // ══════════════════════════════════════════════
 // 6: REPORTE
 // ══════════════════════════════════════════════
@@ -4410,6 +4452,11 @@ function generarReporte(){
   if($('repFirmaTexto')) $('repFirmaTexto').textContent=textoFirmaConformidad(saldoReal);
   if($('repFirmaOpNombre')) $('repFirmaOpNombre').textContent=liq.op.nombre;
   if($('repFirmaFecha')) $('repFirmaFecha').textContent='Fecha: '+(liq.llegada||hoy());
+
+  // Recibo(s) de nómina imprimibles ANTES de cerrar — para poder firmarlos
+  // en el momento junto con el resto del reporte y cerrar la liquidación
+  // después, ya con la firma en mano (ver renderRecibosNominaLiq).
+  renderRecibosNominaLiq(nomPend,liq.op?liq.op.nombre:'');
 
   // ── SNAPSHOT para cerrar liquidación ──────────────
   _snap={
