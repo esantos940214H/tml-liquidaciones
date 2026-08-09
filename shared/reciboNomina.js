@@ -163,5 +163,71 @@
       + '</div>';
   }
 
-  window.TMLReciboNomina = { cadenaOriginal: cadenaOriginal, urlVerificacion: urlVerificacion, construirHTML: construirHTML };
+  // Hoja de estilos completa y AUTOCONTENIDA para el visor (abrirVisor) — a
+  // diferencia de asegurarCSS() (que solo cubre el desglose y se apoya en
+  // el <style> que ya trae cada módulo para .recibo-box/.firma-*/etc.),
+  // esta cubre TODO lo que usa construirHTML(), porque el visor abre un
+  // documento nuevo en blanco que no hereda ningún CSS de la página que lo
+  // llamó — necesaria, por ejemplo, para poder ver el recibo desde
+  // nomina.html, que no tiene ninguna de estas clases definidas.
+  var CSS_VISOR =
+    'body{font-family:Arial,sans-serif;background:#eee;color:#1a1a2e;margin:0;padding:24px 0}' +
+    '.recibo-nomina-par{max-width:800px;margin:0 auto 24px;background:#fff;display:flex;flex-direction:column;height:11in;box-sizing:border-box;box-shadow:0 2px 12px rgba(0,0,0,.15)}' +
+    '.recibo-box{border:1px solid #ccc;padding:16px;flex:1 1 0;box-sizing:border-box;overflow:hidden;font-size:12px}' +
+    '.recibo-box h4{font-size:13px;margin:0 0 8px;color:#1a1a2e}' +
+    '.recibo-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px 18px;font-size:12px;margin-bottom:8px}' +
+    '.recibo-grid div span{color:#888}' +
+    '.recibo-uuid{font-size:10px;color:#666;word-break:break-all;background:#f7f7f9;border-radius:4px;padding:6px 8px;margin-top:4px}' +
+    '.recibo-cadena{font-size:9px;color:#666;word-break:break-all;font-family:monospace;background:#f7f7f9;border-radius:4px;padding:6px 8px;margin-top:6px}' +
+    '.recibo-top{display:flex;gap:12px;align-items:flex-start;justify-content:space-between}' +
+    '.recibo-datos{flex:1;min-width:0}' +
+    '.recibo-qr{flex-shrink:0;text-align:center}' +
+    '.recibo-qr img{border:1px solid #eee;border-radius:4px;width:100px;height:100px}' +
+    '.recibo-corte{flex:0 0 auto;border-top:1px dashed #999;text-align:center;font-size:10px;color:#999;margin:0;padding:4px 0}' +
+    '.firma-campos{display:grid;grid-template-columns:2fr 1fr;gap:48px;margin-top:18px}' +
+    '.firma-linea{border-top:1.5px solid #1a1a2e;margin-bottom:6px;margin-top:30px}' +
+    '.firma-label{font-size:10px;color:#666;text-transform:uppercase;letter-spacing:.7px;text-align:center}' +
+    '.recibo-desglose{display:flex;gap:14px;margin-top:8px}' +
+    '.recibo-desglose-col{flex:1;min-width:0}' +
+    '.recibo-desglose-title{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#666;margin-bottom:3px;border-bottom:1px solid #ddd;padding-bottom:2px}' +
+    '.recibo-desglose-table{width:100%;border-collapse:collapse;font-size:10px}' +
+    '.recibo-desglose-table td{padding:2px 0}' +
+    '.recibo-desglose-table td.imp{text-align:right;font-family:monospace;white-space:nowrap}' +
+    '.recibo-desglose-table tr.tot td{border-top:1px solid #ccc;font-weight:700;padding-top:3px}' +
+    '@media print{body{background:#fff;padding:0}.recibo-nomina-par{box-shadow:none;margin:0 auto}.no-print{display:none!important}}';
+
+  // abrirVisor(n, opNombre): abre en una pestaña nueva una vista previa de
+  // cómo va a quedar el recibo impreso (original+copia en media carta,
+  // igual que en Historial/Liquidaciones) — para poder revisarlo justo
+  // después de subir el XML en Nómina, sin tener que esperar a la
+  // liquidación. Desde ahí, "Imprimir / Guardar como PDF" usa el diálogo de
+  // impresión del navegador (misma vía que ya se usa en todo el sistema
+  // para "descargar como PDF" — Guardar como PDF en ese diálogo).
+  async function abrirVisor(n, opNombre) {
+    // La pestaña se abre YA (en blanco) antes de esperar nada async — si se
+    // abriera después del await del QR, el navegador puede bloquearla por
+    // ya no considerarla "en respuesta directa" al clic del usuario.
+    var ventana = window.open('', '_blank');
+    if (ventana) ventana.document.write('<!doctype html><title>Generando recibo…</title><body style="font-family:Arial;padding:40px;text-align:center;color:#888">Generando vista previa del recibo…</body>');
+    var box = await construirHTML(n, opNombre);
+    var doc = '<!doctype html><html><head><meta charset="utf-8">'
+      + '<title>Recibo de nómina — ' + (opNombre || '') + '</title>'
+      + '<style>' + CSS_VISOR + '</style></head><body>'
+      + '<div class="recibo-nomina-par">' + box
+      + '<div class="recibo-corte">✂ — — — — — recorte aquí · original arriba (operador) · copia abajo (liquidación) — — — — — ✂</div>'
+      + box + '</div>'
+      + '<div class="no-print" style="max-width:800px;margin:0 auto 30px;text-align:center">'
+      + '<button onclick="window.print()" style="padding:10px 22px;font-size:14px;font-weight:700;background:#e63946;color:#fff;border:none;border-radius:6px;cursor:pointer">🖨️ Imprimir / Guardar como PDF</button>'
+      + '</div>'
+      + '</body></html>';
+    var blob = new Blob([doc], { type: 'text/html' });
+    var url = URL.createObjectURL(blob);
+    if (ventana && !ventana.closed) {
+      ventana.location.href = url;
+    } else {
+      window.open(url, '_blank');
+    }
+  }
+
+  window.TMLReciboNomina = { cadenaOriginal: cadenaOriginal, urlVerificacion: urlVerificacion, construirHTML: construirHTML, abrirVisor: abrirVisor };
 })();
