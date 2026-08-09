@@ -462,14 +462,20 @@ function getNominaComplemento(doc){
   els=doc.getElementsByTagName('nomina12:Nomina');
   return els.length?els[0]:null;
 }
-// Duplicado: se busca el mismo UUID ya registrado en nominaDB, sin importar
-// el operador (evita subir el mismo recibo dos veces por error).
-function buscarNominaDuplicada(uuid){
+// Busca el mismo UUID ya registrado en nominaDB, sin importar el operador
+// (evita subir el mismo recibo dos veces por error) — regresa el registro
+// completo (no solo unidad/liqNum) para poder, si sigue "pendiente" y le
+// faltan datos del timbre (QR/cadena/desglose porque se subió antes de que
+// el sistema los guardara), completarlo en el mismo lugar en vez de
+// bloquear el re-registro sin dar opción a corregirlo.
+function buscarNominaExistente(uuid){
   if(!uuid)return null;
   uuid=uuid.toUpperCase();
   for(var key in nominaDB){
-    var enc=(nominaDB[key]||[]).find(function(n){return(n.uuid||'').toUpperCase()===uuid;});
-    if(enc)return{unidad:key,liqNum:enc.liqNum};
+    var arr=nominaDB[key]||[];
+    for(var i=0;i<arr.length;i++){
+      if((arr[i].uuid||'').toUpperCase()===uuid)return{unidad:key,registro:arr[i]};
+    }
   }
   return null;
 }
@@ -482,6 +488,36 @@ $('fNomina').addEventListener('change',function(e){handleNominaXMLFiles(e.target
 
 function handleNominaXMLFiles(files){Array.from(files).forEach(function(f){const r=new FileReader();r.onload=function(e){parseNominaXML(e.target.result,f.name);};r.readAsText(f,'UTF-8');});}
 
+// Lee los renglones de Percepciones/Deducciones del complemento de nómina
+// buscando por namespace (no por el prefijo "nomina12:" literal, igual que
+// getNominaComplemento) — así el desglose se puede imprimir en el recibo
+// (Sueldo, y cada deducción: ISR, IMSS, RCV, Infonavit, etc., según traiga
+// el XML) en vez de solo mostrar los totales.
+function extraerRenglonesNomina(nomina){
+  var NS='http://www.sat.gob.mx/nomina12';
+  function hijos(tag){
+    var els=nomina.getElementsByTagNameNS(NS,tag);
+    if(!els.length)els=nomina.getElementsByTagName('nomina12:'+tag);
+    return els;
+  }
+  var percepciones=[];
+  Array.prototype.forEach.call(hijos('Percepcion'),function(p){
+    percepciones.push({
+      concepto:p.getAttribute('Concepto')||'',
+      clave:p.getAttribute('Clave')||'',
+      importe:(parseFloat(p.getAttribute('ImporteGravado')||0))+(parseFloat(p.getAttribute('ImporteExento')||0))
+    });
+  });
+  var deducciones=[];
+  Array.prototype.forEach.call(hijos('Deduccion'),function(d){
+    deducciones.push({
+      concepto:d.getAttribute('Concepto')||'',
+      clave:d.getAttribute('Clave')||'',
+      importe:parseFloat(d.getAttribute('Importe')||0)
+    });
+  });
+  return{percepciones:percepciones,deducciones:deducciones};
+}
 function parseNominaXML(text,fname){
   var doc=new DOMParser().parseFromString(text,'text/xml');
   var comp=doc.querySelector('Comprobante');
@@ -497,21 +533,25 @@ function parseNominaXML(text,fname){
   var unidad=opDetectado.unidad;
   var tfd=doc.querySelector('TimbreFiscalDigital');
   var uuid=tfd?tfd.getAttribute('UUID')||'':'';
-  if(uuid){
-    var dup=buscarNominaDuplicada(uuid);
-    if(dup){
-      alert('🚫 '+fname+': este recibo ya fue registrado (unidad '+dup.unidad+'). No se puede subir el mismo CFDI dos veces.');
-      $('nominaXMLInfo').style.display='block';
-      $('nominaXMLInfo').innerHTML='<div class="alert alert-warn">🚫 '+fname+' — CFDI duplicado. No se agregó.</div>';
-      return;
-    }
+  var existente=uuid?buscarNominaExistente(uuid):null;
+  if(existente&&existente.registro.estado!=='pendiente'){
+    alert('🚫 '+fname+': este recibo ya fue registrado y liquidado (unidad '+existente.unidad+', liquidación #'+existente.registro.liqNum+'). No se puede modificar.');
+    $('nominaXMLInfo').style.display='block';
+    $('nominaXMLInfo').innerHTML='<div class="alert alert-warn">🚫 '+fname+' — ya liquidado, no se modificó.</div>';
+    return;
+  }
+  if(existente){
+    var faltaCompletar=!existente.registro.rfcProvCertif||!existente.registro.selloCFD||!existente.registro.percepciones||!existente.registro.percepciones.length;
+    var msgConfirm=faltaCompletar
+      ?'ℹ️ '+fname+': este recibo ya estaba registrado (unidad '+existente.unidad+') pero le faltaban datos del timbre (QR/cadena/desglose) — parece haberse subido antes de que el sistema los guardara. ¿Completar sus datos ahora con este mismo XML?'
+      :'⚠️ '+fname+': este CFDI ya está registrado (unidad '+existente.unidad+') y ya tiene todos sus datos completos. ¿Volver a procesarlo de todas formas?';
+    if(!confirm(msgConfirm))return;
   }
   var totalDeducciones=parseFloat(nomina.getAttribute('TotalDeducciones')||0);
   var totalPercepciones=parseFloat(nomina.getAttribute('TotalPercepciones')||0);
   var emisor=doc.querySelector('Emisor');
-  if(!nominaDB[unidad])nominaDB[unidad]=[];
-  nominaDB[unidad].push({
-    id:'nom-'+Date.now()+'-'+Math.random().toString(36).slice(2),
+  var renglones=extraerRenglonesNomina(nomina);
+  var datos={
     uuid:uuid,
     folio:(comp.getAttribute('Serie')||'')+(comp.getAttribute('Folio')||''),
     fecha:(comp.getAttribute('Fecha')||'').slice(0,10),
@@ -521,6 +561,10 @@ function parseNominaXML(text,fname){
     totalDeducciones:totalDeducciones,
     receptorNombre:receptor?receptor.getAttribute('Nombre')||'':'',
     receptorRfc:receptor?receptor.getAttribute('Rfc')||'':'',
+    // Desglose de percepciones (Sueldo) y deducciones (ISR, IMSS, RCV,
+    // Infonavit, etc., según traiga el XML) — para imprimirlo en el recibo.
+    percepciones:renglones.percepciones,
+    deducciones:renglones.deducciones,
     // Datos del timbre SAT — guardados aquí, al momento del parseo, para
     // poder imprimir después una representación del recibo (con folio
     // fiscal y sello) sin tener que volver a descargar/leer el XML.
@@ -534,17 +578,28 @@ function parseNominaXML(text,fname){
     // el recibo — no se usaban antes porque no había representación impresa.
     rfcProvCertif:tfd?tfd.getAttribute('RfcProvCertif')||'':'',
     selloCFD:tfd?tfd.getAttribute('SelloCFD')||'':'',
-    total:parseFloat(comp.getAttribute('Total')||0),
-    estado:'pendiente',
-    liqNum:null,
-    xmlURL:null
-  });
+    total:parseFloat(comp.getAttribute('Total')||0)
+  };
+  if(existente){
+    // Completar/actualizar EN EL MISMO registro — conserva id/estado/liqNum
+    // tal cual, solo se rellenan los datos del CFDI (nunca se toca el
+    // estado de liquidación de un recibo ya en uso).
+    Object.assign(existente.registro,datos);
+  } else {
+    if(!nominaDB[unidad])nominaDB[unidad]=[];
+    nominaDB[unidad].push(Object.assign({
+      id:'nom-'+Date.now()+'-'+Math.random().toString(36).slice(2),
+      estado:'pendiente',
+      liqNum:null,
+      xmlURL:null
+    },datos));
+  }
   guardarNominaDB();
   renderNomina();
   subirXMLNominaEnSegundoPlano(uuid,fname,text);
   var opU=OPERADORES.find(function(o){return o.unidad===unidad;});
   $('nominaXMLInfo').style.display='block';
-  $('nominaXMLInfo').innerHTML='<div class="alert alert-ok">✅ '+fname+' — deducciones de '+fmt(totalDeducciones)+' registradas para '+(opU?opU.nombre:unidad)+' (detectado automáticamente del XML).</div>';
+  $('nominaXMLInfo').innerHTML='<div class="alert alert-ok">✅ '+fname+' — '+(existente?'datos completados/actualizados':'deducciones de '+fmt(totalDeducciones)+' registradas')+' para '+(opU?opU.nombre:unidad)+' (detectado automáticamente del XML).</div>';
 }
 
 function eliminarNomina(unidad,id){
