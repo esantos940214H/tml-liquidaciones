@@ -178,6 +178,8 @@ tr:hover td{background:#fafafa}
 <script src="shared/autoActualizar.js"></script>
 <!-- Guardar el XML original de cada recibo de nómina (ver shared/comprobantes.js) -->
 <script src="shared/comprobantes.js"></script>
+<!-- Vista previa de cómo queda el recibo impreso, con QR/cadena SAT (ver shared/reciboNomina.js) -->
+<script src="shared/reciboNomina.js"></script>
 <script>
 window._fbInit=false;
 window._fbCallbacks=[];
@@ -602,6 +604,18 @@ function parseNominaXML(text,fname){
   $('nominaXMLInfo').innerHTML='<div class="alert alert-ok">✅ '+fname+' — '+(existente?'datos completados/actualizados':'deducciones de '+fmt(totalDeducciones)+' registradas')+' para '+(opU?opU.nombre:unidad)+' (detectado automáticamente del XML).</div>';
 }
 
+// Vista previa de cómo va a quedar el recibo impreso (QR/cadena/desglose,
+// dos tantos en media carta), justo después de subirlo, sin tener que
+// esperar a que se cierre una liquidación (ver shared/reciboNomina.js).
+function verReciboNomina(unidad,id){
+  var n=(nominaDB[unidad]||[]).find(function(x){return x.id===id;});
+  if(!n){alert('No se encontró el recibo.');return;}
+  var op=OPERADORES.find(function(o){return o.unidad===unidad;});
+  window.TMLReciboNomina.abrirVisor(n,op?op.nombre:'').catch(function(e){
+    console.error('verReciboNomina:',e);
+    alert('No se pudo generar la vista previa: '+e.message);
+  });
+}
 function eliminarNomina(unidad,id){
   if(!nominaDB[unidad])return;
   var n=nominaDB[unidad].find(function(x){return x.id===id;});
@@ -638,7 +652,7 @@ function renderNomina(){
     tb.innerHTML+='<tr><td style="font-size:12px">'+(op?op.nombre:n.unidad)+'</td>'
       +'<td style="font-size:11px">'+(n.fecha||'—')+'</td>'
       +'<td style="font-size:11px">'+(n.periodoIni||'?')+' al '+(n.periodoFin||'?')+'</td>'
-      +'<td style="font-size:11px">'+(n.folio||'—')+(n.xmlURL?' <a href="'+n.xmlURL+'" target="_blank" title="Ver XML original">📄</a>':'')+'</td>'
+      +'<td style="font-size:11px">'+(n.folio||'—')+(n.xmlURL?' <a href="'+n.xmlURL+'" target="_blank" title="Ver XML original">📄</a>':'')+' <a href="#" onclick="verReciboNomina('+n.unidad+',\''+n.id+'\');return false;" title="Vista previa de cómo queda el recibo impreso (QR/cadena/desglose)">👁️</a></td>'
       +'<td class="num r">'+fmt(n.totalPercepciones||0)+'</td>'
       +'<td class="num r" style="color:#9b1c1c;font-weight:700">'+fmt(n.totalDeducciones||0)+'</td>'
       +'<td>'+estadoCell+'</td>'
