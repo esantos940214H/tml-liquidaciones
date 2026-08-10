@@ -136,9 +136,11 @@
         + (cadena ? '<div class="recibo-cadena"><strong>Cadena original del complemento de certificación digital del SAT:</strong><br>' + cadena + '</div>' : '')
       : '<div style="font-size:11px;color:#aaa;margin-top:6px">⚠️ Este recibo se registró antes de guardar los datos completos del timbre — vuelve a subir el mismo XML en Nómina para completarlo (QR/cadena/desglose).</div>';
     var qrHTML = qrImg ? '<div class="recibo-qr"><img src="' + qrImg + '" width="110" height="110" alt="QR de verificación SAT"><div style="font-size:8px;color:#999;margin-top:3px;max-width:110px">Verificar en el SAT</div></div>' : '';
+    // Orden: datos + desglose arriba, LUEGO la firma (con su propio
+    // recuadro y espacio de sobra, sin amontonarse con nada más), y hasta
+    // abajo el folio fiscal/sello/cadena original + QR — que se consultan
+    // pero no hace falta que estén junto a donde se firma.
     return '<div class="recibo-box">'
-      + '<div class="recibo-top">'
-      + '<div class="recibo-datos">'
       + '<h4>RECIBO DE NÓMINA — ' + (n.emisorNombre || 'MUDANZAS TML, S.A. DE C.V.') + '</h4>'
       + '<div class="recibo-grid">'
       + '<div><span>Operador:</span> <strong>' + opNombre + '</strong></div>'
@@ -148,17 +150,19 @@
       + '<div><span>Folio:</span> <strong>' + (n.folio || '—') + '</strong></div>'
       + '<div><span>Neto pagado:</span> <strong>' + fmtMoneda(neto) + '</strong></div>'
       + '</div>'
-      + '</div>'
-      + qrHTML
-      + '</div>'
       + '<div class="recibo-desglose">'
       + tablaDesglose('Percepciones', n.percepciones, n.totalPercepciones || 0)
       + tablaDesglose('Deducciones', n.deducciones, n.totalDeducciones || 0)
       + '</div>'
-      + uuidHTML
+      + '<div class="recibo-firma-box">'
       + '<div class="firma-campos">'
       + '<div><div class="firma-linea"></div><div class="firma-label">Firma del operador — ' + opNombre + '</div></div>'
       + '<div><div class="firma-linea"></div><div class="firma-label">Fecha</div></div>'
+      + '</div>'
+      + '</div>'
+      + '<div class="recibo-top">'
+      + '<div class="recibo-datos">' + uuidHTML + '</div>'
+      + qrHTML
       + '</div>'
       + '</div>';
   }
@@ -173,8 +177,10 @@
   var CSS_VISOR =
     'body{font-family:Arial,sans-serif;background:#eee;color:#1a1a2e;margin:0;padding:24px 0}' +
     '.recibo-nomina-par{max-width:800px;margin:0 auto 24px;background:#fff;display:flex;flex-direction:column;height:11in;box-sizing:border-box;box-shadow:0 2px 12px rgba(0,0,0,.15)}' +
-    '.recibo-box{border:1px solid #ccc;padding:16px;flex:1 1 0;box-sizing:border-box;overflow:hidden;font-size:12px}' +
+    '.recibo-box{border:1px solid #ccc;padding:16px;flex:1 1 0;box-sizing:border-box;overflow:hidden;font-size:12px;display:flex;flex-direction:column}' +
     '.recibo-box h4{font-size:13px;margin:0 0 8px;color:#1a1a2e}' +
+    '.recibo-firma-box{flex:1;display:flex;align-items:center;justify-content:center;border:1.5px dashed #ccc;border-radius:8px;margin:14px 0;padding:16px}' +
+    '.recibo-firma-box .firma-campos{width:100%;margin-top:0}' +
     '.recibo-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px 18px;font-size:12px;margin-bottom:8px}' +
     '.recibo-grid div span{color:#888}' +
     '.recibo-uuid{font-size:10px;color:#666;word-break:break-all;background:#f7f7f9;border-radius:4px;padding:6px 8px;margin-top:4px}' +
