@@ -3010,7 +3010,11 @@ async function handleDieselXMLFiles(files){
         if(!conceptos.length){conceptos=doc.getElementsByTagNameNS(ns,'Concepto');if(!conceptos.length)conceptos=doc.getElementsByTagNameNS(ns3,'Concepto');}
         var litrosTot=0,subtotalTot=0,ivaTot=0;
         var precioUnitario=0;
+        var soloAdBlue=conceptos.length>0;
         Array.from(conceptos).forEach(function(c){
+          var descC=c.getAttribute('Descripcion')||c.getAttribute('Descripción')||'';
+          if(esConceptoAdBlue(descC))return; // no sumar AdBlue/urea como si fuera diesel
+          soloAdBlue=false;
           var cant=parseFloat(c.getAttribute('Cantidad')||0);
           var vu=parseFloat(c.getAttribute('ValorUnitario')||0);
           var imp=parseFloat(c.getAttribute('Importe')||0);
@@ -3027,6 +3031,7 @@ async function handleDieselXMLFiles(files){
         var rfcEmisor=emisor?emisor.getAttribute('Rfc')||'':'';
         var nombreEmisor=emisor?emisor.getAttribute('Nombre')||'':'';
         var conceptoDesc=getConceptoDesc(doc);
+        if(soloAdBlue){alert('🚫 '+file.name+' parece ser una factura de AdBlue/urea, no de diesel — no se agregó aquí. Si aplica, regístrala como gasto normal en la pestaña Gastos.');continue;}
         if(litrosTot<=0){alert('No se encontraron litros en el XML: '+file.name+'\nVerifica que sea una factura de combustible.');continue;}
         liq.dieselXML.push({
           id:'dxml-'+Date.now()+'-'+Math.random().toString(36).slice(2),
@@ -3550,12 +3555,24 @@ async function handleGastoXMLFiles(files){
 }
 
 var CLAVES_SAT_COMBUSTIBLE=['15101503','15101504','15101505','15101506','15101507','15111510'];
+// AdBlue/urea (líquido reductor para el sistema SCR de motores diésel) se
+// vende por litro en las mismas gasolineras y a veces bajo la misma clave
+// SAT de "combustibles" mal capturada por el emisor — pero NO es diesel:
+// contarlo como tal inflaba los litros/importe de diesel de la
+// liquidación. Cualquier renglón cuya descripción lo mencione se excluye
+// SIEMPRE, sin importar la clave SAT o si también dice "diesel" (ej.
+// "ADITIVO PARA DIESEL" trae la palabra pero no es el combustible).
+function esConceptoAdBlue(desc){
+  var d=(desc||'').toUpperCase();
+  return /ADBLUE|AD BLUE|\bUREA\b|\bDEF\b|LIQUIDO REDUCTOR|REDUCTOR CATALITICO/.test(d);
+}
 function esCombustibleXML(doc){
   var conceptos=doc.querySelectorAll('Concepto');
   for(var i=0;i<conceptos.length;i++){
     var clave=conceptos[i].getAttribute('ClaveProdServ')||'';
     var claveUnidad=(conceptos[i].getAttribute('ClaveUnidad')||'').toUpperCase();
     var desc=(conceptos[i].getAttribute('Descripcion')||conceptos[i].getAttribute('Descripción')||'').toUpperCase();
+    if(esConceptoAdBlue(desc))continue;
     if(CLAVES_SAT_COMBUSTIBLE.indexOf(clave)!==-1)return true;
     // Fallback por palabra clave en la descripción: SOLO si además se vende
     // por litro (unidad típica del combustible despachado en bomba). Sin
@@ -3624,6 +3641,8 @@ async function parseGastoXML(text,fname){
     var conceptos=doc.querySelectorAll('Concepto');
     var litrosTot=0,subtotalTot=0,ivaTot=0,precioUnitario=0;
     conceptos.forEach(function(c){
+      var descC=c.getAttribute('Descripcion')||c.getAttribute('Descripción')||'';
+      if(esConceptoAdBlue(descC))return; // no sumar AdBlue/urea como si fuera diesel
       litrosTot+=parseFloat(c.getAttribute('Cantidad')||0);
       subtotalTot+=parseFloat(c.getAttribute('Importe')||0);
       var vu=parseFloat(c.getAttribute('ValorUnitario')||0);
