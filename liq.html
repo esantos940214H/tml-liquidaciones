@@ -242,6 +242,9 @@ tr:hover td{background:#fafafa}
       <div class="field"><label>% Comisión fletes <span id="comisionLock" title="Cambiar comisión" onclick="desbloquearComision()" style="cursor:pointer;font-size:13px">🔒</span></label><input type="number" id="liqComision" value="12" step="1" min="0" max="100" readonly style="background:#1a1a2e;color:#aaa;cursor:not-allowed"></div>
       <div class="field"><label>Costo diesel ($/lt) <span id="costoDieselLock" title="Cambiar costo diesel" onclick="desbloquearCostoDiesel()" style="cursor:pointer;font-size:13px">🔒</span></label><input type="number" id="liqCostoDiesel" placeholder="Auto al subir Edenred" step="0.0001" readonly style="background:#1a1a2e;color:#aaa;cursor:not-allowed"></div>
     </div>
+    <div id="wrapCorregirClaveLiq" style="display:none;margin-bottom:14px">
+      <button class="btn btn-out" style="font-size:11px;padding:6px 12px" onclick="corregirClaveLiquidacionActiva()">🔧 Esta liquidación está ligada a la clave equivocada — corregir</button>
+    </div>
     <div class="sep"></div>
     <div class="card-title" style="margin-bottom:12px">📊 Escaneo de unidad</div>
     <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:14px">
@@ -1211,15 +1214,18 @@ function normUnidad(u){
   //    00002 es en realidad la unidad 4521).
   //  - PASE/IAVE identifica las unidades 45xx con solo los últimos 3
   //    dígitos, sin el prefijo "4" (ej. la unidad 4521 aparece como 521 o
-  //    S21). Las unidades 527, 529 y 531-534 ya coinciden con su número
-  //    real y no necesitan mapeo aparte.
+  //    S21). Las unidades 527, 528, 529 y 531-534 ya coinciden con su
+  //    número real y no necesitan mapeo aparte (528 se agregó cuando esa
+  //    unidad se reintegró a la flota).
+  //  - La tarjeta Edenred 00009 se reasignó de la unidad 4524 a la 528
+  //    (se movió con el operador al reasignarlo de unidad).
   const TARJETAS={
     // Edenred (tarjeta → económico)
     '42BC9V':529,
     '00002':4521,
     '00004':4523,
     '00008':527,
-    '00009':4524,
+    '00009':528,
     '00010':4522,
     '00100':4526,
     '00531':531,
@@ -1238,6 +1244,7 @@ function normUnidad(u){
     'S23':4523,
     'S24':4524,
     'S26':4526,
+    'S28':528,
     'S29':529,
     'S31':531,
     'S32':532,
@@ -2768,9 +2775,37 @@ async function iniciarLiquidacion(){
 // (no cerrada) y el usuario en sesión es administrador.
 function actualizarBotonEliminarLiq(){
   var wrap=$('btnEliminarLiqWrap');
-  if(!wrap)return;
+  var wrapCorregir=$('wrapCorregirClaveLiq');
   var u=usuarioSesion();
-  wrap.style.display=(liq&&u&&u.esAdmin)?'block':'none';
+  if(wrap)wrap.style.display=(liq&&u&&u.esAdmin)?'block':'none';
+  if(wrapCorregir)wrapCorregir.style.display=(liq&&u&&u.esAdmin)?'block':'none';
+}
+
+// Corrige la clave (opId/unidad) de la liquidación ABIERTA actualmente —
+// para cuando se abrió con un operador que YA HABÍA SIDO reasignado de
+// unidad (o se reasignó después) y quedó ligada a una clave donde ya no
+// están sus anticipos/ingresos/nómina. Mueve el documento liqActivas de la
+// clave vieja a la nueva; NO toca anticiposDB/ingresosDB/nominaDB — para
+// mover esos, usar "🩹 Corregir clave de operador" en Flota.
+async function corregirClaveLiquidacionActiva(){
+  if(!liq){alert('No hay liquidación activa.');return;}
+  var u=usuarioSesion();
+  if(!u||!u.esAdmin){alert('Solo un administrador puede hacer esto.');return;}
+  var actual=liq.opId||liq.unidad;
+  var nuevaTxt=prompt('Esta liquidación (#'+liq.num+' de '+liq.op.nombre+') está guardada con la clave '+actual+'.\n\n¿A qué clave debe quedar? (el número donde SÍ están sus anticipos, ingresos y recibos de nómina — revísalo en esos módulos antes de escribirlo aquí)',actual);
+  if(nuevaTxt===null)return;
+  var nueva=parseInt(nuevaTxt||0);
+  if(!nueva){alert('Escribe un número válido.');return;}
+  if(nueva===actual){alert('Es la misma clave — no hay nada que corregir.');return;}
+  if(!confirm('¿Mover esta liquidación de la clave '+actual+' a la clave '+nueva+'?\n\nEsto NO mueve ni borra anticipos/ingresos/nómina (eso se hace en Flota) — solo corrige a qué clave queda ligada ESTA liquidación que ya tenías abierta, para que busque en el lugar correcto.'))return;
+  try{
+    liq.opId=nueva;
+    liq.unidad=nueva;
+    await window.FB.set('liqActivas',String(nueva),{data:JSON.stringify(liq)});
+    await window.FB.del('liqActivas',String(actual));
+    alert('✅ Liquidación movida a la clave '+nueva+'. La página se va a recargar.');
+    location.href=location.pathname+'?liqOp='+nueva;
+  }catch(e){console.error('corregirClaveLiquidacionActiva:',e);alert('⚠️ Error al corregir: '+e.message);}
 }
 
 // Elimina (descarta) la liquidación actualmente ABIERTA, sin cerrarla.
