@@ -139,6 +139,7 @@ tr:hover td{background:#fafafa}
     <button class="tab" id="tabBtnAsignar" onclick="cambiarTab('asignar')">🔄 Asignar / Reasignar</button>
     <button class="tab" id="tabBtnRevision" onclick="cambiarTab('revision')">🔍 Revisión de unidad</button>
     <button class="tab" id="tabBtnHistorial" onclick="cambiarTab('historial')">🗂️ Historial de asignaciones</button>
+    <button class="tab" id="tabBtnCorregir" onclick="cambiarTab('corregir')">🩹 Corregir clave de operador</button>
   </div>
 
   <!-- OPERADORES -->
@@ -265,6 +266,20 @@ tr:hover td{background:#fafafa}
         <thead><tr><th>Fecha</th><th>Operador</th><th>Unidad</th><th class="r">Litros entrega</th><th class="r">Litros recibe</th><th class="r">Precio/lt</th><th>Registró</th></tr></thead>
         <tbody id="tbAsignaciones"></tbody>
       </table></div>
+    </div>
+  </div>
+
+  <!-- CORREGIR CLAVE DE OPERADOR -->
+  <div class="tabpanel" id="panelCorregir">
+    <div class="card">
+      <div class="card-title">🩹 Mover anticipos / ingresos / nómina de una clave a otra</div>
+      <div class="alert alert-warn">Usa esto SOLO cuando a un operador se le reasignó de unidad y sus anticipos/ingresos/nómina se quedaron ligados al número de la unidad nueva en vez de a su identidad de operador. <strong>Nunca borra nada</strong> — solo mueve los registros de una clave a otra, fusionándolos con lo que ya exista en la clave destino. El arrastre de diesel/casetas (por unidad) NO se toca aquí — ese sí debe quedarse ligado a la unidad.</div>
+      <div class="row">
+        <div class="field"><label>Clave de origen (donde están mal ligados hoy)</label><input type="number" id="corOrigen" placeholder="Ej: 528" oninput="corPreview()"></div>
+        <div class="field"><label>Clave de destino (identidad real del operador)</label><input type="number" id="corDestino" placeholder="Ej: 4524"></div>
+        <button class="btn btn-out btn-sm" onclick="corPreview()">🔍 Ver qué se movería</button>
+      </div>
+      <div id="corPreviewWrap" style="margin-top:14px"></div>
     </div>
   </div>
 
@@ -443,7 +458,7 @@ setTimeout(function(){if(!fbReady){$('fbStatus').textContent='❌ Sin conexión'
 // TABS
 // ══════════════════════════════════════════════
 function cambiarTab(nombre){
-  ['operadores','unidades','asignar','revision','historial'].forEach(function(t){
+  ['operadores','unidades','asignar','revision','historial','corregir'].forEach(function(t){
     $('panel'+t.charAt(0).toUpperCase()+t.slice(1)).classList.toggle('active',t===nombre);
     $('tabBtn'+t.charAt(0).toUpperCase()+t.slice(1)).classList.toggle('active',t===nombre);
   });
@@ -955,6 +970,102 @@ function verDetalleRevision(id){
     +(rv.danios&&rv.danios.length?('\nDaños:\n'+rv.danios.map(function(d){return'- '+d.descripcion+' ('+(d.reportado?'reportado':'NO reportado')+', '+d.porcentaje+'%): '+fmt(d.cargo);}).join('\n')):'')
     +'\n\nCargo total generado: '+fmt(rv.totalCargo||0);
   alert(txt);
+}
+
+// ══════════════════════════════════════════════
+// CORREGIR CLAVE DE OPERADOR
+// (anticiposDB/nominaDB — {clave:[...]} — e ingresosDB — arreglo plano con
+// campo "unidad" por registro — históricamente se guardaban con la misma
+// clave que la unidad del operador, porque antes de este módulo unidad e
+// identidad del operador siempre coincidían. Al reasignar de verdad a
+// alguien a otra unidad, sus registros NUEVOS quedan ligados a la unidad
+// nueva en vez de a su identidad — esta herramienta los mueve de vuelta.
+// El arrastre de diesel/casetas (estado/arrastres) NO se toca aquí a
+// propósito: ese SIEMPRE debe quedarse ligado a la unidad/vehículo, no al
+// operador (ver comentarios en liq.html).
+// ══════════════════════════════════════════════
+async function corPreview(){
+  var origen=parseInt($('corOrigen').value||0);
+  var wrap=$('corPreviewWrap');
+  if(!origen){wrap.innerHTML='';return;}
+  wrap.innerHTML='<p style="color:#aaa;font-size:12px">Consultando...</p>';
+  try{
+    var antRes=await window.FB.get('estado','anticiposDB');
+    var anticipos=(antRes&&antRes.data)?JSON.parse(antRes.data):{};
+    if(Array.isArray(anticipos))anticipos={};
+    var nomRes=await window.FB.get('estado','nominaDB');
+    var nomina=(nomRes&&nomRes.data)?JSON.parse(nomRes.data):{};
+    if(Array.isArray(nomina))nomina={};
+    var ingRes=await window.FB.get('estado','ingresosDB');
+    var ingresos=(ingRes&&ingRes.data)?JSON.parse(ingRes.data):[];
+    if(!Array.isArray(ingresos))ingresos=[];
+
+    var antList=anticipos[origen]||anticipos[String(origen)]||[];
+    var nomList=nomina[origen]||nomina[String(origen)]||[];
+    var ingList=ingresos.filter(function(v){return parseInt(v.unidad)===origen;});
+    var totAnt=antList.reduce(function(s,a){return s+(a.importe||0);},0);
+    var totNom=nomList.reduce(function(s,n){return s+(n.totalDeducciones||0);},0);
+    var totIng=ingList.reduce(function(s,v){return s+(v.total||0);},0);
+
+    if(!antList.length&&!nomList.length&&!ingList.length){
+      wrap.innerHTML='<p style="color:#aaa;font-size:12px">No hay nada registrado bajo la clave '+origen+'.</p>';
+      return;
+    }
+    wrap.innerHTML=
+      '<div class="row" style="gap:24px;margin-bottom:10px">'
+      +'<div><strong>'+antList.length+'</strong> anticipo(s) · '+fmt(totAnt)+'</div>'
+      +'<div><strong>'+nomList.length+'</strong> recibo(s) de nómina · '+fmt(totNom)+'</div>'
+      +'<div><strong>'+ingList.length+'</strong> ingreso(s)/viaje(s) · '+fmt(totIng)+'</div>'
+      +'</div>'
+      +'<button class="btn btn-red btn-sm" onclick="corConfirmar()">Mover todo esto a la clave destino</button>';
+  }catch(e){console.error('corPreview:',e);wrap.innerHTML='<p style="color:#c1121f;font-size:12px">⚠️ Error al consultar: '+e.message+'</p>';}
+}
+async function corConfirmar(){
+  var origen=parseInt($('corOrigen').value||0);
+  var destino=parseInt($('corDestino').value||0);
+  if(!origen||!destino){alert('Escribe la clave de origen y la clave destino.');return;}
+  if(origen===destino){alert('Origen y destino no pueden ser el mismo número.');return;}
+  if(!confirm('¿Mover TODOS los anticipos, recibos de nómina e ingresos registrados bajo la clave '+origen+' a la clave '+destino+'?\n\nEsto NO borra nada — solo cambia a qué clave quedan ligados, fusionándolos con lo que ya exista en la clave destino. Revisa bien que ambos números sean correctos antes de continuar.'))return;
+  try{
+    // Cada colección se lee, modifica y guarda por separado, justo antes de
+    // escribir — para minimizar la ventana en la que otra pestaña/usuario
+    // pudiera guardar algo nuevo entre medio (ver CLAUDE.md: nunca
+    // sobrescribir estos documentos en bloque con datos desactualizados).
+    var antRes=await window.FB.get('estado','anticiposDB');
+    var anticipos=(antRes&&antRes.data)?JSON.parse(antRes.data):{};
+    if(Array.isArray(anticipos))anticipos={};
+    var antList=anticipos[origen]||anticipos[String(origen)]||[];
+    var nMovAnt=antList.length;
+    if(nMovAnt){
+      var destAnt=anticipos[destino]||anticipos[String(destino)]||[];
+      anticipos[destino]=destAnt.concat(antList);
+      delete anticipos[origen];delete anticipos[String(origen)];
+      await window.FB.set('estado','anticiposDB',{data:JSON.stringify(anticipos)});
+    }
+
+    var nomRes=await window.FB.get('estado','nominaDB');
+    var nomina=(nomRes&&nomRes.data)?JSON.parse(nomRes.data):{};
+    if(Array.isArray(nomina))nomina={};
+    var nomList=nomina[origen]||nomina[String(origen)]||[];
+    var nMovNom=nomList.length;
+    if(nMovNom){
+      var destNom=nomina[destino]||nomina[String(destino)]||[];
+      nomina[destino]=destNom.concat(nomList);
+      delete nomina[origen];delete nomina[String(origen)];
+      await window.FB.set('estado','nominaDB',{data:JSON.stringify(nomina)});
+    }
+
+    var ingRes=await window.FB.get('estado','ingresosDB');
+    var ingresos=(ingRes&&ingRes.data)?JSON.parse(ingRes.data):[];
+    if(!Array.isArray(ingresos))ingresos=[];
+    var nMovIng=0;
+    ingresos.forEach(function(v){if(parseInt(v.unidad)===origen){v.unidad=destino;nMovIng++;}});
+    if(nMovIng)await window.FB.set('estado','ingresosDB',{data:JSON.stringify(ingresos)});
+
+    alert('✅ Movido: '+nMovAnt+' anticipo(s), '+nMovNom+' recibo(s) de nómina y '+nMovIng+' ingreso(s)/viaje(s), de la clave '+origen+' a la clave '+destino+'.\n\nRevisa Anticipos/Ingresos/Nómina para confirmar que quedaron bien.');
+    $('corOrigen').value='';$('corDestino').value='';
+    $('corPreviewWrap').innerHTML='';
+  }catch(e){console.error('corConfirmar:',e);alert('⚠️ Error al mover: '+e.message);}
 }
 </script>
 </body>
