@@ -1618,6 +1618,28 @@ async function cargarEstado(){
   }catch(e){ console.error('Error cargando Firebase:',e); }
 }
 
+// Los selects de Operador/Unidad se llenan con OPERADORES (unidad ACTUAL de
+// cada operador, vía cargarOperadores()). Si un operador fue reasignado de
+// unidad DESPUÉS de que se abrió una liquidación con él, esa liquidación
+// guardó su opId/unidad de ese momento — que ya no aparece como opción en
+// el select (solo aparece su unidad nueva). Sin esta opción, asignar
+// $('liqOp').value=... no hace nada (el navegador lo ignora en silencio) y
+// el select se queda en blanco, lo que rompe la búsqueda de sus anticipos/
+// ingresos en esta liquidación (usan el valor del select, que quedó vacío
+// → 0 → no encuentra nada). Se asegura que la opción exista antes de
+// asignar el valor, para que la liquidación siga mostrando bien a su
+// operador aunque después lo hayan reasignado de unidad.
+function asegurarOpcionEnSelect(id,valor,texto){
+  var s=$(id);
+  if(!s||valor==null||valor==='')return;
+  var valorStr=String(valor);
+  var existe=Array.prototype.some.call(s.options,function(o){return o.value===valorStr;});
+  if(!existe){
+    var o=document.createElement('option');
+    o.value=valorStr;o.textContent=texto||valorStr;
+    s.appendChild(o);
+  }
+}
 function restaurarUILiquidacion(){
   if(!liq)return;
   if(!liq.fechaApertura)liq.fechaApertura=hoy();
@@ -1652,7 +1674,10 @@ function restaurarUILiquidacion(){
     if($('dIniLts'))$('dIniLts').value=arrastres[liq.unidad].lts;
     if($('dIniPrecio'))$('dIniPrecio').value=arrastres[liq.unidad].precio;
   }
-  if($('liqOp'))$('liqOp').value=liq.opId||liq.unidad;
+  if($('liqOp')){
+    asegurarOpcionEnSelect('liqOp',liq.opId||liq.unidad,(liq.opId||liq.unidad)+' · '+(liq.op?liq.op.nombre:''));
+    $('liqOp').value=liq.opId||liq.unidad;
+  }
   if($('liqNum'))$('liqNum').value=liq.num;
   if($('liqSalida'))$('liqSalida').value=liq.salida||'';
   if($('liqLlegada'))$('liqLlegada').value=liq.llegada||'';
@@ -1668,8 +1693,12 @@ function restaurarUILiquidacion(){
   if($('vVacioOrigen'))$('vVacioOrigen').value=_vv.origen||'';
   if($('vVacioDestino'))$('vVacioDestino').value=_vv.destino||'';
   if($('vVacioKms'))$('vVacioKms').value=_vv.kms||'';
-  if($('liqUnidad'))$('liqUnidad').value=liq.unidad||'';
-  var _opRest=OPERADORES.find(function(o){return o.unidad===parseInt(liq.opId||liq.unidad||0);});
+  if($('liqUnidad')){
+    asegurarOpcionEnSelect('liqUnidad',liq.unidad,liq.unidad);
+    $('liqUnidad').value=liq.unidad||'';
+  }
+  var _opRest=OPERADORES.find(function(o){return o.unidad===parseInt(liq.opId||liq.unidad||0);})
+    ||OPERADORES.find(function(o){return o.operadorId===parseInt(liq.opId||0);});
   if($('liqClave'))$('liqClave').value=_opRest?_opRest.clave:'';
   if(liq.gastosXML||liq.gastos) renderGastos();
   renderIncidentesLiq();
