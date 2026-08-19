@@ -514,7 +514,7 @@ async function cargarDivisionesPendientes(){
   $('divPendLabel').textContent='— '+pendientes.length+' pendiente(s)';
   $('divPendWrap').innerHTML='<div class="tbl-wrap"><table><thead><tr><th style="width:32px"></th><th>Operador</th><th>Folio</th><th>Cliente</th><th class="r">Actual (F/M/O)</th><th class="r">Solicitado (F/M/O)</th><th>Solicitado por</th></tr></thead><tbody>'
     +pendientes.map(function(v){
-      var op=OPERADORES.find(function(o){return o.unidad===v.unidad;});
+      var op=OPERADORES.find(function(o){return o.operadorId===v.unidad;});
       var p=v.divisionPendiente;
       var actualF=v.subtFlete!=null?v.subtFlete:(v.tipo==='flete_for'||v.tipo==='flete_mx'?v.subtotal:0);
       var actualM=v.subtManiobras!=null?v.subtManiobras:(v.tipo==='maniobra'?v.subtotal:0);

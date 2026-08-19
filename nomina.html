@@ -383,9 +383,11 @@ window.onFBReady(verificarSesionModulo);
 function initSelects(){
   ['filtNomOp'].forEach(function(id){
     var s=$(id);if(!s)return;
+    // value=operadorId (identidad PERMANENTE), no la unidad actual — así la
+    // nómina sigue ligada a la persona aunque lo reasignen de unidad.
     OPERADORES.forEach(function(op){
       var o=document.createElement('option');
-      o.value=op.unidad;o.textContent=op.unidad+' · '+op.nombre;
+      o.value=op.operadorId;o.textContent=op.unidad+' · '+op.nombre;
       s.appendChild(o);
     });
   });
@@ -532,7 +534,7 @@ function parseNominaXML(text,fname){
   var nombreReceptor=receptor?receptor.getAttribute('Nombre')||'':'';
   var opDetectado=detectarOperadorNomina(nombreReceptor);
   if(!opDetectado){alert('No se pudo detectar automáticamente al operador de este recibo ("'+(nombreReceptor||'?')+'"). Revisa que el nombre del receptor en el XML coincida con el del operador registrado en el sistema.');return;}
-  var unidad=opDetectado.unidad;
+  var unidad=opDetectado.operadorId; // identidad PERMANENTE, no la unidad actual
   var tfd=doc.querySelector('TimbreFiscalDigital');
   var uuid=tfd?tfd.getAttribute('UUID')||'':'';
   var existente=uuid?buscarNominaExistente(uuid):null;
@@ -599,7 +601,7 @@ function parseNominaXML(text,fname){
   guardarNominaDB();
   renderNomina();
   subirXMLNominaEnSegundoPlano(uuid,fname,text);
-  var opU=OPERADORES.find(function(o){return o.unidad===unidad;});
+  var opU=OPERADORES.find(function(o){return o.operadorId===unidad;});
   $('nominaXMLInfo').style.display='block';
   $('nominaXMLInfo').innerHTML='<div class="alert alert-ok">✅ '+fname+' — '+(existente?'datos completados/actualizados':'deducciones de '+fmt(totalDeducciones)+' registradas')+' para '+(opU?opU.nombre:unidad)+' (detectado automáticamente del XML).</div>';
 }
@@ -610,7 +612,7 @@ function parseNominaXML(text,fname){
 function verReciboNomina(unidad,id){
   var n=(nominaDB[unidad]||[]).find(function(x){return x.id===id;});
   if(!n){alert('No se encontró el recibo.');return;}
-  var op=OPERADORES.find(function(o){return o.unidad===unidad;});
+  var op=OPERADORES.find(function(o){return o.operadorId===unidad;});
   window.TMLReciboNomina.abrirVisor(n,op?op.nombre:'').catch(function(e){
     console.error('verReciboNomina:',e);
     alert('No se pudo generar la vista previa: '+e.message);
@@ -645,7 +647,7 @@ function renderNomina(){
   var totPerc=0,totDed=0;
   filas.forEach(function(n){
     totPerc+=n.totalPercepciones||0;totDed+=n.totalDeducciones||0;
-    var op=OPERADORES.find(function(o){return o.unidad===n.unidad;});
+    var op=OPERADORES.find(function(o){return o.operadorId===n.unidad;});
     var estadoCell=n.estado==='liquidado'
       ?'<span class="badge bg-green">✓ Liquidado #'+n.liqNum+'</span>'
       :'<span class="badge bg-yellow">Pendiente</span>';
