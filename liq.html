@@ -584,7 +584,7 @@ tr:hover td{background:#fafafa}
         </div>
       </div>
 
-      <div class="card" style="margin-bottom:12px">
+      <div class="card no-print" id="cardResultadoViaje" style="margin-bottom:12px">
         <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#1a1a2e;margin-bottom:10px;padding:6px 10px;background:#f0f2f5;border-radius:6px">📊 RESULTADO DEL VIAJE</div>
         <div id="repResultado"></div>
       </div>
@@ -4373,6 +4373,14 @@ function generarReporte(){
     +'<div class="kpi"><div class="v red">'+fmt(totRetTotal)+'</div><div class="k">IVA retenido</div></div>'
     +'<div class="kpi"><div class="v">'+viajes.length+'</div><div class="k">Viajes incluidos</div></div>'
     +'</div>';
+  // Utilidad/margen es información del negocio, no del operador — solo
+  // visible para admin en pantalla, y nunca se imprime (ver clase
+  // "no-print" en el <div> que envuelve esta tarjeta) para que no salga en
+  // la hoja que firma el operador.
+  if($('cardResultadoViaje')){
+    var _uRes=usuarioSesion();
+    $('cardResultadoViaje').style.display=(_uRes&&_uRes.esAdmin)?'block':'none';
+  }
 
   // ── CUENTA OPERADOR ────────────────────────────────
   // Todo el diesel (Edenred + XML op + XML emp) es un adelanto de la empresa al operador,
