@@ -1219,6 +1219,10 @@ function normUnidad(u){
   //    unidad se reintegró a la flota).
   //  - La tarjeta Edenred 00009 se reasignó de la unidad 4524 a la 528
   //    (se movió con el operador al reasignarlo de unidad).
+  //  - Algunas tarjetas/tags no traen un número económico real en el
+  //    reporte, sino un apodo de la unidad (ej. "RANGER") — sin mapeo
+  //    explícito, parseInt sobre puro texto da 0 y esos litros/casetas se
+  //    perderían silenciosamente (no se le atribuían a ninguna unidad).
   const TARJETAS={
     // Edenred (tarjeta → económico)
     '42BC9V':529,
@@ -1227,6 +1231,7 @@ function normUnidad(u){
     '00008':527,
     '00009':528,
     '00010':4522,
+    'RANGER':4522,
     '00100':4526,
     '00531':531,
     '00532':532,
