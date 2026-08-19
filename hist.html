@@ -391,6 +391,11 @@ window.onFBReady=function(cb){if(window._fbInit)cb();else window._fbCallbacks.pu
 
 <script>
 let OPERADORES=[];
+// Nombres de TODOS los operadores (activos o no, con unidad o sin ella) —
+// respaldo para seguir mostrando el nombre en registros del historial de
+// alguien que después fue dado de baja o se quedó sin unidad (ver
+// shared/operadores.js y opNombre() más abajo).
+let NOMBRES_OP={};
 const $=id=>document.getElementById(id);
 const fmt=(n,d=2)=>'$'+parseFloat(n||0).toLocaleString('es-MX',{minimumFractionDigits:d,maximumFractionDigits:d});
 // Leyenda de conformidad en la firma: cambia según el saldo (misma lógica que liq.html).
@@ -601,6 +606,7 @@ function initSelectsOperadores(){
 
 window.onFBReady(async function(){
   OPERADORES=await window.cargarOperadores();
+  NOMBRES_OP=await window.cargarNombresOperadores();
   initSelectsOperadores();
   $('fbStatus').textContent='✅ Conectado';$('fbStatus').className='fb-status fb-ok';
   // Cargar historial de liquidaciones cerradas
@@ -650,14 +656,14 @@ function renderActivas(){
     return;
   }
   tb.innerHTML=activasDB.map(function(l){
-    const op=OPERADORES.find(function(o){return o.operadorId===parseInt(l.opId||l.unidad);});
+    const opN=opNombre(parseInt(l.opId||l.unidad))||(l.op?l.op.nombre:'');
     // ultimaEdicionPor = quién la tocó más recientemente (se actualiza en cada
     // guardado); abiertaPor = quién la inició/reabrió — de respaldo si la
     // liquidación es de antes de que existiera ultimaEdicionPor.
     const liquidador=(l.ultimaEdicionPor&&l.ultimaEdicionPor.nombre)||(l.abiertaPor&&l.abiertaPor.nombre)||'—';
     return '<tr>'
       +'<td class="num">#'+l.num+'</td>'
-      +'<td>'+(op?op.nombre:(l.op?l.op.nombre:'?'))+'</td>'
+      +'<td>'+(opN||'?')+'</td>'
       +'<td>'+l.unidad+'</td>'
       +'<td style="font-size:12px">'+liquidador+'</td>'
       +'<td style="font-size:12px">'+(l.fechaApertura||'—')+'</td>'
@@ -700,14 +706,14 @@ function buscar(){
   }
 
   filtrados.forEach(l=>{
-    const op=OPERADORES.find(o=>o.operadorId===parseInt(l.opId||l.unidad));
+    const opN=opNombre(parseInt(l.opId||l.unidad));
     const snap=l.snapshot||{};
     const saldo=snap.saldoReal||0;
     const ingresos=snap.totIngSubtotal||0;
     const liquidador=(l.cerradaPor&&l.cerradaPor.nombre)||(l.abiertaPor&&l.abiertaPor.nombre)||'—';
     tb.innerHTML+=`<tr style="cursor:pointer" onclick="verDetalle('${l.id}')">
       <td class="num">#${l.num}</td>
-      <td>${op?op.nombre.split(' ').slice(0,2).join(' '):'?'}</td>
+      <td>${opN?opN.split(' ').slice(0,2).join(' '):'?'}</td>
       <td>${l.unidad}</td>
       <td style="font-size:12px">${liquidador}</td>
       <td>${l.salida||''}</td>
@@ -741,7 +747,8 @@ function verDetalle(id){
   if(!l)return;
   _detalleActual=l;
   const snap=l.snapshot||{};
-  const op=OPERADORES.find(o=>o.operadorId===parseInt(l.opId||l.unidad));
+  const _opN744=opNombre(parseInt(l.opId||l.unidad));
+  const op=_opN744?{nombre:_opN744}:null;
 
   $('cardLista').style.display='none';
   $('cardDetalle').style.display='block';
@@ -1076,7 +1083,7 @@ async function reabrirLiquidacion(){
   try{
     const snap=l.snapshot||{};
     const opIdL=l.opId||l.unidad;
-    const op=OPERADORES.find(function(o){return o.operadorId===parseInt(opIdL);})||{unidad:opIdL,nombre:'',clave:''};
+    const op=OPERADORES.find(function(o){return o.operadorId===parseInt(opIdL);})||{unidad:opIdL,nombre:opNombre(parseInt(opIdL)),clave:l.clave||''};
 
     // Reconstruir un objeto de liquidación editable a partir del snapshot
     const gastosXML=(snap.gastosList||[]).filter(function(g){return g.tipo==='xml';}).map(function(g){
@@ -1268,7 +1275,7 @@ function cambiarTipoReporte(){
 
 function opNombre(opId){
   const op=OPERADORES.find(o=>parseInt(o.operadorId)===parseInt(opId));
-  return op?op.nombre:('Operador '+opId);
+  return op?op.nombre:(NOMBRES_OP[parseInt(opId)]||('Operador '+opId));
 }
 
 function liqsFiltradas(){
