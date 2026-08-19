@@ -406,6 +406,16 @@ window.onFBReady=function(cb){if(window._fbInit)cb();else window._fbCallbacks.pu
 
 <script>
 let OPERADORES=[];
+// Nombres de TODOS los operadores (activos o no, con unidad o sin ella) —
+// respaldo para poder seguir mostrando el nombre en registros viejos de
+// alguien que después fue dado de baja o se quedó sin unidad asignada
+// (ver shared/operadores.js). OPERADORES solo trae a quien puede recibir
+// ingresos NUEVOS hoy.
+let NOMBRES_OP={};
+function nombreOp(operadorId){
+  var op=OPERADORES.find(function(o){return o.operadorId===operadorId;});
+  return (op?op.nombre:NOMBRES_OP[operadorId])||'';
+}
 const $=id=>document.getElementById(id);
 const fmt=(n,d=2)=>'$'+parseFloat(n||0).toLocaleString('es-MX',{minimumFractionDigits:d,maximumFractionDigits:d});
 const hoy=()=>new Date().toISOString().slice(0,10);
@@ -699,7 +709,6 @@ function renderConflictosXML(){
   var wrap=$('conflictosXMLWrap');
   if(!wrap)return;
   wrap.innerHTML=conflictos.map(function(m){
-    var op=OPERADORES.find(function(o){return o.operadorId===m.unidad;});
     var xmlRec=ingresosDB.find(function(x){return x.id===m.conflictoXMLId;});
     var usuarioCap=m.capturadoPor?m.capturadoPor.usuario:null;
     var nVeces=discrepanciasDe(usuarioCap);
@@ -707,7 +716,7 @@ function renderConflictosXML(){
       ?'<div class="alert" style="margin:8px 0;background:#fde8e8;color:#9b1c1c;border:1px solid #f9a8a8"><strong>🔁 Situación recurrente:</strong> esta persona ya ha tenido '+nVeces+' discrepancias de monto entre lo capturado a mano y el XML real. Vale la pena hablar con ella sobre por qué está capturando cifras distintas a lo que realmente se factura.</div>'
       :'';
     return '<div class="alert alert-warn" style="margin-bottom:10px">'
-      +'<strong>'+(op?op.nombre:m.unidad)+'</strong> — ID "'+(m.observaciones||'')+'"<br>'
+      +'<strong>'+(nombreOp(m.unidad)||m.unidad)+'</strong> — ID "'+(m.observaciones||'')+'"<br>'
       +'Monto capturado manualmente: <strong>'+fmt(m.total)+'</strong> · Monto real del XML: <strong>'+fmt(xmlRec?xmlRec.total:0)+'</strong><br>'
       +'Capturado por: '+(m.capturadoPor?(m.capturadoPor.nombre||m.capturadoPor.usuario):'?')+' · esta persona está bloqueada para registrar más ingresos sin factura hasta resolver esto.'
       +avisoRecurrente
@@ -772,8 +781,7 @@ async function generarCargoOperador(manualId){
     alert('No aplica generar un cargo: el monto del XML ('+fmt(montoXML)+') no es menor a lo capturado a mano ('+fmt(candidato.total)+'), así que el operador no fue sobrepagado.');
     return;
   }
-  var op=OPERADORES.find(function(o){return o.operadorId===candidato.unidad;});
-  if(!confirm('Se va a generar un cargo (anticipo pendiente) de '+fmt(diferencia)+' contra '+(op?op.nombre:candidato.unidad)+', por la diferencia entre lo reconocido ('+fmt(candidato.total)+') y lo realmente facturado ('+fmt(montoXML)+') en la liquidación #'+candidato.liqNum+' ya cerrada.\n\nSe descontará de su PRÓXIMA liquidación. ¿Confirmas?'))return;
+  if(!confirm('Se va a generar un cargo (anticipo pendiente) de '+fmt(diferencia)+' contra '+(nombreOp(candidato.unidad)||candidato.unidad)+', por la diferencia entre lo reconocido ('+fmt(candidato.total)+') y lo realmente facturado ('+fmt(montoXML)+') en la liquidación #'+candidato.liqNum+' ya cerrada.\n\nSe descontará de su PRÓXIMA liquidación. ¿Confirmas?'))return;
   try{
     var antRes=await window.FB.get('estado','anticiposDB');
     var antDB=(antRes&&antRes.data)?JSON.parse(antRes.data):{};
@@ -792,7 +800,7 @@ async function generarCargoOperador(manualId){
     candidato.requiereRevisionAdmin=false;
     candidato.conflictoXMLId=null;
     guardar();renderIngresos();
-    alert('✅ Se generó un cargo de '+fmt(diferencia)+' para '+(op?op.nombre:candidato.unidad)+', pendiente para su próxima liquidación.');
+    alert('✅ Se generó un cargo de '+fmt(diferencia)+' para '+(nombreOp(candidato.unidad)||candidato.unidad)+', pendiente para su próxima liquidación.');
   }catch(e){
     console.error('generarCargoOperador:',e);
     alert('⚠️ Error al generar el cargo: '+e.message);
@@ -877,6 +885,7 @@ function initSelects(){
 }
 window.onFBReady(async function(){
   OPERADORES=await window.cargarOperadores();
+  NOMBRES_OP=await window.cargarNombresOperadores();
   initSelects();
   fbReady=true;
   $('fbStatus').textContent='✅ Conectado';$('fbStatus').className='fb-status fb-ok';
@@ -1791,8 +1800,7 @@ function normBusca(s){return(s==null?'':String(s)).toUpperCase().normalize('NFD'
 // falta saber en qué filtro exacto buscar cada dato.
 function coincideBusqueda(v,q){
   if(!q)return true;
-  var op=OPERADORES.find(function(o){return o.operadorId===v.unidad;});
-  var campos=[v.folio,v.cliente,op?op.nombre:'',v.fecha,v.subtotal,v.total,v.importe];
+  var campos=[v.folio,v.cliente,nombreOp(v.unidad),v.fecha,v.subtotal,v.total,v.importe];
   return campos.some(function(c){return c!=null&&normBusca(c).indexOf(q)!==-1;});
 }
 // Todas las variantes de "estatus" que existen realmente en un ingreso —
@@ -1840,7 +1848,7 @@ function renderIngresos(){
 
   let totSub=0,totFlete=0,totMan=0,totOtros=0,totTot=0;
   filtrados.forEach(v=>{
-    const op=OPERADORES.find(o=>o.operadorId===v.unidad);
+    const nombreOpV=nombreOp(v.unidad);
     // Compatibilidad: si no tiene desglose, inferir del tipo
     const sf=v.subtFlete!=null?v.subtFlete:(v.tipo==='flete_for'||v.tipo==='flete_mx'?v.subtotal:0);
     const sm=v.subtManiobras!=null?v.subtManiobras:(v.tipo==='maniobra'?v.subtotal:0);
@@ -1852,7 +1860,7 @@ function renderIngresos(){
     tb.innerHTML+=`<tr>
       <td style="width:32px;text-align:center"><input type="checkbox" class="chkIng" data-id="${v.id}" ${v.estado!=='sin_liquidar'?'disabled title="No se puede eliminar: ya está liquidado"':''} onchange="actualizarBarraSelIng()"></td>
       <td class="num">${v.folio}${v.esDesglose?' <span class="badge bg-purple" title="Parte de una factura consolidada desglosada entre varios operadores (mismo CFDI)">🧩</span>':''}${v.observaciones&&!(v.sinFacturaJustificar&&!v.sustituidoPorXML)?` <span title="${v.observaciones.replace(/"/g,'&quot;')}">📝</span>`:''}${v.sinFacturaJustificar&&!v.sustituidoPorXML?(yaVencioLimite(v.fechaLimiteJustificacion)?' <span class="badge bg-red" style="color:#c1121f" title="Debió sustituirse con XML antes de '+v.fechaLimiteJustificacion+'">⚠ SIN FACTURA VENCIDO</span>':' <span class="badge bg-yellow" title="Debe sustituirse con XML antes de '+v.fechaLimiteJustificacion+'">⏳ Sin factura</span>'):''}${v.sustituidoPorXML?' <span class="badge bg-green" title="Ya se sustituyó con el XML real">✓ Sustituido</span>':''}${v.divisionPendiente?' <span class="badge bg-yellow" title="Solicitud de división Flete/Maniobras pendiente de autorización (solicitada por '+(v.divisionPendiente.solicitadoPor||'?')+')">⏳ División pendiente</span>':''}${v.sinFacturaJustificar&&!v.sustituidoPorXML&&v.observaciones?`<div style="font-family:inherit;font-weight:400;font-size:10px;color:#856404;white-space:normal;margin-top:2px" title="ID para ligar el XML real cuando llegue (ver botón 🔄 XML)">🆔 ${v.observaciones.replace(/</g,'&lt;')}</div>`:''}</td><td>${v.fecha}</td>
-      <td style="font-size:11px">${op?op.nombre.split(' ').slice(0,2).join(' '):'?'}</td>
+      <td style="font-size:11px">${nombreOpV?nombreOpV.split(' ').slice(0,2).join(' '):'?'}</td>
       <td style="max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px">${v.cliente}</td>
       ${fCell}${mCell}${oCell}
       <td class="num r">${fmt(v.subtotal)}</td><td class="num r">${fmt(v.iva)}</td>
@@ -1881,9 +1889,8 @@ async function descargarPDFIngreso(id){
     try{await cargarScriptUnaVez('https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js');}
     catch(e){console.error('No se pudo cargar jsPDF:',e);alert('No se pudo cargar el generador de PDF. Revisa tu conexión e intenta de nuevo.');return;}
   }
-  const op=OPERADORES.find(o=>o.operadorId===v.unidad);
   TMLComprobantes.verPDF({
-    titulo:'Comprobante de ingreso — '+(op?op.nombre:'Unidad '+v.unidad),
+    titulo:'Comprobante de ingreso — '+(nombreOp(v.unidad)||'Unidad '+v.unidad),
     folio:v.folio,fecha:v.fecha,
     receptorRFC:v.rfcReceptor,
     extra:[['Cliente',v.cliente],['RFC emisor (TML)',v.rfcEmisor]],
@@ -2080,8 +2087,7 @@ function limpiarFiltros(){
 function exportarCSV(){
   let csv='Folio,Fecha,Unidad,Operador,Cliente,Tipo,Subtotal,IVA,Retención,Total,Estatus,Liquidación\n';
   ingresosDB.forEach(v=>{
-    const op=OPERADORES.find(o=>o.operadorId===v.unidad);
-    csv+=`"${v.folio}","${v.fecha}",${v.unidad},"${op?op.nombre:''}", "${v.cliente}","${v.tipo}",${v.subtotal},${v.iva},${v.ret},${v.total},${v.estado},${v.liqNum||''}\n`;
+    csv+=`"${v.folio}","${v.fecha}",${v.unidad},"${nombreOp(v.unidad)}", "${v.cliente}","${v.tipo}",${v.subtotal},${v.iva},${v.ret},${v.total},${v.estado},${v.liqNum||''}\n`;
   });
   dlBlob(csv,'Ingresos_TML_'+hoy()+'.csv','text/csv');
 }

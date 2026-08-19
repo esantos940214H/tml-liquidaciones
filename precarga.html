@@ -275,6 +275,15 @@ const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2);
 let fbReady=false;
 
 let OPERADORES=[];
+// Nombres de TODOS los operadores (activos o no, con unidad o sin ella) —
+// respaldo para seguir mostrando el nombre en comprobantes viejos de
+// alguien que después fue dado de baja o se quedó sin unidad (ver
+// shared/operadores.js).
+let NOMBRES_OP={};
+function nombreOp(operadorId){
+  var op=OPERADORES.find(function(o){return o.operadorId===operadorId;});
+  return (op?op.nombre:NOMBRES_OP[operadorId])||'';
+}
 // Unidades reales de la flota — lista aparte (hoy coincide con OPERADORES)
 // para poder registrar "operador X manejó la unidad Y" cuando no coincidan.
 let UNIDADES=[];
@@ -476,6 +485,7 @@ let comprobantesDB=[]; // arreglo en vivo de comprobantesPrecargados (getAll/lis
 
 window.onFBReady(async function(){
   OPERADORES=await window.cargarOperadores();
+  NOMBRES_OP=await window.cargarNombresOperadores();
   UNIDADES=OPERADORES.map(function(o){return o.unidad;}).slice().sort(function(a,b){return a-b;});
   initSelects();
   fbReady=true;
@@ -679,9 +689,8 @@ async function descargarPDFComprobante(uuidDoc){
   var c=comprobantesDB.find(function(x){return x.id===uuidDoc;});
   if(!c)return;
   if(!(await asegurarJsPDF()))return;
-  var op=OPERADORES.find(function(o){return o.operadorId===c.operador;});
   TMLComprobantes.verPDF({
-    titulo:'Comprobante pre-cargado — '+(op?op.nombre:'Unidad '+c.unidad),
+    titulo:'Comprobante pre-cargado — '+(nombreOp(c.operador)||'Unidad '+c.unidad),
     fecha:c.fecha,
     emisorNombre:c.emisorNombre,
     emisorRFC:c.emisorRFC,
@@ -753,7 +762,7 @@ function renderPrecarga(){
             +(opUnDesbloq?'':'<span onclick="desbloquearReasignar(\''+c.id+'\')" style="cursor:pointer;font-size:12px" title="Cambiar operador/unidad — requiere contraseña de administrador">🔒</span>')
             +'</div>'
             +'<select class="input-sm" onchange="reasignar(\''+c.id+'\',\'unidad\',this.value)" '+(opUnDesbloq?'':'disabled')+' style="border:1.5px solid #dde;border-radius:5px;padding:4px;font-size:11px;width:100%;'+(opUnDesbloq?'':'background:#f0f2f5;color:#999')+'">'+opts(c.unidad)+'</select>'
-          :(function(){var op=OPERADORES.find(function(o){return o.operadorId===c.operador;});return (op?op.nombre:c.operador)+' · Unidad '+c.unidad;})())
+          :((nombreOp(c.operador)||c.operador)+' · Unidad '+c.unidad))
       +'</td>'
       +'<td class="num r">'+fmtCent(c.total)+'</td>'
       +'<td style="font-size:11px">'

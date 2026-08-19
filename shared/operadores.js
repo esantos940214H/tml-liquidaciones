@@ -116,4 +116,34 @@
     })();
     return _cachePromise;
   };
+
+  var _cacheNombresPromise = null;
+
+  // cargarNombresOperadores(forzar): mapa {operadorId: nombre} de TODOS los
+  // operadores, activos o no, con unidad asignada o no — a diferencia de
+  // cargarOperadores() (que solo trae a quien puede recibir anticipos/
+  // ingresos NUEVOS hoy), este mapa es solo para poder seguir mostrando el
+  // nombre correcto en registros históricos de alguien que después fue
+  // dado de baja o se quedó sin unidad asignada (si no, esos registros se
+  // ven con el nombre en blanco o "?" aunque el dato siga bien ligado a
+  // esa persona). Úsalo como respaldo del find() normal:
+  //   var nombre = (OPERADORES.find(o=>o.operadorId===v.unidad)||{}).nombre
+  //     || nombresOperadores[v.unidad] || '?';
+  window.cargarNombresOperadores = function (forzar) {
+    if (_cacheNombresPromise && !forzar) return _cacheNombresPromise;
+    _cacheNombresPromise = (async function () {
+      var _db = db();
+      if (!_db) return {};
+      var mapa = {};
+      try {
+        var snap = await _db.collection('operadores').get();
+        snap.forEach(function (d) {
+          var o = d.data();
+          mapa[parseInt(d.id)] = o.nombre || '';
+        });
+      } catch (e) { console.error('shared/operadores.js: no se pudo cargar nombresOperadores:', e); }
+      return mapa;
+    })();
+    return _cacheNombresPromise;
+  };
 })();
