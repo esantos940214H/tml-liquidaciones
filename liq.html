@@ -1227,7 +1227,9 @@ function normUnidad(u){
   //    número real y no necesitan mapeo aparte (528 se agregó cuando esa
   //    unidad se reintegró a la flota).
   //  - La tarjeta Edenred 00009 se reasignó de la unidad 4524 a la 528
-  //    (se movió con el operador al reasignarlo de unidad).
+  //    (se movió con el operador al reasignarlo de unidad). La tarjeta
+  //    00010 (antes ligada a la 4522) se movió igual a la 527, cuando
+  //    Andrés María Ramos pasó de manejar la 4522 a la 527.
   //  - Algunas tarjetas/tags no traen un número económico real en el
   //    reporte, sino un apodo de la unidad (ej. "RANGER") — sin mapeo
   //    explícito, parseInt sobre puro texto da 0 y esos litros/casetas se
@@ -1239,7 +1241,7 @@ function normUnidad(u){
     '00004':4523,
     '00008':527,
     '00009':528,
-    '00010':4522,
+    '00010':527,
     'RANGER':4522,
     '00100':4526,
     '00531':531,
