@@ -31,12 +31,25 @@ for site in anticipos cxc liquidaciones nomina incidentes historial usuarios aut
   cp -r shared dist/$site/shared
 done
 
+VERSION_ID="$(date -u +%Y%m%d%H%M%S)"
+
 # version.json: identificador único de este despliegue, usado por
 # shared/autoActualizar.js para avisar a pestañas abiertas que hay una
 # versión más nueva del sitio. Se genera fresco en cada build.
-VERSION_ID="$(date -u +%Y%m%d%H%M%S)"
 for site in portal anticipos cxc liquidaciones nomina incidentes historial usuarios autorizaciones precarga; do
   echo "{\"v\":\"$VERSION_ID\"}" > dist/$site/version.json
+done
+
+# Cache-busting de shared/*.js: el navegador (y GitHub Pages/Firebase
+# Hosting) cachean estos archivos muy agresivo por nombre de archivo. Sin
+# esto, después de cada deploy que toque shared/ (ej. operadores.js) alguien
+# puede quedarse con la versión vieja en caché y la página truena a medio
+# cargar (ver bug real: window.cargarNombresOperadores is not a function →
+# pantalla de "Sin conexión" aunque Firebase sí estaba disponible). Agregar
+# ?v=<version> a cada <script src="shared/...js"> fuerza a que cada deploy
+# se sirva fresco, sin depender de que alguien recuerde recargar fuerte.
+for f in dist/*/index.html dist/usuarios/flota.html; do
+  sed -i -E "s#(src=\"shared/[A-Za-z0-9_.-]+\.js)\"#\1?v=$VERSION_ID\"#g" "$f"
 done
 
 echo "build.sh: dist/ generado con 10 sites (version $VERSION_ID)."
