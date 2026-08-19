@@ -451,9 +451,11 @@ window.onFBReady(verificarSesionModulo);
 function initSelects(){
   ['pcOperador','filtPcOp'].forEach(function(id){
     var s=$(id);if(!s)return;
+    // value=operadorId (identidad PERMANENTE), no la unidad actual — así el
+    // comprobante sigue ligado a la persona aunque lo reasignen de unidad.
     OPERADORES.forEach(function(op){
       var o=document.createElement('option');
-      o.value=op.unidad;o.textContent=op.unidad+' · '+op.nombre;
+      o.value=op.operadorId;o.textContent=op.unidad+' · '+op.nombre;
       s.appendChild(o);
     });
   });
@@ -462,11 +464,12 @@ function initSelects(){
     var o=document.createElement('option');o.value=u;o.textContent=u;su.appendChild(o);
   });
 }
-// Al elegir operador, se propone su unidad "de casa" por default —
-// queda seleccionable aparte por si este periodo manejó otra.
+// Al elegir operador, se propone su unidad ACTUAL por default — queda
+// seleccionable aparte por si este periodo manejó otra.
 $('pcOperador').addEventListener('change',function(){
   var opId=parseInt(this.value||0);
-  if(opId&&$('pcUnidad'))$('pcUnidad').value=opId;
+  var op=OPERADORES.find(function(o){return o.operadorId===opId;});
+  if(op&&$('pcUnidad'))$('pcUnidad').value=op.unidad;
 });
 
 let comprobantesDB=[]; // arreglo en vivo de comprobantesPrecargados (getAll/listenCollection)
@@ -676,7 +679,7 @@ async function descargarPDFComprobante(uuidDoc){
   var c=comprobantesDB.find(function(x){return x.id===uuidDoc;});
   if(!c)return;
   if(!(await asegurarJsPDF()))return;
-  var op=OPERADORES.find(function(o){return o.unidad===c.operador;});
+  var op=OPERADORES.find(function(o){return o.operadorId===c.operador;});
   TMLComprobantes.verPDF({
     titulo:'Comprobante pre-cargado — '+(op?op.nombre:'Unidad '+c.unidad),
     fecha:c.fecha,
@@ -731,7 +734,7 @@ function renderPrecarga(){
     return;
   }
   var opts=function(sel){return UNIDADES.map(function(u){return '<option value="'+u+'"'+(u===sel?' selected':'')+'>'+u+'</option>';}).join('');};
-  var optsOp=function(sel){return OPERADORES.map(function(o){return '<option value="'+o.unidad+'"'+(o.unidad===sel?' selected':'')+'>'+o.unidad+' · '+o.nombre.split(' ').slice(0,2).join(' ')+'</option>';}).join('');};
+  var optsOp=function(sel){return OPERADORES.map(function(o){return '<option value="'+o.operadorId+'"'+(o.operadorId===sel?' selected':'')+'>'+o.unidad+' · '+o.nombre.split(' ').slice(0,2).join(' ')+'</option>';}).join('');};
   filas.forEach(function(c){
     var esPend=c.estado==='pendiente';
     var tipoLabel=c.tipo==='caseta'?'🛣️ Caseta':(c.tipo==='parquimetro'?'🅿️ Parquímetro':'🧾 Factura');
@@ -750,7 +753,7 @@ function renderPrecarga(){
             +(opUnDesbloq?'':'<span onclick="desbloquearReasignar(\''+c.id+'\')" style="cursor:pointer;font-size:12px" title="Cambiar operador/unidad — requiere contraseña de administrador">🔒</span>')
             +'</div>'
             +'<select class="input-sm" onchange="reasignar(\''+c.id+'\',\'unidad\',this.value)" '+(opUnDesbloq?'':'disabled')+' style="border:1.5px solid #dde;border-radius:5px;padding:4px;font-size:11px;width:100%;'+(opUnDesbloq?'':'background:#f0f2f5;color:#999')+'">'+opts(c.unidad)+'</select>'
-          :(function(){var op=OPERADORES.find(function(o){return o.unidad===c.operador;});return (op?op.nombre:c.operador)+' · Unidad '+c.unidad;})())
+          :(function(){var op=OPERADORES.find(function(o){return o.operadorId===c.operador;});return (op?op.nombre:c.operador)+' · Unidad '+c.unidad;})())
       +'</td>'
       +'<td class="num r">'+fmtCent(c.total)+'</td>'
       +'<td style="font-size:11px">'

@@ -1704,8 +1704,11 @@ function restaurarUILiquidacion(){
     asegurarOpcionEnSelect('liqUnidad',liq.unidad,liq.unidad);
     $('liqUnidad').value=liq.unidad||'';
   }
-  var _opRest=OPERADORES.find(function(o){return o.unidad===parseInt(liq.opId||liq.unidad||0);})
-    ||OPERADORES.find(function(o){return o.operadorId===parseInt(liq.opId||0);});
+  // Primero por operadorId (identidad real, liquidaciones nuevas) — el
+  // fallback por unidad es solo para liquidaciones viejas cuyo opId se
+  // guardó como número de unidad antes de este fix.
+  var _opRest=OPERADORES.find(function(o){return o.operadorId===parseInt(liq.opId||0);})
+    ||OPERADORES.find(function(o){return o.unidad===parseInt(liq.opId||liq.unidad||0);});
   if($('liqClave'))$('liqClave').value=_opRest?_opRest.clave:'';
   if(liq.gastosXML||liq.gastos) renderGastos();
   renderIncidentesLiq();
@@ -1768,9 +1771,13 @@ function showTab(i){
 function initSelects(){
   ['liqOp','ingOp','filtroIngOp','rgOperador'].forEach(function(id){
     const s=$(id);if(!s)return;
+    // value=operadorId (identidad PERMANENTE), no la unidad actual — así
+    // anticipos/ingresos/nómina siguen ligados a la persona aunque lo
+    // reasignen de unidad. "Unidad manejada este periodo" es un select
+    // aparte (liqUnidad, abajo) y sí es la unidad/vehículo real.
     OPERADORES.forEach(function(op){
       const o=document.createElement('option');
-      o.value=op.unidad;o.textContent=op.unidad+' · '+op.nombre;
+      o.value=op.operadorId;o.textContent=op.unidad+' · '+op.nombre;
       s.appendChild(o);
     });
   });
@@ -1865,13 +1872,13 @@ function procesarAnticipos(){
     const esSal=esSaldo(r.concepto);
     const op=matchOp(r.concepto);
     if(op){
-      if(!porOp[op.unidad])porOp[op.unidad]={op:op,anticipos:[],saldos:[]};
-      if(esSal){porOp[op.unidad].saldos.push(r);totalExcl++;}
+      if(!porOp[op.operadorId])porOp[op.operadorId]={op:op,anticipos:[],saldos:[]};
+      if(esSal){porOp[op.operadorId].saldos.push(r);totalExcl++;}
       else{
-        porOp[op.unidad].anticipos.push(r);
-        if(!anticiposDB[op.unidad])anticiposDB[op.unidad]=[];
-        const existe=anticiposDB[op.unidad].some(function(a){return a.fechaStr===r.fechaStr&&a.importe===r.importe&&a.concepto===r.concepto;});
-        if(!existe)anticiposDB[op.unidad].push(Object.assign({},r,{estado:'pendiente',liqNum:null,id:uid()}));
+        porOp[op.operadorId].anticipos.push(r);
+        if(!anticiposDB[op.operadorId])anticiposDB[op.operadorId]=[];
+        const existe=anticiposDB[op.operadorId].some(function(a){return a.fechaStr===r.fechaStr&&a.importe===r.importe&&a.concepto===r.concepto;});
+        if(!existe)anticiposDB[op.operadorId].push(Object.assign({},r,{estado:'pendiente',liqNum:null,id:uid()}));
       }
     } else if(!esSal){sinMatch.push(r);}
   });
@@ -1903,7 +1910,7 @@ function procesarAnticipos(){
 function exportAntCSV(){
   var csv='Unidad,Operador,Fecha,Concepto,Importe,Estado\n';
   Object.keys(anticiposDB).forEach(function(u){
-    const op=OPERADORES.find(function(o){return o.unidad===parseInt(u);});
+    const op=OPERADORES.find(function(o){return o.operadorId===parseInt(u);});
     anticiposDB[u].forEach(function(a){csv+=u+',"'+(op?op.nombre:'')+'",'+',"'+a.fechaStr+'","'+a.concepto+'",'+a.importe+','+a.estado+'\n';});
   });
   dlBlob(csv,'Anticipos_TML_'+hoy()+'.csv','text/csv');
@@ -2086,7 +2093,7 @@ function renderIngresos(){
   });
   if(!filtrados.length){tb.innerHTML='<tr><td colspan="13" style="text-align:center;color:#aaa;padding:20px">Sin viajes registrados</td></tr>';return;}
   filtrados.forEach(function(v){
-    const op=OPERADORES.find(function(o){return o.unidad===v.unidad;});
+    const op=OPERADORES.find(function(o){return o.operadorId===v.unidad;});
     var sf=v.subtFlete!=null?v.subtFlete:(v.tipo==='flete_for'||v.tipo==='flete_mx'?v.subtotal:0);
     var sm=v.subtManiobras!=null?v.subtManiobras:(v.tipo==='maniobra'?v.subtotal:0);
     var so=v.subtOtros!=null?v.subtOtros:(v.tipo==='otro'?v.subtotal:0);
@@ -2128,7 +2135,7 @@ function eliminarIngreso(id){
 // ══════════════════════════════════════════════
 async function onLiqOpChange(){
   const opId=parseInt($('liqOp').value||0);
-  const op=OPERADORES.find(function(o){return o.unidad===opId;});
+  const op=OPERADORES.find(function(o){return o.operadorId===opId;});
   // Unidad manejada: por default se propone la unidad "de casa" del
   // operador, pero queda seleccionable aparte (onUnidadRealChange) por si
   // este periodo manejó otra — el arrastre de diesel/casetas sigue a la
@@ -2659,7 +2666,7 @@ async function jalarComprobantesPrecarga(liqObj){
 async function iniciarLiquidacion(){
  try{
   const opId=parseInt($('liqOp').value||0);
-  const op=OPERADORES.find(function(o){return o.unidad===opId;});
+  const op=OPERADORES.find(function(o){return o.operadorId===opId;});
   const unidad=parseInt($('liqUnidad')?$('liqUnidad').value||0:0);
   if(!op||!unidad||!$('liqSalida').value||!$('liqLlegada').value){alert('Completa operador, unidad manejada y fechas.');return;}
   // El candado de "una liquidación activa a la vez" es POR OPERADOR (ver

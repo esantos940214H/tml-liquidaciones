@@ -591,10 +591,12 @@ window.onFBReady(verificarSesionModulo);
 
 // Init selects
 function initSelectsOperadores(){
+  // value=operadorId (identidad PERMANENTE), no la unidad actual — así se
+  // sigue encontrando el historial de la persona aunque lo reasignen.
   const s=$('busOp');
-  OPERADORES.forEach(op=>{const o=document.createElement('option');o.value=op.unidad;o.textContent=op.unidad+' · '+op.nombre;s.appendChild(o);});
+  OPERADORES.forEach(op=>{const o=document.createElement('option');o.value=op.operadorId;o.textContent=op.unidad+' · '+op.nombre;s.appendChild(o);});
   const sRep=$('repOp');
-  OPERADORES.forEach(op=>{const o=document.createElement('option');o.value=op.unidad;o.textContent=op.unidad+' · '+op.nombre;sRep.appendChild(o);});
+  OPERADORES.forEach(op=>{const o=document.createElement('option');o.value=op.operadorId;o.textContent=op.unidad+' · '+op.nombre;sRep.appendChild(o);});
 }
 
 window.onFBReady(async function(){
@@ -648,7 +650,7 @@ function renderActivas(){
     return;
   }
   tb.innerHTML=activasDB.map(function(l){
-    const op=OPERADORES.find(function(o){return o.unidad===parseInt(l.opId||l.unidad);});
+    const op=OPERADORES.find(function(o){return o.operadorId===parseInt(l.opId||l.unidad);});
     // ultimaEdicionPor = quién la tocó más recientemente (se actualiza en cada
     // guardado); abiertaPor = quién la inició/reabrió — de respaldo si la
     // liquidación es de antes de que existiera ultimaEdicionPor.
@@ -698,7 +700,7 @@ function buscar(){
   }
 
   filtrados.forEach(l=>{
-    const op=OPERADORES.find(o=>o.unidad===parseInt(l.opId||l.unidad));
+    const op=OPERADORES.find(o=>o.operadorId===parseInt(l.opId||l.unidad));
     const snap=l.snapshot||{};
     const saldo=snap.saldoReal||0;
     const ingresos=snap.totIngSubtotal||0;
@@ -739,7 +741,7 @@ function verDetalle(id){
   if(!l)return;
   _detalleActual=l;
   const snap=l.snapshot||{};
-  const op=OPERADORES.find(o=>o.unidad===parseInt(l.opId||l.unidad));
+  const op=OPERADORES.find(o=>o.operadorId===parseInt(l.opId||l.unidad));
 
   $('cardLista').style.display='none';
   $('cardDetalle').style.display='block';
@@ -1074,7 +1076,7 @@ async function reabrirLiquidacion(){
   try{
     const snap=l.snapshot||{};
     const opIdL=l.opId||l.unidad;
-    const op=OPERADORES.find(function(o){return o.unidad===parseInt(opIdL);})||{unidad:opIdL,nombre:'',clave:''};
+    const op=OPERADORES.find(function(o){return o.operadorId===parseInt(opIdL);})||{unidad:opIdL,nombre:'',clave:''};
 
     // Reconstruir un objeto de liquidación editable a partir del snapshot
     const gastosXML=(snap.gastosList||[]).filter(function(g){return g.tipo==='xml';}).map(function(g){
@@ -1264,9 +1266,9 @@ function cambiarTipoReporte(){
   $('btnExportRep').style.display='none';
 }
 
-function opNombre(unidad){
-  const op=OPERADORES.find(o=>parseInt(o.unidad)===parseInt(unidad));
-  return op?op.nombre:('Unidad '+unidad);
+function opNombre(opId){
+  const op=OPERADORES.find(o=>parseInt(o.operadorId)===parseInt(opId));
+  return op?op.nombre:('Operador '+opId);
 }
 
 function liqsFiltradas(){

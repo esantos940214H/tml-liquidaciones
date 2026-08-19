@@ -500,9 +500,13 @@ function initSelects(){
     const s=$(id);if(!s)return;
     // Limpiar opciones extras
     while(s.options.length>1)s.remove(1);
+    // El value es operadorId (identidad PERMANENTE), no la unidad actual —
+    // así los anticipos siguen ligados a la persona aunque lo reasignen de
+    // unidad después. El texto sí muestra la unidad actual, es solo para
+    // que se reconozca en la lista.
     OPERADORES.forEach(op=>{
       const o=document.createElement('option');
-      o.value=op.unidad;o.textContent=op.unidad+' · '+op.nombre;
+      o.value=op.operadorId;o.textContent=op.unidad+' · '+op.nombre;
       s.appendChild(o);
     });
   });
@@ -601,7 +605,7 @@ function procesarRows(rows,fname){
     if(esSaldo(r.concepto)){saldosExcl++;return;}
     const op=matchOp(r.concepto,r.beneficiario);
     if(!op){sinMatch.push(r);return;}
-    if(!anticiposDB[op.unidad])anticiposDB[op.unidad]=[];
+    if(!anticiposDB[op.operadorId])anticiposDB[op.operadorId]=[];
     // Verificar duplicado. Si el archivo trae "Referencia" (folio único del
     // banco por transacción — ver parseCSV) y el registro existente también
     // la tiene, comparar SOLO por referencia: dos depósitos reales al mismo
@@ -610,13 +614,13 @@ function procesarRows(rows,fname){
     // la referencia (captura manual, o un archivo sin esa columna), se cae
     // al criterio anterior (fecha+monto+concepto) para no perder detección
     // de duplicados en esos casos.
-    const existe=anticiposDB[op.unidad].some(a=>{
+    const existe=anticiposDB[op.operadorId].some(a=>{
       if(a.fecha!==r.fecha||Math.abs(a.importe-r.importe)>=0.01)return false;
       if(a.referencia&&r.referencia)return a.referencia===r.referencia;
       return norm(a.concepto)===norm(r.concepto);
     });
     if(existe){duplicados++;return;}
-    anticiposDB[op.unidad].push({id:uid(),fecha:r.fecha,importe:r.importe,concepto:r.concepto,referencia:r.referencia||'',estado:'pendiente',liqNum:null,origen:'archivo'});
+    anticiposDB[op.operadorId].push({id:uid(),fecha:r.fecha,importe:r.importe,concepto:r.concepto,referencia:r.referencia||'',estado:'pendiente',liqNum:null,origen:'archivo'});
     nuevos++;
   });
   guardar();
@@ -679,7 +683,7 @@ function renderAnticipos(){
   // Construir lista filtrada
   let todos=[];
   Object.keys(anticiposDB).forEach(u=>{
-    const op=OPERADORES.find(o=>o.unidad===parseInt(u));
+    const op=OPERADORES.find(o=>o.operadorId===parseInt(u));
     (anticiposDB[u]||[]).forEach(a=>{
       if(filtOp&&parseInt(u)!==filtOp)return;
       if(filtDesde&&a.fecha<filtDesde)return;
@@ -783,7 +787,7 @@ function limpiarFiltros(){
 function exportarCSV(){
   let csv='Unidad,Operador,Fecha,Concepto,Importe,Estatus,Liquidación\n';
   Object.keys(anticiposDB).forEach(u=>{
-    const op=OPERADORES.find(o=>o.unidad===parseInt(u));
+    const op=OPERADORES.find(o=>o.operadorId===parseInt(u));
     (anticiposDB[u]||[]).forEach(a=>{
       csv+=`${u},"${op?op.nombre:''}", "${a.fecha}","${a.concepto}",${a.importe},${a.estado},${a.liqNum||''}\n`;
     });

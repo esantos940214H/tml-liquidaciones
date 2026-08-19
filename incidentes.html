@@ -454,9 +454,11 @@ function initSelects(){
   ['iUnidad','filtOp'].forEach(function(id){
     var s=$(id);if(!s)return;
     while(s.options.length>1)s.remove(1);
+    // value=operadorId (identidad PERMANENTE), no la unidad actual — así el
+    // incidente sigue ligado a la persona aunque lo reasignen de unidad.
     OPERADORES.forEach(function(op){
       var o=document.createElement('option');
-      o.value=op.unidad;o.textContent=op.unidad+' · '+op.nombre;
+      o.value=op.operadorId;o.textContent=op.unidad+' · '+op.nombre;
       s.appendChild(o);
     });
   });
@@ -501,7 +503,7 @@ function guardar(){
 function agregarIncidenteReal(){
   var unidad=parseInt($('iUnidad').value||0);
   if(!unidad){alert('Selecciona la unidad/operador.');return;}
-  var op=OPERADORES.find(function(o){return o.unidad===unidad;});
+  var op=OPERADORES.find(function(o){return o.operadorId===unidad;});
   var fechaEvento=$('iFechaEvento').value;
   if(!fechaEvento){alert('Captura la fecha y hora del evento.');return;}
   var causa=$('iCausa').value;
@@ -541,7 +543,7 @@ function renderIncidentes(){
 
   var todos=[];
   Object.keys(incidentesDB).forEach(function(u){
-    var op=OPERADORES.find(function(o){return o.unidad===parseInt(u);});
+    var op=OPERADORES.find(function(o){return o.operadorId===parseInt(u);});
     (incidentesDB[u]||[]).forEach(function(a){
       if(filtOp&&parseInt(u)!==filtOp)return;
       if(filtCausa&&a.causa!==filtCausa)return;
@@ -614,7 +616,7 @@ function limpiarFiltros(){
 function exportarCSV(){
   var csv='Unidad,Operador,Fecha evento,Causa,Monto reportado,Monto reconocido,Negoció,Fuera de tiempo,Descripción,Viaje/Liq,Estado,Liquidación\n';
   Object.keys(incidentesDB).forEach(function(u){
-    var op=OPERADORES.find(function(o){return o.unidad===parseInt(u);});
+    var op=OPERADORES.find(function(o){return o.operadorId===parseInt(u);});
     (incidentesDB[u]||[]).forEach(function(a){
       csv+=u+',"'+(op?op.nombre:'')+'","'+(a.fechaEvento||'')+'",'+a.causa+','+a.montoReportado+','+a.montoReconocido+','+(a.negocio?'SI':'NO')+','+(a.fueraDeTiempo?'SI':'NO')+',"'+(a.descripcion||'').replace(/"/g,'""')+'","'+(a.liqRef||'')+'",'+a.estado+','+(a.liqNum||'')+'\n';
     });
