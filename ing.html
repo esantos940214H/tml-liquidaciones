@@ -1625,6 +1625,13 @@ function agregarIngresoManualMultiOp(){
   const _u=usuarioSesion();
   const _esAdmin=!!(_u&&_u.esAdmin);
 
+  // Mismo candado que en el registro de un solo operador: sin IVA anotado,
+  // el monto capturado a mano casi siempre difiere del XML real cuando
+  // llegue (ver Conflictos) — se exige antes de registrar, no después.
+  if(!_esAdmin&&parseFloat($('ingIva').value||0)<=0){
+    alert('Escribe el IVA de este ingreso antes de registrarlo. Si no lo anotas, cuando llegue la factura real casi siempre va a haber una diferencia de monto que se manda a revisión de un administrador — mejor evitarlo desde ahora.');
+    return;
+  }
   if(!_esAdmin&&!_obs){
     alert('Escribe el número de pedido/orden de compra para este ingreso sin factura — lo vas a necesitar para que facturación lo sustituya con el XML real.');
     return;
@@ -1690,6 +1697,15 @@ function agregarIngresoReal(){
   var _esAdmin=!!(_u&&_u.esAdmin);
   var _fecha=$('ingFecha').value||hoy();
   var _sinFacturaJustificar=false,_fechaLimite=null,_capturadoPor=null;
+  // Un no-admin captura "sin factura" antes de tener el CFDI real — si no
+  // anota el IVA, cuando llegue el XML real casi siempre va a haber una
+  // discrepancia de monto (ver Conflictos), porque el sistema comparará el
+  // total con IVA del XML contra un total sin IVA capturado a mano. Exigir
+  // el IVA aquí evita esa discrepancia desde la captura.
+  if(!_esAdmin&&parseFloat($('ingIva').value||0)<=0){
+    alert('Escribe el IVA de este ingreso antes de registrarlo. Si no lo anotas, cuando llegue la factura real casi siempre va a haber una diferencia de monto que se manda a revisión de un administrador — mejor evitarlo desde ahora.');
+    return;
+  }
   if(!_esAdmin){
     if(!_obs){
       alert('Escribe el número de pedido/orden de compra para este ingreso sin factura — lo vas a necesitar para que facturación lo sustituya con el XML real.');
