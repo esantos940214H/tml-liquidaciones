@@ -1349,17 +1349,28 @@ function guardarDesglose(){
     const folioCompleto=dgPend.serie+'-'+dgPend.folio;
     const yaFolio=p.grupos.filter(g=>ingresosDB.some(v=>v.folio===folioCompleto&&v.unidad===g.unidad));
     if(yaFolio.length&&!confirm('⚠️ El folio '+folioCompleto+' ya tiene registro para '+yaFolio.length+' de estos operadores. ¿Continuar de todas formas?'))return;
+    // Verificación ANTES de guardar nada: si el usuario está bloqueado (tiene
+    // ingresos sin factura pendientes de resolver) y algún renglón no trae
+    // un ID de sustitución, antes ese renglón se descartaba EN SILENCIO
+    // (el resto del desglose sí se guardaba, con un aviso fácil de pasar
+    // por alto dentro del mensaje de "✅ Desglose guardado" — así fue como
+    // 4 de 5 operadores de una factura de $55,468 nunca quedaron
+    // registrados). Ahora se detiene TODO el guardado de una vez, sin
+    // escribir nada a medias, y se dice exactamente qué falta resolver.
+    if(estaBloqueado()){
+      const faltantes=p.grupos.filter(g=>!(g.sustituyeIds&&g.sustituyeIds[0]));
+      if(faltantes.length){
+        const nombres=faltantes.map(g=>(OPERADORES.find(o=>o.operadorId===g.unidad)||{}).nombre||g.unidad).join(', ');
+        alert('🚫 No se guardó NADA de este desglose todavía.\n\nTienes ingresos sin factura pendientes de resolver, así que no puedes registrar renglones nuevos sin ligarlos a un ID existente. Falta el ID de sustitución para: '+nombres+'.\n\nSi corresponden a algo ya capturado sin factura, escribe su ID en "Sustituye ingreso sin factura (ID)". Si de verdad son ingresos nuevos, pide a un administrador que resuelva primero tus pendientes en la pestaña de Conflictos.');
+        return;
+      }
+    }
     const sustituciones=[];
     for(const g of p.grupos){
       const smC=g.smC,sfC=g.sfC,soC=g.soC;
       const tipoDerivado=smC>0&&!sfC?'maniobra':soC>0&&!sfC&&!smC?'otro':'flete_for';
       const destino=g.destinos.join(' / ');
       const idSust=(g.sustituyeIds&&g.sustituyeIds[0])?g.sustituyeIds[0]:'';
-      if(!idSust&&estaBloqueado()){
-        const opNom=(OPERADORES.find(o=>o.operadorId===g.unidad)||{}).nombre||g.unidad;
-        sustituciones.push('🚫 No se registró el renglón de '+opNom+': tienes ingresos sin factura pendientes de resolver. Si este XML corresponde a alguno de ellos, escribe su ID en "Sustituye ingreso sin factura (ID)".');
-        continue;
-      }
       let candidato=null;
       if(idSust){
         const idSustNorm=idSust.toUpperCase();
