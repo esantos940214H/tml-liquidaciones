@@ -1092,6 +1092,21 @@ function parseXML(text,fname,unidad){
     });
   }
   const tipoDerivado=subtManiobras>0&&!subtFlete?'maniobra':subtOtros>0&&!subtFlete&&!subtManiobras?'otro':'flete_for';
+  // Esta subida "normal" (un XML = un operador) NUNCA revisa si ya existe un
+  // ingreso "sin factura" pendiente de este mismo operador — a diferencia
+  // del botón "Sustituir con XML" de esa fila, o del desglose multi-operador
+  // con su campo "Sustituye ID". Por eso pasaba, repetidamente, que un XML
+  // que en realidad correspondía a un pedido ya capturado a mano terminaba
+  // duplicado como un registro nuevo y aparte (ver caso FI-677 de Rafael
+  // Tapia). Aquí se avisa ANTES de crear el registro si hay pendientes de
+  // este operador, para no duplicar en silencio.
+  const pendientes=ingresosDB.filter(v=>v.unidad===unidad&&v.sinFacturaJustificar&&!v.sustituidoPorXML);
+  if(pendientes.length){
+    const lista=pendientes.map(function(p){return '- ID "'+(p.observaciones||'')+'": '+fmt(p.total);}).join('\n');
+    if(!confirm('⚠️ '+fname+': este operador tiene '+pendientes.length+' ingreso(s) "sin factura" pendiente(s) sin sustituir todavía:\n\n'+lista+'\n\nSi este XML corresponde a alguno de esos pedidos, da clic en Cancelar aquí y ve a esa fila a usar el botón "Sustituir con XML" — si lo registras aquí como nuevo vas a DUPLICAR el ingreso.\n\n¿Registrar de todas formas como un ingreso NUEVO y aparte?')){
+      return;
+    }
+  }
   ingresosDB.push({id:uid(),unidad,folio:folioCompleto,fecha,cliente,tipo:tipoDerivado,
     subtotal,subtFlete,subtManiobras,subtOtros,iva,ret,total:parseFloat(comp.getAttribute('Total')||0),
     estado:'sin_liquidar',liqNum:null,origen:'xml',ruta,
