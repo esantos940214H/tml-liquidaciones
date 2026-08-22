@@ -107,8 +107,19 @@ const USUARIOS = [
     nombre: 'Raúl Marcial González',
     rol: 'cobranza',
     permisos: {
-      ant: false, ing: true, liq: false, nom: false, inc: false, hist: false, autoriz: false, precarga: false,
-      anticipos_editar: false, ingresos_editar: true, incidentes_editar: false, casetas_editar: false
+      // ant/liq/hist en true = puede ENTRAR a esos módulos. ant_solo_ver y
+      // liq_solo_ver son candados NUEVOS, propios de ese módulo (a
+      // diferencia de anticipos_editar/ingresos_editar/etc., que existían
+      // pero nunca se llegaron a revisar en el código real de ant.html/
+      // ing.html): con ant_solo_ver:true, ant.html no lo deja subir
+      // archivos, capturar a mano ni eliminar nada; con liq_solo_ver:true,
+      // liq.html no lo deja iniciar, capturar ni cerrar ninguna
+      // liquidación — en ambos solo puede consultar. Historial ya es de
+      // solo lectura para cualquiera que no sea admin, sin necesidad de un
+      // candado aparte.
+      ant: true, ing: true, liq: true, nom: false, inc: false, hist: true, autoriz: false, precarga: false,
+      anticipos_editar: false, ingresos_editar: true, incidentes_editar: false, casetas_editar: false,
+      ant_solo_ver: true, liq_solo_ver: true
     }
   },
   {

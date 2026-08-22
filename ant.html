@@ -157,6 +157,10 @@ tr:hover td{background:#fafafa}
   </div>
 </header>
 
+<div id="bannerSoloVerAnt" style="display:none;background:#fde68a;color:#7c4a03;padding:8px 16px;font-size:12px;font-weight:700;text-align:center">
+  👁️ Tu usuario solo puede VER Anticipos — no puedes subir archivos, capturar ni eliminar nada.
+</div>
+
 <div class="container">
 
   <!-- CARGAR ARCHIVO -->
@@ -294,6 +298,11 @@ window.onFBReady=function(cb){if(window._fbInit)cb();else window._fbCallbacks.pu
 
 <script>
 let OPERADORES=[];
+// true por default (no rompe a nadie que ya use Anticipos hoy) — solo se
+// pone en false para un usuario con el custom claim "ant_solo_ver":true (ver
+// admin/crear-usuarios.js), que entra a VER pero no puede subir archivos,
+// capturar a mano ni eliminar nada. Se recalcula en onFBReady, abajo.
+let PUEDE_EDITAR_ANT=true;
 // Nombres de TODOS los operadores (activos o no, con unidad o sin ella) —
 // respaldo para seguir mostrando el nombre en anticipos viejos de alguien
 // que después fue dado de baja o se quedó sin unidad (ver
@@ -526,6 +535,10 @@ window.onFBReady(async function(){
   OPERADORES=await window.cargarOperadores();
   NOMBRES_OP=await window.cargarNombresOperadores();
   initSelects();
+  var _uPermAnt=usuarioSesion();
+  var _soloVerAnt=(!_uPermAnt||_uPermAnt.esAdmin||!window.TMLSesion)?false:await TMLSesion.tienePermiso('ant_solo_ver');
+  PUEDE_EDITAR_ANT=!_soloVerAnt;
+  if($('bannerSoloVerAnt'))$('bannerSoloVerAnt').style.display=PUEDE_EDITAR_ANT?'none':'block';
   fbReady=true;
   $('fbStatus').textContent='✅ Conectado';
   $('fbStatus').className='fb-status fb-ok';
@@ -544,6 +557,7 @@ setTimeout(()=>{
 
 function guardar(){
   if(!fbReady)return;
+  if(!PUEDE_EDITAR_ANT)return;
   window.FB.set('estado','anticiposDB',{data:JSON.stringify(anticiposDB)});
 }
 
@@ -610,6 +624,7 @@ function parseFechaTXT(str){
 
 // ── PROCESAR ARCHIVO ─────────────────────────────────────
 function procesarRows(rows,fname){
+  if(!PUEDE_EDITAR_ANT){alert('Tu usuario solo puede VER Anticipos — no puedes subir archivos.');return;}
   let nuevos=0,duplicados=0,saldosExcl=0;
   const sinMatch=[];
   rows.forEach(r=>{
@@ -669,6 +684,7 @@ function handleFile(file,parser){
 function showManual(){$('cardManual').style.display='block';$('mFecha').value=hoy();}
 function hideManual(){$('cardManual').style.display='none';}
 function agregarManualReal(){
+  if(!PUEDE_EDITAR_ANT){alert('Tu usuario solo puede VER Anticipos — no puedes registrar uno nuevo.');return;}
   const unidad=parseInt($('mOp').value||0);
   if(!unidad){alert('Selecciona el operador.');return;}
   const importe=parseFloat($('mImporte').value||0);
@@ -755,6 +771,7 @@ function renderAnticipos(){
 }
 
 function eliminarAnticipo(unidad,id){
+  if(!PUEDE_EDITAR_ANT){alert('Tu usuario solo puede VER Anticipos — no puedes eliminar ninguno.');return;}
   lockRequest('Eliminar anticipo', function(){
     if(anticiposDB[unidad])anticiposDB[unidad]=anticiposDB[unidad].filter(a=>a.id!==id);
     guardar();renderAnticipos();
@@ -779,6 +796,7 @@ function toggleTodosAnts(chkHeader){
 }
 
 function eliminarSeleccionadosAnts(){
+  if(!PUEDE_EDITAR_ANT){alert('Tu usuario solo puede VER Anticipos — no puedes eliminar ninguno.');return;}
   var chks=document.querySelectorAll('.chkAnt:checked');
   if(!chks.length){alert('No hay anticipos seleccionados.');return;}
   var sel=Array.from(chks).map(function(c){return{id:c.dataset.id,unidad:parseInt(c.dataset.unidad)};});

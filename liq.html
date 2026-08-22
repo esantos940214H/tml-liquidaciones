@@ -219,6 +219,10 @@ tr:hover td{background:#fafafa}
   </div>
 </header>
 
+<div id="bannerSoloVerLiq" class="no-print" style="display:none;background:#fde68a;color:#7c4a03;padding:8px 16px;font-size:12px;font-weight:700;text-align:center">
+  👁️ Tu usuario solo puede VER Liquidaciones — no puedes iniciar, capturar ni cerrar liquidaciones.
+</div>
+
 <div class="tabs">
   <div class="tab active" onclick="showTab(0)">🚛 Liquidación</div>
   <div class="tab" onclick="showTab(1)">⛽ Diesel</div>
@@ -801,6 +805,11 @@ window.onFBReady=function(cb){if(window._fbInit)cb();else window._fbCallbacks.pu
 // operadores a veces cambian de unidad y el arrastre de diesel/casetas debe
 // quedarse con el vehículo, no con el operador.
 let OPERADORES=[];
+// true por default (no rompe a nadie que ya use Liquidaciones hoy) — solo se
+// pone en false para un usuario con el custom claim "liq_solo_ver":true (ver
+// admin/crear-usuarios.js), que entra a VER pero no puede iniciar, capturar
+// ni cerrar ninguna liquidación. Se recalcula en onFBReady, abajo.
+let PUEDE_EDITAR_LIQ=true;
 // Nombres de TODOS los operadores (activos o no, con unidad o sin ella) —
 // respaldo para seguir mostrando el nombre en registros viejos (anticipos
 // masivos por BBVA, etc.) de alguien que después fue dado de baja o se
@@ -1449,6 +1458,12 @@ window.onFBReady(verificarSesionModulo);
 
 function guardarEstado(){
   if(!fbReady){ console.warn('Firebase no listo aún'); return; }
+  // Ver PUEDE_EDITAR_LIQ más abajo: usuarios con permiso "liq_solo_ver" no
+  // deben persistir ningún cambio, aunque la interfaz localmente les deje
+  // teclear/marcar cosas — este es el único punto de guardado de todo lo
+  // que no sea cerrar/iniciar (esos se bloquean aparte, más arriba en su
+  // propia función, con un aviso explícito).
+  if(!PUEDE_EDITAR_LIQ)return;
   // SOLO guarda lo que pertenece a liquidaciones — NO toca anticiposDB ni ingresosDB
   window.FB.set('estado','arrastres',{data: JSON.stringify(arrastres)});
   window.FB.set('estado','config',{ultimaLiqNum: ultimaLiqNum, ultimaLiqNumPorOp: ultimaLiqNumPorOp});
@@ -2681,6 +2696,7 @@ async function jalarComprobantesPrecarga(liqObj){
 
 async function iniciarLiquidacion(){
  try{
+  if(!PUEDE_EDITAR_LIQ){alert('Tu usuario solo puede VER Liquidaciones — no puedes iniciar una.');return;}
   const opId=parseInt($('liqOp').value||0);
   const op=OPERADORES.find(function(o){return o.operadorId===opId;});
   const unidad=parseInt($('liqUnidad')?$('liqUnidad').value||0:0);
@@ -4745,6 +4761,10 @@ window.onFBReady(async function(){
   UNIDADES=OPERADORES.map(function(o){return o.unidad;}).slice().sort(function(a,b){return a-b;});
   initSelects();
   renderTags();
+  var _uPermLiq=usuarioSesion();
+  var _soloVerLiq=(!_uPermLiq||_uPermLiq.esAdmin||!window.TMLSesion)?false:await TMLSesion.tienePermiso('liq_solo_ver');
+  PUEDE_EDITAR_LIQ=!_soloVerLiq;
+  if($('bannerSoloVerLiq'))$('bannerSoloVerLiq').style.display=PUEDE_EDITAR_LIQ?'none':'block';
   fbReady = true;
   cargarEstado();
 });
@@ -4773,6 +4793,7 @@ function imprimirLiquidacion(){
 
 async function cerrarLiquidacion(){
   if(!liq)return;
+  if(!PUEDE_EDITAR_LIQ){alert('Tu usuario solo puede VER Liquidaciones — no puedes cerrar una.');return;}
   var _gastosPend=(liq.gastos||[]).filter(function(g){return g.autorizado===false;});
   if(_gastosPend.length){
     alert('🚫 No se puede cerrar: hay '+_gastosPend.length+' gasto(s) pendiente(s) de autorización por '+fmt(_gastosPend.reduce(function(s,g){return s+(g.importe||0);},0))+'.\n\nUn supervisor debe autorizarlos (o elimínalos si no proceden) en autorizaciones.mudanzastml.mx antes de cerrar.');
