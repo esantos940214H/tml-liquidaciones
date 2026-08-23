@@ -519,6 +519,19 @@ function _crearAutorizacionEnMemoria(datos){
     return idsChoque.some(function(id){return vIds.indexOf(id)!==-1;});
   }):null;
   if(choqueId)return{ok:false,error:'Alguno de esos identificadores ya está en uso por otro ingreso sin factura pendiente (ID: "'+choqueId.observaciones+'"). Usa uno distinto o revisa si ya existe.'};
+  // El mismo T.U. sí puede repetirse UNA vez (tramo CEDIS + tramo destino
+  // final), pero no más — normalmente un viaje no lleva más de un reparto en
+  // el CEDIS. Si ya hay 2 autorizaciones con este T.U., se bloquea para que
+  // se revise a mano (podría ser un error de captura).
+  var tuIds=[tu1,tu2].map(_normTxt).filter(function(s){return s;});
+  if(tuIds.length){
+    var yaConEsteTU=ingresosDB.filter(function(v){
+      if(!v.esAutorizacionCliente)return false;
+      var vIds=_normTxt(v.observaciones);
+      return tuIds.some(function(id){return vIds.indexOf(id)!==-1;});
+    });
+    if(yaConEsteTU.length>=2)return{ok:false,error:'⚠️ Este T.U. ya tiene 2 autorizaciones registradas (CEDIS + destino final) — no debería haber una tercera. Revisa si es un error antes de forzarlo. Registros existentes: "'+yaConEsteTU.map(function(v){return v.observaciones;}).join('" y "')+'".'};
+  }
   // Se guardan TODOS los identificadores que traiga el correo (a veces
   // manda folio, a veces T.U. 1, a veces los dos, a veces ninguno de
   // folio/pedido) — así, cuando Raúl suba la factura real, puede sustituir
