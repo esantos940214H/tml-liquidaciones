@@ -149,7 +149,7 @@ tr:hover td{background:#fafafa}
       <div class="row">
         <div class="field" style="flex:2;min-width:200px"><label>Nombre completo</label><input type="text" id="nuevoOpNombre" placeholder="Nombre del operador"></div>
         <div class="field"><label>% Comisión</label><input type="number" id="nuevoOpComision" value="12" step="1" min="0" max="100"></div>
-        <div class="field"><label>Clave (opcional)</label><input type="text" id="nuevoOpClave" placeholder="OPE-012"></div>
+        <div class="field"><label>Clave (opcional, se asigna sola si se deja en blanco)</label><input type="text" id="nuevoOpClave" placeholder="Automática"></div>
         <button class="btn btn-red btn-sm" onclick="altaOperador()">Dar de alta</button>
       </div>
     </div>
@@ -504,20 +504,32 @@ async function siguienteOperadorId(){
   operadoresRaw.forEach(function(o){var n=parseInt(o.id);if(!isNaN(n)&&n>max)max=n;});
   return max+1;
 }
+// Siguiente clave "OPE-XXX" consecutiva, buscando el número más alto ya
+// usado entre TODOS los operadores (activos o no) con ese formato — así la
+// clave sigue la secuencia real (OPE-001, OPE-002...) en vez de saltar al
+// operadorId (que empieza en 9000 para los nuevos, ver siguienteOperadorId).
+function siguienteClaveConsecutiva(){
+  var max=0;
+  operadoresRaw.forEach(function(o){
+    var m=/^OPE-(\d+)$/.exec((o.clave||'').trim());
+    if(m){var n=parseInt(m[1]);if(n>max)max=n;}
+  });
+  return 'OPE-'+String(max+1).padStart(3,'0');
+}
 async function altaOperador(){
   var nombre=($('nuevoOpNombre').value||'').trim().toUpperCase();
   var comision=parseFloat($('nuevoOpComision').value||12);
-  var clave=($('nuevoOpClave').value||'').trim();
+  var clave=($('nuevoOpClave').value||'').trim()||siguienteClaveConsecutiva();
   if(!nombre){alert('Escribe el nombre del operador.');return;}
   try{
     var db=firebase.firestore();
     var nuevoId=await siguienteOperadorId();
     await db.collection('operadores').doc(String(nuevoId)).set({
-      nombre:nombre,comision:comision||12,clave:clave||('OPE-'+nuevoId),
+      nombre:nombre,comision:comision||12,clave:clave,
       unidadActual:null,activo:true,fechaAlta:hoy(),fechaBaja:null
     });
     $('nuevoOpNombre').value='';$('nuevoOpComision').value='12';$('nuevoOpClave').value='';
-    alert('✅ Operador dado de alta. Asígnale una unidad en la pestaña "Asignar / Reasignar" para que empiece a aparecer en el resto del sistema.');
+    alert('✅ Operador dado de alta con clave '+clave+'. Asígnale una unidad en la pestaña "Asignar / Reasignar" para que empiece a aparecer en el resto del sistema.');
     await cargarTodo();
   }catch(e){console.error('altaOperador:',e);alert('⚠️ Error: '+e.message);}
 }

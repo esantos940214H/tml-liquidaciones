@@ -212,6 +212,9 @@ tr:hover td{background:#fafafa}
       <div class="field"><label>Operador</label>
         <select id="filtOp" onchange="renderAnticipos()"><option value="">Todos</option></select>
       </div>
+      <div class="field"><label>Económico / Unidad</label>
+        <select id="filtUnidad" onchange="renderAnticipos()"><option value="">Todos</option></select>
+      </div>
       <div class="field"><label>Desde</label><input type="date" id="filtDesde" onchange="renderAnticipos()"></div>
       <div class="field"><label>Hasta</label><input type="date" id="filtHasta" onchange="renderAnticipos()"></div>
       <div class="field"><label>Estatus</label>
@@ -529,6 +532,20 @@ function initSelects(){
       s.appendChild(o);
     });
   });
+  // Filtro de Económico/Unidad INDEPENDIENTE del de Operador — igual que en
+  // hist.html: sirve para encontrar los anticipos de un operador según el
+  // camión que trae ASIGNADO ACTUALMENTE, sin tener que buscarlo por nombre.
+  const su=$('filtUnidad');
+  if(su){
+    const actual=su.value;
+    while(su.options.length>1)su.remove(1);
+    OPERADORES.slice().sort((a,b)=>(a.unidad||0)-(b.unidad||0)).forEach(op=>{
+      const o=document.createElement('option');
+      o.value=op.unidad;o.textContent='Unidad '+op.unidad;
+      su.appendChild(o);
+    });
+    su.value=actual;
+  }
 }
 // Firebase
 window.onFBReady(async function(){
@@ -703,9 +720,14 @@ function agregarManualReal(){
 // ── RENDER ───────────────────────────────────────────────
 function renderAnticipos(){
   const filtOp=parseInt($('filtOp').value||0);
+  const filtUnidad=parseInt($('filtUnidad').value||0);
   const filtDesde=$('filtDesde').value;
   const filtHasta=$('filtHasta').value;
   const filtEst=$('filtEst').value;
+  // El filtro de Económico busca por la unidad ACTUAL del operador (los
+  // anticipos no guardan un camión por registro, solo por identidad de
+  // operador — ver anticiposDB[operadorId] más abajo).
+  const opPorUnidad=filtUnidad?OPERADORES.find(o=>o.unidad===filtUnidad):null;
 
   // Construir lista filtrada
   let todos=[];
@@ -713,6 +735,7 @@ function renderAnticipos(){
     const opN=nombreOp(parseInt(u));
     (anticiposDB[u]||[]).forEach(a=>{
       if(filtOp&&parseInt(u)!==filtOp)return;
+      if(filtUnidad&&(!opPorUnidad||parseInt(u)!==opPorUnidad.operadorId))return;
       if(filtDesde&&a.fecha<filtDesde)return;
       if(filtHasta&&a.fecha>filtHasta)return;
       if(filtEst&&a.estado!==filtEst)return;
@@ -809,7 +832,7 @@ function eliminarSeleccionadosAnts(){
 }
 
 function limpiarFiltros(){
-  $('filtOp').value='';$('filtDesde').value='';$('filtHasta').value='';$('filtEst').value='';
+  $('filtOp').value='';$('filtUnidad').value='';$('filtDesde').value='';$('filtHasta').value='';$('filtEst').value='';
   renderAnticipos();
 }
 
