@@ -183,6 +183,9 @@ tr:hover td{background:#fafafa}
       <div class="field"><label>Operador</label>
         <select id="busOp" onchange="buscar()"><option value="">Todos</option></select>
       </div>
+      <div class="field"><label>Económico / Unidad</label>
+        <select id="busUnidad" onchange="buscar()"><option value="">Todos</option></select>
+      </div>
       <div class="field"><label>No. Liquidación</label>
         <input type="number" id="busNum" placeholder="Ej: 3" onchange="buscar()">
       </div>
@@ -603,6 +606,22 @@ function initSelectsOperadores(){
   const sRep=$('repOp');
   OPERADORES.forEach(op=>{const o=document.createElement('option');o.value=op.operadorId;o.textContent=op.clave+' · '+op.nombre;sRep.appendChild(o);});
 }
+// Filtro de económico/unidad — independiente del operador, porque un mismo
+// camión pasa por varios operadores con el tiempo y viceversa (ver
+// liq.unidad, que siempre es el vehículo real de ese periodo, nunca la
+// identidad de quien lo manejó). Se arma a partir de las unidades que
+// realmente aparecen en el historial cargado, no de OPERADORES (que solo
+// trae la asignación ACTUAL) — así una unidad vieja o reasignada sigue
+// apareciendo en el filtro aunque hoy la traiga alguien más.
+function initSelectUnidades(){
+  const s=$('busUnidad');
+  if(!s)return;
+  const actual=s.value;
+  while(s.options.length>1)s.remove(1);
+  const unidades=Array.from(new Set(historialDB.map(function(l){return l.unidad;}).filter(function(u){return u;}))).sort(function(a,b){return a-b;});
+  unidades.forEach(function(u){const o=document.createElement('option');o.value=u;o.textContent='Unidad '+u;s.appendChild(o);});
+  s.value=actual;
+}
 
 window.onFBReady(async function(){
   OPERADORES=await window.cargarOperadores();
@@ -611,6 +630,7 @@ window.onFBReady(async function(){
   $('fbStatus').textContent='✅ Conectado';$('fbStatus').className='fb-status fb-ok';
   // Cargar historial de liquidaciones cerradas
   historialDB=await window.FB.getAll('historial');
+  initSelectUnidades();
   // Cargar anticipos e ingresos para el detalle
   const a=await window.FB.get('estado','anticiposDB');
   if(a&&a.data)anticiposDB=JSON.parse(a.data);
@@ -680,12 +700,14 @@ setTimeout(()=>{if($('fbStatus').textContent==='⏳ Conectando...'){$('fbStatus'
 
 function buscar(){
   const filtOp=parseInt($('busOp').value||0);
+  const filtUnidad=parseInt($('busUnidad').value||0);
   const filtNum=parseInt($('busNum').value||0);
   const filtDesde=$('busDesde').value;
   const filtHasta=$('busHasta').value;
 
   const filtrados=historialDB.filter(l=>{
     if(filtOp&&parseInt(l.opId||l.unidad)!==filtOp)return false;
+    if(filtUnidad&&parseInt(l.unidad)!==filtUnidad)return false;
     if(filtNum&&l.num!==filtNum)return false;
     if(filtDesde&&l.salida<filtDesde)return false;
     if(filtHasta&&l.llegada>filtHasta)return false;
@@ -696,7 +718,7 @@ function buscar(){
   const tb=$('tbHistorial');tb.innerHTML='';
 
   if(!filtrados.length){
-    const sinFiltros=!$('busOp').value&&!$('busNum').value&&!$('busDesde').value&&!$('busHasta').value;
+    const sinFiltros=!$('busOp').value&&!$('busUnidad').value&&!$('busNum').value&&!$('busDesde').value&&!$('busHasta').value;
     tb.innerHTML='<tr><td colspan="11" style="text-align:center;padding:24px">'
       +(sinFiltros&&!historialDB.length
         ?'<div style="color:#92400e;font-size:13px">⚠️ No hay liquidaciones cerradas en el historial.<br><span style="font-size:11px;color:#aaa;display:block;margin-top:6px">Las nuevas liquidaciones cerradas desde hoy aparecerán aquí automáticamente.</span></div>'
@@ -728,7 +750,7 @@ function buscar(){
 }
 
 function limpiarBusqueda(){
-  $('busOp').value='';$('busNum').value='';$('busDesde').value='';$('busHasta').value='';
+  $('busOp').value='';$('busUnidad').value='';$('busNum').value='';$('busDesde').value='';$('busHasta').value='';
   buscar();
 }
 
@@ -737,6 +759,7 @@ async function recargarHistorial(){
   const tb=$('tbHistorial');
   tb.innerHTML='<tr><td colspan="10" style="text-align:center;color:#aaa;padding:20px">⏳ Cargando desde Firebase...</td></tr>';
   historialDB=await window.FB.getAll('historial');
+  initSelectUnidades();
   buscar();
 }
 
