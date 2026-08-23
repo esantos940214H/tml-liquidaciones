@@ -207,6 +207,9 @@ tr:hover td{background:#fafafa}
       <div class="field"><label>Operador</label>
         <select id="filtOp" onchange="renderIncidentes()"><option value="">Todos</option></select>
       </div>
+      <div class="field"><label>Económico / Unidad</label>
+        <select id="filtUnidad" onchange="renderIncidentes()"><option value="">Todos</option></select>
+      </div>
       <div class="field"><label>Causa</label>
         <select id="filtCausa" onchange="renderIncidentes()">
           <option value="">Todas</option>
@@ -471,6 +474,20 @@ function initSelects(){
       s.appendChild(o);
     });
   });
+  // Filtro de Económico/Unidad INDEPENDIENTE del de Operador — filtra por
+  // el camión ASIGNADO ACTUALMENTE (incidentesDB se guarda por identidad de
+  // operador, no por camión).
+  var su=$('filtUnidad');
+  if(su){
+    var actual=su.value;
+    while(su.options.length>1)su.remove(1);
+    OPERADORES.slice().sort(function(a,b){return(a.unidad||0)-(b.unidad||0);}).forEach(function(op){
+      var o=document.createElement('option');
+      o.value=op.unidad;o.textContent='Unidad '+op.unidad;
+      su.appendChild(o);
+    });
+    su.value=actual;
+  }
 }
 $('iFechaEvento').value=new Date().toISOString().slice(0,16);
 
@@ -549,13 +566,18 @@ function agregarIncidenteReal(){
 // ── RENDER ───────────────────────────────────────────────
 function renderIncidentes(){
   var filtOp=parseInt($('filtOp').value||0);
+  var filtUnidad=parseInt($('filtUnidad').value||0);
   var filtCausa=$('filtCausa').value;
+  // El filtro de Económico busca por la unidad ACTUAL del operador (las
+  // claves de incidentesDB son identidad de operador, no camión).
+  var opPorUnidadInc=filtUnidad?OPERADORES.find(function(o){return o.unidad===filtUnidad;}):null;
 
   var todos=[];
   Object.keys(incidentesDB).forEach(function(u){
     var opN=nombreOp(parseInt(u));
     (incidentesDB[u]||[]).forEach(function(a){
       if(filtOp&&parseInt(u)!==filtOp)return;
+      if(filtUnidad&&(!opPorUnidadInc||parseInt(u)!==opPorUnidadInc.operadorId))return;
       if(filtCausa&&a.causa!==filtCausa)return;
       todos.push(Object.assign({},a,{unidad:parseInt(u),opNombre:opN||a.operador||'?'}));
     });
@@ -603,7 +625,7 @@ function renderIncidentes(){
         +'<td>'+(a.estado==='pendiente'?'<button class="btn-sm" style="background:#fde8e8;color:#9b1c1c;border:none;cursor:pointer;border-radius:4px;padding:3px 8px" onclick="eliminarIncidente('+a.unidad+',\''+a.id+'\')">✕</button>':'—')+'</td>'
         +'</tr>';
     }).join('');
-    div.innerHTML='<div class="op-bar"><span>Unidad '+grp.unidad+' · '+grp.nombre+'</span><span class="tot">Reportado '+fmt(totRep)+' · Reconocido '+fmt(totRec)+'</span></div>'
+    div.innerHTML='<div class="op-bar"><span>'+grp.nombre+'</span><span class="tot">Reportado '+fmt(totRep)+' · Reconocido '+fmt(totRec)+'</span></div>'
       +'<div class="tbl-wrap"><table>'
       +'<thead><tr><th>Fecha evento</th><th>Causa</th><th class="r">Reportado</th><th class="r">Reconocido</th><th>¿Negoció?</th><th>Descripción</th><th>Viaje/Liq.</th><th></th><th>Estado</th><th></th></tr></thead>'
       +'<tbody>'+rows+'</tbody></table></div>';
@@ -619,7 +641,7 @@ function eliminarIncidente(unidad,id){
 }
 
 function limpiarFiltros(){
-  $('filtOp').value='';$('filtCausa').value='';
+  $('filtOp').value='';$('filtUnidad').value='';$('filtCausa').value='';
   renderIncidentes();
 }
 

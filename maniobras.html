@@ -173,6 +173,11 @@ tr:hover td{background:#fafafa}
   <!-- PENDIENTES -->
   <div class="card">
     <div class="card-title">⏳ Autorizaciones pendientes de facturar</div>
+    <div class="grid2" style="margin-bottom:10px;align-items:end">
+      <div class="field"><label>Operador</label><select id="filtPendOp" onchange="renderPendientes()"><option value="">Todos</option></select></div>
+      <div class="field"><label>Económico / Unidad</label><select id="filtPendUnidad" onchange="renderPendientes()"><option value="">Todos</option></select></div>
+      <button class="btn btn-out btn-sm" onclick="$('filtPendOp').value='';$('filtPendUnidad').value='';renderPendientes()">Limpiar</button>
+    </div>
     <div class="tbl-wrap"><table>
       <thead><tr><th>Operador</th><th>Fecha</th><th>Cliente</th><th class="r">Monto</th><th>Pedido/ID</th><th>Responsable</th><th>Plazo</th><th></th></tr></thead>
       <tbody id="tbPendientes"></tbody>
@@ -363,17 +368,40 @@ function verificarSesionModulo(){
 // CLAUDE.md): se vuelve a leer justo antes de cada guardado.
 // ══════════════════════════════════════════════
 function initSelects(){
-  var s=$('autOp');
-  while(s.options.length>1)s.remove(1);
-  OPERADORES.forEach(function(op){
-    var o=document.createElement('option');
-    o.value=op.operadorId;o.textContent=op.clave+' · '+op.nombre;
-    s.appendChild(o);
+  ['autOp','filtPendOp'].forEach(function(id){
+    var s=$(id);if(!s)return;
+    while(s.options.length>1)s.remove(1);
+    OPERADORES.forEach(function(op){
+      var o=document.createElement('option');
+      o.value=op.operadorId;o.textContent=op.clave+' · '+op.nombre;
+      s.appendChild(o);
+    });
   });
+  // Filtro de Económico/Unidad INDEPENDIENTE del de Operador — filtra por
+  // la unidad ACTUAL asignada (los registros de ingresosDB, incluidas las
+  // autorizaciones de maniobras, se guardan por identidad de operador, no
+  // por camión — ver comentario en ing.html).
+  var su=$('filtPendUnidad');
+  if(su){
+    while(su.options.length>1)su.remove(1);
+    OPERADORES.slice().sort(function(a,b){return(a.unidad||0)-(b.unidad||0);}).forEach(function(op){
+      var o=document.createElement('option');
+      o.value=op.unidad;o.textContent='Unidad '+op.unidad;
+      su.appendChild(o);
+    });
+  }
 }
 function renderPendientes(){
   var tb=$('tbPendientes');
-  var pendientes=ingresosDB.filter(function(v){return v.esAutorizacionCliente&&!v.sustituidoPorXML;});
+  var filtOp=parseInt(($('filtPendOp')&&$('filtPendOp').value)||0);
+  var filtUnidad=parseInt(($('filtPendUnidad')&&$('filtPendUnidad').value)||0);
+  var opPorUnidadPend=filtUnidad?OPERADORES.find(function(o){return o.unidad===filtUnidad;}):null;
+  var pendientes=ingresosDB.filter(function(v){
+    if(!v.esAutorizacionCliente||v.sustituidoPorXML)return false;
+    if(filtOp&&v.unidad!==filtOp)return false;
+    if(filtUnidad&&(!opPorUnidadPend||v.unidad!==opPorUnidadPend.operadorId))return false;
+    return true;
+  });
   pendientes.sort(function(a,b){return(a.fechaLimiteJustificacion||'').localeCompare(b.fechaLimiteJustificacion||'');});
   if(!pendientes.length){
     tb.innerHTML='<tr><td colspan="8" style="text-align:center;color:#aaa;padding:16px">Sin autorizaciones pendientes de facturar.</td></tr>';
