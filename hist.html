@@ -599,9 +599,9 @@ function initSelectsOperadores(){
   // value=operadorId (identidad PERMANENTE), no la unidad actual — así se
   // sigue encontrando el historial de la persona aunque lo reasignen.
   const s=$('busOp');
-  OPERADORES.forEach(op=>{const o=document.createElement('option');o.value=op.operadorId;o.textContent=op.unidad+' · '+op.nombre;s.appendChild(o);});
+  OPERADORES.forEach(op=>{const o=document.createElement('option');o.value=op.operadorId;o.textContent=op.clave+' · '+op.nombre;s.appendChild(o);});
   const sRep=$('repOp');
-  OPERADORES.forEach(op=>{const o=document.createElement('option');o.value=op.operadorId;o.textContent=op.unidad+' · '+op.nombre;sRep.appendChild(o);});
+  OPERADORES.forEach(op=>{const o=document.createElement('option');o.value=op.operadorId;o.textContent=op.clave+' · '+op.nombre;sRep.appendChild(o);});
 }
 
 window.onFBReady(async function(){

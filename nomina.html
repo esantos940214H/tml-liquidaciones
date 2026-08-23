@@ -396,7 +396,7 @@ function initSelects(){
     // nómina sigue ligada a la persona aunque lo reasignen de unidad.
     OPERADORES.forEach(function(op){
       var o=document.createElement('option');
-      o.value=op.operadorId;o.textContent=op.unidad+' · '+op.nombre;
+      o.value=op.operadorId;o.textContent=op.clave+' · '+op.nombre;
       s.appendChild(o);
     });
   });
