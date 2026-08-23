@@ -81,8 +81,90 @@ const PROMPT_INSTRUCCIONES =
   'maniobra que encuentres en TODAS las tablas del correo (después de aplicar la regla de corrección de arriba). Si no hay ' +
   'ninguna tabla/renglón reconocible, responde [].';
 
+// ══════════════════════════════════════════════════════════════════════════
+// extraerEstimado — para registrar en Ingresos un "Estimado de
+// Transportación" (la cotización que Mudanzas TML le da al cliente ANTES
+// de tener la factura real) sin captura manual, solo el administrador (ver
+// botón "🤖 Registrar sin factura" en ing.html). A diferencia de la Carta
+// Porte, este documento NO trae operador ni económico — eso lo sigue
+// eligiendo el administrador a mano; la IA solo saca el resto.
+// ══════════════════════════════════════════════════════════════════════════
+const PROMPT_ESTIMADO =
+  'Eres un asistente que extrae datos de un "Estimado de Transportación" (cotización que Mudanzas TML le da a un cliente ' +
+  'antes de facturar, formato tipo formulario con Origen/Destino/Usuario/conceptos). Del texto que recibes, extrae un solo ' +
+  'objeto JSON con estas llaves exactas: ' +
+  '{"folio":"el número de cotización, normalmente con prefijo CTZ- (campo \'No. Cotz.\'), o null",' +
+  '"fecha":"YYYY-MM-DD (convierte desde el formato que traiga, ej. 8/19/2026 o DD/MM/AAAA), o null",' +
+  '"cliente":"el nombre del cliente/usuario final (campo \'USUARIO\'), o null",' +
+  '"origen":"la dirección u origen del viaje (campo ORIGEN), o null",' +
+  '"destino":"la dirección o destino del viaje (campo DESTINO), o null",' +
+  '"flete":"suma de los conceptos de FLETE (busca la palabra Flete en la descripción del concepto), como número sin signos, o 0 si no hay",' +
+  '"maniobras":"suma de los conceptos de MANIOBRA (Maniobra de Carga, Maniobra Descarga, Maniobras Especiales/Volados, etc.), como número, o 0 si no hay",' +
+  '"otros":"suma de cualquier otro concepto que no sea flete ni maniobra (empaque, desempaque, guardamuebles, etc.), como número, o 0 si no hay",' +
+  '"subtotal":"el SUBTOTAL del documento, como número",' +
+  '"iva":"el I.V.A. del documento, como número (0 si viene vacío o en blanco)",' +
+  '"retIva":"la RET I.V.A. del documento, como número (0 si viene vacío o en blanco)",' +
+  '"total":"el TOTAL del documento, como número"}. ' +
+  'Si algún campo no aparece o no se puede determinar, usa null (los numéricos usa 0). No inventes datos que no estén en el ' +
+  'texto. Responde SOLO el objeto JSON (sin texto explicativo, sin backticks, sin markdown).';
+
 // v2 — forzar redeploy para tomar la versión nueva del secret ANTHROPIC_API_KEY
 // (Firebase no recoge un secret actualizado si no detecta cambios en el código).
+exports.extraerEstimado = onRequest(
+  { secrets: [ANTHROPIC_API_KEY], cors: true, region: 'us-central1' },
+  async (req, res) => {
+    if (req.method !== 'POST') {
+      res.status(405).json({ error: 'Método no permitido, usa POST.' });
+      return;
+    }
+    const texto = ((req.body && req.body.texto) || '').toString().trim();
+    if (!texto) {
+      res.status(400).json({ error: 'Falta el texto del estimado (campo "texto").' });
+      return;
+    }
+    if (texto.length > 20000) {
+      res.status(400).json({ error: 'El texto es demasiado largo (máximo 20,000 caracteres).' });
+      return;
+    }
+    try {
+      const respuesta = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': ANTHROPIC_API_KEY.value(),
+          'anthropic-version': '2023-06-01'
+        },
+        body: JSON.stringify({
+          model: 'claude-sonnet-4-5',
+          max_tokens: 1500,
+          messages: [{ role: 'user', content: PROMPT_ESTIMADO + '\n\n--- ESTIMADO ---\n' + texto }]
+        })
+      });
+      const datos = await respuesta.json();
+      if (datos.error) {
+        res.status(502).json({ error: 'Error de la API de Anthropic: ' + (datos.error.message || JSON.stringify(datos.error)) });
+        return;
+      }
+      const textoRespuesta = (datos.content || [])
+        .filter(function (b) { return b.type === 'text'; })
+        .map(function (b) { return b.text; })
+        .join('');
+      const limpio = textoRespuesta.replace(/```json|```/g, '').trim();
+      let resultado;
+      try {
+        resultado = JSON.parse(limpio);
+      } catch (e) {
+        res.status(502).json({ error: 'La IA no regresó un JSON válido. Respuesta cruda: ' + textoRespuesta.slice(0, 500) });
+        return;
+      }
+      res.json({ estimado: resultado });
+    } catch (e) {
+      console.error('extraerEstimado:', e);
+      res.status(500).json({ error: e.message || 'Error interno del servidor.' });
+    }
+  }
+);
+
 exports.extraerManiobras = onRequest(
   { secrets: [ANTHROPIC_API_KEY], cors: true, region: 'us-central1' },
   async (req, res) => {

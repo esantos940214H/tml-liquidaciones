@@ -267,6 +267,46 @@ tr:hover td{background:#fafafa}
     <div id="facturaManiobrasInfo" style="margin-top:12px"></div>
   </div>
 
+  <!-- REGISTRAR SIN FACTURA CON IA (solo admin) — Estimado de Transportación -->
+  <div class="card" id="cardEstimadoIA" style="display:none">
+    <div class="card-title">🤖 Registrar sin factura (Estimado de Transportación)</div>
+    <div class="alert alert-info">Solo administrador. Pega el texto del Estimado de Transportación — la IA extrae folio, fecha, cliente, origen/destino y separa Flete/Maniobras/Otros. El estimado NO trae operador ni económico, así que selecciónalo tú abajo.</div>
+    <div class="field"><label>Operador</label><select id="estOp"><option value="">— Selecciona —</option></select></div>
+    <div class="field" style="margin-top:8px"><label>Texto del estimado</label><textarea id="estTexto" rows="6" placeholder="Pega aquí el texto del Estimado de Transportación..."></textarea></div>
+    <button class="btn btn-red" id="btnExtraerEstimado" style="margin-top:10px" onclick="extraerEstimadoConIA()">🤖 Extraer con IA</button>
+    <div id="estimadoInfo" style="margin-top:10px"></div>
+    <div id="wrapEstimadoRevision" style="display:none;margin-top:12px;background:#f5f5f8;border-radius:8px;padding:14px">
+      <div class="grid4">
+        <div class="field"><label>Folio</label><input type="text" id="estFolio"></div>
+        <div class="field"><label>Fecha</label><input type="date" id="estFecha"></div>
+        <div class="field" style="grid-column:span 2"><label>Cliente</label><input type="text" id="estCliente"></div>
+      </div>
+      <div class="grid4" style="margin-top:8px">
+        <div class="field"><label>Flete</label><input type="number" id="estFlete" step="0.01" oninput="calcTotalesEstimado()"></div>
+        <div class="field"><label>Maniobras</label><input type="number" id="estManiobras" step="0.01" oninput="calcTotalesEstimado()"></div>
+        <div class="field"><label>Otros</label><input type="number" id="estOtros" step="0.01" oninput="calcTotalesEstimado()"></div>
+        <div class="field"><label>Subtotal</label><input type="number" id="estSubtotal" step="0.01" readonly style="background:#fff"></div>
+      </div>
+      <div class="grid4" style="margin-top:8px">
+        <div class="field"><label>IVA</label><input type="number" id="estIva" step="0.01" oninput="calcTotalesEstimado()"></div>
+        <div class="field"><label>Ret. IVA</label><input type="number" id="estRet" step="0.01" oninput="calcTotalesEstimado()"></div>
+        <div class="field"><label>Total</label><input type="number" id="estTotal" step="0.01" readonly style="background:#fff"></div>
+      </div>
+      <div class="grid2" style="margin-top:8px">
+        <div class="field"><label>Origen</label><input type="text" id="estOrigen"></div>
+        <div class="field"><label>Destino</label><input type="text" id="estDestino"></div>
+      </div>
+      <label style="display:flex;align-items:center;gap:8px;font-size:12px;font-weight:700;margin-top:10px;cursor:pointer">
+        <input type="checkbox" id="chkEstSustituir" style="width:auto" checked>
+        ¿Este ingreso se va a sustituir después con la factura real? (déjalo marcado si sí — queda como "sin factura" con el folio del estimado como ID, para usar el botón 🔄 XML cuando llegue; desmárcalo si este monto ya es definitivo y no habrá otra factura)
+      </label>
+      <div style="margin-top:10px;display:flex;gap:8px">
+        <button class="btn btn-red" onclick="registrarEstimado()">+ Registrar</button>
+        <button class="btn btn-out btn-sm" onclick="cancelarEstimado()">Cancelar</button>
+      </div>
+    </div>
+  </div>
+
   <!-- CONFLICTOS XML VS. MANUAL (solo admin) -->
   <div class="card" id="cardConflictosXML" style="display:none">
     <div class="card-title">⚠️ Discrepancias XML vs. manual pendientes de revisión (ADMIN)</div>
@@ -987,11 +1027,12 @@ function verificarSesionModulo(){
   var esAdminIng=!!u.esAdmin;
   if($('cardCapturaManual'))$('cardCapturaManual').style.display=esAdminIng?'':'none';
   if($('avisoSinCapturaManual'))$('avisoSinCapturaManual').style.display=esAdminIng?'none':'block';
+  if($('cardEstimadoIA'))$('cardEstimadoIA').style.display=esAdminIng?'':'none';
 }
 window.onFBReady(verificarSesionModulo);
 
 function initSelects(){
-  ['ingOp','filtOp'].forEach(id=>{
+  ['ingOp','filtOp','estOp'].forEach(id=>{
     const s=$(id);if(!s)return;
     while(s.options.length>1)s.remove(1);
     // value=operadorId (identidad PERMANENTE), no la unidad actual — así los
@@ -2480,6 +2521,98 @@ async function procesarFacturaManiobrasExcel(){
   }catch(e){
     $('facturaManiobrasInfo').innerHTML='<div class="alert alert-warn">⚠️ '+e.message+'</div>';
   }
+}
+
+// ══════════════════════════════════════════════
+// REGISTRAR SIN FACTURA CON IA — "Estimado de Transportación" (solo admin,
+// ver cardEstimadoIA). El estimado NO trae operador ni económico (a
+// diferencia de la Carta Porte), así que ese campo lo sigue eligiendo el
+// administrador a mano; la IA solo saca folio, fecha, cliente, origen/
+// destino y separa Flete/Maniobras/Otros.
+// ══════════════════════════════════════════════
+const FUNCTION_URL_EXTRAER_ESTIMADO='https://us-central1-tml-liquidaciones.cloudfunctions.net/extraerEstimado';
+const DIAS_HABILES_JUSTIFICAR_ADMIN=30;
+async function extraerEstimadoConIA(){
+  var texto=($('estTexto').value||'').trim();
+  if(!texto){alert('Pega primero el texto del estimado.');return;}
+  $('btnExtraerEstimado').disabled=true;
+  $('estimadoInfo').innerHTML='<div class="alert alert-info">⏳ Leyendo el estimado con IA...</div>';
+  try{
+    var r=await fetch(FUNCTION_URL_EXTRAER_ESTIMADO,{
+      method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({texto:texto})
+    });
+    var data=await r.json();
+    if(data.error)throw new Error(data.error);
+    var e=data.estimado||{};
+    $('estFolio').value=e.folio||'';
+    $('estFecha').value=e.fecha||hoy();
+    $('estCliente').value=e.cliente||'';
+    $('estOrigen').value=e.origen||'';
+    $('estDestino').value=e.destino||'';
+    $('estFlete').value=(parseFloat(e.flete)||0).toFixed(2);
+    $('estManiobras').value=(parseFloat(e.maniobras)||0).toFixed(2);
+    $('estOtros').value=(parseFloat(e.otros)||0).toFixed(2);
+    $('estIva').value=(parseFloat(e.iva)||0).toFixed(2);
+    $('estRet').value=(parseFloat(e.retIva)||0).toFixed(2);
+    calcTotalesEstimado();
+    $('wrapEstimadoRevision').style.display='block';
+    $('estimadoInfo').innerHTML='<div class="alert alert-ok">✅ Estimado leído — revisa los datos y el operador antes de registrar (la IA puede leer mal algún monto o fecha).</div>';
+  }catch(err){
+    $('estimadoInfo').innerHTML='<div class="alert alert-warn">⚠️ Error al extraer: '+err.message+'</div>';
+  }finally{
+    $('btnExtraerEstimado').disabled=false;
+  }
+}
+function calcTotalesEstimado(){
+  var flete=parseFloat($('estFlete').value||0);
+  var maniobras=parseFloat($('estManiobras').value||0);
+  var otros=parseFloat($('estOtros').value||0);
+  var sub=flete+maniobras+otros;
+  var iva=parseFloat($('estIva').value||0);
+  var ret=parseFloat($('estRet').value||0);
+  $('estSubtotal').value=sub.toFixed(2);
+  $('estTotal').value=(sub+iva-ret).toFixed(2);
+}
+function cancelarEstimado(){
+  $('wrapEstimadoRevision').style.display='none';
+  $('estTexto').value='';
+  $('estimadoInfo').innerHTML='';
+}
+function registrarEstimado(){
+  var u=usuarioSesion();
+  if(!u||!u.esAdmin){alert('Solo un administrador puede registrar aquí.');return;}
+  var unidad=parseInt($('estOp').value||0);
+  if(!unidad){alert('Selecciona el operador — el estimado no lo trae.');return;}
+  var folio=($('estFolio').value||'').trim()||('EST-'+uid().slice(0,6).toUpperCase());
+  if(ingresosDB.some(function(v){return v.folio===folio&&v.unidad===unidad;})){alert('Este folio ya está registrado para este operador.');return;}
+  var fecha=$('estFecha').value||hoy();
+  var cliente=($('estCliente').value||'').trim();
+  var origen=($('estOrigen').value||'').trim();
+  var destino=($('estDestino').value||'').trim();
+  var subtFlete=parseFloat($('estFlete').value||0);
+  var subtManiobras=parseFloat($('estManiobras').value||0);
+  var subtOtros=parseFloat($('estOtros').value||0);
+  var subtotal=subtFlete+subtManiobras+subtOtros;
+  if(!subtotal){alert('Ingresa al menos un monto (Flete, Maniobras u Otros).');return;}
+  var iva=parseFloat($('estIva').value||0);
+  var ret=parseFloat($('estRet').value||0);
+  var total=subtotal+iva-ret;
+  var ruta=(origen&&destino)?[{origen:origen,destino:destino,kms:''}]:[];
+  var sustituir=$('chkEstSustituir').checked;
+  var tipo=subtManiobras>0&&!subtFlete?'maniobra':subtOtros>0&&!subtFlete&&!subtManiobras?'otro':'flete_for';
+  ingresosDB.push({id:uid(),unidad:unidad,folio:folio,fecha:fecha,cliente:cliente,tipo:tipo,
+    subtotal:subtotal,subtFlete:subtFlete,subtManiobras:subtManiobras,subtOtros:subtOtros,
+    iva:iva,ret:ret,total:total,estado:'sin_liquidar',liqNum:null,origen:'estimado_ia',ruta:ruta,
+    sinFacturaJustificar:sustituir,
+    fechaLimiteJustificacion:sustituir?calcularFechaLimiteJustificacionAdmin(fecha):null,
+    capturadoPor:{usuario:u.usuario,nombre:u.nombre},observaciones:sustituir?folio:'',
+    sustituidoPorXML:false,pdfURL:null});
+  guardar();renderIngresos();
+  cancelarEstimado();
+  alert('✅ Registrado.'+(sustituir?' Queda "sin factura" con el ID "'+folio+'" — usa el botón 🔄 XML en esa fila cuando llegue la factura real.':' Este monto queda definitivo, no se espera ninguna factura después.'));
+}
+function calcularFechaLimiteJustificacionAdmin(fechaISO){
+  return sumarDiasHabiles(fechaISO,DIAS_HABILES_JUSTIFICAR_ADMIN)+'T23:59:59';
 }
 </script>
 
