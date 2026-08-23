@@ -430,6 +430,21 @@ function nombreOp(operadorId){
   var op=OPERADORES.find(function(o){return o.operadorId===operadorId;});
   return (op?op.nombre:NOMBRES_OP[operadorId])||'';
 }
+// Encuentra el operador por la placa del camión que trae la Carta Porte —
+// nodo IdentificacionVehicular (Complemento Carta Porte, cualquier versión/
+// prefijo de namespace: querySelector matchea por nombre local sin
+// importar el prefijo), atributo PlacaVM. Se compara normalizado (sin
+// espacios/guiones) contra la placa de cada unidad (ver shared/
+// operadores.js → cargarOperadores, que ya trae "placa" por operador).
+function _matchOperadorPorPlacaXML(doc){
+  var idVeh=doc.querySelector('IdentificacionVehicular');
+  var placaCruda=idVeh?(idVeh.getAttribute('PlacaVM')||idVeh.getAttribute('Placa')||''):'';
+  if(!placaCruda||!window.normPlaca)return null;
+  var placaNorm=window.normPlaca(placaCruda);
+  if(!placaNorm)return null;
+  var op=OPERADORES.find(function(o){return o.placa&&window.normPlaca(o.placa)===placaNorm;});
+  return op?{operadorId:op.operadorId,placa:placaCruda}:null;
+}
 const $=id=>document.getElementById(id);
 const fmt=(n,d=2)=>'$'+parseFloat(n||0).toLocaleString('es-MX',{minimumFractionDigits:d,maximumFractionDigits:d});
 const hoy=()=>new Date().toISOString().slice(0,10);
@@ -876,6 +891,83 @@ function confirmarAjusteXML(){
   cerrarAjusteXML();
   alert('✅ Ajuste aplicado. El flete del operador no cambió; la diferencia se registró en Maniobras/Otros.');
 }
+
+// ══════════════════════════════════════════════
+// CANDADO: CORREGIR OPERADOR/UNIDAD DE UN INGRESO — a veces al timbrar la
+// Carta Porte se le asigna a otro operador por error (Raúl no requiere
+// autorización de nadie para corregirlo, pero SÍ tiene que confirmar
+// tecleando el folio de esa fila, para no cambiarlo sin querer) — y el
+// cambio queda registrado como incidencia para dejar rastro. Si más
+// adelante existe un puesto de supervisor sobre Raúl, este es el lugar
+// donde se le pediría también su autorización (ver TMLSesion.tienePermiso
+// — hoy no hay ningún claim para eso, se deja preparado en el comentario).
+// ══════════════════════════════════════════════
+var _corregirOpId=null;
+function abrirCorregirOperador(id){
+  var v=ingresosDB.find(function(x){return x.id===id;});
+  if(!v)return;
+  if(v.estado==='liquidado'){alert('Este ingreso ya está liquidado — corregir el operador aquí movería un saldo ya calculado. Pide ayuda a un administrador.');return;}
+  _corregirOpId=id;
+  $('corregirOpFolioTarget').textContent=v.folio||'(sin folio)';
+  $('corregirOpFolioInput').value='';
+  var s=$('corregirOpSelect');
+  while(s.options.length>1)s.remove(1);
+  OPERADORES.forEach(function(op){
+    if(op.operadorId===v.unidad)return; // no tiene caso "corregir" al mismo operador
+    var o=document.createElement('option');
+    o.value=op.operadorId;o.textContent=op.clave+' · '+op.nombre;
+    s.appendChild(o);
+  });
+  $('corregirOpErr').style.display='none';
+  $('corregirOpModal').style.display='flex';
+}
+function cerrarCorregirOperador(){$('corregirOpModal').style.display='none';_corregirOpId=null;}
+async function confirmarCorregirOperador(){
+  var v=ingresosDB.find(function(x){return x.id===_corregirOpId;});
+  if(!v)return;
+  var folioTecleado=($('corregirOpFolioInput').value||'').trim().toUpperCase();
+  if(folioTecleado!==(v.folio||'').trim().toUpperCase()){
+    $('corregirOpErr').style.display='block';
+    $('corregirOpErr').textContent='El folio no coincide con el de esta fila ("'+v.folio+'"). No se hizo ningún cambio.';
+    return;
+  }
+  var nuevoId=parseInt($('corregirOpSelect').value||0);
+  if(!nuevoId){
+    $('corregirOpErr').style.display='block';
+    $('corregirOpErr').textContent='Selecciona el operador correcto.';
+    return;
+  }
+  var operadorAnteriorId=v.unidad;
+  var u=usuarioSesion();
+  var quien=u?(u.nombre||u.usuario):'?';
+  v.unidad=nuevoId;
+  guardar();renderIngresos();
+  cerrarCorregirOperador();
+  try{ await _registrarIncidenciaCorreccionOperador(v.folio,operadorAnteriorId,nuevoId,quien); }
+  catch(e){ console.error('No se pudo registrar la incidencia de corrección de operador:',e); }
+  alert('✅ Operador corregido a '+(nombreOp(nuevoId)||nuevoId)+'. Se registró como incidencia (de '+(nombreOp(operadorAnteriorId)||operadorAnteriorId)+' a '+(nombreOp(nuevoId)||nuevoId)+').');
+}
+// Registra la corrección directo en incidentesDB (misma colección que usa
+// incidentes.html) — se lee fresco, se agrega, se guarda completo, NUNCA se
+// sobreescribe en bloque (ver CLAUDE.md). Queda bajo la clave del operador
+// NUEVO (a quien ahora sí le corresponde este ingreso), causa
+// "correccion_sistema" — un tipo aparte de las causas de daños/reclamos que
+// ya existían (ajena/responsabilidad), sin montos asociados.
+async function _registrarIncidenciaCorreccionOperador(folio,operadorAnteriorId,operadorNuevoId,quien){
+  var data=await window.FB.get('estado','incidentesDB');
+  var incidentesDB=(data&&data.data)?JSON.parse(data.data):{};
+  if(Array.isArray(incidentesDB))incidentesDB={};
+  if(!incidentesDB[operadorNuevoId])incidentesDB[operadorNuevoId]=[];
+  incidentesDB[operadorNuevoId].push({
+    id:uid(),unidad:operadorNuevoId,operador:nombreOp(operadorNuevoId),
+    fechaEvento:new Date().toISOString(),fechaCaptura:new Date().toISOString(),
+    liqRef:folio||'',causa:'correccion_sistema',montoReportado:0,negocio:false,montoReconocido:0,
+    descripcion:'Operador corregido en Ingresos (folio '+(folio||'?')+'): de '+(nombreOp(operadorAnteriorId)||operadorAnteriorId)+' a '+(nombreOp(operadorNuevoId)||operadorNuevoId)+'. Confirmado por '+quien+'.',
+    fueraDeTiempo:false,estado:'pendiente',liqNum:null
+  });
+  await window.FB.set('estado','incidentesDB',{data:JSON.stringify(incidentesDB)});
+}
+
 function verificarSesionModulo(){
   var u=usuarioSesion();
   if(!u){mostrarLoginModulo();return;}
@@ -965,8 +1057,12 @@ function handleXMLFiles(files){
     });
     return;
   }
+  // Ya no es obligatorio seleccionar el operador antes de subir el XML — si
+  // se dejó en "— Selecciona —", parseXML intenta encontrarlo solo por la
+  // placa de la Carta Porte (ver _matchOperadorPorPlacaXML). Si SÍ se
+  // seleccionó uno a mano, ese tiene prioridad (por si la placa no viene o
+  // no coincide, o para casos donde el operador maneja un camión prestado).
   const unidad=parseInt($('ingOp').value||0);
-  if(!unidad){alert('Selecciona el operador primero.');return;}
   lockRequest('Subir XML de viaje/flete — Ingresos', function(){
     Array.from(files).forEach(f=>{const r=new FileReader();r.onload=e=>parseXML(e.target.result,f.name,unidad);r.readAsText(f,'UTF-8');});
   });
@@ -1081,6 +1177,19 @@ function parseXML(text,fname,unidad){
     alert('🚫 '+fname+': el EMISOR de este CFDI es "'+(rfcEmisor||'(vacío)')+'", no Mudanzas TML ('+TML_RFC+').\n\nEste XML parece ser una factura de un proveedor/gasto, no un ingreso — no se puede registrar aquí.');
     return;
   }
+  // Si no se seleccionó operador a mano, se intenta encontrar solo con la
+  // placa del camión que trae la Carta Porte (IdentificacionVehicular,
+  // atributo PlacaVM) contra la placa registrada de cada unidad en Flota —
+  // así ya no hace falta escoger el operador antes de subir el XML.
+  var placaAutoDetectada=null;
+  if(!unidad){
+    var match=_matchOperadorPorPlacaXML(doc);
+    if(match){unidad=match.operadorId;placaAutoDetectada=match.placa;}
+    else{
+      alert('⚠️ '+fname+': no se pudo identificar el operador por la placa de la Carta Porte (no trae placa, o no coincide con ninguna unidad registrada en Flota). Selecciona el operador arriba y vuelve a subir el XML.');
+      return;
+    }
+  }
   const folioCompleto=serie+'-'+folio;
   if(ingresosDB.some(v=>v.folio===folioCompleto&&v.unidad===unidad)){
     alert(fname+': ya está registrado (duplicado).');return;
@@ -1138,10 +1247,11 @@ function parseXML(text,fname,unidad){
   ingresosDB.push({id:uid(),unidad,folio:folioCompleto,fecha,cliente,tipo:tipoDerivado,
     subtotal,subtFlete,subtManiobras,subtOtros,iva,ret,total:parseFloat(comp.getAttribute('Total')||0),
     estado:'sin_liquidar',liqNum:null,origen:'xml',ruta,
-    uuid,rfcEmisor,rfcReceptor,satEstado:null,satCancelado:false,xmlURL:null});
+    uuid,rfcEmisor,rfcReceptor,satEstado:null,satCancelado:false,xmlURL:null,
+    placaDetectada:placaAutoDetectada});
   guardar();renderIngresos();
   subirXMLIngresoEnSegundoPlano(uuid,fname,text);
-  alert('✅ '+fname+' registrado.'+(ruta.length?' Ruta: '+ruta.length+' tramos.':''));
+  alert('✅ '+fname+' registrado'+(placaAutoDetectada?' — operador identificado automáticamente por la placa '+placaAutoDetectada+' ('+(nombreOp(unidad)||unidad)+')':'')+'.'+(ruta.length?' Ruta: '+ruta.length+' tramos.':''));
 }
 
 // ══════════════════════════════════════════════
@@ -1961,7 +2071,7 @@ function renderIngresos(){
     tb.innerHTML+=`<tr>
       <td style="width:32px;text-align:center"><input type="checkbox" class="chkIng" data-id="${v.id}" ${v.estado!=='sin_liquidar'?'disabled title="No se puede eliminar: ya está liquidado"':''} onchange="actualizarBarraSelIng()"></td>
       <td class="num">${v.folio}${v.esDesglose?' <span class="badge bg-purple" title="Parte de una factura consolidada desglosada entre varios operadores (mismo CFDI)">🧩</span>':''}${v.observaciones&&!(v.sinFacturaJustificar&&!v.sustituidoPorXML)?` <span title="${v.observaciones.replace(/"/g,'&quot;')}">📝</span>`:''}${v.sinFacturaJustificar&&!v.sustituidoPorXML?(yaVencioLimite(v.fechaLimiteJustificacion)?' <span class="badge bg-red" style="color:#c1121f" title="Debió sustituirse con XML antes de '+v.fechaLimiteJustificacion+'">⚠ SIN FACTURA VENCIDO</span>':' <span class="badge bg-yellow" title="Debe sustituirse con XML antes de '+v.fechaLimiteJustificacion+'">⏳ Sin factura</span>'):''}${v.esAutorizacionCliente&&!v.sustituidoPorXML?' <span class="badge" style="background:#dbeafe;color:#1e40af" title="Monto autorizado directamente por el cliente antes de la factura — no es una suma ni una captura libre">📧 Autorizado por cliente</span>':''}${v.sustituidoPorXML?' <span class="badge bg-green" title="Ya se sustituyó con el XML real">✓ Sustituido</span>':''}${v.divisionPendiente?' <span class="badge bg-yellow" title="Solicitud de división Flete/Maniobras pendiente de autorización (solicitada por '+(v.divisionPendiente.solicitadoPor||'?')+')">⏳ División pendiente</span>':''}${v.sinFacturaJustificar&&!v.sustituidoPorXML&&v.observaciones?`<div style="font-family:inherit;font-weight:400;font-size:10px;color:#856404;white-space:normal;margin-top:2px" title="ID para ligar el XML real cuando llegue (ver botón 🔄 XML)">🆔 ${v.observaciones.replace(/</g,'&lt;')}</div>`:''}</td><td>${v.fecha}</td>
-      <td style="font-size:11px">${nombreOpV?nombreOpV.split(' ').slice(0,2).join(' '):'?'}</td>
+      <td style="font-size:11px">${nombreOpV?nombreOpV.split(' ').slice(0,2).join(' '):'?'} <span style="cursor:pointer;font-size:10px;opacity:.6" title="Bloqueado — clic para corregir (pide el folio como confirmación)" onclick="abrirCorregirOperador('${v.id}')">🔒</span></td>
       <td style="max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px">${v.cliente}</td>
       ${fCell}${mCell}${oCell}
       <td class="num r">${fmt(v.subtotal)}</td><td class="num r">${fmt(v.iva)}</td>
@@ -2404,6 +2514,21 @@ async function procesarFacturaManiobrasExcel(){
       <button class="lock-cancel" onclick="cerrarAjusteXML()">Cancelar</button>
     </div>
     <div class="lock-err" id="ajusteXMLErr">Error</div>
+  </div>
+</div>
+
+<!-- MODAL CORREGIR OPERADOR/UNIDAD (candado — requiere folio de confirmación) -->
+<div class="lock-overlay" id="corregirOpModal" style="display:none">
+  <div class="divid-box">
+    <h3>🔒 Corregir operador</h3>
+    <p>El operador de un ingreso queda bloqueado para que no se cambie por error — a veces al timbrar la Carta Porte se selecciona al operador equivocado. Para corregirlo, escribe el folio TAL CUAL aparece en esta fila (<strong id="corregirOpFolioTarget"></strong>) y elige el operador correcto. El cambio queda registrado como incidencia.</p>
+    <div class="field"><label>Folio de confirmación</label><input type="text" id="corregirOpFolioInput" placeholder="Escribe el folio de esta fila"></div>
+    <div class="field"><label>Operador correcto</label><select id="corregirOpSelect"><option value="">— Selecciona —</option></select></div>
+    <div class="lock-row">
+      <button class="lock-ok" onclick="confirmarCorregirOperador()">Corregir</button>
+      <button class="lock-cancel" onclick="cerrarCorregirOperador()">Cancelar</button>
+    </div>
+    <div class="lock-err" id="corregirOpErr">Error</div>
   </div>
 </div>
 </body>
