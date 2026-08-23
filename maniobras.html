@@ -128,9 +128,25 @@ tr:hover td{background:#fafafa}
 
   <div class="alert alert-info">✅ Registra aquí el monto que el cliente autoriza por correo ANTES de que exista la factura real — este monto es el oficial, no algo que quien capture ingresos deba sumar o adivinar. Su única obligación después es subir la factura real y que coincida con este monto, usando el mismo pedido/PO como ID (ver Ingresos → Conflictos si no coincide). Las maniobras no llevan IVA.</div>
 
+  <!-- EXTRAER DE TEXTO DEL CORREO (IA) -->
+  <div class="card">
+    <div class="card-title">📋 Extraer de texto del correo (IA)</div>
+    <p style="font-size:12px;color:#888;margin-bottom:10px">Copia el recuadro del correo con las maniobras autorizadas y pégalo aquí — la IA identifica cada renglón (operador, monto, fecha, pedido, destino). Después puedes revisar/corregir cada uno antes de registrarlo, nada se guarda automáticamente.</p>
+    <textarea id="autTexto" rows="6" placeholder="Pega aquí el texto del correo..." style="border:1.5px solid #dde;border-radius:6px;padding:8px 10px;font-size:13px;color:#1a1a2e;background:#fafafa;width:100%;font-family:inherit;resize:vertical;margin-bottom:10px"></textarea>
+    <button class="btn btn-red" id="btnExtraerIA" onclick="extraerConIA()">🤖 Extraer con IA</button>
+    <div id="extraerInfo" style="margin-top:10px"></div>
+    <div id="wrapExtraidos" style="display:none;margin-top:14px">
+      <div class="tbl-wrap"><table>
+        <thead><tr><th>Operador</th><th class="r">Monto</th><th>Fecha</th><th>Pedido/ID</th><th>Destino</th><th></th></tr></thead>
+        <tbody id="tbExtraidos"></tbody>
+      </table></div>
+      <button class="btn btn-red" style="margin-top:10px" onclick="registrarExtraidos()">+ Registrar todos los renglones de arriba</button>
+    </div>
+  </div>
+
   <!-- CAPTURA -->
   <div class="card">
-    <div class="card-title">✅ Registrar autorización de maniobra</div>
+    <div class="card-title">✅ Registrar autorización de maniobra (a mano)</div>
     <div class="grid2" style="margin-bottom:10px">
       <div class="field"><label>Operador</label><select id="autOp"><option value="">— Selecciona —</option></select></div>
       <div class="field"><label>Fecha</label><input type="date" id="autFecha"></div>
@@ -139,6 +155,7 @@ tr:hover td{background:#fafafa}
     </div>
     <div class="grid2" style="margin-bottom:14px">
       <div class="field" style="grid-column:span 2"><label>Pedido / PO / referencia del cliente (ID único)</label><input type="text" id="autPedido" placeholder="Ej: 5900379049"></div>
+      <div class="field"><label>Destino <span style="font-weight:400;font-size:11px;color:#aaa">(opcional)</span></label><input type="text" id="autDestino" placeholder="Municipio, Estado"></div>
       <div class="field"><label>Responsable de subir la factura (correo)</label><input type="text" id="autResponsable" value="raul@mudandote.mx"></div>
       <div class="field"><label>Plazo (días hábiles)</label><input type="number" id="autPlazo" value="15" step="1" min="1"></div>
     </div>
@@ -385,42 +402,154 @@ function eliminarAutorizacion(id){
     renderPendientes();
   });
 }
-async function agregarAutorizacionManiobra(){
-  var u=usuarioSesion();
-  if(!u||!u.esAdmin){alert('Solo un administrador puede registrar autorizaciones de maniobras.');return;}
-  var unidad=parseInt($('autOp').value||0);
-  if(!unidad){alert('Selecciona el operador.');return;}
-  var monto=parseFloat($('autMonto').value||0);
-  if(!monto){alert('Ingresa el monto autorizado.');return;}
-  var pedido=($('autPedido').value||'').trim();
-  if(!pedido){alert('Escribe el pedido/PO del cliente — es el ID que se va a usar después para ligar la factura real.');return;}
-  var plazo=parseInt($('autPlazo').value||15);
-  if(!plazo||plazo<1)plazo=15;
-  // Releer justo antes de guardar, para no pisar algo que otra persona haya
-  // capturado en Ingresos mientras esta pestaña estaba abierta.
-  await cargarIngresos();
+// Núcleo compartido: crea UNA autorización en ingresosDB (en memoria, sin
+// guardar todavía) — usado tanto por el formulario a mano como por el
+// registro en lote de lo extraído con IA. Regresa {ok:true} o
+// {ok:false, error:"..."}.
+function _crearAutorizacionEnMemoria(datos){
+  var unidad=parseInt(datos.unidad||0);
+  if(!unidad)return{ok:false,error:'Falta el operador.'};
+  var monto=parseFloat(datos.monto||0);
+  if(!monto)return{ok:false,error:'Falta el monto.'};
+  var pedido=(datos.pedido||'').trim();
+  if(!pedido)return{ok:false,error:'Falta el pedido/PO — es el ID para ligar la factura real.'};
   var pedidoNorm=pedido.toUpperCase();
   if(ingresosDB.some(function(v){return v.sinFacturaJustificar&&!v.sustituidoPorXML&&(v.observaciones||'').trim().toUpperCase()===pedidoNorm;})){
-    alert('Ese pedido/PO ya está registrado y pendiente de sustituir con su factura real. Usa uno distinto o revísalo en la tabla de abajo.');
-    return;
+    return{ok:false,error:'El pedido/PO "'+pedido+'" ya está registrado y pendiente de sustituir.'};
   }
-  var fecha=$('autFecha').value||hoy();
-  var cliente=($('autCliente').value||'').trim()||'Sin cliente';
-  var responsable=($('autResponsable').value||'').trim()||u.usuario;
+  var fecha=datos.fecha||hoy();
+  var cliente=(datos.cliente||'').trim()||'Sin cliente';
+  var destino=(datos.destino||'').trim();
+  var responsable=(datos.responsable||'').trim()||'admin';
+  var plazo=parseInt(datos.plazo||15);
+  if(!plazo||plazo<1)plazo=15;
   var fechaLimite=sumarDiasHabiles(fecha,plazo)+'T23:59:59';
   // Las maniobras de este cliente NO llevan IVA — el monto autorizado ES el
   // total, tal cual lo confirma la factura real.
   ingresosDB.push({id:uid(),unidad:unidad,folio:'MANIOBRAS',fecha:fecha,cliente:cliente,tipo:'maniobra',
     subtotal:monto,subtFlete:0,subtManiobras:monto,subtOtros:0,
     iva:0,ret:0,total:monto,estado:'sin_liquidar',liqNum:null,origen:'autorizacion_cliente',
-    ruta:[],observaciones:pedido,
+    ruta:destino?[{origen:'',destino:destino,kms:''}]:[],observaciones:pedido,
     sinFacturaJustificar:true,fechaLimiteJustificacion:fechaLimite,
     capturadoPor:{usuario:responsable,nombre:responsable},
     sustituidoPorXML:false,pdfURL:null,esAutorizacionCliente:true});
+  return{ok:true,monto:monto,fechaLimite:fechaLimite,plazo:plazo};
+}
+async function agregarAutorizacionManiobra(){
+  var u=usuarioSesion();
+  if(!u||!u.esAdmin){alert('Solo un administrador puede registrar autorizaciones de maniobras.');return;}
+  var unidad=parseInt($('autOp').value||0);
+  // Releer justo antes de guardar, para no pisar algo que otra persona haya
+  // capturado en Ingresos mientras esta pestaña estaba abierta.
+  await cargarIngresos();
+  var r=_crearAutorizacionEnMemoria({
+    unidad:unidad,monto:$('autMonto').value,pedido:$('autPedido').value,
+    fecha:$('autFecha').value,cliente:$('autCliente').value,destino:$('autDestino').value,
+    responsable:$('autResponsable').value||u.usuario,plazo:$('autPlazo').value
+  });
+  if(!r.ok){alert(r.error);return;}
   await window.FB.set('estado','ingresosDB',{data:JSON.stringify(ingresosDB)});
-  $('autMonto').value='';$('autPedido').value='';
+  var pedido=$('autPedido').value;
+  var responsable=($('autResponsable').value||'').trim()||u.usuario;
+  $('autMonto').value='';$('autPedido').value='';$('autDestino').value='';
   renderPendientes();
-  alert('✅ Autorización registrada: '+fmt(monto)+' para '+(nombreOp(unidad)||unidad)+'.\n\nPlazo hasta '+fechaLimite.slice(0,10)+' ('+plazo+' días hábiles) para que '+responsable+' suba la factura real y la ligue con el pedido "'+pedido+'" desde Ingresos.');
+  alert('✅ Autorización registrada: '+fmt(r.monto)+' para '+(nombreOp(unidad)||unidad)+'.\n\nPlazo hasta '+r.fechaLimite.slice(0,10)+' ('+r.plazo+' días hábiles) para que '+responsable+' suba la factura real y la ligue con el pedido "'+pedido+'" desde Ingresos.');
+}
+
+// ══════════════════════════════════════════════
+// EXTRACCIÓN CON IA (ver functions/index.js) — nunca guarda directo: el
+// resultado se muestra en una tabla editable y solo se registra cuando el
+// admin da clic en "Registrar todos los renglones de arriba", después de
+// revisar/corregir cada uno (la IA puede leer mal un monto o una fecha).
+// ══════════════════════════════════════════════
+// TODO: reemplazar por la URL real que muestra `firebase deploy --only
+// functions` al desplegar functions/index.js (ver instrucciones ahí).
+const FUNCTION_URL_EXTRAER_MANIOBRAS='';
+let _extraidos=[];
+// Empareja el nombre de operador que devolvió la IA contra OPERADORES por
+// coincidencia de palabras (nombres/apellidos) — no espera que la IA sepa
+// el operadorId, solo el nombre tal cual viene en el correo.
+function _matchOperadorPorNombre(nombre){
+  if(!nombre)return null;
+  var norm=function(s){return(s||'').toString().toUpperCase().normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[^A-Z0-9 ]/g,' ').replace(/\s+/g,' ').trim();};
+  var palabras=norm(nombre).split(' ').filter(function(w){return w.length>2;});
+  if(!palabras.length)return null;
+  var mejor=null,mejorScore=0;
+  OPERADORES.forEach(function(op){
+    var opPalabras=norm(op.nombre).split(' ').filter(function(w){return w.length>2;});
+    var coincidencias=palabras.filter(function(w){return opPalabras.indexOf(w)!==-1;}).length;
+    var score=coincidencias/Math.max(palabras.length,opPalabras.length);
+    if(score>mejorScore){mejorScore=score;mejor=op;}
+  });
+  return mejorScore>=0.4?mejor:null;
+}
+async function extraerConIA(){
+  var texto=($('autTexto').value||'').trim();
+  if(!texto){alert('Pega primero el texto del correo.');return;}
+  if(!FUNCTION_URL_EXTRAER_MANIOBRAS){
+    alert('La extracción con IA todavía no está conectada — falta desplegar functions/index.js y pegar su URL en FUNCTION_URL_EXTRAER_MANIOBRAS (ver instrucciones dentro de ese archivo). Mientras tanto, captura a mano abajo.');
+    return;
+  }
+  $('btnExtraerIA').disabled=true;
+  $('extraerInfo').innerHTML='<div class="alert alert-info">⏳ Leyendo el correo con IA...</div>';
+  try{
+    var r=await fetch(FUNCTION_URL_EXTRAER_MANIOBRAS,{
+      method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({texto:texto})
+    });
+    var data=await r.json();
+    if(data.error)throw new Error(data.error);
+    _extraidos=(data.renglones||[]).map(function(x){
+      var match=_matchOperadorPorNombre(x.operador);
+      return{nombreOriginal:x.operador||'',unidad:match?match.operadorId:0,monto:x.monto||'',fecha:x.fecha||hoy(),pedido:x.pedido||'',destino:x.destino||''};
+    });
+    if(!_extraidos.length){
+      $('extraerInfo').innerHTML='<div class="alert alert-warn">⚠️ La IA no encontró ningún renglón reconocible en ese texto.</div>';
+      $('wrapExtraidos').style.display='none';
+    }else{
+      $('extraerInfo').innerHTML='<div class="alert alert-ok">✅ Se encontraron '+_extraidos.length+' renglón(es) — revisa cada uno (el operador se empareja automáticamente, corrígelo si hace falta) antes de registrar.</div>';
+      renderExtraidos();
+    }
+  }catch(e){
+    $('extraerInfo').innerHTML='<div class="alert alert-warn">⚠️ Error al extraer: '+e.message+'. Captura a mano abajo.</div>';
+  }finally{
+    $('btnExtraerIA').disabled=false;
+  }
+}
+function renderExtraidos(){
+  var wrap=$('wrapExtraidos'),tb=$('tbExtraidos');
+  if(!_extraidos.length){wrap.style.display='none';return;}
+  wrap.style.display='block';
+  var opts=function(sel){return'<option value="">— Selecciona —</option>'+OPERADORES.map(function(o){return'<option value="'+o.operadorId+'"'+(o.operadorId===sel?' selected':'')+'>'+o.unidad+' · '+o.nombre+'</option>';}).join('');};
+  tb.innerHTML=_extraidos.map(function(x,i){
+    return '<tr>'
+      +'<td><select style="min-width:170px" onchange="_extraidos['+i+'].unidad=parseInt(this.value||0)">'+opts(x.unidad)+'</select>'+(x.nombreOriginal&&!x.unidad?'<div style="font-size:10px;color:#c1121f">No se encontró "'+x.nombreOriginal+'" — selecciona a mano</div>':'')+'</td>'
+      +'<td class="r"><input type="number" step="0.01" value="'+x.monto+'" style="width:100px;text-align:right" oninput="_extraidos['+i+'].monto=this.value"></td>'
+      +'<td><input type="date" value="'+x.fecha+'" oninput="_extraidos['+i+'].fecha=this.value"></td>'
+      +'<td><input type="text" value="'+(x.pedido||'').replace(/"/g,'&quot;')+'" style="width:120px" oninput="_extraidos['+i+'].pedido=this.value"></td>'
+      +'<td><input type="text" value="'+(x.destino||'').replace(/"/g,'&quot;')+'" style="width:120px" oninput="_extraidos['+i+'].destino=this.value"></td>'
+      +'<td><button class="btn btn-out btn-sm" onclick="_extraidos.splice('+i+',1);renderExtraidos()">✕</button></td>'
+      +'</tr>';
+  }).join('');
+}
+async function registrarExtraidos(){
+  var u=usuarioSesion();
+  if(!u||!u.esAdmin){alert('Solo un administrador puede registrar autorizaciones.');return;}
+  if(!_extraidos.length)return;
+  await cargarIngresos();
+  var responsable=($('autResponsable').value||'').trim()||u.usuario;
+  var cliente=($('autCliente').value||'').trim()||'GRUPO COMERCIAL DSW';
+  var plazo=$('autPlazo').value||15;
+  var ok=0,errores=[];
+  _extraidos.forEach(function(x){
+    var r=_crearAutorizacionEnMemoria({unidad:x.unidad,monto:x.monto,pedido:x.pedido,fecha:x.fecha,cliente:cliente,destino:x.destino,responsable:responsable,plazo:plazo});
+    if(r.ok)ok++;else errores.push((x.nombreOriginal||x.unidad)+': '+r.error);
+  });
+  if(ok)await window.FB.set('estado','ingresosDB',{data:JSON.stringify(ingresosDB)});
+  renderPendientes();
+  _extraidos=errores.length?_extraidos.filter(function(x,i){return errores.some(function(e){return e.indexOf(x.nombreOriginal||x.unidad)===0;});}):[];
+  renderExtraidos();
+  if(!errores.length){$('autTexto').value='';$('extraerInfo').innerHTML='';$('wrapExtraidos').style.display='none';}
+  alert('✅ Se registraron '+ok+' de '+(ok+errores.length)+' renglón(es).'+(errores.length?'\n\n⚠️ No se registraron:\n'+errores.join('\n'):''));
 }
 
 window.onFBReady(async function(){

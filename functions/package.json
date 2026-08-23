@@ -1,0 +1,10 @@
+{
+  "name": "tml-functions",
+  "description": "Funciones en la nube de Firebase para tml-liquidaciones — hoy solo la extracción de maniobras con IA (ver index.js). Se corre/despliega LOCAL con `firebase deploy --only functions`, nunca en el navegador.",
+  "engines": { "node": "20" },
+  "main": "index.js",
+  "dependencies": {
+    "firebase-functions": "^6.0.1"
+  },
+  "private": true
+}
