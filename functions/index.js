@@ -47,6 +47,8 @@ const PROMPT_INSTRUCCIONES =
   '"fecha":"YYYY-MM-DD o null si no aparece","pedido":"número de pedido/PO/referencia tal cual, o null","destino":"ciudad o lugar destino, o null"}. ' +
   'Si el correo no trae ninguna maniobra reconocible, responde con un arreglo vacío []. No inventes datos que no estén en el texto.';
 
+// v2 — forzar redeploy para tomar la versión nueva del secret ANTHROPIC_API_KEY
+// (Firebase no recoge un secret actualizado si no detecta cambios en el código).
 exports.extraerManiobras = onRequest(
   { secrets: [ANTHROPIC_API_KEY], cors: true, region: 'us-central1' },
   async (req, res) => {
