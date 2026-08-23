@@ -149,6 +149,7 @@ tr:hover td{background:#fafafa}
     <nav class="nav">
       <a href="https://anticipos.mudanzastml.mx">📋 Anticipos</a>
       <a href="https://cxc.mudanzastml.mx" class="active">📄 Ingresos</a>
+      <a href="https://cxc.mudanzastml.mx/maniobras.html">✅ Maniobras</a>
       <a href="https://liquidaciones.mudanzastml.mx">🚛 Liquidaciones</a>
       <a href="https://nomina.mudanzastml.mx">🧾 Nómina</a>
       <a href="https://incidentes.mudanzastml.mx">🚨 Incidentes</a>
@@ -249,23 +250,6 @@ tr:hover td{background:#fafafa}
         <button class="btn btn-out btn-sm" onclick="limpiarForm()">Limpiar</button>
       </div>
     </div>
-  </div>
-
-  <!-- AUTORIZACIÓN DE MANIOBRAS DEL CLIENTE (solo admin) -->
-  <div class="card" id="cardAutorizacionManiobra" style="display:none">
-    <div class="card-title">✅ Autorización de maniobras del cliente (ADMIN)</div>
-    <p style="font-size:12px;color:#888;margin-bottom:10px">Registra aquí el monto que el cliente autorizó por correo ANTES de que exista la factura real — este es el monto oficial, no algo que Raúl deba sumar o adivinar. Su única obligación después es subir la factura real y que coincida con este monto, usando el mismo pedido/PO como ID.</p>
-    <div class="grid4" style="margin-bottom:10px">
-      <div class="field"><label>Operador</label><select id="autOp"><option value="">— Selecciona —</option></select></div>
-      <div class="field"><label>Fecha</label><input type="date" id="autFecha"></div>
-      <div class="field"><label>Cliente</label><input type="text" id="autCliente" value="GRUPO COMERCIAL DSW"></div>
-      <div class="field"><label>Monto autorizado (subtotal, SIN IVA)</label><input type="number" id="autMonto" placeholder="0.00" step="0.01"></div>
-    </div>
-    <div class="grid4" style="margin-bottom:10px">
-      <div class="field" style="flex:2"><label>Pedido / PO / referencia del cliente (ID único)</label><input type="text" id="autPedido" placeholder="Ej: 5900379049"></div>
-      <div class="field"><label>Responsable de subir la factura (correo)</label><input type="text" id="autResponsable" value="raul@mudandote.mx"></div>
-    </div>
-    <button class="btn btn-red" onclick="agregarAutorizacionManiobra()">+ Registrar autorización</button>
   </div>
 
   <!-- CONFLICTOS XML VS. MANUAL (solo admin) -->
@@ -444,12 +428,6 @@ const hoy=()=>new Date().toISOString().slice(0,10);
 // cobro real sin CFDI, ver sinFacturaJustificar:false en su registro).
 // ══════════════════════════════════════════════
 const DIAS_HABILES_JUSTIFICAR=10;
-// Plazo más largo para una autorización de maniobras que viene DIRECTO del
-// cliente (ver agregarAutorizacionManiobra) — a diferencia de un "sin
-// factura" que alguien capturó a mano, aquí el monto ya es el oficial/
-// autorizado, así que no hay prisa por corregirlo, solo por conseguir la
-// factura real que lo confirme.
-const DIAS_HABILES_AUTORIZACION_MANIOBRA=15;
 // MODO PRUEBA (null = producción normal, 10 días hábiles). Se puede poner
 // un número de minutos aquí temporalmente para probar el candado sin
 // esperar una semana — pero SIEMPRE debe quedar en null en producción.
@@ -470,10 +448,6 @@ function sumarDiasHabiles(fechaISO,n){
 function calcularFechaLimiteJustificacion(fechaCapturaISO){
   if(PRUEBA_MINUTOS_JUSTIFICAR)return new Date(Date.now()+PRUEBA_MINUTOS_JUSTIFICAR*60000).toISOString();
   return sumarDiasHabiles(fechaCapturaISO,DIAS_HABILES_JUSTIFICAR)+'T23:59:59';
-}
-function calcularFechaLimiteAutorizacion(fechaCapturaISO){
-  if(PRUEBA_MINUTOS_JUSTIFICAR)return new Date(Date.now()+PRUEBA_MINUTOS_JUSTIFICAR*60000).toISOString();
-  return sumarDiasHabiles(fechaCapturaISO,DIAS_HABILES_AUTORIZACION_MANIOBRA)+'T23:59:59';
 }
 function yaVencioLimite(fechaLimiteISO){
   return !!fechaLimiteISO&&new Date(fechaLimiteISO).getTime()<Date.now();
@@ -727,8 +701,6 @@ function discrepanciasDe(usuario){
 }
 function renderConflictosXML(){
   var u=usuarioSesion();
-  var cardAut=$('cardAutorizacionManiobra');
-  if(cardAut)cardAut.style.display=(u&&u.esAdmin)?'block':'none';
   var card=$('cardConflictosXML');
   if(!card)return;
   if(!u||!u.esAdmin){card.style.display='none';return;}
@@ -904,7 +876,7 @@ function verificarSesionModulo(){
 window.onFBReady(verificarSesionModulo);
 
 function initSelects(){
-  ['ingOp','filtOp','autOp'].forEach(id=>{
+  ['ingOp','filtOp'].forEach(id=>{
     const s=$(id);if(!s)return;
     while(s.options.length>1)s.remove(1);
     // value=operadorId (identidad PERMANENTE), no la unidad actual — así los
@@ -1796,56 +1768,6 @@ function agregarIngresoReal(){
   _pdfURLPendiente=null;
   limpiarForm();guardar();renderIngresos();
   if(_sinFacturaJustificar)alert('✅ Registrado. Tienes hasta '+_fechaLimite+(PRUEBA_MINUTOS_JUSTIFICAR?' (MODO PRUEBA: '+PRUEBA_MINUTOS_JUSTIFICAR+' min)':' ('+DIAS_HABILES_JUSTIFICAR+' días hábiles)')+' para que facturación lo sustituya con el XML real usando el ID "'+_obs+'".');
-}
-
-// ══════════════════════════════════════════════
-// AUTORIZACIÓN DE MANIOBRAS DEL CLIENTE (solo admin) — a diferencia de un
-// "sin factura" capturado por alguien como Raúl (donde el riesgo es que
-// sume varios trabajos en un solo monto), aquí el monto YA es el oficial
-// que el cliente autorizó por correo antes de existir la factura. Se
-// registra igual que un "sin factura" (sinFacturaJustificar/observaciones
-// como ID), pero con un plazo más largo y marcado como
-// esAutorizacionCliente para diferenciarlo — el responsable de sustituirlo
-// con la factura real puede ser otra persona (ej. Raúl), no
-// necesariamente quien lo capturó aquí.
-// ══════════════════════════════════════════════
-function agregarAutorizacionManiobra(){
-  var u=usuarioSesion();
-  if(!u||!u.esAdmin){alert('Solo un administrador puede registrar autorizaciones de maniobras.');return;}
-  var unidad=parseInt($('autOp').value||0);
-  if(!unidad){alert('Selecciona el operador.');return;}
-  var monto=parseFloat($('autMonto').value||0);
-  if(!monto){alert('Ingresa el monto autorizado.');return;}
-  var pedido=($('autPedido').value||'').trim();
-  if(!pedido){alert('Escribe el pedido/PO del cliente — es el ID que se va a usar después para ligar la factura real.');return;}
-  var pedidoNorm=pedido.toUpperCase();
-  if(ingresosDB.some(function(v){return v.sinFacturaJustificar&&!v.sustituidoPorXML&&(v.observaciones||'').trim().toUpperCase()===pedidoNorm;})){
-    alert('Ese pedido/PO ya está registrado y pendiente de sustituir con su factura real. Usa uno distinto o revisa si ya existe.');
-    return;
-  }
-  var fecha=$('autFecha').value||hoy();
-  var cliente=($('autCliente').value||'').trim()||'Sin cliente';
-  var responsable=($('autResponsable').value||'').trim()||u.usuario;
-  var fechaLimite=calcularFechaLimiteAutorizacion(fecha);
-  // El monto que autoriza el cliente es SUBTOTAL (sin IVA) — se factura
-  // aparte con IVA. Si aquí se guardara total=monto (sin IVA), nunca iba a
-  // coincidir contra el total del XML real (que siempre trae IVA), y toda
-  // autorización terminaría mandándose a Conflictos aunque el subtotal
-  // estuviera bien. Se calcula el IVA al 16% (tasa estándar para este tipo
-  // de servicio, sin retención) para que el total sí cuadre exacto cuando
-  // llegue la factura real.
-  var iva=Math.round(monto*0.16*100)/100;
-  var total=Math.round((monto+iva)*100)/100;
-  ingresosDB.push({id:uid(),unidad:unidad,folio:'MANIOBRAS',fecha:fecha,cliente:cliente,tipo:'maniobra',
-    subtotal:monto,subtFlete:0,subtManiobras:monto,subtOtros:0,
-    iva:iva,ret:0,total:total,estado:'sin_liquidar',liqNum:null,origen:'autorizacion_cliente',
-    ruta:[],observaciones:pedido,
-    sinFacturaJustificar:true,fechaLimiteJustificacion:fechaLimite,
-    capturadoPor:{usuario:responsable,nombre:responsable},
-    sustituidoPorXML:false,pdfURL:null,esAutorizacionCliente:true});
-  guardar();renderIngresos();
-  $('autMonto').value='';$('autPedido').value='';
-  alert('✅ Autorización registrada: '+fmt(monto)+' subtotal + '+fmt(iva)+' IVA = '+fmt(total)+' total, para '+(nombreOp(unidad)||unidad)+'.\n\nPlazo hasta '+fechaLimite.slice(0,10)+' ('+DIAS_HABILES_AUTORIZACION_MANIOBRA+' días hábiles) para que '+responsable+' suba la factura real y la ligue con el pedido "'+pedido+'".\n\n⚠️ Si la factura real trae retención o un IVA distinto al 16%, va a marcarse como discrepancia en Conflictos — revísalo ahí.');
 }
 
 // ══════════════════════════════════════════════
