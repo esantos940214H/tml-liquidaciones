@@ -42,9 +42,14 @@ const ANTHROPIC_API_KEY = defineSecret('ANTHROPIC_API_KEY');
 const PROMPT_INSTRUCCIONES =
   'Eres un asistente que extrae datos de un correo de autorización de maniobras de una empresa de mudanzas. ' +
   'Del texto que te paso, identifica CADA renglón/maniobra que traiga (puede haber varios, uno por operador o viaje). ' +
+  'El correo casi nunca trae todos los campos completos — a veces trae folio, a veces solo T.U.\'s 1, a veces T.U.\'s 1 y 2, ' +
+  'a veces ninguno de esos — extrae TODOS los que sí aparezcan, sin inventar los que falten. ' +
   'Responde SOLO un arreglo JSON (sin texto explicativo, sin backticks, sin markdown), donde cada elemento tenga ' +
-  'exactamente estas llaves: {"operador":"nombre de la persona tal cual aparece en el correo","monto":numero_sin_signos_de_pesos_ni_comas,' +
-  '"fecha":"YYYY-MM-DD o null si no aparece","pedido":"número de pedido/PO/referencia tal cual, o null","destino":"ciudad o lugar destino, o null"}. ' +
+  'exactamente estas llaves: {"operador":"nombre de la persona tal cual aparece en el correo",' +
+  '"monto":numero_sin_signos_de_pesos_ni_comas,"fecha":"YYYY-MM-DD o null si no aparece",' +
+  '"folio":"número de folio si aparece, o null","pedido":"número de pedido/PO/referencia si aparece, o null",' +
+  '"tu1":"T.U.\'s 1 / TU 1 si aparece, o null","tu2":"T.U.\'s 2 / TU 2 si aparece, o null",' +
+  '"tienda":"nombre de la tienda/sucursal si aparece, o null","destino":"ciudad o lugar destino, o null"}. ' +
   'Si el correo no trae ninguna maniobra reconocible, responde con un arreglo vacío []. No inventes datos que no estén en el texto.';
 
 // v2 — forzar redeploy para tomar la versión nueva del secret ANTHROPIC_API_KEY
