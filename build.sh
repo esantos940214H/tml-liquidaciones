@@ -12,6 +12,7 @@ mkdir -p dist/portal dist/anticipos dist/cxc dist/liquidaciones dist/nomina dist
 cp index.html          dist/portal/index.html
 cp ant.html            dist/anticipos/index.html
 cp ing.html            dist/cxc/index.html
+cp maniobras.html       dist/cxc/maniobras.html
 cp liq.html            dist/liquidaciones/index.html
 cp nomina.html         dist/nomina/index.html
 cp incidentes.html     dist/incidentes/index.html
@@ -48,7 +49,7 @@ done
 # pantalla de "Sin conexión" aunque Firebase sí estaba disponible). Agregar
 # ?v=<version> a cada <script src="shared/...js"> fuerza a que cada deploy
 # se sirva fresco, sin depender de que alguien recuerde recargar fuerte.
-for f in dist/*/index.html dist/usuarios/flota.html; do
+for f in dist/*/index.html dist/usuarios/flota.html dist/cxc/maniobras.html; do
   sed -i -E "s#(src=\"shared/[A-Za-z0-9_.-]+\.js)\"#\1?v=$VERSION_ID\"#g" "$f"
 done
 

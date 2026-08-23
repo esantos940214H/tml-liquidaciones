@@ -1,0 +1,442 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TML · Maniobras</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Segoe UI',Arial,sans-serif;background:#f0f2f5;color:#1a1a2e;min-height:100vh}
+html.in-iframe header{display:none!important}
+header{background:#1a1a2e;color:#fff;padding:14px 24px;display:flex;align-items:center;justify-content:space-between;border-bottom:3px solid #e63946;flex-wrap:wrap;gap:10px}
+.logo{font-size:18px;font-weight:800}.logo span{color:#e63946}
+.nav{display:flex;gap:8px;flex-wrap:wrap}
+.nav a{color:#aaa;text-decoration:none;font-size:12px;padding:6px 12px;border-radius:5px;border:1px solid #333;transition:all .15s}
+.nav a:hover{color:#fff;border-color:#555}
+.nav a.active{color:#fff;background:#e63946;border-color:#e63946}
+.container{max-width:900px;margin:0 auto;padding:20px 16px}
+.card{background:#fff;border-radius:10px;box-shadow:0 2px 12px rgba(0,0,0,.07);padding:20px 24px;margin-bottom:16px}
+.card-title{font-size:12px;font-weight:700;color:#1a1a2e;margin-bottom:14px;text-transform:uppercase;letter-spacing:1px}
+.field{display:flex;flex-direction:column;gap:4px}
+.field label{font-size:11px;font-weight:700;color:#666;text-transform:uppercase;letter-spacing:.5px}
+.field input,.field select{border:1.5px solid #dde;border-radius:6px;padding:8px 10px;font-size:13px;color:#1a1a2e;background:#fafafa;width:100%}
+.field input:focus,.field select:focus{outline:none;border-color:#e63946}
+.grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px}
+.btn{padding:8px 18px;border-radius:6px;border:none;font-size:12px;font-weight:700;cursor:pointer;transition:all .15s;text-transform:uppercase;letter-spacing:.5px}
+.btn-red{background:#e63946;color:#fff}.btn-red:hover{background:#c1121f}
+.btn-out{background:#fff;color:#1a1a2e;border:1.5px solid #1a1a2e}.btn-out:hover{background:#f0f2f5}
+.btn-sm{padding:5px 11px;font-size:11px}
+.alert{padding:9px 13px;border-radius:7px;font-size:12px;margin-bottom:10px}
+.alert-info{background:#e8f4fd;color:#0369a1;border:1px solid #bae6fd}
+.alert-ok{background:#d1e7dd;color:#0a5233;border:1px solid #a3cfbb}
+.alert-warn{background:#fffbeb;color:#92400e;border:1px solid #fde68a}
+.tbl-wrap{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:13px;min-width:560px}
+th{background:#1a1a2e;color:#fff;padding:8px 10px;font-size:11px;text-transform:uppercase;letter-spacing:.7px;text-align:left;font-weight:600}
+th.r{text-align:right}
+td{padding:7px 10px;border-bottom:1px solid #f0f0f0;vertical-align:middle}
+tr:last-child td{border-bottom:none}
+tr:hover td{background:#fafafa}
+.r{text-align:right}.num{font-family:monospace;font-weight:600}
+.badge{display:inline-block;border-radius:4px;padding:2px 8px;font-size:10px;font-weight:700;white-space:nowrap}
+.bg-green{background:#d1e7dd;color:#0a5233;border:1px solid #a3cfbb}
+.bg-yellow{background:#fff3cd;color:#856404;border:1px solid #ffc107}
+.bg-red{background:#fde8e8;color:#9b1c1c;border:1px solid #f9a8a8}
+.fb-status{font-size:11px;color:#aaa}
+.fb-ok{color:#2d6a4f}.fb-err{color:#e63946}
+@media(max-width:600px){.row{flex-direction:column;align-items:stretch}}
+
+/* ── SESIÓN (login por módulo) ── */
+.session-overlay{position:fixed;inset:0;background:#1a1a2e;z-index:999999;display:none;align-items:center;justify-content:center}
+.session-overlay.show{display:flex}
+.session-box{background:#fff;border-radius:14px;padding:36px;width:320px;box-shadow:0 20px 60px rgba(0,0,0,.4);text-align:center}
+.session-logo{font-size:20px;font-weight:800;margin-bottom:4px;color:#1a1a2e}
+.session-logo span{color:#e63946}
+.session-modulo{font-size:13px;color:#666;margin-bottom:18px;font-weight:700}
+.session-input{width:100%;border:1.5px solid #dde;border-radius:8px;padding:10px 14px;font-size:14px;margin-bottom:10px;outline:none}
+.session-input:focus{border-color:#e63946}
+.session-btn{width:100%;padding:11px;background:#e63946;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer}
+.session-btn:hover{background:#c1121f}
+.session-err{color:#e63946;font-size:12px;margin-top:8px}
+.session-user-label{font-size:11px;color:#aaa}
+.session-logout{font-size:11px;color:#aaa;text-decoration:underline;cursor:pointer;background:none;border:none}
+.session-logout:hover{color:#fff}
+</style>
+<script>if(window!==window.top)document.documentElement.className+=' in-iframe';</script>
+</head>
+<body>
+
+<!-- OVERLAY DE SESIÓN -->
+<div class="session-overlay" id="sessionOverlay">
+  <div class="session-box">
+    <div class="session-logo">MUDANZAS <span>TML</span></div>
+    <div class="session-modulo" id="sessionModuloLabel">Iniciar sesión — Maniobras</div>
+    <input type="email" id="sessionUser" class="session-input" placeholder="Email" autocomplete="username" onkeydown="if(event.key==='Enter')document.getElementById('sessionPass').focus()">
+    <input type="password" id="sessionPass" class="session-input" placeholder="Contraseña" autocomplete="current-password" onkeydown="if(event.key==='Enter')intentarLoginFirebase()">
+    <button class="session-btn" onclick="intentarLoginFirebase()">Entrar</button>
+    <div class="session-err" id="sessionErr" style="display:none"></div>
+    <div style="margin-top:10px"><a href="#" onclick="recuperarContrasena();return false;" style="color:#aaa;font-size:11px">¿Olvidaste tu contraseña?</a></div>
+    <div class="session-err" id="sessionRecupMsg" style="display:none"></div>
+  </div>
+</div>
+<div class="session-overlay" id="sessionDenied">
+  <div class="session-box">
+    <div class="session-logo">MUDANZAS <span>TML</span></div>
+    <div class="session-modulo">⛔ Solo un administrador puede entrar a este módulo.</div>
+    <div style="font-size:12px;color:#888;margin-bottom:16px">Sesión iniciada como <strong id="sessionDeniedUser"></strong></div>
+    <button class="session-btn" onclick="cerrarSesionTML()">Cerrar sesión</button>
+  </div>
+</div>
+<div class="session-overlay" id="modalCambiarPass">
+  <div class="session-box">
+    <div class="session-logo">MUDANZAS <span>TML</span></div>
+    <div class="session-modulo">🔑 Cambiar contraseña</div>
+    <input type="password" id="cpActual" class="session-input" placeholder="Contraseña actual" autocomplete="current-password">
+    <input type="password" id="cpNueva" class="session-input" placeholder="Contraseña nueva (mínimo 6 caracteres)" autocomplete="new-password">
+    <input type="password" id="cpConfirmar" class="session-input" placeholder="Confirmar contraseña nueva" autocomplete="new-password" onkeydown="if(event.key==='Enter')confirmarCambiarPass()">
+    <button class="session-btn" onclick="confirmarCambiarPass()">Guardar</button>
+    <button class="session-logout" style="margin-top:10px" onclick="cerrarModalCambiarPass()">Cancelar</button>
+    <div class="session-err" id="cpErr" style="display:none"></div>
+    <div class="session-err" id="cpOk" style="display:none;color:#2d6a4f">✅ Contraseña actualizada.</div>
+  </div>
+</div>
+
+<header>
+  <div class="logo">MUDANZAS <span>TML</span> <span style="font-size:13px;font-weight:400;color:#aaa;margin-left:8px">· Maniobras</span></div>
+  <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+    <span class="session-user-label" id="sesionUsuarioLabel"></span>
+    <button class="session-logout" id="btnCambiarPass" onclick="abrirModalCambiarPass()" style="display:none">🔑 Cambiar contraseña</button>
+    <button class="session-logout" id="btnCerrarSesion" onclick="cerrarSesionTML()" style="display:none">Cerrar sesión</button>
+    <span class="fb-status" id="fbStatus">⏳ Conectando...</span>
+    <nav class="nav">
+      <a href="https://anticipos.mudanzastml.mx">📋 Anticipos</a>
+      <a href="https://cxc.mudanzastml.mx">📄 Ingresos</a>
+      <a href="https://cxc.mudanzastml.mx/maniobras.html" class="active">✅ Maniobras</a>
+      <a href="https://liquidaciones.mudanzastml.mx">🚛 Liquidaciones</a>
+      <a href="https://nomina.mudanzastml.mx">🧾 Nómina</a>
+      <a href="https://incidentes.mudanzastml.mx">🚨 Incidentes</a>
+      <a href="https://historial.mudanzastml.mx">🗂️ Historial</a>
+      <a href="https://autorizaciones.mudanzastml.mx">🔐 Autorizaciones</a>
+      <a href="https://precarga.mudanzastml.mx">📥 Pre-carga</a>
+      <a href="https://usuarios.mudanzastml.mx">👤 Usuarios</a>
+      <a href="https://usuarios.mudanzastml.mx/flota.html">🚚 Flota</a>
+    </nav>
+  </div>
+</header>
+
+<div class="container">
+
+  <div class="alert alert-info">✅ Registra aquí el monto que el cliente autoriza por correo ANTES de que exista la factura real — este monto es el oficial, no algo que quien capture ingresos deba sumar o adivinar. Su única obligación después es subir la factura real y que coincida con este monto, usando el mismo pedido/PO como ID (ver Ingresos → Conflictos si no coincide). Las maniobras no llevan IVA.</div>
+
+  <!-- CAPTURA -->
+  <div class="card">
+    <div class="card-title">✅ Registrar autorización de maniobra</div>
+    <div class="grid2" style="margin-bottom:10px">
+      <div class="field"><label>Operador</label><select id="autOp"><option value="">— Selecciona —</option></select></div>
+      <div class="field"><label>Fecha</label><input type="date" id="autFecha"></div>
+      <div class="field"><label>Cliente</label><input type="text" id="autCliente" value="GRUPO COMERCIAL DSW"></div>
+      <div class="field"><label>Monto autorizado</label><input type="number" id="autMonto" placeholder="0.00" step="0.01"></div>
+    </div>
+    <div class="grid2" style="margin-bottom:14px">
+      <div class="field" style="grid-column:span 2"><label>Pedido / PO / referencia del cliente (ID único)</label><input type="text" id="autPedido" placeholder="Ej: 5900379049"></div>
+      <div class="field"><label>Responsable de subir la factura (correo)</label><input type="text" id="autResponsable" value="raul@mudandote.mx"></div>
+      <div class="field"><label>Plazo (días hábiles)</label><input type="number" id="autPlazo" value="15" step="1" min="1"></div>
+    </div>
+    <button class="btn btn-red" onclick="agregarAutorizacionManiobra()">+ Registrar autorización</button>
+  </div>
+
+  <!-- PENDIENTES -->
+  <div class="card">
+    <div class="card-title">⏳ Autorizaciones pendientes de facturar</div>
+    <div class="tbl-wrap"><table>
+      <thead><tr><th>Operador</th><th>Fecha</th><th>Cliente</th><th class="r">Monto</th><th>Pedido/ID</th><th>Responsable</th><th>Plazo</th><th></th></tr></thead>
+      <tbody id="tbPendientes"></tbody>
+    </table></div>
+  </div>
+
+</div>
+
+<!-- Firebase compat -->
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+<!-- Firebase Auth (login del módulo — ver shared/sesion.js) -->
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
+<script src="shared/sesion.js"></script>
+<script src="shared/autoActualizar.js"></script>
+<script src="shared/operadores.js"></script>
+<script>
+window._fbInit=false;
+window._fbCallbacks=[];
+window.onFBReady=function(cb){if(window._fbInit)cb();else window._fbCallbacks.push(cb);};
+(function(){
+  try{
+    var cfg={apiKey:"AIzaSyDqlhREJFVFLGzz7bVlPcNl1Uba9HI3r8s",authDomain:"tml-liquidaciones.firebaseapp.com",
+      projectId:"tml-liquidaciones",storageBucket:"tml-liquidaciones.firebasestorage.app",
+      messagingSenderId:"268455373953",appId:"1:268455373953:web:ad359c5dbcba9f53557180"};
+    if(!firebase.apps.length)firebase.initializeApp(cfg);
+    var db=firebase.firestore();
+    window.FB={
+      set:function(col,id,data){return db.collection(col).doc(id).set(data);},
+      get:async function(col,id){try{var s=await db.collection(col).doc(id).get();return s.exists?s.data():null;}catch(e){console.error('FB.get:',e);return null;}},
+      del:function(col,id){return db.collection(col).doc(id).delete();},
+      listen:function(col,id,cb){return db.collection(col).doc(id).onSnapshot(function(s){cb(s.exists?s.data():null);});},
+      getAll:async function(col){
+        try{var s=await db.collection(col).get();var r=[];s.forEach(function(d){r.push(Object.assign({id:d.id},d.data()));});return r.sort(function(a,b){return(b.num||0)-(a.num||0);});}
+        catch(e){console.error('FB.getAll:',e);return[];}
+      }
+    };
+    window._fbInit=true;
+    window._fbCallbacks.forEach(function(cb){try{cb();}catch(e){console.error(e);}});
+    window._fbCallbacks=[];
+    setTimeout(function(){window.dispatchEvent(new Event('firebase-ready'));},0);
+  }catch(e){console.error('Firebase init error:',e);}
+})();
+</script>
+
+<script>
+const $=id=>document.getElementById(id);
+const fmt=(n,d=2)=>'$'+parseFloat(n||0).toLocaleString('es-MX',{minimumFractionDigits:d,maximumFractionDigits:d});
+const hoy=()=>{var d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');};
+function uid(){return Date.now().toString(36)+Math.random().toString(36).slice(2,10);}
+let fbReady=false;
+let OPERADORES=[];
+let NOMBRES_OP={};
+function nombreOp(operadorId){
+  var op=OPERADORES.find(function(o){return o.operadorId===operadorId;});
+  return (op?op.nombre:NOMBRES_OP[operadorId])||'';
+}
+let ingresosDB=[];
+
+function sumarDiasHabiles(fechaISO,n){
+  var d=new Date((fechaISO||hoy())+'T12:00:00');
+  var agregados=0;
+  while(agregados<n){
+    d.setDate(d.getDate()+1);
+    var dow=d.getDay();
+    if(dow!==0&&dow!==6)agregados++;
+  }
+  return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+}
+function yaVencioLimite(fechaLimiteISO){
+  return !!fechaLimiteISO&&new Date(fechaLimiteISO).getTime()<Date.now();
+}
+
+// ══════════════════════════════════════════════
+// SESIÓN — este módulo es SOLO ADMIN (no usa permisos[modulo] como los
+// demás, porque el punto es justo que solo un administrador registre estas
+// autorizaciones — se gatea directo por esAdmin, igual que flota.html).
+// ══════════════════════════════════════════════
+function tmlSetCookie(name,value,days){
+  var expires='';
+  if(days){var d=new Date();d.setTime(d.getTime()+days*24*60*60*1000);expires=';expires='+d.toUTCString();}
+  document.cookie=name+'='+encodeURIComponent(value)+expires+';domain=.mudanzastml.mx;path=/;SameSite=Lax;Secure';
+}
+function tmlGetCookie(name){
+  var m=document.cookie.match('(^|;\\s*)'+name+'=([^;]*)');
+  return m?decodeURIComponent(m[2]):null;
+}
+function tmlDeleteCookie(name){
+  document.cookie=name+'=;expires=Thu, 01 Jan 1970 00:00:00 GMT;domain=.mudanzastml.mx;path=/;SameSite=Lax;Secure';
+}
+function usuarioSesion(){
+  try{return JSON.parse(tmlGetCookie('tml_user')||'null');}catch(e){return null;}
+}
+async function cerrarSesionTML(){
+  if(window.TMLSesion) await TMLSesion.cerrarSesion();
+  else tmlDeleteCookie('tml_user');
+  location.reload();
+}
+function abrirModalCambiarPass(){
+  $('cpActual').value='';$('cpNueva').value='';$('cpConfirmar').value='';
+  $('cpErr').style.display='none';$('cpOk').style.display='none';
+  $('modalCambiarPass').classList.add('show');
+  setTimeout(function(){$('cpActual').focus();},100);
+}
+function cerrarModalCambiarPass(){
+  $('modalCambiarPass').classList.remove('show');
+}
+async function confirmarCambiarPass(){
+  var actual=$('cpActual').value||'';
+  var nueva=$('cpNueva').value||'';
+  var confirmar=$('cpConfirmar').value||'';
+  var err=$('cpErr'),ok=$('cpOk');
+  err.style.display='none';ok.style.display='none';
+  if(!actual||!nueva||!confirmar){err.textContent='Llena los tres campos.';err.style.display='block';return;}
+  if(nueva.length<6){err.textContent='La contraseña nueva debe tener al menos 6 caracteres.';err.style.display='block';return;}
+  if(nueva!==confirmar){err.textContent='La confirmación no coincide con la contraseña nueva.';err.style.display='block';return;}
+  try{
+    await TMLSesion.cambiarContrasena(actual,nueva);
+    ok.style.display='block';
+    setTimeout(function(){cerrarModalCambiarPass();},1500);
+  }catch(e){
+    var msg='No se pudo cambiar la contraseña.';
+    if(e.code==='auth/wrong-password'||e.code==='auth/invalid-credential')msg='La contraseña actual no es correcta.';
+    else if(e.code==='auth/weak-password')msg='La contraseña nueva es muy débil (mínimo 6 caracteres).';
+    else if(e.code==='auth/requires-recent-login')msg='Tu sesión es muy antigua — cierra sesión, vuelve a entrar, e intenta de nuevo.';
+    err.textContent=msg;err.style.display='block';
+  }
+}
+function mostrarLoginModulo(){
+  $('sessionModuloLabel').textContent='Iniciar sesión — Maniobras';
+  $('sessionOverlay').classList.add('show');
+  setTimeout(function(){$('sessionUser').focus();},100);
+}
+async function intentarLoginFirebase(){
+  var email=($('sessionUser').value||'').trim();
+  var pass=$('sessionPass').value||'';
+  var err=$('sessionErr');
+  err.style.display='none';
+  if(!email||!pass){err.textContent='Ingresa tu email y contraseña.';err.style.display='block';return;}
+  try{
+    await TMLSesion.iniciarSesion(email,pass);
+    var u=usuarioSesion();
+    if(!u){err.textContent='No se pudo iniciar sesión.';err.style.display='block';return;}
+    if(!u.esAdmin){
+      err.textContent='Solo un administrador puede entrar a Maniobras.';err.style.display='block';
+      await TMLSesion.cerrarSesion();
+      return;
+    }
+    $('sessionOverlay').classList.remove('show');
+    mostrarSesionEnHeader();
+  }catch(e){
+    err.textContent='No se pudo iniciar sesión: '+(e.message||e.code||'error desconocido');err.style.display='block';
+  }
+}
+async function recuperarContrasena(){
+  var email=($('sessionUser').value||'').trim();
+  var msg=$('sessionRecupMsg');
+  if(!email){msg.style.color='#e63946';msg.textContent='Escribe tu email arriba y da clic de nuevo.';msg.style.display='block';return;}
+  try{
+    await TMLSesion.enviarCorreoRecuperacion(email);
+    msg.style.color='#2d6a4f';msg.textContent='✅ Te enviamos un correo a '+email+' con instrucciones para restablecer tu contraseña.';msg.style.display='block';
+  }catch(e){
+    msg.style.color='#e63946';msg.textContent='No se pudo enviar el correo: '+(e.message||e.code||'error desconocido');msg.style.display='block';
+  }
+}
+function mostrarSesionEnHeader(){
+  var u=usuarioSesion();
+  if(!u)return;
+  if($('sesionUsuarioLabel'))$('sesionUsuarioLabel').textContent='👤 '+(u.nombre||u.usuario)+' (admin)';
+  if($('btnCerrarSesion'))$('btnCerrarSesion').style.display='inline';
+  if($('btnCambiarPass'))$('btnCambiarPass').style.display='inline';
+}
+function verificarSesionModulo(){
+  var u=usuarioSesion();
+  if(!u){mostrarLoginModulo();return;}
+  if(!u.esAdmin){
+    $('sessionDeniedUser').textContent=u.nombre||u.usuario;
+    $('sessionDenied').classList.add('show');
+    return;
+  }
+  mostrarSesionEnHeader();
+}
+
+// ══════════════════════════════════════════════
+// DATOS — ingresosDB es el MISMO documento compartido con ing.html/liq.html
+// (estado/ingresosDB). Se lee, se fusiona el registro nuevo, y se vuelve a
+// escribir completo — NUNCA se sobreescribe con datos viejos (ver
+// CLAUDE.md): se vuelve a leer justo antes de cada guardado.
+// ══════════════════════════════════════════════
+function initSelects(){
+  var s=$('autOp');
+  while(s.options.length>1)s.remove(1);
+  OPERADORES.forEach(function(op){
+    var o=document.createElement('option');
+    o.value=op.operadorId;o.textContent=op.unidad+' · '+op.nombre;
+    s.appendChild(o);
+  });
+}
+function renderPendientes(){
+  var tb=$('tbPendientes');
+  var pendientes=ingresosDB.filter(function(v){return v.esAutorizacionCliente&&!v.sustituidoPorXML;});
+  pendientes.sort(function(a,b){return(a.fechaLimiteJustificacion||'').localeCompare(b.fechaLimiteJustificacion||'');});
+  if(!pendientes.length){
+    tb.innerHTML='<tr><td colspan="8" style="text-align:center;color:#aaa;padding:16px">Sin autorizaciones pendientes de facturar.</td></tr>';
+    return;
+  }
+  tb.innerHTML=pendientes.map(function(v){
+    var vencido=yaVencioLimite(v.fechaLimiteJustificacion);
+    var responsable=(v.capturadoPor&&v.capturadoPor.usuario)||'';
+    return '<tr>'
+      +'<td style="font-size:12px">'+(nombreOp(v.unidad)||v.unidad)+'</td>'
+      +'<td>'+v.fecha+'</td>'
+      +'<td style="font-size:12px">'+(v.cliente||'')+'</td>'
+      +'<td class="num r">'+fmt(v.total)+'</td>'
+      +'<td style="font-size:11px">'+(v.observaciones||'')+'</td>'
+      +'<td style="font-size:11px">'+responsable+'</td>'
+      +'<td>'+(vencido?'<span class="badge bg-red">⚠ Vencido</span>':'<span class="badge bg-yellow">⏳ '+(v.fechaLimiteJustificacion||'').slice(0,10)+'</span>')+'</td>'
+      +'<td><button class="btn btn-out btn-sm" onclick="eliminarAutorizacion(\''+v.id+'\')">✕</button></td>'
+      +'</tr>';
+  }).join('');
+}
+async function cargarIngresos(){
+  var data=await window.FB.get('estado','ingresosDB');
+  ingresosDB=(data&&data.data)?JSON.parse(data.data):[];
+  if(!Array.isArray(ingresosDB))ingresosDB=[];
+  renderPendientes();
+}
+function eliminarAutorizacion(id){
+  var v=ingresosDB.find(function(x){return x.id===id;});
+  if(!v)return;
+  if(!confirm('¿Eliminar esta autorización pendiente ('+fmt(v.total)+', pedido "'+v.observaciones+'")? Solo hazlo si se capturó por error — si ya hay factura real, mejor sustitúyela desde Ingresos.'))return;
+  cargarIngresos().then(function(){
+    ingresosDB=ingresosDB.filter(function(x){return x.id!==id;});
+    window.FB.set('estado','ingresosDB',{data:JSON.stringify(ingresosDB)});
+    renderPendientes();
+  });
+}
+async function agregarAutorizacionManiobra(){
+  var u=usuarioSesion();
+  if(!u||!u.esAdmin){alert('Solo un administrador puede registrar autorizaciones de maniobras.');return;}
+  var unidad=parseInt($('autOp').value||0);
+  if(!unidad){alert('Selecciona el operador.');return;}
+  var monto=parseFloat($('autMonto').value||0);
+  if(!monto){alert('Ingresa el monto autorizado.');return;}
+  var pedido=($('autPedido').value||'').trim();
+  if(!pedido){alert('Escribe el pedido/PO del cliente — es el ID que se va a usar después para ligar la factura real.');return;}
+  var plazo=parseInt($('autPlazo').value||15);
+  if(!plazo||plazo<1)plazo=15;
+  // Releer justo antes de guardar, para no pisar algo que otra persona haya
+  // capturado en Ingresos mientras esta pestaña estaba abierta.
+  await cargarIngresos();
+  var pedidoNorm=pedido.toUpperCase();
+  if(ingresosDB.some(function(v){return v.sinFacturaJustificar&&!v.sustituidoPorXML&&(v.observaciones||'').trim().toUpperCase()===pedidoNorm;})){
+    alert('Ese pedido/PO ya está registrado y pendiente de sustituir con su factura real. Usa uno distinto o revísalo en la tabla de abajo.');
+    return;
+  }
+  var fecha=$('autFecha').value||hoy();
+  var cliente=($('autCliente').value||'').trim()||'Sin cliente';
+  var responsable=($('autResponsable').value||'').trim()||u.usuario;
+  var fechaLimite=sumarDiasHabiles(fecha,plazo)+'T23:59:59';
+  // Las maniobras de este cliente NO llevan IVA — el monto autorizado ES el
+  // total, tal cual lo confirma la factura real.
+  ingresosDB.push({id:uid(),unidad:unidad,folio:'MANIOBRAS',fecha:fecha,cliente:cliente,tipo:'maniobra',
+    subtotal:monto,subtFlete:0,subtManiobras:monto,subtOtros:0,
+    iva:0,ret:0,total:monto,estado:'sin_liquidar',liqNum:null,origen:'autorizacion_cliente',
+    ruta:[],observaciones:pedido,
+    sinFacturaJustificar:true,fechaLimiteJustificacion:fechaLimite,
+    capturadoPor:{usuario:responsable,nombre:responsable},
+    sustituidoPorXML:false,pdfURL:null,esAutorizacionCliente:true});
+  await window.FB.set('estado','ingresosDB',{data:JSON.stringify(ingresosDB)});
+  $('autMonto').value='';$('autPedido').value='';
+  renderPendientes();
+  alert('✅ Autorización registrada: '+fmt(monto)+' para '+(nombreOp(unidad)||unidad)+'.\n\nPlazo hasta '+fechaLimite.slice(0,10)+' ('+plazo+' días hábiles) para que '+responsable+' suba la factura real y la ligue con el pedido "'+pedido+'" desde Ingresos.');
+}
+
+window.onFBReady(async function(){
+  OPERADORES=await window.cargarOperadores();
+  NOMBRES_OP=await window.cargarNombresOperadores();
+  initSelects();
+  fbReady=true;
+  $('fbStatus').textContent='✅ Conectado';
+  $('fbStatus').className='fb-status fb-ok';
+  verificarSesionModulo();
+  await cargarIngresos();
+  window.FB.listen('estado','ingresosDB',function(data){
+    if(data&&data.data){ingresosDB=JSON.parse(data.data);if(!Array.isArray(ingresosDB))ingresosDB=[];renderPendientes();}
+  });
+});
+setTimeout(function(){if(!fbReady){$('fbStatus').textContent='❌ Sin conexión';$('fbStatus').className='fb-status fb-err';}},6000);
+</script>
+</body>
+</html>
