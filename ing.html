@@ -174,28 +174,6 @@ tr:hover td{background:#fafafa}
       <input type="file" id="fXML" accept=".xml" multiple style="display:none">
       <input type="file" id="fSustituirXML" accept=".xml" style="display:none" onchange="handleSustituirXMLFile(event)">
     </div>
-    <label style="display:flex;align-items:center;gap:8px;font-size:12px;font-weight:700;color:#5b21b6;cursor:pointer;margin-bottom:12px">
-      <input type="checkbox" id="chkMultiOp" onchange="toggleMultiOp()" style="width:auto">
-      🧩 Factura multi-operador (un solo CFDI con maniobras de VARIOS operadores — desglose manual)
-    </label>
-    <div id="cardDesglose" style="display:none;background:#f5f0ff;border:1.5px solid #c4b5fd;border-radius:8px;padding:14px">
-      <div style="font-size:11px;font-weight:700;text-transform:uppercase;color:#5b21b6;margin-bottom:10px">🧩 Desglose de factura consolidada</div>
-      <div id="dgSinXML" class="alert alert-info">Sube arriba el XML del CFDI consolidado (con el modo multi-operador activado) para empezar a desglosarlo. No hace falta seleccionar operador — se asigna renglón por renglón aquí abajo.</div>
-      <div id="dgContenido" style="display:none">
-        <div id="dgResumenXML" style="background:#fff;border-radius:6px;padding:10px;font-size:12px;margin-bottom:10px"></div>
-        <div id="dgContadores" style="display:flex;gap:14px;flex-wrap:wrap;margin-bottom:10px"></div>
-        <div class="tbl-wrap"><table style="min-width:640px">
-          <thead><tr><th>Operador</th><th class="r">Monto (sin IVA)</th><th></th><th></th></tr></thead>
-          <tbody id="tbDgRows"></tbody>
-        </table></div>
-        <button class="btn btn-out btn-sm" style="margin:8px 0" onclick="dgAgregarRenglon()">+ Agregar renglón</button>
-        <div id="dgPreviewWrap" style="margin-top:6px"></div>
-        <div style="margin-top:10px;display:flex;gap:8px">
-          <button class="btn btn-red" id="btnGuardarDesglose" disabled onclick="guardarDesglose()">💾 Guardar desglose</button>
-          <button class="btn btn-out btn-sm" onclick="cancelarDesglose(true)">Cancelar</button>
-        </div>
-      </div>
-    </div>
   </div>
 
   <!-- SUSTITUIR CON FACTURA DE MANIOBRAS CONSOLIDADA (XML + Excel de desglose) -->
@@ -680,7 +658,7 @@ function mostrarSesionEnHeader(){
 //  1) Vencido: pasaron más de DIAS_HABILES_JUSTIFICAR días hábiles sin que
 //     se sustituyera con un XML (ver sumarDiasHabiles/fechaLimiteJustificacion).
 //  2) Discrepancia: SÍ se intentó sustituir con un XML, pero el monto real
-//     de la factura no coincidió con lo capturado a mano (ver guardarDesglose)
+//     de la factura no coincidió con lo capturado (ver sustituirIngresoConXML)
 //     — un desajuste así puede cambiar el saldo del operador (a favor vs en
 //     contra), así que NUNCA se sustituye solo automáticamente: se marca
 //     requiereRevisionAdmin y solo un administrador puede resolverlo (ver
@@ -693,14 +671,10 @@ function ingresosBloqueantesDe(usuario){
   });
 }
 // Candado TOTAL: mientras un usuario no-admin tenga algo sin resolver
-// (vencido o con discrepancia de monto), no puede registrar NINGÚN ingreso
-// — ni manual ni por XML de un solo operador. El desglose multi-operador
-// es la EXCEPCIÓN: ahí es donde se sustituyen los ingresos sin factura con
-// el XML real, así que bloquearlo por completo dejaría sin forma de
-// resolver el candado. En guardarDesglose(), en vez de bloquear todo, se
-// revisa renglón por renglón (ver estaBloqueado): los que traen un ID a
-// sustituir sí se procesan (es la resolución), los que no, se rechazan si
-// el usuario está bloqueado. El administrador nunca se bloquea.
+// (vencido o con discrepancia de monto), no puede registrar ningún ingreso
+// nuevo — el botón "🔄 XML" de esa fila (sustituirIngresoConXML) sigue
+// funcionando aunque esté bloqueado, porque ES la forma de resolverlo. El
+// administrador nunca se bloquea.
 function estaBloqueado(){
   var u=usuarioSesion();
   if(!u||u.esAdmin)return false;
@@ -1049,17 +1023,6 @@ dzXML.addEventListener('drop',e=>{e.preventDefault();dzXML.classList.remove('dra
 $('fXML').addEventListener('change',e=>handleXMLFiles(e.target.files));
 
 function handleXMLFiles(files){
-  // Modo multi-operador: el XML se desglosa manualmente entre operadores,
-  // no se asigna a uno solo. No requiere operador seleccionado.
-  if($('chkMultiOp')&&$('chkMultiOp').checked){
-    if(!files.length)return;
-    if(files.length>1)alert('En modo multi-operador sube UN XML a la vez. Solo se procesará el primero.');
-    const f=files[0];
-    lockRequest('Subir XML multi-operador — Ingresos', function(){
-      const r=new FileReader();r.onload=e=>parseXMLMultiOp(e.target.result,f.name);r.readAsText(f,'UTF-8');
-    });
-    return;
-  }
   // Ya no se selecciona operador antes de subir el XML — parseXML lo
   // encuentra solo por la placa de la Carta Porte (ver
   // _matchOperadorPorPlacaXML) y, si no la trae, abre un modal pidiendo
@@ -1132,23 +1095,6 @@ function subirXMLIngresoEnSegundoPlano(uuid,fname,text){
   }).catch(function(e){console.error('subirXMLIngresoEnSegundoPlano:',e);});
 }
 
-// Variante para el desglose multi-operador: la subida puede terminar ANTES
-// de que se guarde el desglose (dgPend sigue en memoria — se le agrega
-// xmlURL ahí, para que guardarDesglose() lo use al crear los registros) o
-// DESPUÉS (dgPend ya se limpió — entonces se busca por UUID en ingresosDB,
-// igual que en el flujo normal, y se actualiza ahí).
-function subirXMLDesgloseEnSegundoPlano(uuid,fname,text){
-  if(!uuid)return;
-  TMLComprobantes.subirXML('comprobantes/ingresos/'+uuid+'.xml',text).then(function(url){
-    if(dgPend&&dgPend.uuid===uuid)dgPend.xmlURL=url;
-    var actualizado=false;
-    ingresosDB.forEach(function(v){
-      if(v.uuid===uuid||v.facturaUUID===uuid){v.xmlURL=url;actualizado=true;}
-    });
-    if(actualizado){guardar();renderIngresos();}
-  }).catch(function(e){console.error('subirXMLDesgloseEnSegundoPlano:',e);});
-}
-
 function parseXML(text,fname,unidad,unidadFisica){
   if(usuarioBloqueadoIngresos())return;
   const doc=new DOMParser().parseFromString(text,'text/xml');
@@ -1208,16 +1154,7 @@ function parseXML(text,fname,unidad,unidadFisica){
   if(uuid&&ingresosDB.some(v=>(v.uuid||'')===uuid)){
     if(!confirm('⚠️ '+fname+': este CFDI (UUID '+uuid.slice(0,8)+'...) YA está registrado en Ingresos'+(ingresosDB.some(v=>(v.uuid||'')===uuid&&v.esDesglose)?' como factura desglosada multi-operador':'')+'.\n¿Registrarlo de todas formas? (podría duplicar el ingreso)'))return;
   }
-  // Sugerencia (no obligatoria): si el receptor es un cliente que suele mandar
-  // facturas consolidadas de varios operadores, proponer el modo multi-operador.
-  if(RFC_CLIENTES_MULTIOP.indexOf(rfcReceptor.toUpperCase())!==-1&&!($('chkMultiOp')&&$('chkMultiOp').checked)){
-    if(confirm('💡 '+fname+': este cliente suele facturar maniobras de VARIOS operadores en un solo CFDI.\n\n¿Quieres desglosarla entre operadores (modo multi-operador)?\n\nAceptar = activar desglose · Cancelar = registrar normal a un solo operador')){
-      $('chkMultiOp').checked=true;toggleMultiOp();
-      parseXMLMultiOp(text,fname);
-      return;
-    }
-  }
-  // Clasificar conceptos por tipo (lógica compartida con el desglose multi-operador)
+  // Clasificar conceptos por tipo
   let {subtFlete,subtManiobras,subtOtros}=clasificarConceptosCFDI(doc,subtotal);
   // Extraer ruta carta porte
   let ruta=[];
@@ -1264,370 +1201,10 @@ function parseXML(text,fname,unidad,unidadFisica){
   alert('✅ '+fname+' registrado'+(placaAutoDetectada?' — operador identificado automáticamente por la placa '+placaAutoDetectada+' ('+(nombreOp(unidad)||unidad)+')':'')+'.'+(ruta.length?' Ruta: '+ruta.length+' tramos.':''));
 }
 
-// ══════════════════════════════════════════════
-// FACTURA MULTI-OPERADOR (desglose manual con prorrateo de IVA)
-// Un solo CFDI consolidado (ej. maniobras de la semana de varios operadores)
-// se reparte manualmente entre operadores. Todo el dinero se maneja en
-// CENTAVOS (enteros) para evitar errores de punto flotante, y el prorrateo
-// de IVA/retención se ajusta en el último operador para que las sumas
-// cuadren EXACTAMENTE contra el XML. Cada operador queda con SU registro en
-// ingresosDB (mismo criterio de montos que el flujo normal: subtotal sin
-// IVA + desglose flete/maniobras/otros + iva/ret/total propios), ligados
-// por facturaUUID. El flujo normal de un XML = un operador no cambia.
-// ══════════════════════════════════════════════
-// RFCs de clientes que suelen facturar consolidado (para SUGERIR el modo
-// multi-operador al subir su XML — nunca se fuerza). Agregar aquí el RFC
-// en mayúsculas, ej.: ['GCD170101GS6']
-const RFC_CLIENTES_MULTIOP=[];
 // Ingresos = CFDIs que Mudanzas TML EMITE a sus clientes. Un XML donde TML
 // aparece como RECEPTOR (ej. factura de un proveedor/gasto) no es un
 // ingreso — se rechaza al subirlo, sin importar el módulo por el que entre.
 const TML_RFC='MTM171214PI4';
-
-let dgPend=null; // CFDI parseado pendiente de desglosar
-let dgRows=[];   // renglones de asignación [{unidad,monto,destino,pedido}]
-
-const toCents=v=>Math.round((parseFloat(v)||0)*100);
-const fromCents=c=>c/100;
-
-function toggleMultiOp(){
-  const chk=$('chkMultiOp');if(!chk)return;
-  if(!chk.checked&&dgPend){
-    if(!confirm('Hay un desglose en curso sin guardar. ¿Descartarlo?')){chk.checked=true;return;}
-    dgPend=null;dgRows=[];
-  }
-  if($('cardDesglose'))$('cardDesglose').style.display=chk.checked?'block':'none';
-  if($('dgSinXML'))$('dgSinXML').style.display=(chk.checked&&!dgPend)?'block':'none';
-  if($('dgContenido'))$('dgContenido').style.display=(chk.checked&&dgPend)?'block':'none';
-}
-
-function parseXMLMultiOp(text,fname){
-  // Sin candado aquí: hay que poder cargar el XML para llegar a escribir el
-  // ID a sustituir por renglón — el bloqueo real se aplica en
-  // guardarDesglose(), renglón por renglón (ver estaBloqueado).
-  const doc=new DOMParser().parseFromString(text,'text/xml');
-  const comp=doc.querySelector('Comprobante');
-  if(!comp){alert(fname+': no es CFDI válido.');return;}
-  const subtotal=parseFloat(comp.getAttribute('SubTotal')||0);
-  if(!subtotal){alert(fname+': el CFDI no tiene subtotal. No se puede desglosar.');return;}
-  // Ver comentario en parseXML(): evitar sumar los Traslados del resumen y
-  // los de cada Concepto (eso duplicaba el IVA a 32%).
-  let iva=0,ret=0;
-  const impGlobalMulti=doc.querySelector('Comprobante>Impuestos');
-  (impGlobalMulti?impGlobalMulti.querySelectorAll('Traslado'):doc.querySelectorAll('Traslado')).forEach(t=>{if(t.getAttribute('Impuesto')==='002')iva+=parseFloat(t.getAttribute('Importe')||0);});
-  (impGlobalMulti?impGlobalMulti.querySelectorAll('Retencion'):doc.querySelectorAll('Retencion')).forEach(r=>{if(r.getAttribute('Impuesto')==='002')ret+=parseFloat(r.getAttribute('Importe')||0);});
-  const receptor=doc.querySelector('Receptor');
-  const emisor=doc.querySelector('Emisor');
-  const rfcEmisorChk=emisor?emisor.getAttribute('Rfc')||'':'';
-  if(rfcEmisorChk.toUpperCase()!==TML_RFC){
-    alert('🚫 '+fname+': el EMISOR de este CFDI es "'+(rfcEmisorChk||'(vacío)')+'", no Mudanzas TML ('+TML_RFC+').\n\nEste XML parece ser una factura de un proveedor/gasto, no un ingreso — no se puede registrar aquí.');
-    return;
-  }
-  const tfd=doc.querySelector('TimbreFiscalDigital');
-  const uuid=tfd?tfd.getAttribute('UUID')||'':'';
-  if(uuid&&ingresosDB.some(v=>(v.uuid||'')===uuid)){
-    if(!confirm('⚠️ '+fname+': este CFDI (UUID '+uuid.slice(0,8)+'...) YA está registrado en Ingresos.\n¿Desglosarlo de todas formas? (podría duplicar el ingreso)'))return;
-  }
-  const {subtFlete,subtManiobras,subtOtros}=clasificarConceptosCFDI(doc,subtotal);
-  subirXMLDesgloseEnSegundoPlano(uuid,fname,text);
-  dgPend={
-    fname:fname,
-    xmlURL:null,
-    serie:comp.getAttribute('Serie')||'',folio:comp.getAttribute('Folio')||'',
-    fecha:(comp.getAttribute('Fecha')||'').slice(0,10),
-    cliente:receptor?receptor.getAttribute('Nombre')||'':'',
-    rfcEmisor:emisor?emisor.getAttribute('Rfc')||'':'',
-    rfcReceptor:receptor?receptor.getAttribute('Rfc')||'':'',
-    uuid:uuid,
-    subtotalC:toCents(subtotal),ivaC:toCents(iva),retC:toCents(ret),
-    totalC:toCents(parseFloat(comp.getAttribute('Total')||0)||subtotal+iva-ret),
-    subtFleteC:toCents(subtFlete),subtManiobrasC:toCents(subtManiobras)
-  };
-  dgRows=[{unidad:0,monto:'',destino:'',pedido:'',sustituyeId:''}];
-  if($('chkMultiOp'))$('chkMultiOp').checked=true;
-  toggleMultiOp();
-  renderDgRows();
-  recalcDesglose();
-}
-
-function cancelarDesglose(preguntar){
-  if(preguntar&&dgPend&&!confirm('¿Descartar este desglose sin guardar?'))return;
-  dgPend=null;dgRows=[];
-  toggleMultiOp();
-}
-
-function dgAgregarRenglon(){
-  dgRows.push({unidad:0,monto:'',destino:'',pedido:'',sustituyeId:''});
-  renderDgRows();recalcDesglose();
-}
-function dgEliminarRenglon(i){
-  dgRows.splice(i,1);
-  if(!dgRows.length)dgRows.push({unidad:0,monto:'',destino:'',pedido:'',sustituyeId:''});
-  renderDgRows();recalcDesglose();
-}
-function dgUpd(i,campo,valor){
-  if(!dgRows[i])return;
-  dgRows[i][campo]=campo==='unidad'?parseInt(valor||0):valor;
-  recalcDesglose();
-}
-
-// Re-dibuja solo los renglones editables (al agregar/quitar) — al teclear NO
-// se re-dibuja para no perder el foco; solo se recalculan contadores/preview.
-// Destino/Pedido-ref/Sustituye-ID quedan colapsados detrás de un botón
-// "Detalles" por renglón — son opcionales y casi nunca se usan los tres a
-// la vez, así que mostrarlos siempre en la fila principal solo estorbaba
-// al capturar (eran 5 campos por renglón para lo que en la práctica es
-// nomás Operador + Monto).
-function renderDgRows(){
-  const tb=$('tbDgRows');if(!tb)return;
-  const opts=u=>'<option value="">— Operador —</option>'+OPERADORES.map(o=>'<option value="'+o.operadorId+'"'+(o.operadorId===u?' selected':'')+'>'+o.clave+' · '+o.nombre+'</option>').join('');
-  tb.innerHTML=dgRows.map((r,i)=>{
-    const abierto=!!r._detalleAbierto;
-    const tieneOpcionales=!!(r.destino||r.pedido||r.sustituyeId);
-    let html='<tr>'
-      +'<td><select onchange="dgUpd('+i+',\'unidad\',this.value)" style="border:1.5px solid #dde;border-radius:5px;padding:6px;font-size:12px;background:#fafafa;min-width:190px">'+opts(r.unidad)+'</select></td>'
-      +'<td class="r"><input type="number" step="0.01" min="0" value="'+(r.monto||'')+'" placeholder="0.00" oninput="dgUpd('+i+',\'monto\',this.value)" style="border:1.5px solid #dde;border-radius:5px;padding:6px;font-size:12px;background:#fafafa;width:110px;text-align:right"></td>'
-      +'<td><button type="button" onclick="dgToggleDetalle('+i+')" title="Destino, pedido/ref. y sustitución de un ingreso sin factura — todo opcional" style="background:'+(tieneOpcionales?'#ede9fe':'#f0f2f5')+';color:'+(tieneOpcionales?'#5b21b6':'#666')+';border:none;cursor:pointer;border-radius:4px;padding:4px 9px;font-size:11px;white-space:nowrap">'+(tieneOpcionales?'✓ ':'')+'Detalles '+(abierto?'▲':'▾')+'</button></td>'
-      +'<td><button style="background:#fde8e8;color:#9b1c1c;border:none;cursor:pointer;border-radius:4px;padding:4px 9px" onclick="dgEliminarRenglon('+i+')">✕</button></td>'
-      +'</tr>';
-    if(abierto){
-      html+='<tr><td colspan="4" style="background:#faf9ff;padding:8px 10px 12px">'
-        +'<div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end">'
-        +'<div><label style="font-size:10px;color:#888;display:block;margin-bottom:3px">Destino (opcional)</label><input type="text" value="'+(r.destino||'').replace(/"/g,'&quot;')+'" placeholder="Municipio, Estado" oninput="dgUpd('+i+',\'destino\',this.value)" style="border:1.5px solid #dde;border-radius:5px;padding:6px;font-size:12px;background:#fff;width:160px"></div>'
-        +'<div><label style="font-size:10px;color:#888;display:block;margin-bottom:3px">Pedido/ref. (opcional)</label><input type="text" value="'+(r.pedido||'').replace(/"/g,'&quot;')+'" placeholder="Pedido/ref." oninput="dgUpd('+i+',\'pedido\',this.value)" style="border:1.5px solid #dde;border-radius:5px;padding:6px;font-size:12px;background:#fff;width:140px"></div>'
-        +'<div><label style="font-size:10px;color:#888;display:block;margin-bottom:3px">Sustituye ingreso sin factura (ID)</label><input type="text" value="'+(r.sustituyeId||'').replace(/"/g,'&quot;')+'" placeholder="Solo si aplica" title="Si este operador tiene un ingreso sin factura pendiente con este mismo ID en Observaciones, se sustituye en vez de crear uno nuevo" oninput="dgUpd('+i+',\'sustituyeId\',this.value)" style="border:1.5px solid #dde;border-radius:5px;padding:6px;font-size:12px;background:#fff;width:170px"></div>'
-        +'</div></td></tr>';
-    }
-    return html;
-  }).join('');
-}
-function dgToggleDetalle(i){
-  if(!dgRows[i])return;
-  dgRows[i]._detalleAbierto=!dgRows[i]._detalleAbierto;
-  renderDgRows();
-}
-
-// Agrupa los renglones válidos por operador (varios renglones del mismo
-// operador se suman en UN registro) y prorratea IVA/retención/clasificación
-// en centavos, ajustando el redondeo en el ÚLTIMO grupo para que las sumas
-// cuadren exactamente contra el XML.
-function calcularProrrateo(){
-  if(!dgPend)return null;
-  const orden=[];const porOp={};
-  dgRows.forEach(r=>{
-    const mC=toCents(r.monto);
-    if(!r.unidad||mC<=0)return;
-    if(!porOp[r.unidad]){porOp[r.unidad]={unidad:r.unidad,montoC:0,destinos:[],pedidos:[],sustituyeIds:[]};orden.push(porOp[r.unidad]);}
-    porOp[r.unidad].montoC+=mC;
-    if(r.destino&&porOp[r.unidad].destinos.indexOf(r.destino)===-1)porOp[r.unidad].destinos.push(r.destino);
-    if(r.pedido&&porOp[r.unidad].pedidos.indexOf(r.pedido)===-1)porOp[r.unidad].pedidos.push(r.pedido);
-    if(r.sustituyeId&&r.sustituyeId.trim()&&porOp[r.unidad].sustituyeIds.indexOf(r.sustituyeId.trim())===-1)porOp[r.unidad].sustituyeIds.push(r.sustituyeId.trim());
-  });
-  const asignadoC=orden.reduce((s,g)=>s+g.montoC,0);
-  const completo=asignadoC===dgPend.subtotalC&&orden.length>0;
-  // Renglones con datos incompletos (monto sin operador o viceversa) bloquean el guardado
-  const incompletos=dgRows.some(r=>{const mC=toCents(r.monto);return (r.unidad&&mC<=0)||(!r.unidad&&mC>0);});
-  let sIva=0,sRet=0,sTot=0,sSf=0,sSm=0;
-  orden.forEach((g,idx)=>{
-    const ultimo=idx===orden.length-1;
-    if(completo&&ultimo){
-      g.ivaC=dgPend.ivaC-sIva;g.retC=dgPend.retC-sRet;
-      g.sfC=dgPend.subtFleteC-sSf;g.smC=dgPend.subtManiobrasC-sSm;
-    }else{
-      g.ivaC=Math.round(g.montoC*dgPend.ivaC/dgPend.subtotalC);
-      g.retC=Math.round(g.montoC*dgPend.retC/dgPend.subtotalC);
-      g.sfC=Math.round(g.montoC*dgPend.subtFleteC/dgPend.subtotalC);
-      g.smC=Math.round(g.montoC*dgPend.subtManiobrasC/dgPend.subtotalC);
-    }
-    // La clasificación jamás puede exceder el monto del grupo (protege el
-    // ajuste de redondeo del último renglón); otros = lo que reste.
-    if(g.sfC<0)g.sfC=0;if(g.smC<0)g.smC=0;
-    let ex=g.sfC+g.smC-g.montoC;
-    if(ex>0){if(g.smC>=ex){g.smC-=ex;}else{g.sfC-=(ex-g.smC);g.smC=0;}}
-    g.soC=g.montoC-g.sfC-g.smC;
-    g.totC=(completo&&ultimo)?(dgPend.totalC-sTot):(g.montoC+g.ivaC-g.retC);
-    sIva+=g.ivaC;sRet+=g.retC;sTot+=g.totC;sSf+=g.sfC;sSm+=g.smC;
-  });
-  return {grupos:orden,asignadoC,completo,incompletos,sIva,sRet,sTot};
-}
-
-function recalcDesglose(){
-  if(!dgPend)return;
-  const p=calcularProrrateo();if(!p)return;
-  const restanteC=dgPend.subtotalC-p.asignadoC;
-  const tasa=dgPend.subtotalC>0?(dgPend.ivaC/dgPend.subtotalC*100):0;
-  if($('dgResumenXML'))$('dgResumenXML').innerHTML=
-    '<strong>'+dgPend.fname+'</strong> · '+dgPend.cliente+' · '+dgPend.fecha
-    +(dgPend.uuid?' · UUID '+dgPend.uuid.slice(0,8)+'...':'')
-    +'<br>Subtotal: <strong>'+fmt(fromCents(dgPend.subtotalC))+'</strong>'
-    +' · IVA ('+tasa.toFixed(2).replace(/\.00$/,'')+'%): <strong>'+fmt(fromCents(dgPend.ivaC))+'</strong>'
-    +(dgPend.retC?' · Retención: <strong>'+fmt(fromCents(dgPend.retC))+'</strong>':'')
-    +' · Total: <strong>'+fmt(fromCents(dgPend.totalC))+'</strong>';
-  const kpi=(label,val,color)=>'<div style="background:#fff;border-radius:6px;padding:8px 14px;text-align:center;min-width:120px"><div style="font-size:16px;font-weight:800;color:'+color+'">'+val+'</div><div style="font-size:10px;text-transform:uppercase;color:#888">'+label+'</div></div>';
-  if($('dgContadores'))$('dgContadores').innerHTML=
-    kpi('Subtotal del XML',fmt(fromCents(dgPend.subtotalC)),'#1a1a2e')
-    +kpi('Asignado',fmt(fromCents(p.asignadoC)),'#1a4f8a')
-    +kpi('POR ASIGNAR',fmt(fromCents(restanteC)),restanteC===0?'#0a5233':'#c1121f');
-  // Previsualización por operador con prorrateo
-  let html='';
-  if(p.grupos.length){
-    const conRet=dgPend.retC>0;
-    html='<div style="font-size:11px;font-weight:700;text-transform:uppercase;color:#888;margin-bottom:6px">Previsualización por operador (con IVA prorrateado)</div>'
-      +'<div class="tbl-wrap"><table style="min-width:560px"><thead><tr><th>Operador</th><th class="r">Subtotal</th><th class="r">IVA</th>'+(conRet?'<th class="r">Retención</th>':'')+'<th class="r">Total</th></tr></thead><tbody>'
-      +p.grupos.map(g=>{
-        const op=OPERADORES.find(o=>o.operadorId===g.unidad);
-        return '<tr><td style="font-size:12px">'+(op?op.nombre:g.unidad)+'</td><td class="num r">'+fmt(fromCents(g.montoC))+'</td><td class="num r">'+fmt(fromCents(g.ivaC))+'</td>'+(conRet?'<td class="num r">'+fmt(fromCents(g.retC))+'</td>':'')+'<td class="num r">'+fmt(fromCents(g.totC))+'</td></tr>';
-      }).join('')
-      +'</tbody><tfoot><tr style="font-weight:700;background:'+(p.completo?'#d1e7dd':'#fff3cd')+'">'
-      +'<td>SUMA '+(p.completo?'✓ cuadra con el XML':'(aún no cuadra)')+'</td>'
-      +'<td class="num r">'+fmt(fromCents(p.asignadoC))+'</td>'
-      +'<td class="num r">'+fmt(fromCents(p.sIva))+'</td>'
-      +(conRet?'<td class="num r">'+fmt(fromCents(p.sRet))+'</td>':'')
-      +'<td class="num r">'+fmt(fromCents(p.sTot))+'</td></tr></tfoot></table></div>';
-  }
-  if($('dgPreviewWrap'))$('dgPreviewWrap').innerHTML=html;
-  const btn=$('btnGuardarDesglose');
-  if(btn){
-    btn.disabled=!(p.completo&&!p.incompletos&&restanteC===0);
-    btn.title=btn.disabled?(p.incompletos?'Hay renglones incompletos (falta operador o monto).':'El monto asignado debe cuadrar EXACTAMENTE con el subtotal del XML ('+fmt(fromCents(dgPend.subtotalC))+').'):'';
-  }
-}
-
-function guardarDesglose(){
-  if(!dgPend)return;
-  // Sin candado general aquí: este es justo el mecanismo para sustituir
-  // ingresos sin factura con el XML real. El bloqueo se aplica más abajo,
-  // renglón por renglón — solo rechaza los que NO traen un ID a sustituir
-  // (ingresos nuevos sin relación con nada pendiente).
-  lockRequest('Guardar desglose multi-operador — Ingresos', function(){
-    const p=calcularProrrateo();
-    // Suma de control final: nunca guardar si algo no cuadra exactamente
-    if(!p||!p.completo||p.incompletos||p.asignadoC!==dgPend.subtotalC||p.sIva!==dgPend.ivaC||p.sRet!==dgPend.retC||p.sTot!==dgPend.totalC){
-      alert('🚫 Las sumas del desglose no cuadran exactamente contra el XML. Revisa los renglones.\n\nSubtotal XML: '+fmt(fromCents(dgPend.subtotalC))+' vs asignado: '+fmt(fromCents(p?p.asignadoC:0)));
-      recalcDesglose();return;
-    }
-    if(dgPend.uuid&&ingresosDB.some(v=>(v.uuid||'')===dgPend.uuid)){
-      if(!confirm('⚠️ Este CFDI (UUID '+dgPend.uuid.slice(0,8)+'...) YA tiene registros en Ingresos. ¿Guardar el desglose de todas formas? (podría duplicar)'))return;
-    }
-    const folioCompleto=dgPend.serie+'-'+dgPend.folio;
-    const yaFolio=p.grupos.filter(g=>ingresosDB.some(v=>v.folio===folioCompleto&&v.unidad===g.unidad));
-    if(yaFolio.length&&!confirm('⚠️ El folio '+folioCompleto+' ya tiene registro para '+yaFolio.length+' de estos operadores. ¿Continuar de todas formas?'))return;
-    // Verificación ANTES de guardar nada: si el usuario está bloqueado (tiene
-    // ingresos sin factura pendientes de resolver) y algún renglón no trae
-    // un ID de sustitución, antes ese renglón se descartaba EN SILENCIO
-    // (el resto del desglose sí se guardaba, con un aviso fácil de pasar
-    // por alto dentro del mensaje de "✅ Desglose guardado" — así fue como
-    // 4 de 5 operadores de una factura de $55,468 nunca quedaron
-    // registrados). Ahora se detiene TODO el guardado de una vez, sin
-    // escribir nada a medias, y se dice exactamente qué falta resolver.
-    if(estaBloqueado()){
-      const faltantes=p.grupos.filter(g=>!(g.sustituyeIds&&g.sustituyeIds[0]));
-      if(faltantes.length){
-        const nombres=faltantes.map(g=>(OPERADORES.find(o=>o.operadorId===g.unidad)||{}).nombre||g.unidad).join(', ');
-        alert('🚫 No se guardó NADA de este desglose todavía.\n\nTienes ingresos sin factura pendientes de resolver, así que no puedes registrar renglones nuevos sin ligarlos a un ID existente. Falta el ID de sustitución para: '+nombres+'.\n\nSi corresponden a algo ya capturado sin factura, escribe su ID en "Sustituye ingreso sin factura (ID)". Si de verdad son ingresos nuevos, pide a un administrador que resuelva primero tus pendientes en la pestaña de Conflictos.');
-        return;
-      }
-    }
-    const sustituciones=[];
-    for(const g of p.grupos){
-      const smC=g.smC,sfC=g.sfC,soC=g.soC;
-      const tipoDerivado=smC>0&&!sfC?'maniobra':soC>0&&!sfC&&!smC?'otro':'flete_for';
-      const destino=g.destinos.join(' / ');
-      const idSust=(g.sustituyeIds&&g.sustituyeIds[0])?g.sustituyeIds[0]:'';
-      let candidato=null;
-      if(idSust){
-        const idSustNorm=idSust.trim().toUpperCase();
-        // "Contiene" en vez de igualdad exacta: una autorización de
-        // maniobras (ver maniobras.html) puede guardar VARIOS
-        // identificadores juntos ("FOLIO:x | PED:y | TU1:z | TU2:w") porque
-        // el correo no siempre trae los mismos campos — así, con que Raúl
-        // teclee CUALQUIERA de esos valores (el folio, el pedido, o
-        // cualquiera de los T.U.'s), lo encuentra igual.
-        candidato=ingresosDB.find(v=>v.unidad===g.unidad&&v.sinFacturaJustificar&&!v.sustituidoPorXML&&(v.observaciones||'').toUpperCase().indexOf(idSustNorm)!==-1);
-        if(!candidato&&!confirm('⚠️ No se encontró ningún ingreso sin factura pendiente con el ID "'+idSust+'" para este operador.\n\n¿Registrar de todas formas como un ingreso nuevo (sin sustituir nada)?'))continue;
-      }
-      if(candidato){
-        const totalXMLc=g.totC;
-        const totalManualC=toCents(candidato.total||0);
-        const coincide=totalXMLc===totalManualC;
-        // Si hay diferencia de monto, solo importa cuando el ingreso YA está
-        // liquidado (tiene liqNum: alguna liquidación —abierta o cerrada—
-        // ya calculó un saldo con esta cifra). Si todavía está sin liquidar,
-        // no se ha calculado ningún saldo con el monto manual, así que es
-        // seguro corregirlo automáticamente aunque no coincida exactamente.
-        if(coincide||candidato.estado!=='liquidado'){
-          // Se sustituye EN EL MISMO REGISTRO, conservando id/estado/liqNum
-          // tal cual (aunque ya esté liquidado en una liquidación cerrada,
-          // cuando SÍ coincide el monto) para no mover saldos ni reabrir
-          // nada. Solo se actualizan los datos reales del CFDI.
-          candidato.folio=folioCompleto;candidato.fecha=dgPend.fecha;candidato.cliente=dgPend.cliente;
-          candidato.tipo=tipoDerivado;
-          candidato.subtotal=fromCents(g.montoC);candidato.subtFlete=fromCents(sfC);
-          candidato.subtManiobras=fromCents(smC);candidato.subtOtros=fromCents(soC);
-          candidato.iva=fromCents(g.ivaC);candidato.ret=fromCents(g.retC);candidato.total=fromCents(g.totC);
-          candidato.origen='xml';
-          if(destino)candidato.ruta=[{origen:'',destino:destino,kms:''}];
-          candidato.uuid=dgPend.uuid;candidato.facturaUUID=dgPend.uuid;candidato.esDesglose=true;
-          candidato.destino=destino;candidato.pedido=g.pedidos.join(' / ');
-          candidato.rfcEmisor=dgPend.rfcEmisor;candidato.rfcReceptor=dgPend.rfcReceptor;
-          candidato.satEstado=null;candidato.satCancelado=false;
-          candidato.sustituidoPorXML=true;candidato.xmlURL=dgPend.xmlURL;
-          candidato.observaciones=(candidato.observaciones||'')+' — sustituido por XML '+folioCompleto+' el '+hoy();
-          sustituciones.push(coincide
-            ?'La parte proporcional de este XML sustituye al ingreso identificado con el número de id "'+idSust+'".'
-            :'⚠️ El monto del XML ('+fmt(fromCents(g.totC))+') no coincidía exactamente con lo capturado a mano ('+fmt(totalManualC/100)+') para el ID "'+idSust+'", pero como todavía no estaba liquidado se corrigió automáticamente con el monto real del XML.');
-        }else{
-          // Ya está liquidado Y el monto no coincide: un desajuste así puede
-          // cambiar el saldo del operador (a favor vs en contra) que YA se
-          // calculó, así que NUNCA se sustituye solo automáticamente. Se
-          // registra el XML aparte y se marca el ingreso manual para que un
-          // administrador lo revise y decida cómo corregirlo — mientras
-          // tanto, bloquea a quien lo capturó.
-          const idConflicto=uid();
-          candidato.requiereRevisionAdmin=true;
-          candidato.conflictoXMLId=idConflicto;
-          // Marcador PERMANENTE (no se borra al resolver, a diferencia de
-          // requiereRevisionAdmin) — sirve para detectar si a la misma
-          // persona se le vuelve a presentar esta situación (ver
-          // discrepanciasDe en renderConflictosXML).
-          candidato.tuvoDiscrepanciaMonto=true;
-          ingresosDB.push({
-            id:idConflicto,unidad:g.unidad,folio:folioCompleto,fecha:dgPend.fecha,cliente:dgPend.cliente,
-            tipo:tipoDerivado,
-            subtotal:fromCents(g.montoC),subtFlete:fromCents(sfC),subtManiobras:fromCents(smC),subtOtros:fromCents(soC),
-            iva:fromCents(g.ivaC),ret:fromCents(g.retC),total:fromCents(g.totC),
-            estado:'sin_liquidar',liqNum:null,origen:'xml',
-            ruta:destino?[{origen:'',destino:destino,kms:''}]:[],
-            uuid:dgPend.uuid,facturaUUID:dgPend.uuid,esDesglose:true,
-            destino:destino,pedido:g.pedidos.join(' / '),
-            rfcEmisor:dgPend.rfcEmisor,rfcReceptor:dgPend.rfcReceptor,
-            satEstado:null,satCancelado:false,
-            esRevisionPendiente:true,conflictoManualId:candidato.id,xmlURL:dgPend.xmlURL
-          });
-          sustituciones.push('⚠️ El monto del XML ('+fmt(fromCents(g.totC))+') NO coincide con el ingreso manual identificado con ID "'+idSust+'" ('+fmt(candidato.total)+'), y ese ingreso ya está LIQUIDADO (liq. #'+candidato.liqNum+'). Se registró el XML aparte y quedó pendiente de revisión por un administrador — NO se sustituyó automáticamente.');
-        }
-      }else{
-        ingresosDB.push({
-          id:uid(),unidad:g.unidad,folio:folioCompleto,fecha:dgPend.fecha,cliente:dgPend.cliente,
-          tipo:tipoDerivado,
-          subtotal:fromCents(g.montoC),subtFlete:fromCents(sfC),subtManiobras:fromCents(smC),subtOtros:fromCents(soC),
-          iva:fromCents(g.ivaC),ret:fromCents(g.retC),total:fromCents(g.totC),
-          estado:'sin_liquidar',liqNum:null,origen:'xml',
-          ruta:destino?[{origen:'',destino:destino,kms:''}]:[],
-          uuid:dgPend.uuid,facturaUUID:dgPend.uuid,esDesglose:true,
-          destino:destino,pedido:g.pedidos.join(' / '),
-          rfcEmisor:dgPend.rfcEmisor,rfcReceptor:dgPend.rfcReceptor,
-          satEstado:null,satCancelado:false,xmlURL:dgPend.xmlURL
-        });
-      }
-    }
-    guardar();renderIngresos();
-    alert('✅ Desglose guardado: '+p.grupos.length+' registro(s) de ingreso, uno por operador, ligados al CFDI '+(dgPend.uuid?dgPend.uuid.slice(0,8)+'...':folioCompleto)+'.\nLas sumas cuadraron exactamente contra el XML.'+(sustituciones.length?'\n\n'+sustituciones.join('\n'):''));
-    dgPend=null;dgRows=[];
-    if($('chkMultiOp'))$('chkMultiOp').checked=false;
-    toggleMultiOp();
-  });
-}
 
 // ══════════════════════════════════════════════
 // REPORTE (gráficas de distribución) — se recalcula con los MISMOS filtros
