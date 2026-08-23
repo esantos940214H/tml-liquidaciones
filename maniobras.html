@@ -506,11 +506,18 @@ function _crearAutorizacionEnMemoria(datos){
   }
   var dup=_buscarDuplicado(datos);
   if(dup)return{ok:false,error:'⚠️ DUPLICADO: ya existe una autorización igual (mismo operador, monto, fecha e identificador) — ID registrado: "'+dup.observaciones+'".'};
-  var choqueId=ingresosDB.find(function(v){
+  // Solo folio/pedido chocan de verdad (son el identificador único del
+  // documento). El T.U. NO — cuando el cliente recarga en su CEDIS para
+  // terminar de repartir, autoriza un segundo tramo con folio distinto pero
+  // el MISMO T.U. (es el mismo viaje, dos autorizaciones/montos). Si
+  // bloqueáramos por T.U. repetido nunca se podría registrar ese segundo
+  // tramo.
+  var idsChoque=[folio,pedido].map(_normTxt).filter(function(s){return s;});
+  var choqueId=idsChoque.length?ingresosDB.find(function(v){
     if(!v.sinFacturaJustificar||v.sustituidoPorXML)return false;
     var vIds=_normTxt(v.observaciones);
-    return idsNuevos.some(function(id){return vIds.indexOf(id)!==-1;});
-  });
+    return idsChoque.some(function(id){return vIds.indexOf(id)!==-1;});
+  }):null;
   if(choqueId)return{ok:false,error:'Alguno de esos identificadores ya está en uso por otro ingreso sin factura pendiente (ID: "'+choqueId.observaciones+'"). Usa uno distinto o revisa si ya existe.'};
   // Se guardan TODOS los identificadores que traiga el correo (a veces
   // manda folio, a veces T.U. 1, a veces los dos, a veces ninguno de
