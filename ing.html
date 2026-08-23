@@ -168,22 +168,17 @@ tr:hover td{background:#fafafa}
   <div class="card">
     <div class="card-title">📄 Registrar viaje / ingreso</div>
     <div class="row" style="margin-bottom:14px">
-      <div class="field"><label>Operador</label><select id="ingOp"><option value="">— Selecciona —</option></select></div>
       <div class="upload-zone" style="flex:1;min-width:160px;padding:14px" id="dzXML" onclick="document.getElementById('fXML').click()">
-        <div class="icon">📄</div><p><strong>XML Carta Porte</strong><br><span style="font-size:10px;color:#aaa">Extrae automático</span></p>
+        <div class="icon">📄</div><p><strong>XML Carta Porte / factura</strong><br><span style="font-size:10px;color:#aaa">Extrae todo automático — operador por placa, o pide operador/unidad si no trae</span></p>
       </div>
       <input type="file" id="fXML" accept=".xml" multiple style="display:none">
       <input type="file" id="fSustituirXML" accept=".xml" style="display:none" onchange="handleSustituirXMLFile(event)">
-      <div class="upload-zone" style="flex:1;min-width:160px;padding:14px" id="dzPDF" onclick="document.getElementById('fPDF').click()">
-        <div class="icon">📑</div><p><strong>PDF / Factura global</strong><br><span style="font-size:10px;color:#aaa">IA extrae los datos</span></p>
-      </div>
-      <input type="file" id="fPDF" accept=".pdf" multiple style="display:none">
     </div>
     <label style="display:flex;align-items:center;gap:8px;font-size:12px;font-weight:700;color:#5b21b6;cursor:pointer;margin-bottom:12px">
       <input type="checkbox" id="chkMultiOp" onchange="toggleMultiOp()" style="width:auto">
       🧩 Factura multi-operador (un solo CFDI con maniobras de VARIOS operadores — desglose manual)
     </label>
-    <div id="cardDesglose" style="display:none;background:#f5f0ff;border:1.5px solid #c4b5fd;border-radius:8px;padding:14px;margin-bottom:14px">
+    <div id="cardDesglose" style="display:none;background:#f5f0ff;border:1.5px solid #c4b5fd;border-radius:8px;padding:14px">
       <div style="font-size:11px;font-weight:700;text-transform:uppercase;color:#5b21b6;margin-bottom:10px">🧩 Desglose de factura consolidada</div>
       <div id="dgSinXML" class="alert alert-info">Sube arriba el XML del CFDI consolidado (con el modo multi-operador activado) para empezar a desglosarlo. No hace falta seleccionar operador — se asigna renglón por renglón aquí abajo.</div>
       <div id="dgContenido" style="display:none">
@@ -199,58 +194,6 @@ tr:hover td{background:#fafafa}
           <button class="btn btn-red" id="btnGuardarDesglose" disabled onclick="guardarDesglose()">💾 Guardar desglose</button>
           <button class="btn btn-out btn-sm" onclick="cancelarDesglose(true)">Cancelar</button>
         </div>
-      </div>
-    </div>
-    <div id="avisoSinCapturaManual" style="display:none;background:#e8f4fd;border:1px solid #bae6fd;border-radius:8px;padding:14px;color:#0369a1;font-size:12px;line-height:1.6">
-      ℹ️ La captura manual ya no está disponible para tu usuario — registra los viajes subiendo el XML de la Carta Porte/factura arriba (se detecta todo automático). Si necesitas registrar un ingreso sin factura todavía, pídeselo a un administrador.
-    </div>
-    <div id="cardCapturaManual" style="background:#f5f5f8;border-radius:8px;padding:14px">
-      <div style="font-size:11px;font-weight:700;text-transform:uppercase;color:#888;margin-bottom:10px">Captura manual / ajuste</div>
-      <div class="grid4" style="margin-bottom:10px">
-        <div class="field"><label>Folio</label><input type="text" id="ingFolio" placeholder="R2122"></div>
-        <div class="field"><label>Fecha</label><input type="date" id="ingFecha"></div>
-        <div class="field"><label>Cliente</label><input type="text" id="ingCliente" placeholder="Nombre del cliente"></div>
-      </div>
-      <label style="display:flex;align-items:center;gap:8px;font-size:12px;font-weight:700;color:#5b21b6;cursor:pointer;margin-bottom:10px">
-        <input type="checkbox" id="chkMultiOpManual" onchange="toggleMultiOpManual()" style="width:auto">
-        🧩 Repartir esta captura entre varios operadores (mismo folio/cliente, un renglón de Flete/Maniobras/Otros por operador)
-      </label>
-      <div id="mcUnOperador">
-        <div class="grid4" style="margin-bottom:6px">
-          <div class="field"><label>Flete</label><input type="number" id="ingFlete" placeholder="0.00" step="0.01" oninput="calcSubtotalManual()"></div>
-          <div class="field"><label>Maniobras</label><input type="number" id="ingManiobras" placeholder="0.00" step="0.01" oninput="calcSubtotalManual()"></div>
-          <div class="field"><label>Otros</label><input type="number" id="ingOtros" placeholder="0.00" step="0.01" oninput="calcSubtotalManual()"></div>
-        </div>
-      </div>
-      <div id="mcMultiWrap" style="display:none;background:#fff;border:1.5px solid #c4b5fd;border-radius:8px;padding:12px;margin-bottom:10px">
-        <div style="font-size:11px;font-weight:700;text-transform:uppercase;color:#5b21b6;margin-bottom:8px">Reparto por operador</div>
-        <div class="tbl-wrap"><table style="min-width:520px">
-          <thead><tr><th>Operador</th><th class="r">Flete</th><th class="r">Maniobras</th><th class="r">Otros</th><th></th></tr></thead>
-          <tbody id="tbMcRows"></tbody>
-          <tfoot id="tfMcRows"></tfoot>
-        </table></div>
-        <button class="btn btn-out btn-sm" style="margin-top:8px" onclick="mcAgregarRenglon()">+ Agregar operador</button>
-        <p style="font-size:11px;color:#888;margin-top:8px">El IVA/Retención de abajo se prorratea entre los operadores según lo que le toca a cada quien.</p>
-      </div>
-      <div class="grid4" style="margin-bottom:6px">
-        <div class="field"><label>Subtotal</label><input type="number" id="ingSubtotal" placeholder="0.00" step="0.01" readonly style="background:#f5f5f8"></div>
-      </div>
-      <div class="grid4">
-        <div class="field"><label>IVA</label><input type="number" id="ingIva" placeholder="0.00" step="0.01" onchange="calcTotales()"></div>
-        <div class="field"><label>Retención IVA</label><input type="number" id="ingRet" placeholder="0.00" step="0.01" onchange="calcTotales()"></div>
-        <div class="field"><label>Total</label><input type="number" id="ingTotal" readonly></div>
-      </div>
-      <div class="grid4" style="margin-top:8px">
-        <div class="field"><label style="color:#888">Origen <span style="font-weight:400;font-size:11px">(opcional)</span></label><input type="text" id="ingOrigen" placeholder="Municipio, Estado"></div>
-        <div class="field"><label style="color:#888">Destino <span style="font-weight:400;font-size:11px">(opcional)</span></label><input type="text" id="ingDestino" placeholder="Municipio, Estado"></div>
-        <div class="field"><label style="color:#888">Distancia km <span style="font-weight:400;font-size:11px">(opcional)</span></label><input type="number" id="ingDistKms" placeholder="0" step="1"></div>
-      </div>
-      <div id="candadoSinFacturaInfo" style="display:none;margin-bottom:10px"></div>
-      <div class="field" style="margin-top:8px"><label id="ingObsLabel" style="color:#888">Pedido / Orden de compra <span style="font-weight:400;font-size:11px">(opcional)</span></label><textarea id="ingObs" rows="2" placeholder="Número de pedido/orden de compra..." style="border:1.5px solid #dde;border-radius:6px;padding:8px 10px;font-size:13px;color:#1a1a2e;background:#fafafa;width:100%;font-family:inherit;resize:vertical"></textarea></div>
-      <div id="ingInfo" style="display:none;margin-top:10px"></div>
-      <div style="margin-top:10px;display:flex;gap:8px">
-        <button class="btn btn-red" onclick="agregarIngreso()">+ Registrar viaje</button>
-        <button class="btn btn-out btn-sm" onclick="limpiarForm()">Limpiar</button>
       </div>
     </div>
   </div>
@@ -532,10 +475,12 @@ const fmt=(n,d=2)=>'$'+parseFloat(n||0).toLocaleString('es-MX',{minimumFractionD
 const hoy=()=>new Date().toISOString().slice(0,10);
 
 // ══════════════════════════════════════════════
-// INGRESOS MANUALES SIN FACTURA (no-admin): deben justificarse con un XML
-// dentro de DIAS_HABILES_JUSTIFICAR días hábiles (ver agregarIngresoReal).
-// El administrador SÍ puede capturar sin factura sin este límite (casos de
-// cobro real sin CFDI, ver sinFacturaJustificar:false en su registro).
+// INGRESOS SIN FACTURA — plazo histórico de 10 días hábiles usado por
+// registros viejos (de cuando esto se capturaba a mano). Los nuevos sin
+// factura se registran vía "🤖 Registrar sin factura" (más abajo), con su
+// propio plazo DIAS_HABILES_JUSTIFICAR_ADMIN — esta constante se conserva
+// solo para poder seguir mostrando bien los mensajes de esos registros
+// antiguos (ver renderCandadoManual/ingresosBloqueantesDe).
 // ══════════════════════════════════════════════
 const DIAS_HABILES_JUSTIFICAR=10;
 // MODO PRUEBA (null = producción normal, 10 días hábiles). Se puede poner
@@ -727,23 +672,10 @@ function mostrarSesionEnHeader(){
   if($('btnCerrarSesion'))$('btnCerrarSesion').style.display='inline';
   if($('btnCambiarPass'))$('btnCambiarPass').style.display='inline';
   aplicarPermisosNav(u);
-  ajustarFormularioSegunPermiso();
   renderCandadoManual();
 }
-// Solo el administrador puede capturar ingresos sin factura sin necesidad de
-// justificarlos después (casos reales de cobro sin CFDI). Cualquier otro
-// usuario debe anotar aquí un número de pedido/ID único, que luego sirve
-// para que facturación "sustituya" este ingreso con el XML real (ver
-// guardarDesglose). Sin eso, agregarIngresoReal() rechaza el registro.
-function ajustarFormularioSegunPermiso(){
-  var u=usuarioSesion();
-  var esAdmin=!!(u&&u.esAdmin);
-  var lbl=$('ingObsLabel');
-  if(lbl)lbl.innerHTML=esAdmin
-    ?'Pedido / Orden de compra <span style="font-weight:400;font-size:11px">(opcional)</span>'
-    :'Pedido / Orden de compra — ID único <span style="font-weight:400;font-size:11px;color:#c1121f">(Campo obligatorio para realizar la sustitución automática. Tienes un plazo no mayor a '+DIAS_HABILES_JUSTIFICAR+' días para sustituir este ingreso por un XML)</span>';
-}
-// Un ingreso manual sin factura bloquea a quien lo capturó por DOS motivos
+// Un ingreso sin factura (registrado por un administrador vía "🤖 Registrar
+// sin factura", ver más abajo) bloquea a quien lo capturó por DOS motivos
 // posibles, independientes entre sí:
 //  1) Vencido: pasaron más de DIAS_HABILES_JUSTIFICAR días hábiles sin que
 //     se sustituyera con un XML (ver sumarDiasHabiles/fechaLimiteJustificacion).
@@ -1059,26 +991,17 @@ function verificarSesionModulo(){
     return;
   }
   mostrarSesionEnHeader();
-  // La captura manual solo la puede usar un administrador — para todos los
-  // demás (Raúl incluido), el único camino es subir el XML (se detecta todo
-  // automático, ver _matchOperadorPorPlacaXML). Si algún día necesita
-  // registrar algo sin factura, se lo pide a un administrador.
+  // La captura manual ya no existe para nadie, ni siquiera para el
+  // administrador — se reemplazó por subir el XML (se detecta todo
+  // automático, con modal de operador/unidad si no trae placa) y, para sin
+  // factura, la tarjeta "🤖 Registrar sin factura" (solo administrador).
   var esAdminIng=!!u.esAdmin;
-  // La captura manual (viaje único y reparto multi-operador) ya quedó
-  // obsoleta para TODOS, incluido el administrador — el reemplazo es subir
-  // el XML (se detecta todo automático, con modal de operador/unidad si no
-  // trae placa) o, para sin factura, la tarjeta "🤖 Registrar sin factura".
-  if($('cardCapturaManual'))$('cardCapturaManual').style.display='none';
-  if($('avisoSinCapturaManual')){
-    $('avisoSinCapturaManual').style.display='block';
-    $('avisoSinCapturaManual').innerHTML='ℹ️ La captura manual ya no está disponible — registra los viajes subiendo el XML (se detecta todo automático) '+(esAdminIng?'o, para un ingreso sin factura todavía, usa la tarjeta "🤖 Registrar sin factura" más abajo.':'. Si necesitas registrar un ingreso sin factura, pídeselo a un administrador.');
-  }
   if($('cardEstimadoIA'))$('cardEstimadoIA').style.display=esAdminIng?'':'none';
 }
 window.onFBReady(verificarSesionModulo);
 
 function initSelects(){
-  ['ingOp','filtOp','estOp'].forEach(id=>{
+  ['filtOp','estOp'].forEach(id=>{
     const s=$(id);if(!s)return;
     while(s.options.length>1)s.remove(1);
     // value=operadorId (identidad PERMANENTE), no la unidad actual — así los
@@ -1117,23 +1040,6 @@ setTimeout(()=>{if(!fbReady){$('fbStatus').textContent='❌ Sin conexión';$('fb
 
 function guardar(){if(!fbReady)return;window.FB.set('estado','ingresosDB',{data:JSON.stringify(ingresosDB)});}
 
-function calcTotales(){
-  const sub=parseFloat($('ingSubtotal').value||0);
-  const iva=parseFloat($('ingIva').value||0);
-  const ret=parseFloat($('ingRet').value||0);
-  $('ingTotal').value=(sub+iva-ret).toFixed(2);
-}
-
-function limpiarForm(){
-  ['ingFolio','ingFecha','ingCliente','ingFlete','ingManiobras','ingOtros','ingSubtotal','ingIva','ingRet','ingTotal','ingOrigen','ingDestino','ingDistKms','ingObs'].forEach(id=>{if($(id))$(id).value='';});
-  $('ingInfo').style.display='none';
-  mcRows=[];
-  if($('chkMultiOpManual'))$('chkMultiOpManual').checked=false;
-  mcMultiOp=false;
-  if($('mcUnOperador'))$('mcUnOperador').style.display='';
-  if($('mcMultiWrap'))$('mcMultiWrap').style.display='none';
-  if($('ingOp'))$('ingOp').disabled=false;
-}
 
 // XML
 const dzXML=$('dzXML');
@@ -1154,14 +1060,12 @@ function handleXMLFiles(files){
     });
     return;
   }
-  // Ya no es obligatorio seleccionar el operador antes de subir el XML — si
-  // se dejó en "— Selecciona —", parseXML intenta encontrarlo solo por la
-  // placa de la Carta Porte (ver _matchOperadorPorPlacaXML). Si SÍ se
-  // seleccionó uno a mano, ese tiene prioridad (por si la placa no viene o
-  // no coincide, o para casos donde el operador maneja un camión prestado).
-  const unidad=parseInt($('ingOp').value||0);
+  // Ya no se selecciona operador antes de subir el XML — parseXML lo
+  // encuentra solo por la placa de la Carta Porte (ver
+  // _matchOperadorPorPlacaXML) y, si no la trae, abre un modal pidiendo
+  // operador y unidad antes de registrar.
   lockRequest('Subir XML de viaje/flete — Ingresos', function(){
-    Array.from(files).forEach(f=>{const r=new FileReader();r.onload=e=>parseXML(e.target.result,f.name,unidad);r.readAsText(f,'UTF-8');});
+    Array.from(files).forEach(f=>{const r=new FileReader();r.onload=e=>parseXML(e.target.result,f.name,0);r.readAsText(f,'UTF-8');});
   });
 }
 
@@ -1725,304 +1629,6 @@ function guardarDesglose(){
   });
 }
 
-// PDF via Claude
-const dzPDF=$('dzPDF');
-dzPDF.addEventListener('dragover',e=>{e.preventDefault();dzPDF.classList.add('drag')});
-dzPDF.addEventListener('dragleave',()=>dzPDF.classList.remove('drag'));
-dzPDF.addEventListener('drop',e=>{e.preventDefault();dzPDF.classList.remove('drag');handlePDFFiles(e.dataTransfer.files)});
-$('fPDF').addEventListener('change',e=>handlePDFFiles(e.target.files));
-
-function handlePDFFiles(files){
-  const unidad=parseInt($('ingOp').value||0);
-  if(!unidad){alert('Selecciona el operador primero.');return;}
-  lockRequest('Subir PDF de factura — Ingresos', function(){
-    Array.from(files).forEach(f=>leerPDF(f,unidad));
-  });
-}
-
-function fileToBase64(file){return new Promise((res,rej)=>{const r=new FileReader();r.onload=e=>res(e.target.result.split(',')[1]);r.onerror=rej;r.readAsDataURL(file);});}
-
-// Guarda la URL del PDF ya subido a Storage mientras el usuario revisa/ajusta
-// el formulario antes de dar clic en "Registrar" — a diferencia del XML (que
-// se sube automáticamente al registrar), aquí el PDF ES el archivo fuente
-// (no hay XML del cual regenerarlo), así que se conserva tal cual.
-let _pdfURLPendiente=null;
-
-async function leerPDF(file,unidad){
-  $('ingInfo').style.display='block';
-  $('ingInfo').innerHTML='<div class="alert alert-info">⏳ Analizando PDF con IA...</div>';
-  _pdfURLPendiente=null;
-  try{
-    TMLComprobantes.subirArchivo('comprobantes/ingresos-pdf/'+Date.now()+'-'+file.name.replace(/[^a-zA-Z0-9._-]/g,'_'),file)
-      .then(function(url){_pdfURLPendiente=url;})
-      .catch(function(e){console.error('subirArchivo PDF:',e);});
-    const base64=await fileToBase64(file);
-    const res=await fetch('https://api.anthropic.com/v1/messages',{
-      method:'POST',
-      headers:{'Content-Type':'application/json','anthropic-dangerous-direct-browser-access':'true'},
-      body:JSON.stringify({model:'claude-sonnet-4-6',max_tokens:500,messages:[{role:'user',content:[
-        {type:'document',source:{type:'base64',media_type:'application/pdf',data:base64}},
-        {type:'text',text:'Factura o documento de viaje. Responde SOLO JSON sin texto ni backticks: {"folio":"string","fecha":"YYYY-MM-DD","cliente":"string","subtotal":numero,"iva":numero,"ret":numero,"total":numero}. Pon null si no existe.'}
-      ]}]})
-    });
-    const data=await res.json();
-    const txt=(data.content||[]).filter(b=>b.type==='text').map(b=>b.text).join('');
-    const d=JSON.parse(txt.replace(/```json|```/g,'').trim());
-    if(d.folio)$('ingFolio').value=d.folio;
-    if(d.fecha)$('ingFecha').value=d.fecha;
-    if(d.cliente)$('ingCliente').value=d.cliente;
-    if(d.subtotal!=null){$('ingFlete').value=d.subtotal;calcSubtotalManual();}
-    if(d.iva!=null)$('ingIva').value=d.iva;
-    if(d.ret!=null)$('ingRet').value=d.ret;
-    calcTotales();
-    $('ingInfo').innerHTML='<div class="alert alert-ok">✅ '+file.name+' — revisa y ajusta si es necesario, luego haz clic en Registrar.</div>';
-  }catch(e){$('ingInfo').innerHTML='<div class="alert alert-warn">⚠️ Error: '+e.message+'. Captura manualmente.</div>';}
-}
-
-function calcSubtotalManual(){
-  const f=parseFloat($('ingFlete').value||0);
-  const m=parseFloat($('ingManiobras').value||0);
-  const o=parseFloat($('ingOtros').value||0);
-  $('ingSubtotal').value=(f+m+o).toFixed(2);
-  calcTotales();
-}
-
-// ══════════════════════════════════════════════
-// CAPTURA MANUAL MULTI-OPERADOR (varios operadores, cada uno con su propio
-// Flete/Maniobras/Otros, bajo el mismo folio/cliente/fecha) — mismo
-// principio que el desglose de XML consolidado, pero sin XML: aquí los
-// montos por operador SON la fuente, no hay nada externo contra qué cuadrar.
-// El IVA/Retención capturado una sola vez arriba se prorratea entre los
-// operadores según su parte del subtotal, con el mismo ajuste de redondeo
-// en centavos que usa calcularProrrateo() para el desglose de XML.
-// ══════════════════════════════════════════════
-let mcMultiOp=false;
-let mcRows=[];
-function toggleMultiOpManual(){
-  const chk=$('chkMultiOpManual');if(!chk)return;
-  mcMultiOp=chk.checked;
-  if($('mcUnOperador'))$('mcUnOperador').style.display=mcMultiOp?'none':'';
-  if($('mcMultiWrap'))$('mcMultiWrap').style.display=mcMultiOp?'block':'none';
-  if($('ingOp'))$('ingOp').disabled=mcMultiOp;
-  if(mcMultiOp){
-    if(!mcRows.length)mcRows=[{unidad:0,flete:'',maniobras:'',otros:''}];
-    $('ingFlete').value='';$('ingManiobras').value='';$('ingOtros').value='';
-    renderMcRows();mcRecalc();
-  }else{
-    mcRows=[];
-    calcSubtotalManual();
-  }
-}
-function mcAgregarRenglon(){
-  mcRows.push({unidad:0,flete:'',maniobras:'',otros:''});
-  renderMcRows();mcRecalc();
-}
-function mcEliminarRenglon(i){
-  mcRows.splice(i,1);
-  if(!mcRows.length)mcRows.push({unidad:0,flete:'',maniobras:'',otros:''});
-  renderMcRows();mcRecalc();
-}
-function mcUpd(i,campo,valor){
-  if(!mcRows[i])return;
-  mcRows[i][campo]=campo==='unidad'?parseInt(valor||0):valor;
-  mcRecalc();
-}
-// No se vuelve a dibujar la tabla al teclear (solo al agregar/quitar
-// renglón) para no perder el foco — igual que renderDgRows().
-function renderMcRows(){
-  const tb=$('tbMcRows');if(!tb)return;
-  const opts=u=>'<option value="">— Operador —</option>'+OPERADORES.map(o=>'<option value="'+o.operadorId+'"'+(o.operadorId===u?' selected':'')+'>'+o.clave+' · '+o.nombre+'</option>').join('');
-  tb.innerHTML=mcRows.map((r,i)=>'<tr>'
-    +'<td><select onchange="mcUpd('+i+',\'unidad\',this.value)" style="border:1.5px solid #dde;border-radius:5px;padding:6px;font-size:12px;background:#fafafa;min-width:190px">'+opts(r.unidad)+'</select></td>'
-    +'<td class="r"><input type="number" step="0.01" min="0" value="'+(r.flete||'')+'" placeholder="0.00" oninput="mcUpd('+i+',\'flete\',this.value)" style="border:1.5px solid #dde;border-radius:5px;padding:6px;font-size:12px;background:#fafafa;width:100px;text-align:right"></td>'
-    +'<td class="r"><input type="number" step="0.01" min="0" value="'+(r.maniobras||'')+'" placeholder="0.00" oninput="mcUpd('+i+',\'maniobras\',this.value)" style="border:1.5px solid #dde;border-radius:5px;padding:6px;font-size:12px;background:#fafafa;width:100px;text-align:right"></td>'
-    +'<td class="r"><input type="number" step="0.01" min="0" value="'+(r.otros||'')+'" placeholder="0.00" oninput="mcUpd('+i+',\'otros\',this.value)" style="border:1.5px solid #dde;border-radius:5px;padding:6px;font-size:12px;background:#fafafa;width:100px;text-align:right"></td>'
-    +'<td><button style="background:#fde8e8;color:#9b1c1c;border:none;cursor:pointer;border-radius:4px;padding:4px 9px" onclick="mcEliminarRenglon('+i+')">✕</button></td>'
-    +'</tr>').join('');
-}
-function mcRecalc(){
-  let sf=0,sm=0,so=0;
-  mcRows.forEach(r=>{sf+=parseFloat(r.flete)||0;sm+=parseFloat(r.maniobras)||0;so+=parseFloat(r.otros)||0;});
-  const sub=sf+sm+so;
-  if($('tfMcRows'))$('tfMcRows').innerHTML='<tr style="font-weight:700;background:#f5f5f8"><td>TOTAL</td><td class="num r">'+fmt(sf)+'</td><td class="num r">'+fmt(sm)+'</td><td class="num r">'+fmt(so)+'</td><td></td></tr>';
-  if($('ingSubtotal'))$('ingSubtotal').value=sub.toFixed(2);
-  calcTotales();
-}
-// Arma un grupo por renglón válido (con operador y algún monto) y prorratea
-// IVA/Retención en centavos, ajustando el redondeo en el ÚLTIMO renglón
-// para que la suma cuadre exacto contra lo capturado arriba.
-function mcCalcularGrupos(){
-  const ivaC=toCents(parseFloat($('ingIva').value||0));
-  const retC=toCents(parseFloat($('ingRet').value||0));
-  const grupos=[];
-  let subtotalTotalC=0;
-  mcRows.forEach(r=>{
-    const sfC=toCents(r.flete),smC=toCents(r.maniobras),soC=toCents(r.otros);
-    const montoC=sfC+smC+soC;
-    if(!r.unidad||montoC<=0)return;
-    grupos.push({unidad:r.unidad,sfC:sfC,smC:smC,soC:soC,montoC:montoC});
-    subtotalTotalC+=montoC;
-  });
-  let sIva=0,sRet=0;
-  grupos.forEach((g,idx)=>{
-    const ultimo=idx===grupos.length-1;
-    if(ultimo){
-      g.ivaC=ivaC-sIva;g.retC=retC-sRet;
-    }else{
-      g.ivaC=subtotalTotalC>0?Math.round(g.montoC*ivaC/subtotalTotalC):0;
-      g.retC=subtotalTotalC>0?Math.round(g.montoC*retC/subtotalTotalC):0;
-    }
-    g.totC=g.montoC+g.ivaC-g.retC;
-    sIva+=g.ivaC;sRet+=g.retC;
-  });
-  return{grupos:grupos,subtotalTotalC:subtotalTotalC};
-}
-function agregarIngresoManualMultiOp(){
-  var _uMan=usuarioSesion();
-  if(!_uMan||!_uMan.esAdmin){alert('La captura manual ya no está disponible para tu usuario — registra el viaje subiendo el XML.');return;}
-  const {grupos}=mcCalcularGrupos();
-  if(!grupos.length){alert('Agrega al menos un renglón con operador y algún monto (Flete, Maniobras u Otros).');return;}
-  const folioBase=$('ingFolio').value||('MAN-'+uid().slice(0,6).toUpperCase());
-  const _origen=($('ingOrigen').value||'').trim();
-  const _destino=($('ingDestino').value||'').trim();
-  const _kms=($('ingDistKms').value||'').trim();
-  const _ruta=(_origen&&_destino)?[{origen:_origen,destino:_destino,kms:_kms}]:[];
-  const _obs=($('ingObs').value||'').trim();
-  const _fecha=$('ingFecha').value||hoy();
-  const _u=usuarioSesion();
-  const _esAdmin=!!(_u&&_u.esAdmin);
-
-  // Mismo candado que en el registro de un solo operador: sin IVA anotado,
-  // el monto capturado a mano casi siempre difiere del XML real cuando
-  // llegue (ver Conflictos) — se exige antes de registrar, no después.
-  if(!_esAdmin&&parseFloat($('ingIva').value||0)<=0){
-    alert('Escribe el IVA de este ingreso antes de registrarlo. Si no lo anotas, cuando llegue la factura real casi siempre va a haber una diferencia de monto que se manda a revisión de un administrador — mejor evitarlo desde ahora.');
-    return;
-  }
-  if(!_esAdmin&&!_obs){
-    alert('Escribe el número de pedido/orden de compra para este ingreso sin factura — lo vas a necesitar para que facturación lo sustituya con el XML real.');
-    return;
-  }
-  // Candado contra la causa más común de discrepancias al sustituir con el
-  // XML real: sumar VARIOS viajes/maniobras distintos bajo un solo ID/pedido
-  // (ver caso real: $13,439 de Francisco Artemio, pedido 5500127219, que
-  // resultó ser la suma de varios trabajos y nunca coincidió con ninguna
-  // factura real). Un renglón sin factura debe representar UN SOLO
-  // viaje/maniobra — si son varios, van en renglones separados, cada uno
-  // con su propio ID.
-  if(!_esAdmin&&!confirm('¿Este monto corresponde a UN SOLO viaje/maniobra (una sola fecha, un solo trabajo real)?\n\nNO sumes aquí varios viajes en un solo registro — cuando llegue la factura real casi nunca va a coincidir exactamente y vas a terminar bloqueado. Si tienes varios viajes/maniobras pendientes de facturar, registra cada uno por separado, con su propio ID.\n\nAceptar = sí, es un solo viaje/maniobra.\nCancelar = voy a separarlos en renglones distintos.')){
-    return;
-  }
-  const yaFolio=grupos.filter(g=>ingresosDB.some(v=>v.folio===folioBase&&v.unidad===g.unidad));
-  if(yaFolio.length&&!confirm('⚠️ El folio '+folioBase+' ya tiene registro para '+yaFolio.length+' de estos operadores. ¿Continuar de todas formas?'))return;
-
-  if(!_esAdmin&&_obs){
-    const _obsNorm=_obs.toUpperCase();
-    if(ingresosDB.some(function(v){return v.sinFacturaJustificar&&!v.sustituidoPorXML&&(v.observaciones||'').trim().toUpperCase()===_obsNorm;})){
-      alert('Ese ID/número de pedido ya está en uso por otro ingreso sin factura pendiente de justificar. Usa uno distinto.');
-      return;
-    }
-  }
-
-  let nCreados=0;
-  grupos.forEach(function(g){
-    const tipoDerivado=g.smC>0&&!g.sfC?'maniobra':g.soC>0&&!g.sfC&&!g.smC?'otro':'flete_for';
-    let _sinFacturaJustificar=false,_fechaLimite=null,_capturadoPor=null;
-    if(!_esAdmin){
-      _sinFacturaJustificar=true;
-      _fechaLimite=calcularFechaLimiteJustificacion(_fecha);
-      _capturadoPor={usuario:_u.usuario,nombre:_u.nombre};
-    }
-    ingresosDB.push({id:uid(),unidad:g.unidad,folio:folioBase,fecha:_fecha,
-      cliente:$('ingCliente').value||'Sin cliente',tipo:tipoDerivado,
-      subtotal:fromCents(g.montoC),subtFlete:fromCents(g.sfC),subtManiobras:fromCents(g.smC),subtOtros:fromCents(g.soC),
-      iva:fromCents(g.ivaC),ret:fromCents(g.retC),total:fromCents(g.totC),
-      estado:'sin_liquidar',liqNum:null,origen:'manual',ruta:_ruta,observaciones:_obs,
-      sinFacturaJustificar:_sinFacturaJustificar,fechaLimiteJustificacion:_fechaLimite,capturadoPor:_capturadoPor,sustituidoPorXML:false,
-      pdfURL:null});
-    nCreados++;
-  });
-  limpiarForm();guardar();renderIngresos();
-  alert('✅ Se registraron '+nCreados+' ingreso(s), uno por operador.'+(!_esAdmin?(' Tienes hasta '+calcularFechaLimiteJustificacion(_fecha)+(PRUEBA_MINUTOS_JUSTIFICAR?' (MODO PRUEBA: '+PRUEBA_MINUTOS_JUSTIFICAR+' min)':' ('+DIAS_HABILES_JUSTIFICAR+' días hábiles)')+' para que facturación los sustituya con el XML real usando el ID "'+_obs+'".'):''));
-}
-
-function agregarIngresoReal(){
-  var _uReal=usuarioSesion();
-  if(!_uReal||!_uReal.esAdmin){alert('La captura manual ya no está disponible para tu usuario — registra el viaje subiendo el XML.');return;}
-  if(usuarioBloqueadoIngresos())return;
-  if(mcMultiOp){agregarIngresoManualMultiOp();return;}
-  const unidad=parseInt($('ingOp').value||0);
-  if(!unidad){alert('Selecciona operador.');return;}
-  const subtFlete=parseFloat($('ingFlete').value||0);
-  const subtManiobras=parseFloat($('ingManiobras').value||0);
-  const subtOtros=parseFloat($('ingOtros').value||0);
-  const subtotal=subtFlete+subtManiobras+subtOtros;
-  if(!subtotal){alert('Ingresa al menos un monto (Flete, Maniobras u Otros).');return;}
-  const folio=$('ingFolio').value||('MAN-'+uid().slice(0,6).toUpperCase());
-  if(ingresosDB.some(v=>v.folio===folio&&v.unidad===unidad)){alert('Este folio ya está registrado para este operador.');return;}
-  var _origen=($('ingOrigen').value||'').trim();
-  var _destino=($('ingDestino').value||'').trim();
-  var _kms=($('ingDistKms').value||'').trim();
-  var _ruta=(_origen&&_destino)?[{origen:_origen,destino:_destino,kms:_kms}]:[];
-  var _obs=($('ingObs').value||'').trim();
-
-  // Ingresos sin factura: solo el administrador puede capturarlos sin
-  // justificar (cobro real sin CFDI). Cualquier otro usuario debe anotar un
-  // ID único en Observaciones y tiene DIAS_HABILES_JUSTIFICAR días hábiles
-  // para que facturación lo sustituya con el XML real (ver guardarDesglose
-  // en la sección de desglose multi-operador) — si se le vence, se le
-  // bloquea seguir registrando hasta que se resuelva.
-  var _u=usuarioSesion();
-  var _esAdmin=!!(_u&&_u.esAdmin);
-  var _fecha=$('ingFecha').value||hoy();
-  var _sinFacturaJustificar=false,_fechaLimite=null,_capturadoPor=null;
-  // Un no-admin captura "sin factura" antes de tener el CFDI real — si no
-  // anota el IVA, cuando llegue el XML real casi siempre va a haber una
-  // discrepancia de monto (ver Conflictos), porque el sistema comparará el
-  // total con IVA del XML contra un total sin IVA capturado a mano. Exigir
-  // el IVA aquí evita esa discrepancia desde la captura.
-  if(!_esAdmin&&parseFloat($('ingIva').value||0)<=0){
-    alert('Escribe el IVA de este ingreso antes de registrarlo. Si no lo anotas, cuando llegue la factura real casi siempre va a haber una diferencia de monto que se manda a revisión de un administrador — mejor evitarlo desde ahora.');
-    return;
-  }
-  if(!_esAdmin){
-    if(!_obs){
-      alert('Escribe el número de pedido/orden de compra para este ingreso sin factura — lo vas a necesitar para que facturación lo sustituya con el XML real.');
-      return;
-    }
-    var _obsNorm=_obs.toUpperCase();
-    if(ingresosDB.some(function(v){return v.sinFacturaJustificar&&!v.sustituidoPorXML&&(v.observaciones||'').trim().toUpperCase()===_obsNorm;})){
-      alert('Ese ID/número de pedido ya está en uso por otro ingreso sin factura pendiente de justificar. Usa uno distinto.');
-      return;
-    }
-    // Candado contra la causa más común de discrepancias al sustituir con el
-    // XML real: sumar VARIOS viajes/maniobras distintos bajo un solo
-    // ID/pedido (ver caso real: $13,439 de Francisco Artemio, pedido
-    // 5500127219, que resultó ser la suma de varios trabajos y nunca
-    // coincidió con ninguna factura real). Un renglón sin factura debe
-    // representar UN SOLO viaje/maniobra — si son varios, van en renglones
-    // separados, cada uno con su propio ID.
-    if(!confirm('¿Este monto corresponde a UN SOLO viaje/maniobra (una sola fecha, un solo trabajo real)?\n\nNO sumes aquí varios viajes en un solo registro — cuando llegue la factura real casi nunca va a coincidir exactamente y vas a terminar bloqueado. Si tienes varios viajes/maniobras pendientes de facturar, registra cada uno por separado, con su propio ID.\n\nAceptar = sí, es un solo viaje/maniobra.\nCancelar = voy a separarlos en renglones distintos.')){
-      return;
-    }
-    _sinFacturaJustificar=true;
-    _fechaLimite=calcularFechaLimiteJustificacion(_fecha);
-    _capturadoPor={usuario:_u.usuario,nombre:_u.nombre};
-  }
-
-  const tipoDerivado=subtManiobras>0&&!subtFlete?'maniobra':subtOtros>0&&!subtFlete&&!subtManiobras?'otro':'flete_for';
-  ingresosDB.push({id:uid(),unidad,folio,fecha:_fecha,
-    cliente:$('ingCliente').value||'Sin cliente',tipo:tipoDerivado,
-    subtotal,subtFlete,subtManiobras,subtOtros,
-    iva:parseFloat($('ingIva').value||0),ret:parseFloat($('ingRet').value||0),
-    total:parseFloat($('ingTotal').value||0),estado:'sin_liquidar',liqNum:null,origen:'manual',ruta:_ruta,observaciones:_obs,
-    sinFacturaJustificar:_sinFacturaJustificar,fechaLimiteJustificacion:_fechaLimite,capturadoPor:_capturadoPor,sustituidoPorXML:false,
-    pdfURL:_pdfURLPendiente});
-  _pdfURLPendiente=null;
-  limpiarForm();guardar();renderIngresos();
-  if(_sinFacturaJustificar)alert('✅ Registrado. Tienes hasta '+_fechaLimite+(PRUEBA_MINUTOS_JUSTIFICAR?' (MODO PRUEBA: '+PRUEBA_MINUTOS_JUSTIFICAR+' min)':' ('+DIAS_HABILES_JUSTIFICAR+' días hábiles)')+' para que facturación lo sustituya con el XML real usando el ID "'+_obs+'".');
-}
-
 // ══════════════════════════════════════════════
 // REPORTE (gráficas de distribución) — se recalcula con los MISMOS filtros
 // de la tabla (operador/fechas/estatus), así que basta con moverlos ahí
@@ -2420,10 +2026,6 @@ function exportarCSV(){
 // como passthrough para no tener que tocar cada llamada existente.
 function lockRequest(desc, callback){
   if(callback) callback();
-}
-
-function agregarIngreso(){
-  lockRequest('Registrar viaje/ingreso manual', function(){ agregarIngresoReal(); });
 }
 
 // ══════════════════════════════════════════════
