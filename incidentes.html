@@ -215,6 +215,7 @@ tr:hover td{background:#fafafa}
           <option value="">Todas</option>
           <option value="ajena">Ajena / arbitraria</option>
           <option value="responsabilidad">Responsabilidad del operador</option>
+          <option value="correccion_sistema">🔒 Corrección de sistema</option>
         </select>
       </div>
       <button class="btn btn-out btn-sm" onclick="limpiarFiltros()">Limpiar</button>
@@ -614,7 +615,7 @@ function renderIncidentes(){
     var rows=grp.items.map(function(a){
       return '<tr>'
         +'<td style="font-size:11px">'+(a.fechaEvento||'').replace('T',' ')+'</td>'
-        +'<td><span class="badge '+(a.causa==='ajena'?'bg-green':'bg-yellow')+'">'+(a.causa==='ajena'?'Ajena':'Responsab. operador')+'</span></td>'
+        +'<td><span class="badge '+(a.causa==='ajena'?'bg-green':(a.causa==='correccion_sistema'?'bg-blue':'bg-yellow'))+'">'+(a.causa==='ajena'?'Ajena':(a.causa==='correccion_sistema'?'🔒 Corrección de sistema':'Responsab. operador'))+'</span></td>'
         +'<td class="num r">'+fmt(a.montoReportado)+'</td>'
         +'<td class="num r"><strong>'+fmt(a.montoReconocido)+'</strong></td>'
         +'<td style="text-align:center">'+(a.negocio?'Sí':'No')+'</td>'

@@ -92,6 +92,14 @@
   // cargarOperadores(forzar): regresa (con caché) el arreglo de operadores
   // ACTIVOS con unidad asignada. Pasar forzar=true para saltarse el caché
   // (ej. justo después de dar de alta/reasignar a alguien en flota.html).
+  // Normaliza una placa para comparar (mayúsculas, sin espacios ni guiones)
+  // — el XML y lo capturado a mano en Flota casi nunca vienen escritos
+  // exactamente igual (con o sin guion, con espacios, etc.).
+  function normPlaca(p) {
+    return (p || '').toString().toUpperCase().replace(/[^A-Z0-9]/g, '');
+  }
+  window.normPlaca = normPlaca;
+
   window.cargarOperadores = function (forzar) {
     if (_cachePromise && !forzar) return _cachePromise;
     _cachePromise = (async function () {
@@ -99,6 +107,19 @@
       if (!_db) return [];
       try { await sembrarSiHaceFalta(_db); } catch (e) { console.error('shared/operadores.js: no se pudo sembrar:', e); }
       var snap = await _db.collection('operadores').where('activo', '==', true).get();
+      // Placas por unidad (colección "unidades") — se unen aquí para que el
+      // resto del sistema pueda machear un operador por la placa del CFDI
+      // (ver ing.html) sin tener que consultar dos colecciones por su
+      // cuenta. Si "unidades" no carga por alguna razón, no truena — solo
+      // se queda sin placa (igual que un operador con la placa en blanco).
+      var placasPorUnidad = {};
+      try {
+        var snapUn = await _db.collection('unidades').get();
+        snapUn.forEach(function (d) {
+          var u = d.data();
+          if (u.placas) placasPorUnidad[parseInt(d.id)] = u.placas;
+        });
+      } catch (e) { console.error('shared/operadores.js: no se pudieron cargar las placas:', e); }
       var lista = [];
       snap.forEach(function (d) {
         var o = d.data();
@@ -108,7 +129,8 @@
           operadorId: parseInt(d.id),
           nombre: o.nombre || '',
           comision: o.comision != null ? o.comision : 12,
-          clave: o.clave || ''
+          clave: o.clave || '',
+          placa: placasPorUnidad[o.unidadActual] || ''
         });
       });
       lista.sort(function (a, b) { return (a.unidad || 0) - (b.unidad || 0); });
