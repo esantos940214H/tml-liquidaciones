@@ -312,6 +312,21 @@ let PUEDE_EDITAR_ANT=true;
 // shared/operadores.js). OPERADORES solo trae a quien puede recibir
 // anticipos NUEVOS hoy.
 let NOMBRES_OP={};
+// Historial de asignaciones/reasignaciones de unidad (colección
+// "asignaciones", ver flota.html) — se usa para saber qué camión traía el
+// operador EN LA FECHA REAL del anticipo (fecha del banco/captura), no en
+// la fecha en que se sube al sistema (ver unidadHistorica más abajo).
+let ASIGNACIONES=[];
+// Unidad que traía el operador en "fecha" según el historial de
+// asignaciones — si no hay ningún registro anterior o igual a esa fecha
+// (operador sembrado desde el arreglo original, o asignación nunca
+// registrada con fecha real), cae de respaldo a su unidad ACTUAL.
+function unidadHistorica(operadorId,fecha){
+  const u=window.unidadEnFecha?window.unidadEnFecha(ASIGNACIONES,operadorId,fecha):null;
+  if(u!=null)return u;
+  const op=OPERADORES.find(o=>o.operadorId===operadorId);
+  return op?op.unidad:null;
+}
 function nombreOp(operadorId){
   const op=OPERADORES.find(o=>o.operadorId===operadorId);
   return (op?op.nombre:NOMBRES_OP[operadorId])||'';
@@ -551,6 +566,7 @@ function initSelects(){
 window.onFBReady(async function(){
   OPERADORES=await window.cargarOperadores();
   NOMBRES_OP=await window.cargarNombresOperadores();
+  ASIGNACIONES=await window.cargarAsignaciones();
   initSelects();
   var _uPermAnt=usuarioSesion();
   var _soloVerAnt=(!_uPermAnt||_uPermAnt.esAdmin||!window.TMLSesion)?false:await TMLSesion.tienePermiso('ant_solo_ver');
@@ -663,13 +679,16 @@ function procesarRows(rows,fname){
       return norm(a.concepto)===norm(r.concepto);
     });
     if(existe){duplicados++;return;}
-    // unidadAlCapturar: la unidad que el operador traía asignada EN ESE
-    // MOMENTO (automático, tomado de OPERADORES al momento de subir el
-    // archivo) — a diferencia del campo "unidad" de arriba (que en realidad
-    // es su identidad/operadorId, ver comentario en initSelects), este SÍ
-    // es un dato histórico real: aunque después lo reasignen de camión, este
-    // anticipo se queda marcado con el camión que traía cuando se registró.
-    anticiposDB[op.operadorId].push({id:uid(),fecha:r.fecha,importe:r.importe,concepto:r.concepto,referencia:r.referencia||'',estado:'pendiente',liqNum:null,origen:'archivo',unidadAlCapturar:op.unidad||null});
+    // unidadAlCapturar: la unidad que el operador traía asignada EN LA
+    // FECHA REAL de este movimiento (según el historial de asignaciones de
+    // flota.html — automático) — a diferencia del campo "unidad" de arriba
+    // (que en realidad es su identidad/operadorId, ver comentario en
+    // initSelects), este SÍ es un dato histórico real. Se calcula por la
+    // fecha del banco, NO por la fecha en que se sube el archivo — así, si
+    // una reasignación se captura tarde en el sistema pero con su fecha
+    // real, los anticipos de antes de esa fecha se quedan bien ligados al
+    // camión anterior aunque se suban después del cambio.
+    anticiposDB[op.operadorId].push({id:uid(),fecha:r.fecha,importe:r.importe,concepto:r.concepto,referencia:r.referencia||'',estado:'pendiente',liqNum:null,origen:'archivo',unidadAlCapturar:unidadHistorica(op.operadorId,r.fecha)});
     nuevos++;
   });
   guardar();
@@ -716,11 +735,10 @@ function agregarManualReal(){
   const concepto=$('mConcepto').value||$('mForma').value;
   if(esSaldo(concepto)){alert('Este concepto corresponde a un saldo de liquidación, no a un anticipo. No se puede registrar aquí.');return;}
   if(!anticiposDB[unidad])anticiposDB[unidad]=[];
-  // unidadAlCapturar: automático, la unidad ACTUAL del operador seleccionado
-  // (ver nota en procesarRows) — queda fija en este registro aunque después
-  // lo reasignen de camión.
-  const opSel=OPERADORES.find(o=>o.operadorId===unidad);
-  anticiposDB[unidad].push({id:uid(),fecha,importe,concepto,estado:'pendiente',liqNum:null,origen:'manual',unidadAlCapturar:opSel?opSel.unidad:null});
+  // unidadAlCapturar: automático, según el historial de asignaciones y la
+  // fecha real del anticipo (ver nota en procesarRows) — queda fija en
+  // este registro aunque después lo reasignen de camión.
+  anticiposDB[unidad].push({id:uid(),fecha,importe,concepto,estado:'pendiente',liqNum:null,origen:'manual',unidadAlCapturar:unidadHistorica(unidad,fecha)});
   guardar();
   renderAnticipos();
   hideManual();

@@ -129,6 +129,48 @@
   // esa persona). Úsalo como respaldo del find() normal:
   //   var nombre = (OPERADORES.find(o=>o.operadorId===v.unidad)||{}).nombre
   //     || nombresOperadores[v.unidad] || '?';
+  var _cacheAsignacionesPromise = null;
+
+  // cargarAsignaciones(forzar): regresa (con caché) TODO el historial de
+  // asignaciones/reasignaciones de unidad (colección "asignaciones",
+  // alimentada desde flota.html cada vez que se asigna o reasigna a
+  // alguien) — [{operadorId, unidad, fecha, ...}, ...]. "fecha" es la fecha
+  // REAL en que la asignación entró en vigor (editable en flota.html, no
+  // necesariamente el día en que se capturó en el sistema).
+  window.cargarAsignaciones = function (forzar) {
+    if (_cacheAsignacionesPromise && !forzar) return _cacheAsignacionesPromise;
+    _cacheAsignacionesPromise = (async function () {
+      var _db = db();
+      if (!_db) return [];
+      var lista = [];
+      try {
+        var snap = await _db.collection('asignaciones').get();
+        snap.forEach(function (d) { lista.push(d.data()); });
+      } catch (e) { console.error('shared/operadores.js: no se pudo cargar asignaciones:', e); }
+      return lista;
+    })();
+    return _cacheAsignacionesPromise;
+  };
+
+  // unidadEnFecha(asignaciones, operadorId, fechaISO): de la lista que
+  // regresa cargarAsignaciones(), busca qué unidad tenía asignada ESE
+  // operador en ESA fecha (la última asignación con fecha <= fechaISO) —
+  // así un anticipo/ingreso con fecha de ANTES de una reasignación se seguí
+  // considerando del camión anterior, aunque la reasignación ya se haya
+  // capturado en el sistema para cuando se registra el anticipo. Si no hay
+  // ninguna asignación registrada en o antes de esa fecha para el operador
+  // (por ejemplo, operadores sembrados desde el arreglo original, antes de
+  // que existiera este historial), regresa null — el que llama debe caer
+  // de respaldo a la unidad ACTUAL del operador.
+  window.unidadEnFecha = function (asignaciones, operadorId, fechaISO) {
+    if (!Array.isArray(asignaciones) || !operadorId || !fechaISO) return null;
+    var delOperador = asignaciones
+      .filter(function (a) { return parseInt(a.operadorId) === parseInt(operadorId) && a.fecha; })
+      .filter(function (a) { return a.fecha <= fechaISO; })
+      .sort(function (a, b) { return a.fecha < b.fecha ? 1 : (a.fecha > b.fecha ? -1 : 0); });
+    return delOperador.length ? parseInt(delOperador[0].unidad) : null;
+  };
+
   window.cargarNombresOperadores = function (forzar) {
     if (_cacheNombresPromise && !forzar) return _cacheNombresPromise;
     _cacheNombresPromise = (async function () {

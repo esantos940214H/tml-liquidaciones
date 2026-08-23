@@ -192,7 +192,9 @@ tr:hover td{background:#fafafa}
       <div class="row">
         <div class="field" style="flex:1;min-width:220px"><label>Operador</label><select id="asigOperador" onchange="onCambioAsignacion()"><option value="">— Selecciona —</option></select></div>
         <div class="field" style="flex:1;min-width:220px"><label>Unidad</label><select id="asigUnidad" onchange="onCambioAsignacion()"><option value="">— Selecciona —</option></select></div>
+        <div class="field"><label>Fecha real de la asignación</label><input type="date" id="asigFecha"></div>
       </div>
+      <div class="alert alert-info" style="margin-top:10px">💡 Si registras esto varios días después de que en realidad pasó (por ejemplo, hoy cambias al operador de camión en el sistema pero el cambio real fue la semana pasada), pon aquí la fecha REAL — así los anticipos/ingresos que se capturen después, con fecha de ANTES de este cambio, se van a seguir considerando del camión anterior, no del nuevo.</div>
       <div class="row" style="margin-top:10px">
         <div class="field" id="wrapLitrosEntrega" style="display:none">
           <label id="asigLitrosEntregaLabel">Litros que deja el operador saliente</label>
@@ -444,6 +446,7 @@ function verificarSesionModulo(){
   cargarAsignaciones();
   cargarRevisiones();
   $('revFecha').value=hoy();
+  $('asigFecha').value=hoy();
   renderDanios();
 }
 window.onFBReady(function(){
@@ -703,6 +706,7 @@ async function confirmarAsignacion(){
   var operadorId=parseInt($('asigOperador').value||0);
   var unidadNum=parseInt($('asigUnidad').value||0);
   if(!operadorId||!unidadNum){alert('Selecciona operador y unidad.');return;}
+  var fechaAsig=$('asigFecha').value||hoy();
   var litrosRecibe=parseFloat($('asigLitrosRecibe').value||0);
   var precio=parseFloat($('asigPrecio').value||0);
   if(!precio){alert('Captura el precio actual del diesel ($/lt).');return;}
@@ -745,7 +749,7 @@ async function confirmarAsignacion(){
     await db.collection('asignaciones').add({
       operadorId:operadorId,operadorNombre:operador.nombre,
       unidad:unidadNum,
-      fecha:hoy(),
+      fecha:fechaAsig,
       litrosEntrega:litrosEntrega,
       litrosRecibe:litrosRecibe,
       precioDiesel:precio,
@@ -762,7 +766,7 @@ async function confirmarAsignacion(){
     await window.FB.set('estado','arrastres',{data:JSON.stringify(arrastres)});
 
     alert('✅ '+operador.nombre+' quedó asignado a la unidad '+unidadNum+'. El diesel inicial de su siguiente liquidación en esa unidad ya quedó registrado.');
-    $('asigLitrosEntrega').value='';$('asigLitrosRecibe').value='';$('asigPrecio').value='';
+    $('asigLitrosEntrega').value='';$('asigLitrosRecibe').value='';$('asigPrecio').value='';$('asigFecha').value=hoy();
     if(window.cargarOperadores)window.cargarOperadores(true);
     await cargarTodo();
     await cargarAsignaciones();
