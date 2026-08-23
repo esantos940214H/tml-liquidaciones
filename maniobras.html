@@ -151,7 +151,7 @@ tr:hover td{background:#fafafa}
     <div class="grid2" style="margin-bottom:10px">
       <div class="field"><label>Operador</label><select id="autOp"><option value="">— Selecciona —</option></select></div>
       <div class="field"><label>Fecha</label><input type="date" id="autFecha"></div>
-      <div class="field"><label>Cliente</label><input type="text" id="autCliente" value="GRUPO COMERCIAL DSW"></div>
+      <div class="field"><label>Cliente</label><input type="text" id="autCliente" value="GRUPO COMERCIAL CONTROL"></div>
       <div class="field"><label>Monto autorizado</label><input type="number" id="autMonto" placeholder="0.00" step="0.01"></div>
     </div>
     <div class="grid2" style="margin-bottom:10px">
@@ -623,6 +623,22 @@ async function extraerConIA(){
     var data=await r.json();
     if(data.error)throw new Error(data.error);
     var renglones=data.renglones||[];
+    // El correo se manda con visibilidad compartida a VARIAS transportistas
+    // a la vez — puede traer renglones de otras empresas (Benitez, Merlos,
+    // etc.) mezclados con los de nosotros (SILVIA). Si no filtramos por
+    // Línea de Transporte, esos renglones ajenos se registrarían como nuestro
+    // ingreso — se descartan aquí, ANTES de mostrarle nada al admin.
+    var norm=function(s){return(s||'').toString().trim().toUpperCase().normalize('NFD').replace(/[̀-ͯ]/g,'');};
+    var otrasCount=0,otrasNombres=[];
+    var renglonesSilvia=renglones.filter(function(x){
+      var linea=norm(x.lineaTransporte);
+      if(linea&&linea!=='SILVIA'){
+        otrasCount++;
+        if(otrasNombres.indexOf(x.lineaTransporte)===-1)otrasNombres.push(x.lineaTransporte);
+        return false;
+      }
+      return true;
+    });
     // "NO_PAGA" (o "-") significa que esa maniobra NO se paga — no hay nada
     // que autorizar ni registrar, se descarta directo (no se le muestra al
     // admin como si fuera un dato faltante). "PENDIENTE" sí se registra,
@@ -630,7 +646,7 @@ async function extraerConIA(){
     // _crearAutorizacionEnMemoria) — normalmente llega un correo posterior
     // con el monto real para el mismo folio/T.U.
     var noPagaCount=0;
-    _extraidos=renglones.filter(function(x){
+    _extraidos=renglonesSilvia.filter(function(x){
       var m=(x.monto==null)?'':String(x.monto).trim().toUpperCase();
       if(m==='NO_PAGA'||m==='NO PAGA'||m==='-'){noPagaCount++;return false;}
       return true;
@@ -642,11 +658,15 @@ async function extraerConIA(){
         monto:pendiente?'':(x.monto||''),montoPendiente:pendiente,fecha:x.fecha||hoy(),
         folio:x.folio||'',pedido:x.pedido||'',tu1:x.tu1||'',tu2:x.tu2||'',tienda:x.tienda||'',destino:x.destino||''};
     });
-    if(!_extraidos.length&&!noPagaCount){
+    var avisoOtras=otrasCount?(' · <strong>se excluyeron '+otrasCount+' renglón(es) de otra(s) transportista(s) ('+otrasNombres.join(', ')+'), no son nuestros</strong>'):'';
+    if(!_extraidos.length&&!noPagaCount&&!otrasCount){
       $('extraerInfo').innerHTML='<div class="alert alert-warn">⚠️ La IA no encontró ningún renglón reconocible en ese texto.</div>';
       $('wrapExtraidos').style.display='none';
+    }else if(!_extraidos.length){
+      $('extraerInfo').innerHTML='<div class="alert alert-warn">⚠️ No quedó ningún renglón nuestro para registrar'+(noPagaCount?' ('+noPagaCount+' "NO PAGA")':'')+avisoOtras+'.</div>';
+      $('wrapExtraidos').style.display='none';
     }else{
-      $('extraerInfo').innerHTML='<div class="alert alert-ok">✅ Se encontraron '+_extraidos.length+' renglón(es) por registrar'+(noPagaCount?' (se descartaron '+noPagaCount+' marcados "NO PAGA", no se registran)':'')+' — revisa cada uno (el operador se empareja por económico/nombre, corrígelo si hace falta) antes de registrar.</div>';
+      $('extraerInfo').innerHTML='<div class="alert alert-ok">✅ Se encontraron '+_extraidos.length+' renglón(es) por registrar'+(noPagaCount?' (se descartaron '+noPagaCount+' marcados "NO PAGA", no se registran)':'')+avisoOtras+' — revisa cada uno (el operador se empareja por económico/nombre, corrígelo si hace falta) antes de registrar.</div>';
       renderExtraidos();
     }
   }catch(e){
@@ -683,7 +703,7 @@ async function registrarExtraidos(){
   if(!_extraidos.length)return;
   await cargarIngresos();
   var responsable=($('autResponsable').value||'').trim()||u.usuario;
-  var cliente=($('autCliente').value||'').trim()||'GRUPO COMERCIAL DSW';
+  var cliente=($('autCliente').value||'').trim()||'GRUPO COMERCIAL CONTROL';
   var plazo=$('autPlazo').value||15;
   var ok=0,errores=[];
   _extraidos.forEach(function(x){
