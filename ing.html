@@ -1651,6 +1651,16 @@ function agregarIngresoManualMultiOp(){
     alert('Escribe el número de pedido/orden de compra para este ingreso sin factura — lo vas a necesitar para que facturación lo sustituya con el XML real.');
     return;
   }
+  // Candado contra la causa más común de discrepancias al sustituir con el
+  // XML real: sumar VARIOS viajes/maniobras distintos bajo un solo ID/pedido
+  // (ver caso real: $13,439 de Francisco Artemio, pedido 5500127219, que
+  // resultó ser la suma de varios trabajos y nunca coincidió con ninguna
+  // factura real). Un renglón sin factura debe representar UN SOLO
+  // viaje/maniobra — si son varios, van en renglones separados, cada uno
+  // con su propio ID.
+  if(!_esAdmin&&!confirm('¿Este monto corresponde a UN SOLO viaje/maniobra (una sola fecha, un solo trabajo real)?\n\nNO sumes aquí varios viajes en un solo registro — cuando llegue la factura real casi nunca va a coincidir exactamente y vas a terminar bloqueado. Si tienes varios viajes/maniobras pendientes de facturar, registra cada uno por separado, con su propio ID.\n\nAceptar = sí, es un solo viaje/maniobra.\nCancelar = voy a separarlos en renglones distintos.')){
+    return;
+  }
   const yaFolio=grupos.filter(g=>ingresosDB.some(v=>v.folio===folioBase&&v.unidad===g.unidad));
   if(yaFolio.length&&!confirm('⚠️ El folio '+folioBase+' ya tiene registro para '+yaFolio.length+' de estos operadores. ¿Continuar de todas formas?'))return;
 
@@ -1729,6 +1739,16 @@ function agregarIngresoReal(){
     var _obsNorm=_obs.toUpperCase();
     if(ingresosDB.some(function(v){return v.sinFacturaJustificar&&!v.sustituidoPorXML&&(v.observaciones||'').trim().toUpperCase()===_obsNorm;})){
       alert('Ese ID/número de pedido ya está en uso por otro ingreso sin factura pendiente de justificar. Usa uno distinto.');
+      return;
+    }
+    // Candado contra la causa más común de discrepancias al sustituir con el
+    // XML real: sumar VARIOS viajes/maniobras distintos bajo un solo
+    // ID/pedido (ver caso real: $13,439 de Francisco Artemio, pedido
+    // 5500127219, que resultó ser la suma de varios trabajos y nunca
+    // coincidió con ninguna factura real). Un renglón sin factura debe
+    // representar UN SOLO viaje/maniobra — si son varios, van en renglones
+    // separados, cada uno con su propio ID.
+    if(!confirm('¿Este monto corresponde a UN SOLO viaje/maniobra (una sola fecha, un solo trabajo real)?\n\nNO sumes aquí varios viajes en un solo registro — cuando llegue la factura real casi nunca va a coincidir exactamente y vas a terminar bloqueado. Si tienes varios viajes/maniobras pendientes de facturar, registra cada uno por separado, con su propio ID.\n\nAceptar = sí, es un solo viaje/maniobra.\nCancelar = voy a separarlos en renglones distintos.')){
       return;
     }
     _sinFacturaJustificar=true;
