@@ -259,7 +259,7 @@ tr:hover td{background:#fafafa}
       <div class="field"><label>Operador</label><select id="autOp"><option value="">— Selecciona —</option></select></div>
       <div class="field"><label>Fecha</label><input type="date" id="autFecha"></div>
       <div class="field"><label>Cliente</label><input type="text" id="autCliente" value="GRUPO COMERCIAL DSW"></div>
-      <div class="field"><label>Monto autorizado (maniobra)</label><input type="number" id="autMonto" placeholder="0.00" step="0.01"></div>
+      <div class="field"><label>Monto autorizado (subtotal, SIN IVA)</label><input type="number" id="autMonto" placeholder="0.00" step="0.01"></div>
     </div>
     <div class="grid4" style="margin-bottom:10px">
       <div class="field" style="flex:2"><label>Pedido / PO / referencia del cliente (ID único)</label><input type="text" id="autPedido" placeholder="Ej: 5900379049"></div>
@@ -1827,16 +1827,25 @@ function agregarAutorizacionManiobra(){
   var cliente=($('autCliente').value||'').trim()||'Sin cliente';
   var responsable=($('autResponsable').value||'').trim()||u.usuario;
   var fechaLimite=calcularFechaLimiteAutorizacion(fecha);
+  // El monto que autoriza el cliente es SUBTOTAL (sin IVA) — se factura
+  // aparte con IVA. Si aquí se guardara total=monto (sin IVA), nunca iba a
+  // coincidir contra el total del XML real (que siempre trae IVA), y toda
+  // autorización terminaría mandándose a Conflictos aunque el subtotal
+  // estuviera bien. Se calcula el IVA al 16% (tasa estándar para este tipo
+  // de servicio, sin retención) para que el total sí cuadre exacto cuando
+  // llegue la factura real.
+  var iva=Math.round(monto*0.16*100)/100;
+  var total=Math.round((monto+iva)*100)/100;
   ingresosDB.push({id:uid(),unidad:unidad,folio:'MANIOBRAS',fecha:fecha,cliente:cliente,tipo:'maniobra',
     subtotal:monto,subtFlete:0,subtManiobras:monto,subtOtros:0,
-    iva:0,ret:0,total:monto,estado:'sin_liquidar',liqNum:null,origen:'autorizacion_cliente',
+    iva:iva,ret:0,total:total,estado:'sin_liquidar',liqNum:null,origen:'autorizacion_cliente',
     ruta:[],observaciones:pedido,
     sinFacturaJustificar:true,fechaLimiteJustificacion:fechaLimite,
     capturadoPor:{usuario:responsable,nombre:responsable},
     sustituidoPorXML:false,pdfURL:null,esAutorizacionCliente:true});
   guardar();renderIngresos();
   $('autMonto').value='';$('autPedido').value='';
-  alert('✅ Autorización registrada: '+fmt(monto)+' para '+(nombreOp(unidad)||unidad)+'.\n\nPlazo hasta '+fechaLimite.slice(0,10)+' ('+DIAS_HABILES_AUTORIZACION_MANIOBRA+' días hábiles) para que '+responsable+' suba la factura real y la ligue con el pedido "'+pedido+'".');
+  alert('✅ Autorización registrada: '+fmt(monto)+' subtotal + '+fmt(iva)+' IVA = '+fmt(total)+' total, para '+(nombreOp(unidad)||unidad)+'.\n\nPlazo hasta '+fechaLimite.slice(0,10)+' ('+DIAS_HABILES_AUTORIZACION_MANIOBRA+' días hábiles) para que '+responsable+' suba la factura real y la ligue con el pedido "'+pedido+'".\n\n⚠️ Si la factura real trae retención o un IVA distinto al 16%, va a marcarse como discrepancia en Conflictos — revísalo ahí.');
 }
 
 // ══════════════════════════════════════════════
