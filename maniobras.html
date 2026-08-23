@@ -151,7 +151,7 @@ tr:hover td{background:#fafafa}
     <div class="grid2" style="margin-bottom:10px">
       <div class="field"><label>Operador</label><select id="autOp"><option value="">— Selecciona —</option></select></div>
       <div class="field"><label>Fecha</label><input type="date" id="autFecha"></div>
-      <div class="field"><label>Cliente</label><input type="text" id="autCliente" value="GRUPO COMERCIAL CONTROL"></div>
+      <div class="field"><label>Cliente</label><input type="text" id="autCliente" value="GRUPO COMERCIAL DSW"></div>
       <div class="field"><label>Monto autorizado</label><input type="number" id="autMonto" placeholder="0.00" step="0.01"></div>
     </div>
     <div class="grid2" style="margin-bottom:10px">
@@ -658,7 +658,30 @@ async function extraerConIA(){
         monto:pendiente?'':(x.monto||''),montoPendiente:pendiente,fecha:x.fecha||hoy(),
         folio:x.folio||'',pedido:x.pedido||'',tu1:x.tu1||'',tu2:x.tu2||'',tienda:x.tienda||'',destino:x.destino||''};
     });
+    // Red de seguridad por si la IA no reconoce la frase de corrección
+    // ("envío corrección de maniobra(s)", "maniobras actualizadas", etc.):
+    // si el mismo folio quedó dos veces en este mismo lote con montos
+    // distintos, es casi seguro un correo con historial de respuestas donde
+    // el monto se corrigió — se marca cada renglón para que el admin lo
+    // revise y borre el que no aplica antes de registrar (nunca se borra
+    // solo, para no adivinar cuál es el vigente).
+    (function(){
+      var porFolio={};
+      _extraidos.forEach(function(x){
+        if(!x.folio)return;
+        (porFolio[x.folio]=porFolio[x.folio]||[]).push(x);
+      });
+      Object.keys(porFolio).forEach(function(folio){
+        var grupo=porFolio[folio];
+        var montos=Array.from(new Set(grupo.map(function(x){return String(x.monto||'').trim();})));
+        if(grupo.length>1&&montos.length>1){
+          grupo.forEach(function(x){x.posibleCorreccion=true;});
+        }
+      });
+    })();
+    var hayPosibleCorreccion=_extraidos.some(function(x){return x.posibleCorreccion;});
     var avisoOtras=otrasCount?(' · <strong>se excluyeron '+otrasCount+' renglón(es) de otra(s) transportista(s) ('+otrasNombres.join(', ')+'), no son nuestros</strong>'):'';
+    var avisoCorreccion=hayPosibleCorreccion?' · <strong style="color:#9b1c1c">⚠️ hay folios repetidos con monto distinto — probablemente el correo trae una corrección, revisa cuál es el vigente y borra el otro antes de registrar</strong>':'';
     if(!_extraidos.length&&!noPagaCount&&!otrasCount){
       $('extraerInfo').innerHTML='<div class="alert alert-warn">⚠️ La IA no encontró ningún renglón reconocible en ese texto.</div>';
       $('wrapExtraidos').style.display='none';
@@ -666,7 +689,7 @@ async function extraerConIA(){
       $('extraerInfo').innerHTML='<div class="alert alert-warn">⚠️ No quedó ningún renglón nuestro para registrar'+(noPagaCount?' ('+noPagaCount+' "NO PAGA")':'')+avisoOtras+'.</div>';
       $('wrapExtraidos').style.display='none';
     }else{
-      $('extraerInfo').innerHTML='<div class="alert alert-ok">✅ Se encontraron '+_extraidos.length+' renglón(es) por registrar'+(noPagaCount?' (se descartaron '+noPagaCount+' marcados "NO PAGA", no se registran)':'')+avisoOtras+' — revisa cada uno (el operador se empareja por económico/nombre, corrígelo si hace falta) antes de registrar.</div>';
+      $('extraerInfo').innerHTML='<div class="alert '+(hayPosibleCorreccion?'alert-warn':'alert-ok')+'">'+(hayPosibleCorreccion?'⚠️':'✅')+' Se encontraron '+_extraidos.length+' renglón(es) por registrar'+(noPagaCount?' (se descartaron '+noPagaCount+' marcados "NO PAGA", no se registran)':'')+avisoOtras+avisoCorreccion+' — revisa cada uno (el operador se empareja por económico/nombre, corrígelo si hace falta) antes de registrar.</div>';
       renderExtraidos();
     }
   }catch(e){
@@ -687,7 +710,8 @@ function renderExtraidos(){
       +(x.nombreOriginal&&!x.unidad?'<div style="font-size:10px;color:#c1121f">No se encontró "'+x.nombreOriginal+'" — selecciona a mano</div>':'')+'</td>'
       +'<td class="r"><input type="number" step="0.01" value="'+x.monto+'" placeholder="'+(x.montoPendiente?'PENDIENTE':'0.00')+'" style="width:100px;text-align:right" oninput="_extraidos['+i+'].monto=this.value"></td>'
       +'<td><input type="date" value="'+x.fecha+'" oninput="_extraidos['+i+'].fecha=this.value"></td>'
-      +'<td><input type="text" value="'+(x.folio||'').replace(/"/g,'&quot;')+'" style="width:90px" oninput="_extraidos['+i+'].folio=this.value"></td>'
+      +'<td><input type="text" value="'+(x.folio||'').replace(/"/g,'&quot;')+'" style="width:90px" oninput="_extraidos['+i+'].folio=this.value">'
+      +(x.posibleCorreccion?'<div style="font-size:10px;color:#9b1c1c;font-weight:700">⚠️ folio repetido, monto distinto</div>':'')+'</td>'
       +'<td><input type="text" value="'+(x.pedido||'').replace(/"/g,'&quot;')+'" style="width:100px" oninput="_extraidos['+i+'].pedido=this.value"></td>'
       +'<td><input type="text" value="'+(x.tu1||'').replace(/"/g,'&quot;')+'" style="width:80px" oninput="_extraidos['+i+'].tu1=this.value"></td>'
       +'<td><input type="text" value="'+(x.tu2||'').replace(/"/g,'&quot;')+'" style="width:80px" oninput="_extraidos['+i+'].tu2=this.value"></td>'
@@ -703,7 +727,7 @@ async function registrarExtraidos(){
   if(!_extraidos.length)return;
   await cargarIngresos();
   var responsable=($('autResponsable').value||'').trim()||u.usuario;
-  var cliente=($('autCliente').value||'').trim()||'GRUPO COMERCIAL CONTROL';
+  var cliente=($('autCliente').value||'').trim()||'GRUPO COMERCIAL DSW';
   var plazo=$('autPlazo').value||15;
   var ok=0,errores=[];
   _extraidos.forEach(function(x){

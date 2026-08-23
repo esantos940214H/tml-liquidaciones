@@ -40,9 +40,9 @@ const { defineSecret } = require('firebase-functions/params');
 const ANTHROPIC_API_KEY = defineSecret('ANTHROPIC_API_KEY');
 
 const PROMPT_INSTRUCCIONES =
-  'Eres un asistente que extrae datos de correos de autorización de maniobras de una empresa de mudanzas (cliente: Centros de ' +
-  'Distribución, de Grupo Comercial Control). El correo trae una o varias TABLAS (a veces varias tablas mezcladas con párrafos ' +
-  'repetidas de cortesía entre ellas — ignora esos párrafos) con columnas como: Folio (a veces con encabezado "#"), Fecha ' +
+  'Eres un asistente que extrae datos de correos de autorización de maniobras de una empresa de mudanzas (cliente fiscal: ' +
+  'GRUPO COMERCIAL DSW, área operativa "Centros de Distribución"). El correo trae una o varias TABLAS (a veces varias tablas ' +
+  'mezcladas con párrafos repetidos de cortesía entre ellas — ignora esos párrafos) con columnas como: Folio (a veces con encabezado "#"), Fecha ' +
   '(formato DD/MM/AAAA), Tienda (un CÓDIGO alfanumérico de la sucursal, ej. "1149" o "CC13" — NO es un nombre), Destino, ' +
   'Estado, Tipo de Unidad, T.U.\'s(1), T.U.\'s(2), Línea de Transporte (el nombre de la TRANSPORTISTA subcontratada de esa ' +
   'fila — MUY IMPORTANTE: extráela tal cual, NO la ignores — el correo a veces se manda con visibilidad compartida a VARIAS ' +
@@ -68,8 +68,18 @@ const PROMPT_INSTRUCCIONES =
   '"PENDIENTE". Si la celda está vacía o no se puede determinar, pon null. ' +
   'Extrae TODOS los renglones de TODAS las tablas del correo, sean de la transportista que sean — NO filtres tú por Línea de ' +
   'Transporte, eso lo hace el sistema después con el campo "lineaTransporte" que le des. ' +
+  'CORRECCIONES DENTRO DEL MISMO CORREO: el texto que recibes a veces es un hilo completo con varias respuestas encimadas ' +
+  '(correo reenviado o respondido varias veces, con el historial de mensajes anteriores pegado abajo) — en ese caso el MISMO ' +
+  'folio puede aparecer más de una vez, con montos distintos, porque el monto se corrigió después de la autorización ' +
+  'original. Reconoce una corrección cuando, en cualquier parte del texto, aparezca una frase como "envío corrección de ' +
+  'maniobra(s)", "maniobras actualizadas", "maniobras corregidas", "monto actualizado", "comparto monto actualizado" (o muy ' +
+  'similar) cerca de una tabla o de un folio — en ese caso, para ese folio, quédate SOLO con el monto de la versión más ' +
+  'reciente/corregida (normalmente la que acompaña esa frase) y NO regreses también la versión vieja/original: son la MISMA ' +
+  'maniobra, no dos. Si el mismo folio se repite con montos distintos y NO hay ninguna frase de corrección/actualización ' +
+  'cerca, regresa ambas apariciones tal cual (dos renglones), para que el sistema se los muestre al humano y decida. ' +
   'Responde SOLO un arreglo JSON (sin texto explicativo, sin backticks, sin markdown) con un objeto por cada renglón de ' +
-  'maniobra que encuentres en TODAS las tablas del correo. Si no hay ninguna tabla/renglón reconocible, responde [].';
+  'maniobra que encuentres en TODAS las tablas del correo (después de aplicar la regla de corrección de arriba). Si no hay ' +
+  'ninguna tabla/renglón reconocible, responde [].';
 
 // v2 — forzar redeploy para tomar la versión nueva del secret ANTHROPIC_API_KEY
 // (Firebase no recoge un secret actualizado si no detecta cambios en el código).
