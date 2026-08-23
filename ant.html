@@ -663,7 +663,13 @@ function procesarRows(rows,fname){
       return norm(a.concepto)===norm(r.concepto);
     });
     if(existe){duplicados++;return;}
-    anticiposDB[op.operadorId].push({id:uid(),fecha:r.fecha,importe:r.importe,concepto:r.concepto,referencia:r.referencia||'',estado:'pendiente',liqNum:null,origen:'archivo'});
+    // unidadAlCapturar: la unidad que el operador traía asignada EN ESE
+    // MOMENTO (automático, tomado de OPERADORES al momento de subir el
+    // archivo) — a diferencia del campo "unidad" de arriba (que en realidad
+    // es su identidad/operadorId, ver comentario en initSelects), este SÍ
+    // es un dato histórico real: aunque después lo reasignen de camión, este
+    // anticipo se queda marcado con el camión que traía cuando se registró.
+    anticiposDB[op.operadorId].push({id:uid(),fecha:r.fecha,importe:r.importe,concepto:r.concepto,referencia:r.referencia||'',estado:'pendiente',liqNum:null,origen:'archivo',unidadAlCapturar:op.unidad||null});
     nuevos++;
   });
   guardar();
@@ -710,7 +716,11 @@ function agregarManualReal(){
   const concepto=$('mConcepto').value||$('mForma').value;
   if(esSaldo(concepto)){alert('Este concepto corresponde a un saldo de liquidación, no a un anticipo. No se puede registrar aquí.');return;}
   if(!anticiposDB[unidad])anticiposDB[unidad]=[];
-  anticiposDB[unidad].push({id:uid(),fecha,importe,concepto,estado:'pendiente',liqNum:null,origen:'manual'});
+  // unidadAlCapturar: automático, la unidad ACTUAL del operador seleccionado
+  // (ver nota en procesarRows) — queda fija en este registro aunque después
+  // lo reasignen de camión.
+  const opSel=OPERADORES.find(o=>o.operadorId===unidad);
+  anticiposDB[unidad].push({id:uid(),fecha,importe,concepto,estado:'pendiente',liqNum:null,origen:'manual',unidadAlCapturar:opSel?opSel.unidad:null});
   guardar();
   renderAnticipos();
   hideManual();
@@ -724,9 +734,12 @@ function renderAnticipos(){
   const filtDesde=$('filtDesde').value;
   const filtHasta=$('filtHasta').value;
   const filtEst=$('filtEst').value;
-  // El filtro de Económico busca por la unidad ACTUAL del operador (los
-  // anticipos no guardan un camión por registro, solo por identidad de
-  // operador — ver anticiposDB[operadorId] más abajo).
+  // El filtro de Económico busca primero por unidadAlCapturar (la unidad
+  // REAL que traía el operador cuando se registró el anticipo, guardada
+  // automáticamente desde este momento en adelante — ver procesarRows/
+  // agregarManualReal). Los anticipos viejos que no tengan ese dato (de
+  // antes de este cambio) caen de respaldo a la unidad ACTUAL del operador,
+  // para no dejarlos fuera de cualquier filtro.
   const opPorUnidad=filtUnidad?OPERADORES.find(o=>o.unidad===filtUnidad):null;
 
   // Construir lista filtrada
@@ -735,7 +748,11 @@ function renderAnticipos(){
     const opN=nombreOp(parseInt(u));
     (anticiposDB[u]||[]).forEach(a=>{
       if(filtOp&&parseInt(u)!==filtOp)return;
-      if(filtUnidad&&(!opPorUnidad||parseInt(u)!==opPorUnidad.operadorId))return;
+      if(filtUnidad){
+        if(a.unidadAlCapturar!=null){
+          if(a.unidadAlCapturar!==filtUnidad)return;
+        }else if(!opPorUnidad||parseInt(u)!==opPorUnidad.operadorId)return;
+      }
       if(filtDesde&&a.fecha<filtDesde)return;
       if(filtHasta&&a.fecha>filtHasta)return;
       if(filtEst&&a.estado!==filtEst)return;
