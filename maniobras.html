@@ -126,7 +126,7 @@ tr:hover td{background:#fafafa}
 
 <div class="container">
 
-  <div class="alert alert-info">✅ Registra aquí el monto que el cliente autoriza por correo ANTES de que exista la factura real — este monto es el oficial, no algo que quien capture ingresos deba sumar o adivinar. Su única obligación después es subir la factura real y que coincida con este monto, usando el mismo pedido/PO como ID (ver Ingresos → Conflictos si no coincide). Las maniobras no llevan IVA.</div>
+  <div class="alert alert-info">✅ Registra aquí el monto que el cliente autoriza por correo ANTES de que exista la factura real — este monto es el oficial (es el SUBTOTAL, sin IVA), no algo que quien capture ingresos deba sumar o adivinar. Su única obligación después es subir la factura real y que coincida con este monto + su 16% de IVA, usando el mismo pedido/PO/T.U. como ID (ver Ingresos → Conflictos si no coincide).</div>
 
   <!-- EXTRAER DE TEXTO DEL CORREO (IA) -->
   <div class="card">
@@ -152,7 +152,7 @@ tr:hover td{background:#fafafa}
       <div class="field"><label>Operador</label><select id="autOp"><option value="">— Selecciona —</option></select></div>
       <div class="field"><label>Fecha</label><input type="date" id="autFecha"></div>
       <div class="field"><label>Cliente</label><input type="text" id="autCliente" value="GRUPO COMERCIAL DSW"></div>
-      <div class="field"><label>Monto autorizado</label><input type="number" id="autMonto" placeholder="0.00" step="0.01"></div>
+      <div class="field"><label>Monto autorizado (subtotal, sin IVA)</label><input type="number" id="autMonto" placeholder="0.00" step="0.01"></div>
     </div>
     <div class="grid2" style="margin-bottom:10px">
       <div class="field"><label>Folio <span style="font-weight:400;font-size:11px;color:#aaa">(opcional)</span></label><input type="text" id="autFolio" placeholder="Si el correo lo trae"></div>
@@ -179,9 +179,21 @@ tr:hover td{background:#fafafa}
       <button class="btn btn-out btn-sm" onclick="$('filtPendOp').value='';$('filtPendUnidad').value='';renderPendientes()">Limpiar</button>
     </div>
     <div class="tbl-wrap"><table>
-      <thead><tr><th>Operador</th><th>Fecha</th><th>Cliente</th><th class="r">Monto</th><th>Pedido/ID</th><th>Responsable</th><th>Plazo</th><th></th></tr></thead>
+      <thead><tr><th>Operador</th><th>Fecha</th><th>Cliente</th><th class="r">Autorizado (subtotal)</th><th>Pedido/ID</th><th>Responsable</th><th>Plazo</th><th></th></tr></thead>
       <tbody id="tbPendientes"></tbody>
     </table></div>
+  </div>
+
+  <!-- SUSTITUIR CON FACTURA CONSOLIDADA (XML + Excel de desglose) -->
+  <div class="card">
+    <div class="card-title">📊 Sustituir con factura de maniobras (Excel)</div>
+    <div class="alert alert-info">Para cuando UNA factura junta varias semanas de maniobras ya autorizadas (normal con GRUPO COMERCIAL DSW — el cliente autoriza una vez por semana y se factura en lote). Sube el XML de esa factura + tu Excel de desglose (mismo formato de columnas VIAJE/TIENDA/DESTINO/ORDEN DE EMBARQUE/TOTAL) — el sistema empareja cada renglón por T.U.'s contra las autorizaciones pendientes y las sustituye automáticamente si el monto coincide (tolerancia $50).</div>
+    <div class="grid2">
+      <div class="field"><label>XML de la factura</label><input type="file" id="fFacturaManiobrasXML" accept=".xml"></div>
+      <div class="field"><label>Excel de desglose</label><input type="file" id="fFacturaManiobrasXLSX" accept=".xlsx,.xls"></div>
+    </div>
+    <button class="btn btn-red" style="margin-top:10px" onclick="procesarFacturaManiobrasExcel()">Procesar y sustituir</button>
+    <div id="facturaManiobrasInfo" style="margin-top:12px"></div>
   </div>
 
 </div>
@@ -414,7 +426,7 @@ function renderPendientes(){
       +'<td style="font-size:12px">'+(nombreOp(v.unidad)||v.unidad)+'</td>'
       +'<td>'+v.fecha+'</td>'
       +'<td style="font-size:12px">'+(v.cliente||'')+'</td>'
-      +'<td class="num r">'+(v.montoPendiente?'<span class="badge bg-yellow">⏳ Pendiente</span>':fmt(v.total))+'</td>'
+      +'<td class="num r">'+(v.montoPendiente?'<span class="badge bg-yellow">⏳ Pendiente</span>':fmt(v.subtotal))+'</td>'
       +'<td style="font-size:11px">'+(v.observaciones||'')+'</td>'
       +'<td style="font-size:11px">'+responsable+'</td>'
       +'<td>'+(vencido?'<span class="badge bg-red">⚠ Vencido</span>':'<span class="badge bg-yellow">⏳ '+(v.fechaLimiteJustificacion||'').slice(0,10)+'</span>')+'</td>'
@@ -431,7 +443,7 @@ async function cargarIngresos(){
 function eliminarAutorizacion(id){
   var v=ingresosDB.find(function(x){return x.id===id;});
   if(!v)return;
-  if(!confirm('¿Eliminar esta autorización pendiente ('+fmt(v.total)+', pedido "'+v.observaciones+'")? Solo hazlo si se capturó por error — si ya hay factura real, mejor sustitúyela desde Ingresos.'))return;
+  if(!confirm('¿Eliminar esta autorización pendiente ('+fmt(v.subtotal)+' + IVA, pedido "'+v.observaciones+'")? Solo hazlo si se capturó por error — si ya hay factura real, mejor sustitúyela desde Ingresos.'))return;
   cargarIngresos().then(function(){
     ingresosDB=ingresosDB.filter(function(x){return x.id!==id;});
     window.FB.set('estado','ingresosDB',{data:JSON.stringify(ingresosDB)});
@@ -458,7 +470,7 @@ function _buscarDuplicado(datos){
   return ingresosDB.find(function(v){
     if(!v.esAutorizacionCliente)return false;
     if(v.unidad!==unidad)return false;
-    if(Math.abs((v.total||0)-monto)>=0.01)return false;
+    if(Math.abs((v.subtotal||0)-monto)>=0.01)return false;
     if((v.fecha||'')!==fecha)return false;
     var vDestino=_normTxt((v.ruta&&v.ruta[0]&&v.ruta[0].destino)||'');
     var vTienda=_normTxt(v.tienda);
@@ -497,7 +509,8 @@ function _crearAutorizacionEnMemoria(datos){
       return idsNuevos.some(function(id){return vIds.indexOf(id)!==-1;});
     });
     if(existentePendiente){
-      existentePendiente.subtotal=monto;existentePendiente.subtManiobras=monto;existentePendiente.total=monto;
+      var ivaExist=Math.round(monto*0.16*100)/100;
+      existentePendiente.subtotal=monto;existentePendiente.subtManiobras=monto;existentePendiente.iva=ivaExist;existentePendiente.total=monto+ivaExist;
       existentePendiente.montoPendiente=false;
       return{ok:true,monto:monto,fechaLimite:existentePendiente.fechaLimiteJustificacion,idCombinado:existentePendiente.observaciones,actualizado:true};
     }
@@ -530,13 +543,16 @@ function _crearAutorizacionEnMemoria(datos){
   if(!plazo||plazo<1)plazo=15;
   var fechaLimite=sumarDiasHabiles(fecha,plazo)+'T23:59:59';
   var montoGuardar=pendiente?0:monto;
-  // Las maniobras de este cliente NO llevan IVA — el monto autorizado ES el
-  // total, tal cual lo confirma la factura real. Si el cliente todavía no
-  // confirma cuánto paga (montoPendiente:true), se guarda en 0 y se
-  // actualiza después cuando llegue el correo de seguimiento (ver arriba).
+  // El monto que autoriza el cliente es el SUBTOTAL (antes de impuesto) —
+  // la factura real siempre sale como monto autorizado + 16% IVA (ver FI-684:
+  // suma de subtotales autorizados = Subtotal del CFDI, + IVA = Total). Si el
+  // cliente todavía no confirma cuánto paga (montoPendiente:true), se guarda
+  // en 0 y se actualiza después cuando llegue el correo de seguimiento (ver
+  // arriba).
+  var ivaGuardar=pendiente?0:Math.round(monto*0.16*100)/100;
   ingresosDB.push({id:uid(),unidad:unidad,folio:'MANIOBRAS',fecha:fecha,cliente:cliente,tipo:'maniobra',
     subtotal:montoGuardar,subtFlete:0,subtManiobras:montoGuardar,subtOtros:0,
-    iva:0,ret:0,total:montoGuardar,estado:'sin_liquidar',liqNum:null,origen:'autorizacion_cliente',
+    iva:ivaGuardar,ret:0,total:montoGuardar+ivaGuardar,estado:'sin_liquidar',liqNum:null,origen:'autorizacion_cliente',
     ruta:destino?[{origen:'',destino:destino,kms:''}]:[],tienda:tienda,observaciones:idCombinado,
     sinFacturaJustificar:true,fechaLimiteJustificacion:fechaLimite,montoPendiente:pendiente,
     capturadoPor:{usuario:responsable,nombre:responsable},
@@ -564,9 +580,9 @@ async function agregarAutorizacionManiobra(){
   $('autMonto').value='';$('autFolio').value='';$('autPedido').value='';$('autTu1').value='';$('autTu2').value='';$('autTienda').value='';$('autDestino').value='';
   renderPendientes();
   if(r.actualizado){
-    alert('✅ Se actualizó la autorización pendiente con el monto real: '+fmt(r.monto)+' ('+r.idCombinado+').');
+    alert('✅ Se actualizó la autorización pendiente con el monto real: '+fmt(r.monto)+' + IVA ('+r.idCombinado+').');
   }else{
-    alert('✅ Autorización registrada: '+(pendiente?'monto PENDIENTE de confirmar':fmt(r.monto))+' para '+(nombreOp(unidad)||unidad)+'.\n\nPlazo hasta '+r.fechaLimite.slice(0,10)+' ('+r.plazo+' días hábiles) para que '+responsable+' suba la factura real y la ligue con el identificador "'+r.idCombinado+'" desde Ingresos.');
+    alert('✅ Autorización registrada: '+(pendiente?'monto PENDIENTE de confirmar':fmt(r.monto)+' + IVA')+' para '+(nombreOp(unidad)||unidad)+'.\n\nPlazo hasta '+r.fechaLimite.slice(0,10)+' ('+r.plazo+' días hábiles) para que '+responsable+' suba la factura real y la ligue con el identificador "'+r.idCombinado+'" desde Ingresos.');
   }
 }
 
@@ -740,6 +756,173 @@ async function registrarExtraidos(){
   renderExtraidos();
   if(!errores.length){$('autTexto').value='';$('extraerInfo').innerHTML='';$('wrapExtraidos').style.display='none';}
   alert('✅ Se registraron '+ok+' de '+(ok+errores.length)+' renglón(es).'+(errores.length?'\n\n⚠️ No se registraron:\n'+errores.join('\n'):''));
+}
+
+// ══════════════════════════════════════════════
+// SUSTITUIR CON FACTURA CONSOLIDADA (XML + Excel de desglose) — para el
+// cliente GRUPO COMERCIAL DSW: autoriza una vez por semana, pero Raúl
+// factura hasta 20-30 viajes juntos en UNA sola factura. Cada renglón del
+// Excel se empareja por T.U.'s (columna "ORDEN DE EMBARQUE", que trae los
+// mismos números que T.U.'s(1)/(2) del correo de autorización, separados
+// por "/") contra las autorizaciones pendientes — el Excel NO trae
+// operador, así que el operador se toma del registro pendiente que ya
+// tenía esa T.U. desde que se autorizó.
+// ══════════════════════════════════════════════
+const TML_RFC='MTM171214PI4';
+var _lazyScripts={};
+function cargarScriptUnaVez(src){
+  if(_lazyScripts[src])return _lazyScripts[src];
+  _lazyScripts[src]=new Promise(function(resolve,reject){
+    var s=document.createElement('script');
+    s.src=src;s.onload=resolve;s.onerror=reject;
+    document.head.appendChild(s);
+  });
+  return _lazyScripts[src];
+}
+function _leerArchivoTexto(file){
+  return new Promise(function(resolve,reject){
+    var r=new FileReader();
+    r.onload=function(e){resolve(e.target.result);};
+    r.onerror=reject;
+    r.readAsText(file,'UTF-8');
+  });
+}
+function _leerArchivoArrayBuffer(file){
+  return new Promise(function(resolve,reject){
+    var r=new FileReader();
+    r.onload=function(e){resolve(e.target.result);};
+    r.onerror=reject;
+    r.readAsArrayBuffer(file);
+  });
+}
+function _fechaExcelAISO(v){
+  if(v==null||v==='')return '';
+  if(v instanceof Date)return v.toISOString().slice(0,10);
+  return String(v).trim();
+}
+async function procesarFacturaManiobrasExcel(){
+  var u=usuarioSesion();
+  if(!u||!u.esAdmin){alert('Solo un administrador puede sustituir autorizaciones con la factura real.');return;}
+  var fXml=$('fFacturaManiobrasXML').files[0];
+  var fXlsx=$('fFacturaManiobrasXLSX').files[0];
+  if(!fXml||!fXlsx){alert('Sube el XML de la factura y el Excel de desglose, los dos.');return;}
+  $('facturaManiobrasInfo').innerHTML='<div class="alert alert-info">⏳ Procesando...</div>';
+  try{
+    var xmlText=await _leerArchivoTexto(fXml);
+    var doc=new DOMParser().parseFromString(xmlText,'text/xml');
+    var comp=doc.querySelector('Comprobante');
+    if(!comp)throw new Error(fXml.name+' no es un CFDI válido.');
+    var emisor=doc.querySelector('Emisor');
+    var rfcEmisor=emisor?emisor.getAttribute('Rfc')||'':'';
+    if(rfcEmisor.toUpperCase()!==TML_RFC)throw new Error('El emisor de este CFDI es "'+(rfcEmisor||'(vacío)')+'", no Mudanzas TML ('+TML_RFC+').');
+    var receptor=doc.querySelector('Receptor');
+    var cliente=receptor?receptor.getAttribute('Nombre')||'':'';
+    var subtotalXml=parseFloat(comp.getAttribute('SubTotal')||0);
+    var totalXml=parseFloat(comp.getAttribute('Total')||0);
+    var folioCompleto=(comp.getAttribute('Serie')||'')+'-'+(comp.getAttribute('Folio')||'');
+    var fechaXml=(comp.getAttribute('Fecha')||'').slice(0,10);
+    var tfd=doc.querySelector('TimbreFiscalDigital');
+    var uuid=tfd?tfd.getAttribute('UUID')||'':'';
+
+    await cargarScriptUnaVez('https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js');
+    var buf=await _leerArchivoArrayBuffer(fXlsx);
+    var wb=XLSX.read(buf,{type:'array',cellDates:true});
+    var ws=wb.Sheets[wb.SheetNames[0]];
+    var filas=XLSX.utils.sheet_to_json(ws,{header:1,raw:true,defval:null});
+
+    // Encontrar el renglón de encabezados (el que trae la celda "VIAJE") y
+    // mapear cada columna por su texto exacto, en vez de por posición fija
+    // — así, si el Excel cambia ligeramente de orden, sigue funcionando.
+    var norm=function(s){return(s==null?'':String(s)).trim().toUpperCase();};
+    var idxHeader=-1,cols={};
+    for(var h=0;h<Math.min(filas.length,20);h++){
+      var fila=filas[h]||[];
+      if(fila.some(function(c){return norm(c)==='VIAJE';})){
+        idxHeader=h;
+        fila.forEach(function(c,ci){
+          var t=norm(c);
+          if(t==='VIAJE')cols.viaje=ci;
+          if(t==='TIENDA')cols.tienda=ci;
+          if(t==='DESTINO')cols.destino=ci;
+          if(t==='ORDEN DE EMBARQUE')cols.orden=ci;
+          if(t==='FECHA DE CARGA')cols.fecha=ci;
+          if(t==='TOTAL')cols.total=ci;
+        });
+        break;
+      }
+    }
+    if(idxHeader===-1||cols.orden==null||cols.total==null)throw new Error(fXlsx.name+': no se reconocieron las columnas esperadas (VIAJE, ORDEN DE EMBARQUE, TOTAL, etc.) — revisa que sea el mismo formato de Excel.');
+
+    var renglones=[];
+    for(var r=idxHeader+1;r<filas.length;r++){
+      var f=filas[r]||[];
+      var orden=f[cols.orden],total=f[cols.total];
+      if(orden==null||String(orden).trim()==='')continue; // renglón vacío o el de la suma total al final
+      var tus=String(orden).split('/').map(function(s){return s.trim();}).filter(function(s){return s;});
+      renglones.push({
+        viaje:cols.viaje!=null?f[cols.viaje]:null,
+        tienda:cols.tienda!=null?f[cols.tienda]:'',
+        destino:cols.destino!=null?f[cols.destino]:'',
+        fecha:cols.fecha!=null?_fechaExcelAISO(f[cols.fecha]):'',
+        tus:tus,
+        total:parseFloat(total)||0
+      });
+    }
+    if(!renglones.length)throw new Error(fXlsx.name+': no se encontró ningún renglón de viaje con datos.');
+
+    await cargarIngresos();
+    var TOLERANCIA=50;
+    var sustituidos=[],diferencias=[],sinMatch=[];
+    renglones.forEach(function(rg){
+      var candidato=null;
+      for(var i=0;i<rg.tus.length&&!candidato;i++){
+        var idNorm=_normTxt(rg.tus[i]);
+        candidato=ingresosDB.find(function(v){
+          return v.esAutorizacionCliente&&!v.sustituidoPorXML&&!v.montoPendiente&&
+            _normTxt(v.observaciones).indexOf(idNorm)!==-1;
+        });
+      }
+      if(!candidato){sinMatch.push(rg);return;}
+      var diff=Math.abs((candidato.subtotal||0)-rg.total);
+      if(diff>TOLERANCIA){diferencias.push({rg:rg,candidato:candidato,diff:diff});return;}
+      // Sustituye: el Excel trae el monto REAL facturado (subtotal, dentro
+      // de tolerancia de lo autorizado) — se recalcula el IVA sobre ese
+      // monto real, no sobre el autorizado original.
+      var ivaReal=Math.round(rg.total*0.16*100)/100;
+      candidato.subtotal=rg.total;candidato.subtManiobras=rg.total;candidato.iva=ivaReal;candidato.total=rg.total+ivaReal;
+      candidato.folio=folioCompleto;candidato.uuid=uuid;candidato.facturaUUID=uuid;
+      candidato.cliente=cliente;candidato.rfcEmisor=rfcEmisor;
+      if(rg.fecha)candidato.fecha=rg.fecha;
+      candidato.sustituidoPorXML=true;
+      candidato.observaciones=(candidato.observaciones||'')+' — sustituido por XML '+folioCompleto+' el '+hoy();
+      sustituidos.push({rg:rg,candidato:candidato});
+    });
+
+    if(sustituidos.length)await window.FB.set('estado','ingresosDB',{data:JSON.stringify(ingresosDB)});
+    renderPendientes();
+
+    var sumaExcel=renglones.reduce(function(s,rg){return s+rg.total;},0);
+    var html='<div class="alert '+(diferencias.length||sinMatch.length?'alert-warn':'alert-ok')+'">'+
+      '✅ '+sustituidos.length+' renglón(es) sustituido(s) automáticamente'+
+      (diferencias.length?' · ⚠️ '+diferencias.length+' con diferencia de monto mayor a $'+TOLERANCIA+' (no se sustituyeron solos)':'')+
+      (sinMatch.length?' · ⚠️ '+sinMatch.length+' sin autorización pendiente encontrada':'')+
+      '<br>Suma del Excel: '+fmt(sumaExcel)+' — Subtotal de la factura: '+fmt(subtotalXml)+
+      (Math.abs(sumaExcel-subtotalXml)>1?' <strong style="color:#9b1c1c">⚠️ no coinciden</strong>':' ✓ coincide')+
+      '</div>';
+    if(diferencias.length){
+      html+='<div style="margin-top:8px"><strong>Diferencias de monto (revisar a mano):</strong><ul style="margin:6px 0 0 18px;font-size:12px">'+
+        diferencias.map(function(d){return '<li>'+(nombreOp(d.candidato.unidad)||d.candidato.unidad)+' — T.U. '+d.rg.tus.join('/')+': autorizado '+fmt(d.candidato.subtotal)+' vs. facturado '+fmt(d.rg.total)+' (diferencia '+fmt(d.diff)+')</li>';}).join('')+
+        '</ul></div>';
+    }
+    if(sinMatch.length){
+      html+='<div style="margin-top:8px"><strong>Sin autorización pendiente encontrada:</strong><ul style="margin:6px 0 0 18px;font-size:12px">'+
+        sinMatch.map(function(rg){return '<li>Tienda '+(rg.tienda||'?')+' — T.U. '+rg.tus.join('/')+' — '+fmt(rg.total)+'</li>';}).join('')+
+        '</ul></div>';
+    }
+    $('facturaManiobrasInfo').innerHTML=html;
+  }catch(e){
+    $('facturaManiobrasInfo').innerHTML='<div class="alert alert-warn">⚠️ '+e.message+'</div>';
+  }
 }
 
 window.onFBReady(async function(){
