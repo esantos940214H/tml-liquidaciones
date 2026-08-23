@@ -1705,7 +1705,7 @@ async function procesarFacturaManiobrasExcel(){
     if(!renglones.length)throw new Error(fXlsx.name+': no se encontró ningún renglón de viaje con datos.');
 
     var TOLERANCIA=50;
-    var sustituidos=[],diferencias=[],sinMatch=[];
+    var sustituidos=[],diferencias=[],sinMatch=[],porDestinoMonto=[];
     renglones.forEach(function(rg){
       var candidato=null;
       for(var i=0;i<rg.tus.length&&!candidato;i++){
@@ -1714,6 +1714,23 @@ async function procesarFacturaManiobrasExcel(){
           return v.esAutorizacionCliente&&!v.sustituidoPorXML&&!v.montoPendiente&&
             _normTxtFactManiobras(v.observaciones).indexOf(idNorm)!==-1;
         });
+      }
+      // Cuando el cliente nos recarga en su CEDIS (Villahermosa) para
+      // terminar de repartir, nos reasigna un T.U. nuevo para ese segundo
+      // tramo — el T.U. que trae el Excel (el de Tultitlán) ya no aparece
+      // en esa autorización. Si no hubo match por T.U., buscamos por
+      // destino + monto EXACTO entre lo aún no sustituido; si hay más de
+      // un candidato posible, no adivinamos — se reporta para revisar a mano.
+      if(!candidato){
+        var destinoNorm=_normTxtFactManiobras(rg.destino);
+        var candidatos=ingresosDB.filter(function(v){
+          if(!v.esAutorizacionCliente||v.sustituidoPorXML||v.montoPendiente)return false;
+          if(Math.abs((v.subtotal||0)-rg.total)>=0.01)return false;
+          var vDestino=_normTxtFactManiobras((v.ruta&&v.ruta[0]&&v.ruta[0].destino)||'');
+          return destinoNorm&&vDestino&&(vDestino.indexOf(destinoNorm)!==-1||destinoNorm.indexOf(vDestino)!==-1);
+        });
+        if(candidatos.length===1){candidato=candidatos[0];porDestinoMonto.push({rg:rg,candidato:candidato});}
+        else if(candidatos.length>1){sinMatch.push(rg);return;}
       }
       if(!candidato){sinMatch.push(rg);return;}
       var diff=Math.abs((candidato.subtotal||0)-rg.total);
@@ -1738,9 +1755,15 @@ async function procesarFacturaManiobrasExcel(){
       '✅ '+sustituidos.length+' renglón(es) sustituido(s) automáticamente'+
       (diferencias.length?' · ⚠️ '+diferencias.length+' con diferencia de monto mayor a $'+TOLERANCIA+' (no se sustituyeron solos)':'')+
       (sinMatch.length?' · ⚠️ '+sinMatch.length+' sin autorización pendiente encontrada':'')+
+      (porDestinoMonto.length?' · ℹ️ '+porDestinoMonto.length+' matcheado(s) por destino+monto (T.U. reasignado en CEDIS, revisa que sea correcto)':'')+
       '<br>Suma del Excel: '+fmt(sumaExcel)+' — Subtotal de la factura: '+fmt(subtotalXml)+
       (Math.abs(sumaExcel-subtotalXml)>1?' <strong style="color:#9b1c1c">⚠️ no coinciden</strong>':' ✓ coincide')+
       '</div>';
+    if(porDestinoMonto.length){
+      html+='<div style="margin-top:8px"><strong>Matcheados por destino+monto (no por T.U. — revisar):</strong><ul style="margin:6px 0 0 18px;font-size:12px">'+
+        porDestinoMonto.map(function(d){return '<li>'+(nombreOp(d.candidato.unidad)||d.candidato.unidad)+' — '+d.rg.destino+' — T.U. Excel '+d.rg.tus.join('/')+' vs. autorización con FOLIO/T.U. "'+(d.candidato.observaciones||'')+'" — '+fmt(d.rg.total)+'</li>';}).join('')+
+        '</ul></div>';
+    }
     if(diferencias.length){
       html+='<div style="margin-top:8px"><strong>Diferencias de monto (revisar a mano):</strong><ul style="margin:6px 0 0 18px;font-size:12px">'+
         diferencias.map(function(d){return '<li>'+(nombreOp(d.candidato.unidad)||d.candidato.unidad)+' — T.U. '+d.rg.tus.join('/')+': autorizado '+fmt(d.candidato.subtotal)+' vs. facturado '+fmt(d.rg.total)+' (diferencia '+fmt(d.diff)+')</li>';}).join('')+
