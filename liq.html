@@ -1808,7 +1808,7 @@ function initSelects(){
     // aparte (liqUnidad, abajo) y sí es la unidad/vehículo real.
     OPERADORES.forEach(function(op){
       const o=document.createElement('option');
-      o.value=op.operadorId;o.textContent=op.unidad+' · '+op.nombre;
+      o.value=op.operadorId;o.textContent=op.clave+' · '+op.nombre;
       s.appendChild(o);
     });
   });
@@ -1826,7 +1826,7 @@ function renderTags(){
   OPERADORES.forEach(function(op){
     const t=document.createElement('div');
     t.className='op-tag'+(opExcluidos.has(op.unidad)?'':' active');
-    t.textContent=op.unidad+' · '+op.nombre;
+    t.textContent=op.clave+' · '+op.nombre;
     t.onclick=function(){opExcluidos.has(op.unidad)?opExcluidos.delete(op.unidad):opExcluidos.add(op.unidad);renderTags();};
     c.appendChild(t);
   });
@@ -1926,7 +1926,7 @@ function procesarAnticipos(){
     const rows=d.anticipos.map(function(r){return '<tr><td>'+r.fechaStr+'</td><td>'+r.concepto+'</td><td class="num r">'+fmt(r.importe)+'</td><td><span class="badge bg-green">ANTICIPO</span></td></tr>';}).join('')
       +d.saldos.map(function(r){return '<tr style="opacity:.4"><td>'+r.fechaStr+'</td><td>'+r.concepto+'</td><td class="num r">'+fmt(r.importe)+'</td><td><span class="badge bg-yellow">SALDO EXCL.</span></td></tr>';}).join('');
     const div=document.createElement('div');div.className='op-block';
-    div.innerHTML='<div class="op-bar"><span>Unidad '+d.op.unidad+' · '+d.op.nombre+'</span><span class="tot">'+fmt(totalOp)+'</span></div>'
+    div.innerHTML='<div class="op-bar"><span>'+d.op.clave+' · '+d.op.nombre+'</span><span class="tot">'+fmt(totalOp)+'</span></div>'
       +'<div class="tbl-wrap"><table><thead><tr><th>Fecha</th><th>Concepto</th><th class="r">Importe</th><th>Tipo</th></tr></thead><tbody>'+rows+'</tbody></table></div>';
     cont.appendChild(div);
   });

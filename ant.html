@@ -525,7 +525,7 @@ function initSelects(){
     // que se reconozca en la lista.
     OPERADORES.forEach(op=>{
       const o=document.createElement('option');
-      o.value=op.operadorId;o.textContent=op.unidad+' · '+op.nombre;
+      o.value=op.operadorId;o.textContent=op.clave+' · '+op.nombre;
       s.appendChild(o);
     });
   });

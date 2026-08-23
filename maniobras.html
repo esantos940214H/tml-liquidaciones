@@ -359,7 +359,7 @@ function initSelects(){
   while(s.options.length>1)s.remove(1);
   OPERADORES.forEach(function(op){
     var o=document.createElement('option');
-    o.value=op.operadorId;o.textContent=op.unidad+' · '+op.nombre;
+    o.value=op.operadorId;o.textContent=op.clave+' · '+op.nombre;
     s.appendChild(o);
   });
 }
@@ -519,7 +519,7 @@ function renderExtraidos(){
   var wrap=$('wrapExtraidos'),tb=$('tbExtraidos');
   if(!_extraidos.length){wrap.style.display='none';return;}
   wrap.style.display='block';
-  var opts=function(sel){return'<option value="">— Selecciona —</option>'+OPERADORES.map(function(o){return'<option value="'+o.operadorId+'"'+(o.operadorId===sel?' selected':'')+'>'+o.unidad+' · '+o.nombre+'</option>';}).join('');};
+  var opts=function(sel){return'<option value="">— Selecciona —</option>'+OPERADORES.map(function(o){return'<option value="'+o.operadorId+'"'+(o.operadorId===sel?' selected':'')+'>'+o.clave+' · '+o.nombre+'</option>';}).join('');};
   tb.innerHTML=_extraidos.map(function(x,i){
     return '<tr>'
       +'<td><select style="min-width:170px" onchange="_extraidos['+i+'].unidad=parseInt(this.value||0)">'+opts(x.unidad)+'</select>'+(x.nombreOriginal&&!x.unidad?'<div style="font-size:10px;color:#c1121f">No se encontró "'+x.nombreOriginal+'" — selecciona a mano</div>':'')+'</td>'

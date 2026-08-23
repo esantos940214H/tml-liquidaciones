@@ -881,7 +881,7 @@ function initSelects(){
     while(s.options.length>1)s.remove(1);
     // value=operadorId (identidad PERMANENTE), no la unidad actual — así los
     // ingresos siguen ligados a la persona aunque lo reasignen de unidad.
-    OPERADORES.forEach(op=>{const o=document.createElement('option');o.value=op.operadorId;o.textContent=op.unidad+' · '+op.nombre;s.appendChild(o);});
+    OPERADORES.forEach(op=>{const o=document.createElement('option');o.value=op.operadorId;o.textContent=op.clave+' · '+op.nombre;s.appendChild(o);});
   });
 }
 window.onFBReady(async function(){
@@ -1233,7 +1233,7 @@ function dgUpd(i,campo,valor){
 // nomás Operador + Monto).
 function renderDgRows(){
   const tb=$('tbDgRows');if(!tb)return;
-  const opts=u=>'<option value="">— Operador —</option>'+OPERADORES.map(o=>'<option value="'+o.operadorId+'"'+(o.operadorId===u?' selected':'')+'>'+o.unidad+' · '+o.nombre+'</option>').join('');
+  const opts=u=>'<option value="">— Operador —</option>'+OPERADORES.map(o=>'<option value="'+o.operadorId+'"'+(o.operadorId===u?' selected':'')+'>'+o.clave+' · '+o.nombre+'</option>').join('');
   tb.innerHTML=dgRows.map((r,i)=>{
     const abierto=!!r._detalleAbierto;
     const tieneOpcionales=!!(r.destino||r.pedido||r.sustituyeId);
@@ -1582,7 +1582,7 @@ function mcUpd(i,campo,valor){
 // renglón) para no perder el foco — igual que renderDgRows().
 function renderMcRows(){
   const tb=$('tbMcRows');if(!tb)return;
-  const opts=u=>'<option value="">— Operador —</option>'+OPERADORES.map(o=>'<option value="'+o.operadorId+'"'+(o.operadorId===u?' selected':'')+'>'+o.unidad+' · '+o.nombre+'</option>').join('');
+  const opts=u=>'<option value="">— Operador —</option>'+OPERADORES.map(o=>'<option value="'+o.operadorId+'"'+(o.operadorId===u?' selected':'')+'>'+o.clave+' · '+o.nombre+'</option>').join('');
   tb.innerHTML=mcRows.map((r,i)=>'<tr>'
     +'<td><select onchange="mcUpd('+i+',\'unidad\',this.value)" style="border:1.5px solid #dde;border-radius:5px;padding:6px;font-size:12px;background:#fafafa;min-width:190px">'+opts(r.unidad)+'</select></td>'
     +'<td class="r"><input type="number" step="0.01" min="0" value="'+(r.flete||'')+'" placeholder="0.00" oninput="mcUpd('+i+',\'flete\',this.value)" style="border:1.5px solid #dde;border-radius:5px;padding:6px;font-size:12px;background:#fafafa;width:100px;text-align:right"></td>'

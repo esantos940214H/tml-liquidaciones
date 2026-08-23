@@ -464,7 +464,7 @@ function initSelects(){
     // comprobante sigue ligado a la persona aunque lo reasignen de unidad.
     OPERADORES.forEach(function(op){
       var o=document.createElement('option');
-      o.value=op.operadorId;o.textContent=op.unidad+' · '+op.nombre;
+      o.value=op.operadorId;o.textContent=op.clave+' · '+op.nombre;
       s.appendChild(o);
     });
   });
@@ -743,7 +743,7 @@ function renderPrecarga(){
     return;
   }
   var opts=function(sel){return UNIDADES.map(function(u){return '<option value="'+u+'"'+(u===sel?' selected':'')+'>'+u+'</option>';}).join('');};
-  var optsOp=function(sel){return OPERADORES.map(function(o){return '<option value="'+o.operadorId+'"'+(o.operadorId===sel?' selected':'')+'>'+o.unidad+' · '+o.nombre.split(' ').slice(0,2).join(' ')+'</option>';}).join('');};
+  var optsOp=function(sel){return OPERADORES.map(function(o){return '<option value="'+o.operadorId+'"'+(o.operadorId===sel?' selected':'')+'>'+o.clave+' · '+o.nombre.split(' ').slice(0,2).join(' ')+'</option>';}).join('');};
   filas.forEach(function(c){
     var esPend=c.estado==='pendiente';
     var tipoLabel=c.tipo==='caseta'?'🛣️ Caseta':(c.tipo==='parquimetro'?'🅿️ Parquímetro':'🧾 Factura');
