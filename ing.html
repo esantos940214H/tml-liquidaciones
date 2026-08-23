@@ -251,6 +251,23 @@ tr:hover td{background:#fafafa}
     </div>
   </div>
 
+  <!-- AUTORIZACIÓN DE MANIOBRAS DEL CLIENTE (solo admin) -->
+  <div class="card" id="cardAutorizacionManiobra" style="display:none">
+    <div class="card-title">✅ Autorización de maniobras del cliente (ADMIN)</div>
+    <p style="font-size:12px;color:#888;margin-bottom:10px">Registra aquí el monto que el cliente autorizó por correo ANTES de que exista la factura real — este es el monto oficial, no algo que Raúl deba sumar o adivinar. Su única obligación después es subir la factura real y que coincida con este monto, usando el mismo pedido/PO como ID.</p>
+    <div class="grid4" style="margin-bottom:10px">
+      <div class="field"><label>Operador</label><select id="autOp"><option value="">— Selecciona —</option></select></div>
+      <div class="field"><label>Fecha</label><input type="date" id="autFecha"></div>
+      <div class="field"><label>Cliente</label><input type="text" id="autCliente" value="GRUPO COMERCIAL DSW"></div>
+      <div class="field"><label>Monto autorizado (maniobra)</label><input type="number" id="autMonto" placeholder="0.00" step="0.01"></div>
+    </div>
+    <div class="grid4" style="margin-bottom:10px">
+      <div class="field" style="flex:2"><label>Pedido / PO / referencia del cliente (ID único)</label><input type="text" id="autPedido" placeholder="Ej: 5900379049"></div>
+      <div class="field"><label>Responsable de subir la factura (correo)</label><input type="text" id="autResponsable" value="raul@mudandote.mx"></div>
+    </div>
+    <button class="btn btn-red" onclick="agregarAutorizacionManiobra()">+ Registrar autorización</button>
+  </div>
+
   <!-- CONFLICTOS XML VS. MANUAL (solo admin) -->
   <div class="card" id="cardConflictosXML" style="display:none">
     <div class="card-title">⚠️ Discrepancias XML vs. manual pendientes de revisión (ADMIN)</div>
@@ -427,6 +444,12 @@ const hoy=()=>new Date().toISOString().slice(0,10);
 // cobro real sin CFDI, ver sinFacturaJustificar:false en su registro).
 // ══════════════════════════════════════════════
 const DIAS_HABILES_JUSTIFICAR=10;
+// Plazo más largo para una autorización de maniobras que viene DIRECTO del
+// cliente (ver agregarAutorizacionManiobra) — a diferencia de un "sin
+// factura" que alguien capturó a mano, aquí el monto ya es el oficial/
+// autorizado, así que no hay prisa por corregirlo, solo por conseguir la
+// factura real que lo confirme.
+const DIAS_HABILES_AUTORIZACION_MANIOBRA=15;
 // MODO PRUEBA (null = producción normal, 10 días hábiles). Se puede poner
 // un número de minutos aquí temporalmente para probar el candado sin
 // esperar una semana — pero SIEMPRE debe quedar en null en producción.
@@ -447,6 +470,10 @@ function sumarDiasHabiles(fechaISO,n){
 function calcularFechaLimiteJustificacion(fechaCapturaISO){
   if(PRUEBA_MINUTOS_JUSTIFICAR)return new Date(Date.now()+PRUEBA_MINUTOS_JUSTIFICAR*60000).toISOString();
   return sumarDiasHabiles(fechaCapturaISO,DIAS_HABILES_JUSTIFICAR)+'T23:59:59';
+}
+function calcularFechaLimiteAutorizacion(fechaCapturaISO){
+  if(PRUEBA_MINUTOS_JUSTIFICAR)return new Date(Date.now()+PRUEBA_MINUTOS_JUSTIFICAR*60000).toISOString();
+  return sumarDiasHabiles(fechaCapturaISO,DIAS_HABILES_AUTORIZACION_MANIOBRA)+'T23:59:59';
 }
 function yaVencioLimite(fechaLimiteISO){
   return !!fechaLimiteISO&&new Date(fechaLimiteISO).getTime()<Date.now();
@@ -700,6 +727,8 @@ function discrepanciasDe(usuario){
 }
 function renderConflictosXML(){
   var u=usuarioSesion();
+  var cardAut=$('cardAutorizacionManiobra');
+  if(cardAut)cardAut.style.display=(u&&u.esAdmin)?'block':'none';
   var card=$('cardConflictosXML');
   if(!card)return;
   if(!u||!u.esAdmin){card.style.display='none';return;}
@@ -875,7 +904,7 @@ function verificarSesionModulo(){
 window.onFBReady(verificarSesionModulo);
 
 function initSelects(){
-  ['ingOp','filtOp'].forEach(id=>{
+  ['ingOp','filtOp','autOp'].forEach(id=>{
     const s=$(id);if(!s)return;
     while(s.options.length>1)s.remove(1);
     // value=operadorId (identidad PERMANENTE), no la unidad actual — así los
@@ -1770,6 +1799,47 @@ function agregarIngresoReal(){
 }
 
 // ══════════════════════════════════════════════
+// AUTORIZACIÓN DE MANIOBRAS DEL CLIENTE (solo admin) — a diferencia de un
+// "sin factura" capturado por alguien como Raúl (donde el riesgo es que
+// sume varios trabajos en un solo monto), aquí el monto YA es el oficial
+// que el cliente autorizó por correo antes de existir la factura. Se
+// registra igual que un "sin factura" (sinFacturaJustificar/observaciones
+// como ID), pero con un plazo más largo y marcado como
+// esAutorizacionCliente para diferenciarlo — el responsable de sustituirlo
+// con la factura real puede ser otra persona (ej. Raúl), no
+// necesariamente quien lo capturó aquí.
+// ══════════════════════════════════════════════
+function agregarAutorizacionManiobra(){
+  var u=usuarioSesion();
+  if(!u||!u.esAdmin){alert('Solo un administrador puede registrar autorizaciones de maniobras.');return;}
+  var unidad=parseInt($('autOp').value||0);
+  if(!unidad){alert('Selecciona el operador.');return;}
+  var monto=parseFloat($('autMonto').value||0);
+  if(!monto){alert('Ingresa el monto autorizado.');return;}
+  var pedido=($('autPedido').value||'').trim();
+  if(!pedido){alert('Escribe el pedido/PO del cliente — es el ID que se va a usar después para ligar la factura real.');return;}
+  var pedidoNorm=pedido.toUpperCase();
+  if(ingresosDB.some(function(v){return v.sinFacturaJustificar&&!v.sustituidoPorXML&&(v.observaciones||'').trim().toUpperCase()===pedidoNorm;})){
+    alert('Ese pedido/PO ya está registrado y pendiente de sustituir con su factura real. Usa uno distinto o revisa si ya existe.');
+    return;
+  }
+  var fecha=$('autFecha').value||hoy();
+  var cliente=($('autCliente').value||'').trim()||'Sin cliente';
+  var responsable=($('autResponsable').value||'').trim()||u.usuario;
+  var fechaLimite=calcularFechaLimiteAutorizacion(fecha);
+  ingresosDB.push({id:uid(),unidad:unidad,folio:'MANIOBRAS',fecha:fecha,cliente:cliente,tipo:'maniobra',
+    subtotal:monto,subtFlete:0,subtManiobras:monto,subtOtros:0,
+    iva:0,ret:0,total:monto,estado:'sin_liquidar',liqNum:null,origen:'autorizacion_cliente',
+    ruta:[],observaciones:pedido,
+    sinFacturaJustificar:true,fechaLimiteJustificacion:fechaLimite,
+    capturadoPor:{usuario:responsable,nombre:responsable},
+    sustituidoPorXML:false,pdfURL:null,esAutorizacionCliente:true});
+  guardar();renderIngresos();
+  $('autMonto').value='';$('autPedido').value='';
+  alert('✅ Autorización registrada: '+fmt(monto)+' para '+(nombreOp(unidad)||unidad)+'.\n\nPlazo hasta '+fechaLimite.slice(0,10)+' ('+DIAS_HABILES_AUTORIZACION_MANIOBRA+' días hábiles) para que '+responsable+' suba la factura real y la ligue con el pedido "'+pedido+'".');
+}
+
+// ══════════════════════════════════════════════
 // REPORTE (gráficas de distribución) — se recalcula con los MISMOS filtros
 // de la tabla (operador/fechas/estatus), así que basta con moverlos ahí
 // arriba para que el reporte también cambie.
@@ -1921,7 +1991,7 @@ function renderIngresos(){
     const oCell=so>0?`<td class="num r">${fmt(so)}</td>`:`<td class="num r" style="color:#ccc">—</td>`;
     tb.innerHTML+=`<tr>
       <td style="width:32px;text-align:center"><input type="checkbox" class="chkIng" data-id="${v.id}" ${v.estado!=='sin_liquidar'?'disabled title="No se puede eliminar: ya está liquidado"':''} onchange="actualizarBarraSelIng()"></td>
-      <td class="num">${v.folio}${v.esDesglose?' <span class="badge bg-purple" title="Parte de una factura consolidada desglosada entre varios operadores (mismo CFDI)">🧩</span>':''}${v.observaciones&&!(v.sinFacturaJustificar&&!v.sustituidoPorXML)?` <span title="${v.observaciones.replace(/"/g,'&quot;')}">📝</span>`:''}${v.sinFacturaJustificar&&!v.sustituidoPorXML?(yaVencioLimite(v.fechaLimiteJustificacion)?' <span class="badge bg-red" style="color:#c1121f" title="Debió sustituirse con XML antes de '+v.fechaLimiteJustificacion+'">⚠ SIN FACTURA VENCIDO</span>':' <span class="badge bg-yellow" title="Debe sustituirse con XML antes de '+v.fechaLimiteJustificacion+'">⏳ Sin factura</span>'):''}${v.sustituidoPorXML?' <span class="badge bg-green" title="Ya se sustituyó con el XML real">✓ Sustituido</span>':''}${v.divisionPendiente?' <span class="badge bg-yellow" title="Solicitud de división Flete/Maniobras pendiente de autorización (solicitada por '+(v.divisionPendiente.solicitadoPor||'?')+')">⏳ División pendiente</span>':''}${v.sinFacturaJustificar&&!v.sustituidoPorXML&&v.observaciones?`<div style="font-family:inherit;font-weight:400;font-size:10px;color:#856404;white-space:normal;margin-top:2px" title="ID para ligar el XML real cuando llegue (ver botón 🔄 XML)">🆔 ${v.observaciones.replace(/</g,'&lt;')}</div>`:''}</td><td>${v.fecha}</td>
+      <td class="num">${v.folio}${v.esDesglose?' <span class="badge bg-purple" title="Parte de una factura consolidada desglosada entre varios operadores (mismo CFDI)">🧩</span>':''}${v.observaciones&&!(v.sinFacturaJustificar&&!v.sustituidoPorXML)?` <span title="${v.observaciones.replace(/"/g,'&quot;')}">📝</span>`:''}${v.sinFacturaJustificar&&!v.sustituidoPorXML?(yaVencioLimite(v.fechaLimiteJustificacion)?' <span class="badge bg-red" style="color:#c1121f" title="Debió sustituirse con XML antes de '+v.fechaLimiteJustificacion+'">⚠ SIN FACTURA VENCIDO</span>':' <span class="badge bg-yellow" title="Debe sustituirse con XML antes de '+v.fechaLimiteJustificacion+'">⏳ Sin factura</span>'):''}${v.esAutorizacionCliente&&!v.sustituidoPorXML?' <span class="badge" style="background:#dbeafe;color:#1e40af" title="Monto autorizado directamente por el cliente antes de la factura — no es una suma ni una captura libre">📧 Autorizado por cliente</span>':''}${v.sustituidoPorXML?' <span class="badge bg-green" title="Ya se sustituyó con el XML real">✓ Sustituido</span>':''}${v.divisionPendiente?' <span class="badge bg-yellow" title="Solicitud de división Flete/Maniobras pendiente de autorización (solicitada por '+(v.divisionPendiente.solicitadoPor||'?')+')">⏳ División pendiente</span>':''}${v.sinFacturaJustificar&&!v.sustituidoPorXML&&v.observaciones?`<div style="font-family:inherit;font-weight:400;font-size:10px;color:#856404;white-space:normal;margin-top:2px" title="ID para ligar el XML real cuando llegue (ver botón 🔄 XML)">🆔 ${v.observaciones.replace(/</g,'&lt;')}</div>`:''}</td><td>${v.fecha}</td>
       <td style="font-size:11px">${nombreOpV?nombreOpV.split(' ').slice(0,2).join(' '):'?'}</td>
       <td style="max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px">${v.cliente}</td>
       ${fCell}${mCell}${oCell}
