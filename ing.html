@@ -486,7 +486,45 @@ function _matchOperadorPorPlacaXML(doc){
   var placaNorm=window.normPlaca(placaCruda);
   if(!placaNorm)return null;
   var op=OPERADORES.find(function(o){return o.placa&&window.normPlaca(o.placa)===placaNorm;});
-  return op?{operadorId:op.operadorId,placa:placaCruda}:null;
+  return op?{operadorId:op.operadorId,placa:placaCruda,unidad:op.unidad}:null;
+}
+// Modal de respaldo cuando el XML no trae placa (facturas normales sin
+// Carta Porte — Flete/Maniobras/Repartos, etc.): pide operador Y unidad a
+// mano, en vez de simplemente rechazar el archivo — al confirmar, se
+// vuelve a llamar parseXML con esos dos valores ya resueltos.
+var _opUnidadPendiente=null;
+function abrirOpUnidadModal(text,fname){
+  _opUnidadPendiente={text:text,fname:fname};
+  var s=$('opUnidadModalOp');
+  while(s.options.length>1)s.remove(1);
+  OPERADORES.forEach(function(op){
+    var o=document.createElement('option');
+    o.value=op.operadorId;o.textContent=op.clave+' · '+op.nombre;
+    s.appendChild(o);
+  });
+  var su=$('opUnidadModalUnidad');
+  while(su.options.length>1)su.remove(1);
+  OPERADORES.slice().sort(function(a,b){return(a.unidad||0)-(b.unidad||0);}).forEach(function(op){
+    var o=document.createElement('option');
+    o.value=op.unidad;o.textContent='Unidad '+op.unidad;
+    su.appendChild(o);
+  });
+  $('opUnidadModalErr').style.display='none';
+  $('opUnidadModal').style.display='flex';
+}
+function cerrarOpUnidadModal(){$('opUnidadModal').style.display='none';_opUnidadPendiente=null;}
+function confirmarOpUnidadModal(){
+  var opId=parseInt($('opUnidadModalOp').value||0);
+  var unidadFisica=parseInt($('opUnidadModalUnidad').value||0);
+  if(!opId||!unidadFisica){
+    $('opUnidadModalErr').style.display='block';
+    $('opUnidadModalErr').textContent='Selecciona operador y unidad, los dos — no se puede registrar sin ambos.';
+    return;
+  }
+  var pend=_opUnidadPendiente;
+  if(!pend)return;
+  cerrarOpUnidadModal();
+  parseXML(pend.text,pend.fname,opId,unidadFisica);
 }
 const $=id=>document.getElementById(id);
 const fmt=(n,d=2)=>'$'+parseFloat(n||0).toLocaleString('es-MX',{minimumFractionDigits:d,maximumFractionDigits:d});
@@ -1199,7 +1237,7 @@ function subirXMLDesgloseEnSegundoPlano(uuid,fname,text){
   }).catch(function(e){console.error('subirXMLDesgloseEnSegundoPlano:',e);});
 }
 
-function parseXML(text,fname,unidad){
+function parseXML(text,fname,unidad,unidadFisica){
   if(usuarioBloqueadoIngresos())return;
   const doc=new DOMParser().parseFromString(text,'text/xml');
   const comp=doc.querySelector('Comprobante');
@@ -1235,11 +1273,20 @@ function parseXML(text,fname,unidad){
   var placaAutoDetectada=null;
   if(!unidad){
     var match=_matchOperadorPorPlacaXML(doc);
-    if(match){unidad=match.operadorId;placaAutoDetectada=match.placa;}
+    if(match){unidad=match.operadorId;placaAutoDetectada=match.placa;unidadFisica=match.unidad;}
     else{
-      alert('⚠️ '+fname+': no se pudo identificar el operador por la placa de la Carta Porte (no trae placa, o no coincide con ninguna unidad registrada en Flota). Selecciona el operador arriba y vuelve a subir el XML.');
+      // Este XML no trae placa (o no coincide con ninguna registrada en
+      // Flota) — normal en facturas que no son Carta Porte (ej. solo
+      // Flete/Maniobras/Repartos, sin complemento de transporte). Se pide
+      // operador Y unidad con un modal, en vez de simplemente rechazar el
+      // archivo — así no hay que volver a seleccionar y resubir.
+      abrirOpUnidadModal(text,fname);
       return;
     }
+  }
+  if(!unidadFisica){
+    var opParaUnidad=OPERADORES.find(function(o){return o.operadorId===unidad;});
+    unidadFisica=opParaUnidad?opParaUnidad.unidad:null;
   }
   const folioCompleto=serie+'-'+folio;
   if(ingresosDB.some(v=>v.folio===folioCompleto&&v.unidad===unidad)){
@@ -1299,7 +1346,7 @@ function parseXML(text,fname,unidad){
     subtotal,subtFlete,subtManiobras,subtOtros,iva,ret,total:parseFloat(comp.getAttribute('Total')||0),
     estado:'sin_liquidar',liqNum:null,origen:'xml',ruta,
     uuid,rfcEmisor,rfcReceptor,satEstado:null,satCancelado:false,xmlURL:null,
-    placaDetectada:placaAutoDetectada});
+    placaDetectada:placaAutoDetectada,unidadAlCapturar:unidadFisica||null});
   guardar();renderIngresos();
   subirXMLIngresoEnSegundoPlano(uuid,fname,text);
   alert('✅ '+fname+' registrado'+(placaAutoDetectada?' — operador identificado automáticamente por la placa '+placaAutoDetectada+' ('+(nombreOp(unidad)||unidad)+')':'')+'.'+(ruta.length?' Ruta: '+ruta.length+' tramos.':''));
@@ -2676,6 +2723,21 @@ function calcularFechaLimiteJustificacionAdmin(fechaISO){
       <button class="lock-cancel" onclick="cerrarCorregirOperador()">Cancelar</button>
     </div>
     <div class="lock-err" id="corregirOpErr">Error</div>
+  </div>
+</div>
+
+<!-- MODAL SELECCIONAR OPERADOR Y UNIDAD (cuando el XML no trae placa/Carta Porte) -->
+<div class="lock-overlay" id="opUnidadModal" style="display:none">
+  <div class="divid-box">
+    <h3>🚚 Selecciona operador y unidad</h3>
+    <p>Este XML no trae placa de camión (no es Carta Porte, o la placa no coincide con ninguna registrada en Flota) — no se pudo identificar solo. Elige el operador y la unidad de este viaje para continuar.</p>
+    <div class="field"><label>Operador</label><select id="opUnidadModalOp"><option value="">— Selecciona —</option></select></div>
+    <div class="field"><label>Unidad / Económico</label><select id="opUnidadModalUnidad"><option value="">— Selecciona —</option></select></div>
+    <div class="lock-row">
+      <button class="lock-ok" onclick="confirmarOpUnidadModal()">Continuar</button>
+      <button class="lock-cancel" onclick="cerrarOpUnidadModal()">Cancelar</button>
+    </div>
+    <div class="lock-err" id="opUnidadModalErr">Error</div>
   </div>
 </div>
 </body>
