@@ -267,6 +267,7 @@ tr:hover td{background:#fafafa}
     <div class="row">
       <div class="field" style="flex:2;min-width:220px"><label>Buscar</label><input type="text" id="filtBusca" placeholder="Folio, cliente, operador, fecha o importe..." oninput="renderIngresosDebounced()"></div>
       <div class="field"><label>Operador</label><select id="filtOp" onchange="renderIngresos()"><option value="">Todos</option></select></div>
+      <div class="field"><label>Económico / Unidad</label><select id="filtUnidad" onchange="renderIngresos()"><option value="">Todos</option></select></div>
       <div class="field"><label>Desde</label><input type="date" id="filtDesde" onchange="renderIngresos()"></div>
       <div class="field"><label>Hasta</label><input type="date" id="filtHasta" onchange="renderIngresos()"></div>
       <div class="field"><label>Estatus</label>
@@ -883,6 +884,20 @@ function initSelects(){
     // ingresos siguen ligados a la persona aunque lo reasignen de unidad.
     OPERADORES.forEach(op=>{const o=document.createElement('option');o.value=op.operadorId;o.textContent=op.clave+' · '+op.nombre;s.appendChild(o);});
   });
+  // Filtro de Económico/Unidad INDEPENDIENTE del de Operador — filtra por
+  // el camión ASIGNADO ACTUALMENTE al operador (los ingresos se guardan por
+  // identidad de operador, no por camión — ver comentario arriba).
+  const su=$('filtUnidad');
+  if(su){
+    const actual=su.value;
+    while(su.options.length>1)su.remove(1);
+    OPERADORES.slice().sort((a,b)=>(a.unidad||0)-(b.unidad||0)).forEach(op=>{
+      const o=document.createElement('option');
+      o.value=op.unidad;o.textContent='Unidad '+op.unidad;
+      su.appendChild(o);
+    });
+    su.value=actual;
+  }
 }
 window.onFBReady(async function(){
   OPERADORES=await window.cargarOperadores();
@@ -1897,12 +1912,17 @@ function renderIngresos(){
   renderCandadoManual();
   renderConflictosXML();
   const filtOp=parseInt($('filtOp').value||0);
+  const filtUnidad=parseInt($('filtUnidad').value||0);
   const filtDesde=$('filtDesde').value;
   const filtHasta=$('filtHasta').value;
   const filtEst=$('filtEst').value;
   const filtBusca=normBusca(($('filtBusca')?$('filtBusca').value:'').trim());
+  // El filtro de Económico busca por la unidad ACTUAL del operador (ver
+  // nota en initSelects — v.unidad aquí es identidad de operador, no camión).
+  const opPorUnidadIng=filtUnidad?OPERADORES.find(o=>o.unidad===filtUnidad):null;
   const filtrados=ingresosDB.filter(v=>{
     if(filtOp&&v.unidad!==filtOp)return false;
+    if(filtUnidad&&(!opPorUnidadIng||v.unidad!==opPorUnidadIng.operadorId))return false;
     if(filtDesde&&v.fecha<filtDesde)return false;
     if(filtHasta&&v.fecha>filtHasta)return false;
     if(!coincideEstatus(v,filtEst))return false;
@@ -2148,7 +2168,7 @@ function eliminarSeleccionadosIng(){
 }
 
 function limpiarFiltros(){
-  $('filtOp').value='';$('filtDesde').value='';$('filtHasta').value='';$('filtEst').value='';
+  $('filtOp').value='';$('filtUnidad').value='';$('filtDesde').value='';$('filtHasta').value='';$('filtEst').value='';
   if($('filtBusca'))$('filtBusca').value='';
   renderIngresos();
 }

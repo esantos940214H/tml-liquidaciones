@@ -172,6 +172,7 @@ tr:hover td{background:#fafafa}
     <div class="card-title">🔍 Filtros</div>
     <div class="row">
       <div class="field"><label>Operador</label><select id="filtPcOp" onchange="renderPrecarga()"><option value="">Todos</option></select></div>
+      <div class="field"><label>Económico / Unidad</label><select id="filtPcUnidad" onchange="renderPrecarga()"><option value="">Todos</option></select></div>
       <div class="field"><label>Estatus</label>
         <select id="filtPcEst" onchange="renderPrecarga()">
           <option value="">Todos</option>
@@ -179,7 +180,7 @@ tr:hover td{background:#fafafa}
           <option value="jalado">Jalado</option>
         </select>
       </div>
-      <button class="btn btn-out btn-sm" onclick="$('filtPcOp').value='';$('filtPcEst').value='';renderPrecarga();">Limpiar</button>
+      <button class="btn btn-out btn-sm" onclick="$('filtPcOp').value='';$('filtPcUnidad').value='';$('filtPcEst').value='';renderPrecarga();">Limpiar</button>
     </div>
   </div>
 
@@ -472,6 +473,16 @@ function initSelects(){
   UNIDADES.forEach(function(u){
     var o=document.createElement('option');o.value=u;o.textContent=u;su.appendChild(o);
   });
+  // Filtro de Económico/Unidad INDEPENDIENTE del de Operador — a diferencia
+  // de otros módulos, cada comprobante YA guarda su propia unidad real (ver
+  // docData.unidad en procesarXML), así que este filtro compara directo
+  // contra ese campo, sin pasar por el operador asignado hoy.
+  var suf=$('filtPcUnidad');
+  if(suf){
+    UNIDADES.forEach(function(u){
+      var o=document.createElement('option');o.value=u;o.textContent='Unidad '+u;suf.appendChild(o);
+    });
+  }
 }
 // Al elegir operador, se propone su unidad ACTUAL por default — queda
 // seleccionable aparte por si este periodo manejó otra.
@@ -730,9 +741,11 @@ function renderPrecarga(){
   var tb=$('tbPrecarga');
   if(!tb)return;
   var filtOp=parseInt($('filtPcOp').value||0);
+  var filtUnidad=parseInt($('filtPcUnidad').value||0);
   var filtEst=$('filtPcEst').value||'';
   var filas=(comprobantesDB||[]).filter(function(c){
     if(filtOp&&parseInt(c.operador)!==filtOp)return false;
+    if(filtUnidad&&parseInt(c.unidad)!==filtUnidad)return false;
     if(filtEst&&c.estado!==filtEst)return false;
     return true;
   }).sort(function(a,b){return(b.fecha||'').localeCompare(a.fecha||'');});

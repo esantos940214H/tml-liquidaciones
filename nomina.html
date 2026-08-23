@@ -145,6 +145,7 @@ tr:hover td{background:#fafafa}
     <div class="card-title">🔍 Filtros</div>
     <div class="row">
       <div class="field"><label>Operador</label><select id="filtNomOp" onchange="renderNomina()"><option value="">Todos</option></select></div>
+      <div class="field"><label>Económico / Unidad</label><select id="filtNomUnidad" onchange="renderNomina()"><option value="">Todos</option></select></div>
       <div class="field"><label>Estatus</label>
         <select id="filtNomEst" onchange="renderNomina()">
           <option value="">Todos</option>
@@ -152,7 +153,7 @@ tr:hover td{background:#fafafa}
           <option value="liquidado">Liquidado</option>
         </select>
       </div>
-      <button class="btn btn-out btn-sm" onclick="$('filtNomOp').value='';$('filtNomEst').value='';renderNomina();">Limpiar</button>
+      <button class="btn btn-out btn-sm" onclick="$('filtNomOp').value='';$('filtNomUnidad').value='';$('filtNomEst').value='';renderNomina();">Limpiar</button>
     </div>
   </div>
 
@@ -400,6 +401,20 @@ function initSelects(){
       s.appendChild(o);
     });
   });
+  // Filtro de Económico/Unidad INDEPENDIENTE del de Operador — filtra por
+  // el camión ASIGNADO ACTUALMENTE (nominaDB se guarda por identidad de
+  // operador, no por camión).
+  var su=$('filtNomUnidad');
+  if(su){
+    var actual=su.value;
+    while(su.options.length>1)su.remove(1);
+    OPERADORES.slice().sort(function(a,b){return(a.unidad||0)-(b.unidad||0);}).forEach(function(op){
+      var o=document.createElement('option');
+      o.value=op.unidad;o.textContent='Unidad '+op.unidad;
+      su.appendChild(o);
+    });
+    su.value=actual;
+  }
 }
 window.onFBReady(async function(){
   OPERADORES=await window.cargarOperadores();
@@ -641,11 +656,16 @@ function renderNomina(){
   var tb=$('tbNomina'),tf=$('tfNomina');
   if(!tb)return;
   var filtroOp=parseInt($('filtNomOp').value||0);
+  var filtroUnidad=parseInt($('filtNomUnidad').value||0);
   var filtroEst=$('filtNomEst').value||'';
+  // El filtro de Económico busca por la unidad ACTUAL del operador (las
+  // claves de nominaDB son identidad de operador, no camión).
+  var opPorUnidadNom=filtroUnidad?OPERADORES.find(function(o){return o.unidad===filtroUnidad;}):null;
   var filas=[];
   Object.keys(nominaDB).forEach(function(key){
     var unidad=parseInt(key);
     if(filtroOp&&unidad!==filtroOp)return;
+    if(filtroUnidad&&(!opPorUnidadNom||unidad!==opPorUnidadNom.operadorId))return;
     (nominaDB[key]||[]).forEach(function(n){
       if(filtroEst&&n.estado!==filtroEst)return;
       filas.push(Object.assign({unidad:unidad},n));
