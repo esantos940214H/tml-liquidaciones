@@ -131,8 +131,9 @@ tr:hover td{background:#fafafa}
   <!-- EXTRAER DE TEXTO DEL CORREO (IA) -->
   <div class="card">
     <div class="card-title">📋 Extraer de texto del correo (IA)</div>
-    <p style="font-size:12px;color:#888;margin-bottom:10px">Copia el recuadro del correo con las maniobras autorizadas y pégalo aquí — la IA identifica cada renglón (operador, monto, fecha, pedido, destino). Después puedes revisar/corregir cada uno antes de registrarlo, nada se guarda automáticamente.</p>
-    <textarea id="autTexto" rows="6" placeholder="Pega aquí el texto del correo..." style="border:1.5px solid #dde;border-radius:6px;padding:8px 10px;font-size:13px;color:#1a1a2e;background:#fafafa;width:100%;font-family:inherit;resize:vertical;margin-bottom:10px"></textarea>
+    <p style="font-size:12px;color:#888;margin-bottom:10px">Sube el PDF del correo (o pégalo como texto) — la IA identifica cada renglón (operador, monto, fecha, pedido, destino). Después puedes revisar/corregir cada uno antes de registrarlo, nada se guarda automáticamente.</p>
+    <div class="field" style="margin-bottom:10px"><label>Archivo del correo (PDF — opcional si vas a pegar el texto)</label><input type="file" id="autArchivo" accept=".pdf" onchange="handleAutArchivo(event)"></div>
+    <textarea id="autTexto" rows="6" placeholder="...o pega aquí el texto del correo" style="border:1.5px solid #dde;border-radius:6px;padding:8px 10px;font-size:13px;color:#1a1a2e;background:#fafafa;width:100%;font-family:inherit;resize:vertical;margin-bottom:10px" oninput="_autPdfBase64=null"></textarea>
     <button class="btn btn-red" id="btnExtraerIA" onclick="extraerConIA()">🤖 Extraer con IA</button>
     <div id="extraerInfo" style="margin-top:10px"></div>
     <div id="wrapExtraidos" style="display:none;margin-top:14px">
@@ -611,9 +612,32 @@ function _matchOperadorPorNombre(nombre,eco){
   });
   return mejorScore>=0.4?mejor:null;
 }
+// Si se sube un PDF (correo exportado/impreso a PDF), se manda tal cual
+// (base64) para que la IA lo lea directo — igual que en Ingresos →
+// Registrar sin factura.
+var _autPdfBase64=null;
+async function handleAutArchivo(ev){
+  var file=ev.target.files[0];
+  if(!file)return;
+  _autPdfBase64=null;
+  $('extraerInfo').innerHTML='<div class="alert alert-info">⏳ Leyendo '+file.name+'...</div>';
+  try{
+    var dataUrl=await new Promise(function(resolve,reject){
+      var r=new FileReader();
+      r.onload=function(e){resolve(e.target.result);};
+      r.onerror=reject;
+      r.readAsDataURL(file);
+    });
+    _autPdfBase64=dataUrl.split(',')[1]||'';
+    $('autTexto').value='';
+    $('extraerInfo').innerHTML='<div class="alert alert-ok">✅ '+file.name+' listo — da clic en "Extraer con IA".</div>';
+  }catch(err){
+    $('extraerInfo').innerHTML='<div class="alert alert-warn">⚠️ No se pudo leer '+file.name+': '+err.message+'</div>';
+  }
+}
 async function extraerConIA(){
   var texto=($('autTexto').value||'').trim();
-  if(!texto){alert('Pega primero el texto del correo.');return;}
+  if(!texto&&!_autPdfBase64){alert('Sube el PDF del correo o pega el texto.');return;}
   if(!FUNCTION_URL_EXTRAER_MANIOBRAS){
     alert('La extracción con IA todavía no está conectada — falta desplegar functions/index.js y pegar su URL en FUNCTION_URL_EXTRAER_MANIOBRAS (ver instrucciones dentro de ese archivo). Mientras tanto, captura a mano abajo.');
     return;
@@ -621,8 +645,9 @@ async function extraerConIA(){
   $('btnExtraerIA').disabled=true;
   $('extraerInfo').innerHTML='<div class="alert alert-info">⏳ Leyendo el correo con IA...</div>';
   try{
+    var body=_autPdfBase64?{pdfBase64:_autPdfBase64}:{texto:texto};
     var r=await fetch(FUNCTION_URL_EXTRAER_MANIOBRAS,{
-      method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({texto:texto})
+      method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)
     });
     var data=await r.json();
     if(data.error)throw new Error(data.error);
@@ -742,7 +767,7 @@ async function registrarExtraidos(){
   renderPendientes();
   _extraidos=errores.length?_extraidos.filter(function(x,i){return errores.some(function(e){return e.indexOf(x.nombreOriginal||x.unidad)===0;});}):[];
   renderExtraidos();
-  if(!errores.length){$('autTexto').value='';$('extraerInfo').innerHTML='';$('wrapExtraidos').style.display='none';}
+  if(!errores.length){$('autTexto').value='';$('extraerInfo').innerHTML='';$('wrapExtraidos').style.display='none';_autPdfBase64=null;if($('autArchivo'))$('autArchivo').value='';}
   alert('✅ Se registraron '+ok+' de '+(ok+errores.length)+' renglón(es).'+(errores.length?'\n\n⚠️ No se registraron:\n'+errores.join('\n'):''));
 }
 

@@ -187,15 +187,28 @@ exports.extraerManiobras = onRequest(
       return;
     }
     const texto = ((req.body && req.body.texto) || '').toString().trim();
-    if (!texto) {
-      res.status(400).json({ error: 'Falta el texto del correo (campo "texto").' });
+    const pdfBase64 = ((req.body && req.body.pdfBase64) || '').toString().trim();
+    if (!texto && !pdfBase64) {
+      res.status(400).json({ error: 'Falta el texto o el PDF del correo (campo "texto" o "pdfBase64").' });
       return;
     }
     if (texto.length > 20000) {
       res.status(400).json({ error: 'El texto es demasiado largo (máximo 20,000 caracteres).' });
       return;
     }
+    if (pdfBase64.length > 15000000) {
+      res.status(400).json({ error: 'El PDF es demasiado grande (máximo ~10 MB).' });
+      return;
+    }
     try {
+      // Si viene el PDF (correo exportado/impreso a PDF), se manda tal cual
+      // como documento — la IA lo lee directo, igual que extraerEstimado.
+      const content = pdfBase64
+        ? [
+            { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: pdfBase64 } },
+            { type: 'text', text: PROMPT_INSTRUCCIONES }
+          ]
+        : PROMPT_INSTRUCCIONES + '\n\n--- CORREO ---\n' + texto;
       const respuesta = await fetch('https://api.anthropic.com/v1/messages', {
         method: 'POST',
         headers: {
@@ -206,7 +219,7 @@ exports.extraerManiobras = onRequest(
         body: JSON.stringify({
           model: 'claude-sonnet-4-5',
           max_tokens: 4000,
-          messages: [{ role: 'user', content: PROMPT_INSTRUCCIONES + '\n\n--- CORREO ---\n' + texto }]
+          messages: [{ role: 'user', content: content }]
         })
       });
       const datos = await respuesta.json();
