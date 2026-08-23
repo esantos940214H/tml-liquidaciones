@@ -40,17 +40,31 @@ const { defineSecret } = require('firebase-functions/params');
 const ANTHROPIC_API_KEY = defineSecret('ANTHROPIC_API_KEY');
 
 const PROMPT_INSTRUCCIONES =
-  'Eres un asistente que extrae datos de un correo de autorización de maniobras de una empresa de mudanzas. ' +
-  'Del texto que te paso, identifica CADA renglón/maniobra que traiga (puede haber varios, uno por operador o viaje). ' +
-  'El correo casi nunca trae todos los campos completos — a veces trae folio, a veces solo T.U.\'s 1, a veces T.U.\'s 1 y 2, ' +
-  'a veces ninguno de esos — extrae TODOS los que sí aparezcan, sin inventar los que falten. ' +
-  'Responde SOLO un arreglo JSON (sin texto explicativo, sin backticks, sin markdown), donde cada elemento tenga ' +
-  'exactamente estas llaves: {"operador":"nombre de la persona tal cual aparece en el correo",' +
-  '"monto":numero_sin_signos_de_pesos_ni_comas,"fecha":"YYYY-MM-DD o null si no aparece",' +
-  '"folio":"número de folio si aparece, o null","pedido":"número de pedido/PO/referencia si aparece, o null",' +
-  '"tu1":"T.U.\'s 1 / TU 1 si aparece, o null","tu2":"T.U.\'s 2 / TU 2 si aparece, o null",' +
-  '"tienda":"nombre de la tienda/sucursal si aparece, o null","destino":"ciudad o lugar destino, o null"}. ' +
-  'Si el correo no trae ninguna maniobra reconocible, responde con un arreglo vacío []. No inventes datos que no estén en el texto.';
+  'Eres un asistente que extrae datos de correos de autorización de maniobras de una empresa de mudanzas (cliente: Centros de ' +
+  'Distribución / DSW). El correo trae una o varias TABLAS (a veces varias tablas mezcladas con párrafos repetidos de ' +
+  'cortesía entre ellas — ignora esos párrafos) con columnas como: Folio (a veces con encabezado "#"), Fecha (formato ' +
+  'DD/MM/AAAA), Tienda (un CÓDIGO alfanumérico de la sucursal, ej. "1149" o "CC13" — NO es un nombre), Destino, Estado, ' +
+  'Tipo de Unidad, T.U.\'s(1), T.U.\'s(2), Línea de Transporte (ignora esta columna, es el nombre de la transportista, no ' +
+  'es dato nuestro), Eco. (número económico del camión, a veces con sufijo de letras como "SV" — quédate solo con el ' +
+  'número), Operador, Placas (ignora esta columna), y Autorizado (el monto). ' +
+  'El correo casi nunca trae todas las columnas llenas — a veces falta el folio, a veces solo viene T.U.\'s(1), a veces ' +
+  'los dos T.U.\'s, a veces ninguno — extrae TODO lo que sí aparezca en cada renglón, sin inventar lo que falte (usa null). ' +
+  'Por cada renglón de la tabla (una fila = una maniobra) arma un objeto con estas llaves exactas: ' +
+  '{"operador":"nombre tal cual aparece (puede tener errores de dedo, cópialo tal cual, no lo corrijas)",' +
+  '"eco":"solo el número económico, sin la letra SV ni espacios, o null si no aparece",' +
+  '"monto": ver regla de abajo,' +
+  '"fecha":"YYYY-MM-DD convertido desde DD/MM/AAAA, o null",' +
+  '"folio":"el folio o # de esa fila, o null",' +
+  '"tu1":"el valor de T.U.\'s(1) de esa fila, o null",' +
+  '"tu2":"el valor de T.U.\'s(2) de esa fila, o null",' +
+  '"tienda":"el código de tienda de esa fila, o null",' +
+  '"destino":"Destino + \', \' + Estado de esa fila (ej. \'Salamanca Hidalgo, Guanajuato\'), o null"}. ' +
+  'REGLA del campo "monto": si la columna Autorizado trae un número (con o sin "$"/comas), pon ese número. ' +
+  'Si dice literalmente "NO PAGA" o solo "-" (sin ningún número), pon el texto "NO_PAGA" (esa maniobra no se paga, no es ' +
+  'un dato faltante). Si dice literalmente "PENDIENTE" (el monto se va a confirmar después en otro correo), pon el texto ' +
+  '"PENDIENTE". Si la celda está vacía o no se puede determinar, pon null. ' +
+  'Responde SOLO un arreglo JSON (sin texto explicativo, sin backticks, sin markdown) con un objeto por cada renglón de ' +
+  'maniobra que encuentres en TODAS las tablas del correo. Si no hay ninguna tabla/renglón reconocible, responde [].';
 
 // v2 — forzar redeploy para tomar la versión nueva del secret ANTHROPIC_API_KEY
 // (Firebase no recoge un secret actualizado si no detecta cambios en el código).
@@ -80,7 +94,7 @@ exports.extraerManiobras = onRequest(
         },
         body: JSON.stringify({
           model: 'claude-sonnet-4-5',
-          max_tokens: 2000,
+          max_tokens: 4000,
           messages: [{ role: 'user', content: PROMPT_INSTRUCCIONES + '\n\n--- CORREO ---\n' + texto }]
         })
       });

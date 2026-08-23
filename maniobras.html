@@ -386,7 +386,7 @@ function renderPendientes(){
       +'<td style="font-size:12px">'+(nombreOp(v.unidad)||v.unidad)+'</td>'
       +'<td>'+v.fecha+'</td>'
       +'<td style="font-size:12px">'+(v.cliente||'')+'</td>'
-      +'<td class="num r">'+fmt(v.total)+'</td>'
+      +'<td class="num r">'+(v.montoPendiente?'<span class="badge bg-yellow">⏳ Pendiente</span>':fmt(v.total))+'</td>'
       +'<td style="font-size:11px">'+(v.observaciones||'')+'</td>'
       +'<td style="font-size:11px">'+responsable+'</td>'
       +'<td>'+(vencido?'<span class="badge bg-red">⚠ Vencido</span>':'<span class="badge bg-yellow">⏳ '+(v.fechaLimiteJustificacion||'').slice(0,10)+'</span>')+'</td>'
@@ -447,16 +447,35 @@ function _buscarDuplicado(datos){
 function _crearAutorizacionEnMemoria(datos){
   var unidad=parseInt(datos.unidad||0);
   if(!unidad)return{ok:false,error:'Falta el operador.'};
+  var pendiente=!!datos.montoPendiente;
   var monto=parseFloat(datos.monto||0);
-  if(!monto)return{ok:false,error:'Falta el monto.'};
+  if(!pendiente&&!monto)return{ok:false,error:'Falta el monto.'};
   var folio=(datos.folio||'').trim();
   var pedido=(datos.pedido||'').trim();
   var tu1=(datos.tu1||'').trim();
   var tu2=(datos.tu2||'').trim();
   if(!folio&&!pedido&&!tu1&&!tu2)return{ok:false,error:'Falta al menos un identificador (folio, pedido/PO o T.U.\'s) para poder ligar la factura real después.'};
+  var idsNuevos=[folio,pedido,tu1,tu2].map(_normTxt).filter(function(s){return s;});
+  // Si ya existe una autorización con MONTO PENDIENTE (el cliente avisó la
+  // maniobra pero todavía no confirmaba cuánto paga) que comparte alguno de
+  // estos identificadores, y ahora SÍ traemos un monto real, es el correo de
+  // seguimiento — se ACTUALIZA ese mismo registro en vez de crear uno nuevo
+  // o bloquearlo como duplicado.
+  if(!pendiente&&monto){
+    var existentePendiente=ingresosDB.find(function(v){
+      if(!v.esAutorizacionCliente||!v.montoPendiente||v.sustituidoPorXML)return false;
+      if(v.unidad!==unidad)return false;
+      var vIds=_normTxt(v.observaciones);
+      return idsNuevos.some(function(id){return vIds.indexOf(id)!==-1;});
+    });
+    if(existentePendiente){
+      existentePendiente.subtotal=monto;existentePendiente.subtManiobras=monto;existentePendiente.total=monto;
+      existentePendiente.montoPendiente=false;
+      return{ok:true,monto:monto,fechaLimite:existentePendiente.fechaLimiteJustificacion,idCombinado:existentePendiente.observaciones,actualizado:true};
+    }
+  }
   var dup=_buscarDuplicado(datos);
   if(dup)return{ok:false,error:'⚠️ DUPLICADO: ya existe una autorización igual (mismo operador, monto, fecha e identificador) — ID registrado: "'+dup.observaciones+'".'};
-  var idsNuevos=[folio,pedido,tu1,tu2].map(_normTxt).filter(function(s){return s;});
   var choqueId=ingresosDB.find(function(v){
     if(!v.sinFacturaJustificar||v.sustituidoPorXML)return false;
     var vIds=_normTxt(v.observaciones);
@@ -482,16 +501,19 @@ function _crearAutorizacionEnMemoria(datos){
   var plazo=parseInt(datos.plazo||15);
   if(!plazo||plazo<1)plazo=15;
   var fechaLimite=sumarDiasHabiles(fecha,plazo)+'T23:59:59';
+  var montoGuardar=pendiente?0:monto;
   // Las maniobras de este cliente NO llevan IVA — el monto autorizado ES el
-  // total, tal cual lo confirma la factura real.
+  // total, tal cual lo confirma la factura real. Si el cliente todavía no
+  // confirma cuánto paga (montoPendiente:true), se guarda en 0 y se
+  // actualiza después cuando llegue el correo de seguimiento (ver arriba).
   ingresosDB.push({id:uid(),unidad:unidad,folio:'MANIOBRAS',fecha:fecha,cliente:cliente,tipo:'maniobra',
-    subtotal:monto,subtFlete:0,subtManiobras:monto,subtOtros:0,
-    iva:0,ret:0,total:monto,estado:'sin_liquidar',liqNum:null,origen:'autorizacion_cliente',
+    subtotal:montoGuardar,subtFlete:0,subtManiobras:montoGuardar,subtOtros:0,
+    iva:0,ret:0,total:montoGuardar,estado:'sin_liquidar',liqNum:null,origen:'autorizacion_cliente',
     ruta:destino?[{origen:'',destino:destino,kms:''}]:[],tienda:tienda,observaciones:idCombinado,
-    sinFacturaJustificar:true,fechaLimiteJustificacion:fechaLimite,
+    sinFacturaJustificar:true,fechaLimiteJustificacion:fechaLimite,montoPendiente:pendiente,
     capturadoPor:{usuario:responsable,nombre:responsable},
     sustituidoPorXML:false,pdfURL:null,esAutorizacionCliente:true});
-  return{ok:true,monto:monto,fechaLimite:fechaLimite,plazo:plazo,idCombinado:idCombinado};
+  return{ok:true,monto:montoGuardar,fechaLimite:fechaLimite,plazo:plazo,idCombinado:idCombinado};
 }
 async function agregarAutorizacionManiobra(){
   var u=usuarioSesion();
@@ -500,8 +522,10 @@ async function agregarAutorizacionManiobra(){
   // Releer justo antes de guardar, para no pisar algo que otra persona haya
   // capturado en Ingresos mientras esta pestaña estaba abierta.
   await cargarIngresos();
+  var montoTxt=($('autMonto').value||'').trim();
+  var pendiente=/^PENDIENTE$/i.test(montoTxt);
   var r=_crearAutorizacionEnMemoria({
-    unidad:unidad,monto:$('autMonto').value,folio:$('autFolio').value,pedido:$('autPedido').value,
+    unidad:unidad,monto:pendiente?'':montoTxt,montoPendiente:pendiente,folio:$('autFolio').value,pedido:$('autPedido').value,
     tu1:$('autTu1').value,tu2:$('autTu2').value,tienda:$('autTienda').value,
     fecha:$('autFecha').value,cliente:$('autCliente').value,destino:$('autDestino').value,
     responsable:$('autResponsable').value||u.usuario,plazo:$('autPlazo').value
@@ -511,7 +535,11 @@ async function agregarAutorizacionManiobra(){
   var responsable=($('autResponsable').value||'').trim()||u.usuario;
   $('autMonto').value='';$('autFolio').value='';$('autPedido').value='';$('autTu1').value='';$('autTu2').value='';$('autTienda').value='';$('autDestino').value='';
   renderPendientes();
-  alert('✅ Autorización registrada: '+fmt(r.monto)+' para '+(nombreOp(unidad)||unidad)+'.\n\nPlazo hasta '+r.fechaLimite.slice(0,10)+' ('+r.plazo+' días hábiles) para que '+responsable+' suba la factura real y la ligue con el identificador "'+r.idCombinado+'" desde Ingresos.');
+  if(r.actualizado){
+    alert('✅ Se actualizó la autorización pendiente con el monto real: '+fmt(r.monto)+' ('+r.idCombinado+').');
+  }else{
+    alert('✅ Autorización registrada: '+(pendiente?'monto PENDIENTE de confirmar':fmt(r.monto))+' para '+(nombreOp(unidad)||unidad)+'.\n\nPlazo hasta '+r.fechaLimite.slice(0,10)+' ('+r.plazo+' días hábiles) para que '+responsable+' suba la factura real y la ligue con el identificador "'+r.idCombinado+'" desde Ingresos.');
+  }
 }
 
 // ══════════════════════════════════════════════
@@ -524,10 +552,20 @@ async function agregarAutorizacionManiobra(){
 // functions` al desplegar functions/index.js (ver instrucciones ahí).
 const FUNCTION_URL_EXTRAER_MANIOBRAS='https://us-central1-tml-liquidaciones.cloudfunctions.net/extraerManiobras';
 let _extraidos=[];
-// Empareja el nombre de operador que devolvió la IA contra OPERADORES por
-// coincidencia de palabras (nombres/apellidos) — no espera que la IA sepa
-// el operadorId, solo el nombre tal cual viene en el correo.
-function _matchOperadorPorNombre(nombre){
+// Empareja el operador que devolvió la IA. Primero por el número
+// económico (columna "Eco." del correo, ej. "532 SV" → 532) contra la
+// unidad ACTUAL de cada operador — es más confiable que el nombre, porque
+// el correo a veces trae el nombre con errores de dedo (ej. "Andrea" en
+// vez de "Andrés"). Si el eco no aparece o no coincide con nadie, cae al
+// nombre por coincidencia de palabras.
+function _matchOperadorPorNombre(nombre,eco){
+  if(eco){
+    var ecoNum=parseInt(String(eco).replace(/[^0-9]/g,'')||0);
+    if(ecoNum){
+      var porEco=OPERADORES.find(function(o){return o.unidad===ecoNum;});
+      if(porEco)return porEco;
+    }
+  }
   if(!nombre)return null;
   var norm=function(s){return(s||'').toString().toUpperCase().normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[^A-Z0-9 ]/g,' ').replace(/\s+/g,' ').trim();};
   var palabras=norm(nombre).split(' ').filter(function(w){return w.length>2;});
@@ -556,16 +594,31 @@ async function extraerConIA(){
     });
     var data=await r.json();
     if(data.error)throw new Error(data.error);
-    _extraidos=(data.renglones||[]).map(function(x){
-      var match=_matchOperadorPorNombre(x.operador);
-      return{nombreOriginal:x.operador||'',unidad:match?match.operadorId:0,monto:x.monto||'',fecha:x.fecha||hoy(),
+    var renglones=data.renglones||[];
+    // "NO_PAGA" (o "-") significa que esa maniobra NO se paga — no hay nada
+    // que autorizar ni registrar, se descarta directo (no se le muestra al
+    // admin como si fuera un dato faltante). "PENDIENTE" sí se registra,
+    // pero marcado como monto pendiente de confirmar (ver
+    // _crearAutorizacionEnMemoria) — normalmente llega un correo posterior
+    // con el monto real para el mismo folio/T.U.
+    var noPagaCount=0;
+    _extraidos=renglones.filter(function(x){
+      var m=(x.monto==null)?'':String(x.monto).trim().toUpperCase();
+      if(m==='NO_PAGA'||m==='NO PAGA'||m==='-'){noPagaCount++;return false;}
+      return true;
+    }).map(function(x){
+      var match=_matchOperadorPorNombre(x.operador,x.eco);
+      var mRaw=(x.monto==null)?'':String(x.monto).trim().toUpperCase();
+      var pendiente=(mRaw==='PENDIENTE');
+      return{nombreOriginal:x.operador||'',eco:x.eco||'',unidad:match?match.operadorId:0,
+        monto:pendiente?'':(x.monto||''),montoPendiente:pendiente,fecha:x.fecha||hoy(),
         folio:x.folio||'',pedido:x.pedido||'',tu1:x.tu1||'',tu2:x.tu2||'',tienda:x.tienda||'',destino:x.destino||''};
     });
-    if(!_extraidos.length){
+    if(!_extraidos.length&&!noPagaCount){
       $('extraerInfo').innerHTML='<div class="alert alert-warn">⚠️ La IA no encontró ningún renglón reconocible en ese texto.</div>';
       $('wrapExtraidos').style.display='none';
     }else{
-      $('extraerInfo').innerHTML='<div class="alert alert-ok">✅ Se encontraron '+_extraidos.length+' renglón(es) — revisa cada uno (el operador se empareja automáticamente, corrígelo si hace falta) antes de registrar.</div>';
+      $('extraerInfo').innerHTML='<div class="alert alert-ok">✅ Se encontraron '+_extraidos.length+' renglón(es) por registrar'+(noPagaCount?' (se descartaron '+noPagaCount+' marcados "NO PAGA", no se registran)':'')+' — revisa cada uno (el operador se empareja por económico/nombre, corrígelo si hace falta) antes de registrar.</div>';
       renderExtraidos();
     }
   }catch(e){
@@ -581,8 +634,10 @@ function renderExtraidos(){
   var opts=function(sel){return'<option value="">— Selecciona —</option>'+OPERADORES.map(function(o){return'<option value="'+o.operadorId+'"'+(o.operadorId===sel?' selected':'')+'>'+o.clave+' · '+o.nombre+'</option>';}).join('');};
   tb.innerHTML=_extraidos.map(function(x,i){
     return '<tr>'
-      +'<td><select style="min-width:170px" onchange="_extraidos['+i+'].unidad=parseInt(this.value||0)">'+opts(x.unidad)+'</select>'+(x.nombreOriginal&&!x.unidad?'<div style="font-size:10px;color:#c1121f">No se encontró "'+x.nombreOriginal+'" — selecciona a mano</div>':'')+'</td>'
-      +'<td class="r"><input type="number" step="0.01" value="'+x.monto+'" style="width:100px;text-align:right" oninput="_extraidos['+i+'].monto=this.value"></td>'
+      +'<td><select style="min-width:170px" onchange="_extraidos['+i+'].unidad=parseInt(this.value||0)">'+opts(x.unidad)+'</select>'
+      +(x.eco?'<div style="font-size:10px;color:#888">Eco. correo: '+x.eco+'</div>':'')
+      +(x.nombreOriginal&&!x.unidad?'<div style="font-size:10px;color:#c1121f">No se encontró "'+x.nombreOriginal+'" — selecciona a mano</div>':'')+'</td>'
+      +'<td class="r"><input type="number" step="0.01" value="'+x.monto+'" placeholder="'+(x.montoPendiente?'PENDIENTE':'0.00')+'" style="width:100px;text-align:right" oninput="_extraidos['+i+'].monto=this.value"></td>'
       +'<td><input type="date" value="'+x.fecha+'" oninput="_extraidos['+i+'].fecha=this.value"></td>'
       +'<td><input type="text" value="'+(x.folio||'').replace(/"/g,'&quot;')+'" style="width:90px" oninput="_extraidos['+i+'].folio=this.value"></td>'
       +'<td><input type="text" value="'+(x.pedido||'').replace(/"/g,'&quot;')+'" style="width:100px" oninput="_extraidos['+i+'].pedido=this.value"></td>'
@@ -604,7 +659,7 @@ async function registrarExtraidos(){
   var plazo=$('autPlazo').value||15;
   var ok=0,errores=[];
   _extraidos.forEach(function(x){
-    var r=_crearAutorizacionEnMemoria({unidad:x.unidad,monto:x.monto,folio:x.folio,pedido:x.pedido,tu1:x.tu1,tu2:x.tu2,tienda:x.tienda,fecha:x.fecha,cliente:cliente,destino:x.destino,responsable:responsable,plazo:plazo});
+    var r=_crearAutorizacionEnMemoria({unidad:x.unidad,monto:x.monto,montoPendiente:x.montoPendiente,folio:x.folio,pedido:x.pedido,tu1:x.tu1,tu2:x.tu2,tienda:x.tienda,fecha:x.fecha,cliente:cliente,destino:x.destino,responsable:responsable,plazo:plazo});
     if(r.ok)ok++;else errores.push((x.nombreOriginal||x.unidad)+': '+r.error);
   });
   if(ok)await window.FB.set('estado','ingresosDB',{data:JSON.stringify(ingresosDB)});
