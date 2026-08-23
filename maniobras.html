@@ -137,9 +137,10 @@ tr:hover td{background:#fafafa}
     <div id="extraerInfo" style="margin-top:10px"></div>
     <div id="wrapExtraidos" style="display:none;margin-top:14px">
       <div class="tbl-wrap"><table>
-        <thead><tr><th>Operador</th><th class="r">Monto</th><th>Fecha</th><th>Pedido/ID</th><th>Destino</th><th></th></tr></thead>
+        <thead><tr><th>Operador</th><th class="r">Monto</th><th>Fecha</th><th>Folio</th><th>Pedido</th><th>T.U. 1</th><th>T.U. 2</th><th>Tienda</th><th>Destino</th><th></th></tr></thead>
         <tbody id="tbExtraidos"></tbody>
       </table></div>
+      <div id="extraidosAvisoDup" style="margin-top:8px"></div>
       <button class="btn btn-red" style="margin-top:10px" onclick="registrarExtraidos()">+ Registrar todos los renglones de arriba</button>
     </div>
   </div>
@@ -153,12 +154,19 @@ tr:hover td{background:#fafafa}
       <div class="field"><label>Cliente</label><input type="text" id="autCliente" value="GRUPO COMERCIAL DSW"></div>
       <div class="field"><label>Monto autorizado</label><input type="number" id="autMonto" placeholder="0.00" step="0.01"></div>
     </div>
+    <div class="grid2" style="margin-bottom:10px">
+      <div class="field"><label>Folio <span style="font-weight:400;font-size:11px;color:#aaa">(opcional)</span></label><input type="text" id="autFolio" placeholder="Si el correo lo trae"></div>
+      <div class="field"><label>Pedido / PO <span style="font-weight:400;font-size:11px;color:#aaa">(opcional)</span></label><input type="text" id="autPedido" placeholder="Ej: 5900379049"></div>
+      <div class="field"><label>T.U.'s 1 <span style="font-weight:400;font-size:11px;color:#aaa">(opcional)</span></label><input type="text" id="autTu1" placeholder="Si el correo lo trae"></div>
+      <div class="field"><label>T.U.'s 2 <span style="font-weight:400;font-size:11px;color:#aaa">(opcional)</span></label><input type="text" id="autTu2" placeholder="Si el correo lo trae"></div>
+    </div>
     <div class="grid2" style="margin-bottom:14px">
-      <div class="field" style="grid-column:span 2"><label>Pedido / PO / referencia del cliente (ID único)</label><input type="text" id="autPedido" placeholder="Ej: 5900379049"></div>
+      <div class="field"><label>Tienda <span style="font-weight:400;font-size:11px;color:#aaa">(opcional)</span></label><input type="text" id="autTienda" placeholder="Nombre de la tienda/sucursal"></div>
       <div class="field"><label>Destino <span style="font-weight:400;font-size:11px;color:#aaa">(opcional)</span></label><input type="text" id="autDestino" placeholder="Municipio, Estado"></div>
       <div class="field"><label>Responsable de subir la factura (correo)</label><input type="text" id="autResponsable" value="raul@mudandote.mx"></div>
       <div class="field"><label>Plazo (días hábiles)</label><input type="number" id="autPlazo" value="15" step="1" min="1"></div>
     </div>
+    <p style="font-size:11px;color:#aaa;margin-bottom:10px">Llena los que traiga el correo (folio, pedido, T.U.'s) — entre más completos, mejor detecta duplicados y más fácil le queda a quien suba la factura sustituirlo con cualquiera de esos datos como ID.</p>
     <button class="btn btn-red" onclick="agregarAutorizacionManiobra()">+ Registrar autorización</button>
   </div>
 
@@ -402,6 +410,36 @@ function eliminarAutorizacion(id){
     renderPendientes();
   });
 }
+// Normaliza texto para comparar (mayúsculas, sin espacios de sobra) — usado
+// tanto para armar el ID combinado como para la detección de duplicados.
+function _normTxt(s){return(s||'').toString().trim().toUpperCase().replace(/\s+/g,' ');}
+
+// Revisa si YA existe una autorización con los mismos datos (operador,
+// monto, fecha, destino, tienda, y al menos uno de folio/pedido/T.U.'s
+// coincidiendo) — para detectar quien pega el mismo correo dos veces por
+// error. No bloquea por monto/fecha solos (podría ser una maniobra
+// distinta the mismo día) — solo cuando ADEMÁS coincide algún identificador.
+function _buscarDuplicado(datos){
+  var unidad=parseInt(datos.unidad||0);
+  var monto=parseFloat(datos.monto||0);
+  var fecha=datos.fecha||'';
+  var destino=_normTxt(datos.destino);
+  var tienda=_normTxt(datos.tienda);
+  var ids=[datos.folio,datos.pedido,datos.tu1,datos.tu2].map(_normTxt).filter(function(s){return s;});
+  if(!ids.length)return null;
+  return ingresosDB.find(function(v){
+    if(!v.esAutorizacionCliente)return false;
+    if(v.unidad!==unidad)return false;
+    if(Math.abs((v.total||0)-monto)>=0.01)return false;
+    if((v.fecha||'')!==fecha)return false;
+    var vDestino=_normTxt((v.ruta&&v.ruta[0]&&v.ruta[0].destino)||'');
+    var vTienda=_normTxt(v.tienda);
+    if(destino&&vDestino&&destino!==vDestino)return false;
+    if(tienda&&vTienda&&tienda!==vTienda)return false;
+    var vIds=_normTxt(v.observaciones);
+    return ids.some(function(id){return vIds.indexOf(id)!==-1;});
+  });
+}
 // Núcleo compartido: crea UNA autorización en ingresosDB (en memoria, sin
 // guardar todavía) — usado tanto por el formulario a mano como por el
 // registro en lote de lo extraído con IA. Regresa {ok:true} o
@@ -411,15 +449,35 @@ function _crearAutorizacionEnMemoria(datos){
   if(!unidad)return{ok:false,error:'Falta el operador.'};
   var monto=parseFloat(datos.monto||0);
   if(!monto)return{ok:false,error:'Falta el monto.'};
+  var folio=(datos.folio||'').trim();
   var pedido=(datos.pedido||'').trim();
-  if(!pedido)return{ok:false,error:'Falta el pedido/PO — es el ID para ligar la factura real.'};
-  var pedidoNorm=pedido.toUpperCase();
-  if(ingresosDB.some(function(v){return v.sinFacturaJustificar&&!v.sustituidoPorXML&&(v.observaciones||'').trim().toUpperCase()===pedidoNorm;})){
-    return{ok:false,error:'El pedido/PO "'+pedido+'" ya está registrado y pendiente de sustituir.'};
-  }
+  var tu1=(datos.tu1||'').trim();
+  var tu2=(datos.tu2||'').trim();
+  if(!folio&&!pedido&&!tu1&&!tu2)return{ok:false,error:'Falta al menos un identificador (folio, pedido/PO o T.U.\'s) para poder ligar la factura real después.'};
+  var dup=_buscarDuplicado(datos);
+  if(dup)return{ok:false,error:'⚠️ DUPLICADO: ya existe una autorización igual (mismo operador, monto, fecha e identificador) — ID registrado: "'+dup.observaciones+'".'};
+  var idsNuevos=[folio,pedido,tu1,tu2].map(_normTxt).filter(function(s){return s;});
+  var choqueId=ingresosDB.find(function(v){
+    if(!v.sinFacturaJustificar||v.sustituidoPorXML)return false;
+    var vIds=_normTxt(v.observaciones);
+    return idsNuevos.some(function(id){return vIds.indexOf(id)!==-1;});
+  });
+  if(choqueId)return{ok:false,error:'Alguno de esos identificadores ya está en uso por otro ingreso sin factura pendiente (ID: "'+choqueId.observaciones+'"). Usa uno distinto o revisa si ya existe.'};
+  // Se guardan TODOS los identificadores que traiga el correo (a veces
+  // manda folio, a veces T.U. 1, a veces los dos, a veces ninguno de
+  // folio/pedido) — así, cuando Raúl suba la factura real, puede sustituir
+  // usando CUALQUIERA de ellos como ID (ver coincidencia por "contiene" en
+  // ing.html, no por igualdad exacta).
+  var idParts=[];
+  if(folio)idParts.push('FOLIO:'+folio);
+  if(pedido)idParts.push('PED:'+pedido);
+  if(tu1)idParts.push('TU1:'+tu1);
+  if(tu2)idParts.push('TU2:'+tu2);
+  var idCombinado=idParts.join(' | ');
   var fecha=datos.fecha||hoy();
   var cliente=(datos.cliente||'').trim()||'Sin cliente';
   var destino=(datos.destino||'').trim();
+  var tienda=(datos.tienda||'').trim();
   var responsable=(datos.responsable||'').trim()||'admin';
   var plazo=parseInt(datos.plazo||15);
   if(!plazo||plazo<1)plazo=15;
@@ -429,11 +487,11 @@ function _crearAutorizacionEnMemoria(datos){
   ingresosDB.push({id:uid(),unidad:unidad,folio:'MANIOBRAS',fecha:fecha,cliente:cliente,tipo:'maniobra',
     subtotal:monto,subtFlete:0,subtManiobras:monto,subtOtros:0,
     iva:0,ret:0,total:monto,estado:'sin_liquidar',liqNum:null,origen:'autorizacion_cliente',
-    ruta:destino?[{origen:'',destino:destino,kms:''}]:[],observaciones:pedido,
+    ruta:destino?[{origen:'',destino:destino,kms:''}]:[],tienda:tienda,observaciones:idCombinado,
     sinFacturaJustificar:true,fechaLimiteJustificacion:fechaLimite,
     capturadoPor:{usuario:responsable,nombre:responsable},
     sustituidoPorXML:false,pdfURL:null,esAutorizacionCliente:true});
-  return{ok:true,monto:monto,fechaLimite:fechaLimite,plazo:plazo};
+  return{ok:true,monto:monto,fechaLimite:fechaLimite,plazo:plazo,idCombinado:idCombinado};
 }
 async function agregarAutorizacionManiobra(){
   var u=usuarioSesion();
@@ -443,17 +501,17 @@ async function agregarAutorizacionManiobra(){
   // capturado en Ingresos mientras esta pestaña estaba abierta.
   await cargarIngresos();
   var r=_crearAutorizacionEnMemoria({
-    unidad:unidad,monto:$('autMonto').value,pedido:$('autPedido').value,
+    unidad:unidad,monto:$('autMonto').value,folio:$('autFolio').value,pedido:$('autPedido').value,
+    tu1:$('autTu1').value,tu2:$('autTu2').value,tienda:$('autTienda').value,
     fecha:$('autFecha').value,cliente:$('autCliente').value,destino:$('autDestino').value,
     responsable:$('autResponsable').value||u.usuario,plazo:$('autPlazo').value
   });
   if(!r.ok){alert(r.error);return;}
   await window.FB.set('estado','ingresosDB',{data:JSON.stringify(ingresosDB)});
-  var pedido=$('autPedido').value;
   var responsable=($('autResponsable').value||'').trim()||u.usuario;
-  $('autMonto').value='';$('autPedido').value='';$('autDestino').value='';
+  $('autMonto').value='';$('autFolio').value='';$('autPedido').value='';$('autTu1').value='';$('autTu2').value='';$('autTienda').value='';$('autDestino').value='';
   renderPendientes();
-  alert('✅ Autorización registrada: '+fmt(r.monto)+' para '+(nombreOp(unidad)||unidad)+'.\n\nPlazo hasta '+r.fechaLimite.slice(0,10)+' ('+r.plazo+' días hábiles) para que '+responsable+' suba la factura real y la ligue con el pedido "'+pedido+'" desde Ingresos.');
+  alert('✅ Autorización registrada: '+fmt(r.monto)+' para '+(nombreOp(unidad)||unidad)+'.\n\nPlazo hasta '+r.fechaLimite.slice(0,10)+' ('+r.plazo+' días hábiles) para que '+responsable+' suba la factura real y la ligue con el identificador "'+r.idCombinado+'" desde Ingresos.');
 }
 
 // ══════════════════════════════════════════════
@@ -500,7 +558,8 @@ async function extraerConIA(){
     if(data.error)throw new Error(data.error);
     _extraidos=(data.renglones||[]).map(function(x){
       var match=_matchOperadorPorNombre(x.operador);
-      return{nombreOriginal:x.operador||'',unidad:match?match.operadorId:0,monto:x.monto||'',fecha:x.fecha||hoy(),pedido:x.pedido||'',destino:x.destino||''};
+      return{nombreOriginal:x.operador||'',unidad:match?match.operadorId:0,monto:x.monto||'',fecha:x.fecha||hoy(),
+        folio:x.folio||'',pedido:x.pedido||'',tu1:x.tu1||'',tu2:x.tu2||'',tienda:x.tienda||'',destino:x.destino||''};
     });
     if(!_extraidos.length){
       $('extraerInfo').innerHTML='<div class="alert alert-warn">⚠️ La IA no encontró ningún renglón reconocible en ese texto.</div>';
@@ -525,8 +584,12 @@ function renderExtraidos(){
       +'<td><select style="min-width:170px" onchange="_extraidos['+i+'].unidad=parseInt(this.value||0)">'+opts(x.unidad)+'</select>'+(x.nombreOriginal&&!x.unidad?'<div style="font-size:10px;color:#c1121f">No se encontró "'+x.nombreOriginal+'" — selecciona a mano</div>':'')+'</td>'
       +'<td class="r"><input type="number" step="0.01" value="'+x.monto+'" style="width:100px;text-align:right" oninput="_extraidos['+i+'].monto=this.value"></td>'
       +'<td><input type="date" value="'+x.fecha+'" oninput="_extraidos['+i+'].fecha=this.value"></td>'
-      +'<td><input type="text" value="'+(x.pedido||'').replace(/"/g,'&quot;')+'" style="width:120px" oninput="_extraidos['+i+'].pedido=this.value"></td>'
-      +'<td><input type="text" value="'+(x.destino||'').replace(/"/g,'&quot;')+'" style="width:120px" oninput="_extraidos['+i+'].destino=this.value"></td>'
+      +'<td><input type="text" value="'+(x.folio||'').replace(/"/g,'&quot;')+'" style="width:90px" oninput="_extraidos['+i+'].folio=this.value"></td>'
+      +'<td><input type="text" value="'+(x.pedido||'').replace(/"/g,'&quot;')+'" style="width:100px" oninput="_extraidos['+i+'].pedido=this.value"></td>'
+      +'<td><input type="text" value="'+(x.tu1||'').replace(/"/g,'&quot;')+'" style="width:80px" oninput="_extraidos['+i+'].tu1=this.value"></td>'
+      +'<td><input type="text" value="'+(x.tu2||'').replace(/"/g,'&quot;')+'" style="width:80px" oninput="_extraidos['+i+'].tu2=this.value"></td>'
+      +'<td><input type="text" value="'+(x.tienda||'').replace(/"/g,'&quot;')+'" style="width:100px" oninput="_extraidos['+i+'].tienda=this.value"></td>'
+      +'<td><input type="text" value="'+(x.destino||'').replace(/"/g,'&quot;')+'" style="width:100px" oninput="_extraidos['+i+'].destino=this.value"></td>'
       +'<td><button class="btn btn-out btn-sm" onclick="_extraidos.splice('+i+',1);renderExtraidos()">✕</button></td>'
       +'</tr>';
   }).join('');
@@ -541,7 +604,7 @@ async function registrarExtraidos(){
   var plazo=$('autPlazo').value||15;
   var ok=0,errores=[];
   _extraidos.forEach(function(x){
-    var r=_crearAutorizacionEnMemoria({unidad:x.unidad,monto:x.monto,pedido:x.pedido,fecha:x.fecha,cliente:cliente,destino:x.destino,responsable:responsable,plazo:plazo});
+    var r=_crearAutorizacionEnMemoria({unidad:x.unidad,monto:x.monto,folio:x.folio,pedido:x.pedido,tu1:x.tu1,tu2:x.tu2,tienda:x.tienda,fecha:x.fecha,cliente:cliente,destino:x.destino,responsable:responsable,plazo:plazo});
     if(r.ok)ok++;else errores.push((x.nombreOriginal||x.unidad)+': '+r.error);
   });
   if(ok)await window.FB.set('estado','ingresosDB',{data:JSON.stringify(ingresosDB)});

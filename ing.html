@@ -1389,8 +1389,14 @@ function guardarDesglose(){
       const idSust=(g.sustituyeIds&&g.sustituyeIds[0])?g.sustituyeIds[0]:'';
       let candidato=null;
       if(idSust){
-        const idSustNorm=idSust.toUpperCase();
-        candidato=ingresosDB.find(v=>v.unidad===g.unidad&&v.sinFacturaJustificar&&!v.sustituidoPorXML&&(v.observaciones||'').trim().toUpperCase()===idSustNorm);
+        const idSustNorm=idSust.trim().toUpperCase();
+        // "Contiene" en vez de igualdad exacta: una autorización de
+        // maniobras (ver maniobras.html) puede guardar VARIOS
+        // identificadores juntos ("FOLIO:x | PED:y | TU1:z | TU2:w") porque
+        // el correo no siempre trae los mismos campos — así, con que Raúl
+        // teclee CUALQUIERA de esos valores (el folio, el pedido, o
+        // cualquiera de los T.U.'s), lo encuentra igual.
+        candidato=ingresosDB.find(v=>v.unidad===g.unidad&&v.sinFacturaJustificar&&!v.sustituidoPorXML&&(v.observaciones||'').toUpperCase().indexOf(idSustNorm)!==-1);
         if(!candidato&&!confirm('⚠️ No se encontró ningún ingreso sin factura pendiente con el ID "'+idSust+'" para este operador.\n\n¿Registrar de todas formas como un ingreso nuevo (sin sustituir nada)?'))continue;
       }
       if(candidato){
