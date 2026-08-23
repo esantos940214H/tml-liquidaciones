@@ -201,7 +201,10 @@ tr:hover td{background:#fafafa}
         </div>
       </div>
     </div>
-    <div style="background:#f5f5f8;border-radius:8px;padding:14px">
+    <div id="avisoSinCapturaManual" style="display:none;background:#e8f4fd;border:1px solid #bae6fd;border-radius:8px;padding:14px;color:#0369a1;font-size:12px;line-height:1.6">
+      ℹ️ La captura manual ya no está disponible para tu usuario — registra los viajes subiendo el XML de la Carta Porte/factura arriba (se detecta todo automático). Si necesitas registrar un ingreso sin factura todavía, pídeselo a un administrador.
+    </div>
+    <div id="cardCapturaManual" style="background:#f5f5f8;border-radius:8px;padding:14px">
       <div style="font-size:11px;font-weight:700;text-transform:uppercase;color:#888;margin-bottom:10px">Captura manual / ajuste</div>
       <div class="grid4" style="margin-bottom:10px">
         <div class="field"><label>Folio</label><input type="text" id="ingFolio" placeholder="R2122"></div>
@@ -977,6 +980,13 @@ function verificarSesionModulo(){
     return;
   }
   mostrarSesionEnHeader();
+  // La captura manual solo la puede usar un administrador — para todos los
+  // demás (Raúl incluido), el único camino es subir el XML (se detecta todo
+  // automático, ver _matchOperadorPorPlacaXML). Si algún día necesita
+  // registrar algo sin factura, se lo pide a un administrador.
+  var esAdminIng=!!u.esAdmin;
+  if($('cardCapturaManual'))$('cardCapturaManual').style.display=esAdminIng?'':'none';
+  if($('avisoSinCapturaManual'))$('avisoSinCapturaManual').style.display=esAdminIng?'none':'block';
 }
 window.onFBReady(verificarSesionModulo);
 
@@ -1772,6 +1782,8 @@ function mcCalcularGrupos(){
   return{grupos:grupos,subtotalTotalC:subtotalTotalC};
 }
 function agregarIngresoManualMultiOp(){
+  var _uMan=usuarioSesion();
+  if(!_uMan||!_uMan.esAdmin){alert('La captura manual ya no está disponible para tu usuario — registra el viaje subiendo el XML.');return;}
   const {grupos}=mcCalcularGrupos();
   if(!grupos.length){alert('Agrega al menos un renglón con operador y algún monto (Flete, Maniobras u Otros).');return;}
   const folioBase=$('ingFolio').value||('MAN-'+uid().slice(0,6).toUpperCase());
@@ -1839,6 +1851,8 @@ function agregarIngresoManualMultiOp(){
 }
 
 function agregarIngresoReal(){
+  var _uReal=usuarioSesion();
+  if(!_uReal||!_uReal.esAdmin){alert('La captura manual ya no está disponible para tu usuario — registra el viaje subiendo el XML.');return;}
   if(usuarioBloqueadoIngresos())return;
   if(mcMultiOp){agregarIngresoManualMultiOp();return;}
   const unidad=parseInt($('ingOp').value||0);
