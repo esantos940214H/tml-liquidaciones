@@ -270,9 +270,10 @@ tr:hover td{background:#fafafa}
   <!-- REGISTRAR SIN FACTURA CON IA (solo admin) — Estimado de Transportación -->
   <div class="card" id="cardEstimadoIA" style="display:none">
     <div class="card-title">🤖 Registrar sin factura (Estimado de Transportación)</div>
-    <div class="alert alert-info">Solo administrador. Pega el texto del Estimado de Transportación — la IA extrae folio, fecha, cliente, origen/destino y separa Flete/Maniobras/Otros. El estimado NO trae operador ni económico, así que selecciónalo tú abajo.</div>
+    <div class="alert alert-info">Solo administrador. Sube el archivo del Estimado de Transportación (PDF, Excel o Word) o pega el texto — la IA extrae folio, fecha, cliente, origen/destino y separa Flete/Maniobras/Otros. El estimado NO trae operador ni económico, así que selecciónalo tú abajo.</div>
     <div class="field"><label>Operador</label><select id="estOp"><option value="">— Selecciona —</option></select></div>
-    <div class="field" style="margin-top:8px"><label>Texto del estimado</label><textarea id="estTexto" rows="6" placeholder="Pega aquí el texto del Estimado de Transportación..."></textarea></div>
+    <div class="field" style="margin-top:8px"><label>Archivo del estimado (PDF, Excel o Word — opcional si vas a pegar el texto)</label><input type="file" id="estArchivo" accept=".pdf,.xlsx,.xls,.docx,.doc" onchange="handleEstArchivo(event)"></div>
+    <div class="field" style="margin-top:8px"><label>Texto del estimado</label><textarea id="estTexto" rows="6" placeholder="...o pega aquí el texto del Estimado de Transportación" oninput="_estPdfBase64=null"></textarea></div>
     <button class="btn btn-red" id="btnExtraerEstimado" style="margin-top:10px" onclick="extraerEstimadoConIA()">🤖 Extraer con IA</button>
     <div id="estimadoInfo" style="margin-top:10px"></div>
     <div id="wrapEstimadoRevision" style="display:none;margin-top:12px;background:#f5f5f8;border-radius:8px;padding:14px">
@@ -1063,8 +1064,15 @@ function verificarSesionModulo(){
   // automático, ver _matchOperadorPorPlacaXML). Si algún día necesita
   // registrar algo sin factura, se lo pide a un administrador.
   var esAdminIng=!!u.esAdmin;
-  if($('cardCapturaManual'))$('cardCapturaManual').style.display=esAdminIng?'':'none';
-  if($('avisoSinCapturaManual'))$('avisoSinCapturaManual').style.display=esAdminIng?'none':'block';
+  // La captura manual (viaje único y reparto multi-operador) ya quedó
+  // obsoleta para TODOS, incluido el administrador — el reemplazo es subir
+  // el XML (se detecta todo automático, con modal de operador/unidad si no
+  // trae placa) o, para sin factura, la tarjeta "🤖 Registrar sin factura".
+  if($('cardCapturaManual'))$('cardCapturaManual').style.display='none';
+  if($('avisoSinCapturaManual')){
+    $('avisoSinCapturaManual').style.display='block';
+    $('avisoSinCapturaManual').innerHTML='ℹ️ La captura manual ya no está disponible — registra los viajes subiendo el XML (se detecta todo automático) '+(esAdminIng?'o, para un ingreso sin factura todavía, usa la tarjeta "🤖 Registrar sin factura" más abajo.':'. Si necesitas registrar un ingreso sin factura, pídeselo a un administrador.');
+  }
   if($('cardEstimadoIA'))$('cardEstimadoIA').style.display=esAdminIng?'':'none';
 }
 window.onFBReady(verificarSesionModulo);
@@ -2579,14 +2587,60 @@ async function procesarFacturaManiobrasExcel(){
 // ══════════════════════════════════════════════
 const FUNCTION_URL_EXTRAER_ESTIMADO='https://us-central1-tml-liquidaciones.cloudfunctions.net/extraerEstimado';
 const DIAS_HABILES_JUSTIFICAR_ADMIN=30;
+// Si se sube un PDF, se manda tal cual (base64) para que la IA lo LEA
+// directo — mejor que convertirlo a texto a mano, conserva tablas/formato.
+// Excel y Word sí se convierten a texto en el navegador (la IA de Anthropic
+// no lee esos formatos directo) y se rellenan en el textarea de siempre.
+var _estPdfBase64=null;
+async function handleEstArchivo(ev){
+  var file=ev.target.files[0];
+  if(!file)return;
+  _estPdfBase64=null;
+  var nombre=file.name.toLowerCase();
+  $('estimadoInfo').innerHTML='<div class="alert alert-info">⏳ Leyendo '+file.name+'...</div>';
+  try{
+    if(nombre.endsWith('.pdf')){
+      var dataUrl=await new Promise(function(resolve,reject){
+        var r=new FileReader();
+        r.onload=function(e){resolve(e.target.result);};
+        r.onerror=reject;
+        r.readAsDataURL(file);
+      });
+      _estPdfBase64=dataUrl.split(',')[1]||'';
+      $('estTexto').value='';
+      $('estimadoInfo').innerHTML='<div class="alert alert-ok">✅ '+file.name+' listo — da clic en "Extraer con IA".</div>';
+    }else if(nombre.endsWith('.xlsx')||nombre.endsWith('.xls')){
+      await cargarScriptUnaVez('https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js');
+      var buf=await _leerArchivoArrayBuffer(file);
+      var wb=XLSX.read(buf,{type:'array',cellDates:true});
+      var textoHoja=wb.SheetNames.map(function(nombreHoja){
+        var ws=wb.Sheets[nombreHoja];
+        return XLSX.utils.sheet_to_csv(ws,{blankrows:false});
+      }).join('\n');
+      $('estTexto').value=textoHoja;
+      $('estimadoInfo').innerHTML='<div class="alert alert-ok">✅ '+file.name+' leído — revisa el texto de abajo y da clic en "Extraer con IA".</div>';
+    }else if(nombre.endsWith('.docx')||nombre.endsWith('.doc')){
+      await cargarScriptUnaVez('https://cdn.jsdelivr.net/npm/mammoth@1.6.0/mammoth.browser.min.js');
+      var buf2=await _leerArchivoArrayBuffer(file);
+      var res=await mammoth.extractRawText({arrayBuffer:buf2});
+      $('estTexto').value=res.value||'';
+      $('estimadoInfo').innerHTML='<div class="alert alert-ok">✅ '+file.name+' leído — revisa el texto de abajo y da clic en "Extraer con IA".</div>';
+    }else{
+      $('estimadoInfo').innerHTML='<div class="alert alert-warn">⚠️ Formato no reconocido — sube PDF, Excel (.xlsx/.xls) o Word (.docx/.doc), o pega el texto directo.</div>';
+    }
+  }catch(err){
+    $('estimadoInfo').innerHTML='<div class="alert alert-warn">⚠️ No se pudo leer '+file.name+': '+err.message+'</div>';
+  }
+}
 async function extraerEstimadoConIA(){
   var texto=($('estTexto').value||'').trim();
-  if(!texto){alert('Pega primero el texto del estimado.');return;}
+  if(!texto&&!_estPdfBase64){alert('Sube el archivo del estimado o pega el texto.');return;}
   $('btnExtraerEstimado').disabled=true;
   $('estimadoInfo').innerHTML='<div class="alert alert-info">⏳ Leyendo el estimado con IA...</div>';
   try{
+    var body=_estPdfBase64?{pdfBase64:_estPdfBase64}:{texto:texto};
     var r=await fetch(FUNCTION_URL_EXTRAER_ESTIMADO,{
-      method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({texto:texto})
+      method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)
     });
     var data=await r.json();
     if(data.error)throw new Error(data.error);
@@ -2624,6 +2678,8 @@ function cancelarEstimado(){
   $('wrapEstimadoRevision').style.display='none';
   $('estTexto').value='';
   $('estimadoInfo').innerHTML='';
+  _estPdfBase64=null;
+  if($('estArchivo'))$('estArchivo').value='';
 }
 function registrarEstimado(){
   var u=usuarioSesion();
