@@ -1389,7 +1389,7 @@ function repGerencial(){
   const getOp=function(l){
     const opId=parseInt(l.opId||l.unidad||0);
     if(!porOp[opId])porOp[opId]={opId:opId,unidad:l.unidad,nombre:opNombre(l.opId||l.unidad),
-      flete:0,maniobras:0,otrosIng:0,dieselMonto:0,dieselLitros:0,casetas:0,otrosGastos:0};
+      flete:0,maniobras:0,otrosIng:0,dieselMonto:0,dieselLitros:0,casetas:0,otrosGastos:0,comision:0};
     return porOp[opId];
   };
   // El snapshot (viajesList) solo guarda subtFlete/subtManiobras/subtOtros en
@@ -1411,25 +1411,28 @@ function repGerencial(){
     if(filtOp&&opIdL!==filtOp)return;
     const snap=l.snapshot||{};
     const acc=getOp(l);
+    // La comisión del operador se calcula sobre el FLETE de cada viaje (ver
+    // liq.html: totComision = totSubFletes * comisión%) — se prorratea por
+    // viaje aquí mismo (comisión% de ESTA liquidación × el flete de ese
+    // viaje en particular) para que quede en el mismo periodo que su viaje.
+    const comisionPct=parseFloat(l.comision||0)/100;
     (snap.viajesList||[]).forEach(function(v){
       if(!enRango(v.fecha))return;
+      var fleteItem,maniobrasItem,otrosItem;
       if(v.subtFlete!=null||v.subtManiobras!=null||v.subtOtros!=null){
-        acc.flete+=parseFloat(v.subtFlete||0);
-        acc.maniobras+=parseFloat(v.subtManiobras||0);
-        acc.otrosIng+=parseFloat(v.subtOtros||0);
-        return;
-      }
-      // El snapshot no trae el desglose — se busca el mismo viaje EN VIVO en
-      // ingresosDB (por folio+unidad) para rescatar subtFlete/subtManiobras/
-      // subtOtros de ahí; si tampoco existe ahí (viajes muy viejos, sin
-      // "tipo" reconocible), se cuenta el subtotal completo como Flete para
-      // no perder el ingreso.
-      const vivo=v.folio?ingPorFolio[_normFolioRep(v.folio)+'|'+opIdL]:null;
-      if(vivo){
-        acc.flete+=sfOfRep(vivo);acc.maniobras+=smOfRep(vivo);acc.otrosIng+=soOfRep(vivo);
+        fleteItem=parseFloat(v.subtFlete||0);maniobrasItem=parseFloat(v.subtManiobras||0);otrosItem=parseFloat(v.subtOtros||0);
       }else{
-        acc.flete+=parseFloat(v.subtotal||0);
+        // El snapshot no trae el desglose — se busca el mismo viaje EN VIVO
+        // en ingresosDB (por folio+unidad) para rescatar subtFlete/
+        // subtManiobras/subtOtros de ahí; si tampoco existe ahí (viajes muy
+        // viejos, sin "tipo" reconocible), se cuenta el subtotal completo
+        // como Flete para no perder el ingreso.
+        const vivo=v.folio?ingPorFolio[_normFolioRep(v.folio)+'|'+opIdL]:null;
+        if(vivo){fleteItem=sfOfRep(vivo);maniobrasItem=smOfRep(vivo);otrosItem=soOfRep(vivo);}
+        else{fleteItem=parseFloat(v.subtotal||0);maniobrasItem=0;otrosItem=0;}
       }
+      acc.flete+=fleteItem;acc.maniobras+=maniobrasItem;acc.otrosIng+=otrosItem;
+      acc.comision+=fleteItem*comisionPct;
     });
     (snap.dieselXML||[]).forEach(function(x){
       if(!enRango(x.fecha))return;
@@ -1462,7 +1465,7 @@ function repGerencial(){
 
   const filas=Object.values(porOp).map(function(a){
     const totIng=a.flete+a.maniobras+a.otrosIng;
-    const totGas=a.dieselMonto+a.casetas+a.otrosGastos;
+    const totGas=a.dieselMonto+a.casetas+a.otrosGastos+a.comision;
     const utilidad=totIng-totGas;
     // Utilidad en % (margen sobre ingresos) — el $ solo no dice mucho si un
     // operador lleva pocos días trabajando: puede estar hasta abajo del
@@ -1472,14 +1475,15 @@ function repGerencial(){
   }).filter(function(a){return a.totIng>0||a.totGas>0;})
     .sort(function(a,b){return b.utilidad-a.utilidad;});
 
-  const headers=['Operador','Unidad','Flete','Maniobras','Otros ingresos','Diesel $','Diesel Lts','Casetas','Otros gastos','Total gastos','Utilidad','Utilidad %'];
+  const headers=['Operador','Unidad','Flete','Maniobras','Otros ingresos','Diesel $','Diesel Lts','Casetas','Comisión','Otros gastos','Total gastos','Utilidad','Utilidad %'];
   const rows=filas.map(function(a){return[a.nombre,a.unidad||'—',fmt(a.flete),fmt(a.maniobras),fmt(a.otrosIng),
-    fmt(a.dieselMonto),a.dieselLitros?a.dieselLitros.toFixed(1):'0.0',fmt(a.casetas),fmt(a.otrosGastos),fmt(a.totGas),fmt(a.utilidad),a.utilidadPct.toFixed(1)+'%'];});
+    fmt(a.dieselMonto),a.dieselLitros?a.dieselLitros.toFixed(1):'0.0',fmt(a.casetas),fmt(a.comision),fmt(a.otrosGastos),fmt(a.totGas),fmt(a.utilidad),a.utilidadPct.toFixed(1)+'%'];});
 
   const totFlete=filas.reduce(function(s,a){return s+a.flete;},0);
   const totManiobras=filas.reduce(function(s,a){return s+a.maniobras;},0);
   const totDiesel=filas.reduce(function(s,a){return s+a.dieselMonto;},0);
   const totCasetas=filas.reduce(function(s,a){return s+a.casetas;},0);
+  const totComision=filas.reduce(function(s,a){return s+a.comision;},0);
   const totOtrosG=filas.reduce(function(s,a){return s+a.otrosGastos;},0);
   const totUtilidad=filas.reduce(function(s,a){return s+a.utilidad;},0);
   const masGasto=filas.slice().sort(function(a,b){return b.totGas-a.totGas;})[0];
@@ -1491,6 +1495,7 @@ function repGerencial(){
     +'<div class="kpi"><div class="v">'+fmt(totManiobras)+'</div><div class="k">Maniobras total</div></div>'
     +'<div class="kpi"><div class="v red">'+fmt(totDiesel)+'</div><div class="k">Diesel total</div></div>'
     +'<div class="kpi"><div class="v red">'+fmt(totCasetas)+'</div><div class="k">Casetas total</div></div>'
+    +'<div class="kpi"><div class="v red">'+fmt(totComision)+'</div><div class="k">Comisión total</div></div>'
     +'<div class="kpi"><div class="v red">'+fmt(totOtrosG)+'</div><div class="k">Otros gastos total</div></div>'
     +'<div class="kpi"><div class="v '+(totUtilidad<0?'red':'green')+'">'+fmt(totUtilidad)+'</div><div class="k">Utilidad total</div></div>'
     +(masUtilidad?'<div class="kpi"><div class="v">'+masUtilidad.nombre+'</div><div class="k">Más utilidad en $ ('+fmt(masUtilidad.utilidad)+')</div></div>':'')
