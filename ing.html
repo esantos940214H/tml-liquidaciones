@@ -1706,6 +1706,26 @@ async function procesarFacturaManiobrasExcel(){
 
     var TOLERANCIA=50;
     var sustituidos=[],diferencias=[],sinMatch=[],porDestinoMonto=[];
+    // Aplica la sustitución a un candidato ya encontrado: el Excel trae el
+    // monto REAL facturado (subtotal, dentro de tolerancia de lo
+    // autorizado) — se recalcula el IVA sobre ese monto real, no sobre el
+    // autorizado original.
+    function _sustituirRenglon(candidato,rg){
+      var ivaReal=Math.round(rg.total*0.16*100)/100;
+      candidato.subtotal=rg.total;candidato.subtManiobras=rg.total;candidato.iva=ivaReal;candidato.total=rg.total+ivaReal;
+      candidato.folio=folioCompleto;candidato.uuid=uuid;candidato.facturaUUID=uuid;
+      candidato.cliente=cliente;candidato.rfcEmisor=rfcEmisor;
+      if(rg.fecha)candidato.fecha=rg.fecha;
+      candidato.sustituidoPorXML=true;
+      candidato.observaciones=(candidato.observaciones||'')+' — sustituido por XML '+folioCompleto+' el '+hoy();
+    }
+    // PASADA 1: solo matcheo por T.U. (el más confiable), para TODOS los
+    // renglones antes de intentar el respaldo por tienda/destino/monto. Si
+    // se hiciera todo en una sola pasada en orden, un renglón que necesita
+    // el respaldo podría toparse con un candidato que en realidad le
+    // pertenece a OTRO renglón que aún no se ha procesado (y que sí iba a
+    // matchear por T.U. directo) — eso generaba ambigüedades falsas.
+    var pendientesPase2=[];
     renglones.forEach(function(rg){
       var candidato=null;
       for(var i=0;i<rg.tus.length&&!candidato;i++){
@@ -1715,15 +1735,23 @@ async function procesarFacturaManiobrasExcel(){
             _normTxtFactManiobras(v.observaciones).indexOf(idNorm)!==-1;
         });
       }
-      // Cuando el cliente nos recarga en su CEDIS (Villahermosa) para
-      // terminar de repartir, nos reasigna un T.U. nuevo para ese segundo
-      // tramo — el T.U. que trae el Excel (el de Tultitlán) ya no aparece
-      // en esa autorización. Si no hubo match por T.U., buscamos por
-      // TIENDA (el código de tienda es el mismo en el correo del cliente y
-      // en el Excel de Raúl, aunque el texto del destino varíe) + monto
-      // EXACTO entre lo aún no sustituido; si hay más de un candidato
-      // posible, no adivinamos — se reporta para revisar a mano.
-      if(!candidato){
+      if(candidato){
+        var diff0=Math.abs((candidato.subtotal||0)-rg.total);
+        if(diff0>TOLERANCIA){diferencias.push({rg:rg,candidato:candidato,diff:diff0});return;}
+        _sustituirRenglon(candidato,rg);
+        sustituidos.push({rg:rg,candidato:candidato});
+      }else{
+        pendientesPase2.push(rg);
+      }
+    });
+    // PASADA 2: para lo que no matcheó por T.U. (el cliente reasignó T.U.
+    // nuevo en su CEDIS), respaldo por TIENDA (el código de tienda en el
+    // correo del cliente y en el Excel de Raúl, aunque el texto del destino
+    // varíe) + monto EXACTO entre lo aún no sustituido; si hay más de un
+    // candidato posible, no adivinamos — se reporta para revisar a mano.
+    pendientesPase2.forEach(function(rg){
+      var candidato=null;
+      {
         var tiendaNorm=_normTxtFactManiobras(rg.tienda);
         var destinoNorm=_normTxtFactManiobras(rg.destino);
         var candidatos=ingresosDB.filter(function(v){
@@ -1753,16 +1781,7 @@ async function procesarFacturaManiobrasExcel(){
       if(!candidato){sinMatch.push(rg);return;}
       var diff=Math.abs((candidato.subtotal||0)-rg.total);
       if(diff>TOLERANCIA){diferencias.push({rg:rg,candidato:candidato,diff:diff});return;}
-      // Sustituye: el Excel trae el monto REAL facturado (subtotal, dentro
-      // de tolerancia de lo autorizado) — se recalcula el IVA sobre ese
-      // monto real, no sobre el autorizado original.
-      var ivaReal=Math.round(rg.total*0.16*100)/100;
-      candidato.subtotal=rg.total;candidato.subtManiobras=rg.total;candidato.iva=ivaReal;candidato.total=rg.total+ivaReal;
-      candidato.folio=folioCompleto;candidato.uuid=uuid;candidato.facturaUUID=uuid;
-      candidato.cliente=cliente;candidato.rfcEmisor=rfcEmisor;
-      if(rg.fecha)candidato.fecha=rg.fecha;
-      candidato.sustituidoPorXML=true;
-      candidato.observaciones=(candidato.observaciones||'')+' — sustituido por XML '+folioCompleto+' el '+hoy();
+      _sustituirRenglon(candidato,rg);
       sustituidos.push({rg:rg,candidato:candidato});
     });
 
