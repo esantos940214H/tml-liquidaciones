@@ -277,27 +277,31 @@ tr:hover td{background:#fafafa}
     </div>
   </div>
 
-  <!-- TABLA -->
+  <!-- TABLA — colapsada por defecto para no tener que pasar por todos los
+       viajes con solo llegar al Reporte de más abajo; quien la quiera ver
+       le da clic. -->
   <div class="card">
-    <div class="card-title" style="display:flex;justify-content:space-between;align-items:center">
-      <span>📋 Viajes registrados</span>
+    <div class="card-title" style="display:flex;justify-content:space-between;align-items:center;cursor:pointer;user-select:none" onclick="toggleTablaIngresos()">
+      <span>📋 Viajes registrados <span id="tablaIngIcon" style="font-weight:400;color:#888;text-transform:none;letter-spacing:normal">▶ expandir</span></span>
       <div id="barraSelIng" style="display:none;align-items:center;gap:8px">
         <span id="cntSelIng" style="font-size:12px;color:#aaa"></span>
-        <button class="btn btn-sm" style="background:#e63946;color:#fff;border:none;cursor:pointer;border-radius:5px;padding:5px 12px" onclick="eliminarSeleccionadosIng()">🗑 Eliminar seleccionados</button>
+        <button class="btn btn-sm" style="background:#e63946;color:#fff;border:none;cursor:pointer;border-radius:5px;padding:5px 12px" onclick="event.stopPropagation();eliminarSeleccionadosIng()">🗑 Eliminar seleccionados</button>
       </div>
     </div>
-    <div class="tbl-wrap">
-      <table>
-        <thead><tr>
-          <th style="width:32px"><input type="checkbox" title="Seleccionar todos sin liquidar" onchange="toggleTodosIng(this)"></th>
-          <th>Folio</th><th>Fecha</th><th>Operador</th><th>Cliente</th>
-          <th class="r">Flete</th><th class="r">Maniobras</th><th class="r">Otros</th><th class="r">Subtotal</th><th class="r">IVA</th><th class="r">Ret.</th><th class="r">Total</th>
-          <th>Estatus</th><th>Liq.</th><th>Archivo</th><th></th>
-        </tr></thead>
-        <tbody id="tbIngresos"></tbody>
-      </table>
+    <div id="tablaIngWrap" style="display:none">
+      <div class="tbl-wrap">
+        <table>
+          <thead><tr>
+            <th style="width:32px"><input type="checkbox" title="Seleccionar todos sin liquidar" onchange="toggleTodosIng(this)"></th>
+            <th>Folio</th><th>Fecha</th><th>Operador</th><th>Cliente</th>
+            <th class="r">Flete</th><th class="r">Maniobras</th><th class="r">Otros</th><th class="r">Subtotal</th><th class="r">IVA</th><th class="r">Ret.</th><th class="r">Total</th>
+            <th>Estatus</th><th>Liq.</th><th>Archivo</th><th></th>
+          </tr></thead>
+          <tbody id="tbIngresos"></tbody>
+        </table>
+      </div>
+      <div id="ingResumen" style="margin-top:10px"></div>
     </div>
-    <div id="ingResumen" style="margin-top:10px"></div>
   </div>
 
   <!-- REPORTE — colapsado por defecto y hasta abajo para no estorbar la
@@ -1215,6 +1219,12 @@ var chartIngOperador=null,chartIngTipo=null;
 var PALETA_REPORTES=['#e63946','#2d6a4f','#1e40af','#c87f00','#6b46c1','#0a5233','#856404','#9b1c1c','#0369a1','#5b21b6','#1a1a2e','#c1121f'];
 var _ultimoFiltradosIng=[],_ultimoFiltOpIng=0;
 
+function toggleTablaIngresos(){
+  var wrap=$('tablaIngWrap'),icon=$('tablaIngIcon');
+  var oculto=wrap.style.display==='none';
+  wrap.style.display=oculto?'':'none';
+  icon.textContent=oculto?'▼ colapsar':'▶ expandir';
+}
 async function toggleReporteIngresos(){
   var wrap=$('repIngWrap'),icon=$('repIngIcon');
   var oculto=wrap.style.display==='none';
