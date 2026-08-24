@@ -1368,7 +1368,17 @@ function repGerencial(){
   const filtOp=parseInt($('repOp').value||0);
   const desde=$('repDesde').value||'';
   const hasta=$('repHasta').value||'';
-  const enRango=function(f){
+  // Casetas IAVE (autopistasList) y diesel Edenred (cargasDiesel) guardan su
+  // fecha como "DD/MM/AAAA" (texto), mientras que viajes/diesel facturado/
+  // casetas sin comprobante la guardan en ISO "AAAA-MM-DD" — hay que
+  // normalizar antes de comparar como texto, si no, el rango nunca cuadra.
+  const _fISO=function(f){
+    if(!f)return '';
+    var m=/^(\d{2})\/(\d{2})\/(\d{4})$/.exec(f);
+    return m?(m[3]+'-'+m[2]+'-'+m[1]):f;
+  };
+  const enRango=function(fCrudo){
+    const f=_fISO(fCrudo);
     if(!f)return false; // sin fecha no se puede ubicar en el periodo — se excluye
     if(desde&&f<desde)return false;
     if(hasta&&f>hasta)return false;
@@ -1419,7 +1429,12 @@ function repGerencial(){
       acc.casetas+=parseFloat(c.monto||0);
     });
     (snap.gastosList||[]).forEach(function(g){
-      if(!enRango(g.fecha))return;
+      // Los gastos manuales (maniobras/viáticos/otros) capturados ANTES de
+      // que el formulario pidiera fecha nunca guardaron una — para no
+      // perderlos del reporte por periodo, se ubican en la fecha de
+      // llegada de la liquidación (aproximado, no el día exacto del gasto).
+      var fGasto=(g.tipo==='manual'&&!g.fecha)?(l.llegada||''):g.fecha;
+      if(!enRango(fGasto))return;
       acc.otrosGastos+=parseFloat(g.total||g.subtotal||0);
     });
   });
@@ -1428,13 +1443,17 @@ function repGerencial(){
     const totIng=a.flete+a.maniobras+a.otrosIng;
     const totGas=a.dieselMonto+a.casetas+a.otrosGastos;
     const utilidad=totIng-totGas;
-    return Object.assign(a,{totIng:totIng,totGas:totGas,utilidad:utilidad});
+    // Utilidad en % (margen sobre ingresos) — el $ solo no dice mucho si un
+    // operador lleva pocos días trabajando: puede estar hasta abajo del
+    // ranking en $ pero con buen margen, y viceversa.
+    const utilidadPct=totIng>0?(utilidad/totIng*100):0;
+    return Object.assign(a,{totIng:totIng,totGas:totGas,utilidad:utilidad,utilidadPct:utilidadPct});
   }).filter(function(a){return a.totIng>0||a.totGas>0;})
     .sort(function(a,b){return b.utilidad-a.utilidad;});
 
-  const headers=['Operador','Unidad','Flete','Maniobras','Otros ingresos','Diesel $','Diesel Lts','Casetas','Otros gastos','Total gastos','Utilidad'];
+  const headers=['Operador','Unidad','Flete','Maniobras','Otros ingresos','Diesel $','Diesel Lts','Casetas','Otros gastos','Total gastos','Utilidad','Utilidad %'];
   const rows=filas.map(function(a){return[a.nombre,a.unidad||'—',fmt(a.flete),fmt(a.maniobras),fmt(a.otrosIng),
-    fmt(a.dieselMonto),a.dieselLitros?a.dieselLitros.toFixed(1):'0.0',fmt(a.casetas),fmt(a.otrosGastos),fmt(a.totGas),fmt(a.utilidad)];});
+    fmt(a.dieselMonto),a.dieselLitros?a.dieselLitros.toFixed(1):'0.0',fmt(a.casetas),fmt(a.otrosGastos),fmt(a.totGas),fmt(a.utilidad),a.utilidadPct.toFixed(1)+'%'];});
 
   const totFlete=filas.reduce(function(s,a){return s+a.flete;},0);
   const totManiobras=filas.reduce(function(s,a){return s+a.maniobras;},0);
@@ -1444,6 +1463,7 @@ function repGerencial(){
   const totUtilidad=filas.reduce(function(s,a){return s+a.utilidad;},0);
   const masGasto=filas.slice().sort(function(a,b){return b.totGas-a.totGas;})[0];
   const masUtilidad=filas[0];
+  const masMargen=filas.slice().sort(function(a,b){return b.utilidadPct-a.utilidadPct;})[0];
 
   $('repResumen').innerHTML='<div class="kpis">'
     +'<div class="kpi"><div class="v">'+fmt(totFlete)+'</div><div class="k">Flete total</div></div>'
@@ -1452,10 +1472,12 @@ function repGerencial(){
     +'<div class="kpi"><div class="v red">'+fmt(totCasetas)+'</div><div class="k">Casetas total</div></div>'
     +'<div class="kpi"><div class="v red">'+fmt(totOtrosG)+'</div><div class="k">Otros gastos total</div></div>'
     +'<div class="kpi"><div class="v '+(totUtilidad<0?'red':'green')+'">'+fmt(totUtilidad)+'</div><div class="k">Utilidad total</div></div>'
-    +(masUtilidad?'<div class="kpi"><div class="v">'+masUtilidad.nombre+'</div><div class="k">Más utilidad ('+fmt(masUtilidad.utilidad)+')</div></div>':'')
+    +(masUtilidad?'<div class="kpi"><div class="v">'+masUtilidad.nombre+'</div><div class="k">Más utilidad en $ ('+fmt(masUtilidad.utilidad)+')</div></div>':'')
+    +(masMargen?'<div class="kpi"><div class="v">'+masMargen.nombre+'</div><div class="k">Mejor margen % ('+masMargen.utilidadPct.toFixed(1)+'%)</div></div>':'')
     +(masGasto?'<div class="kpi"><div class="v">'+masGasto.nombre+'</div><div class="k">Más gasto total ('+fmt(masGasto.totGas)+')</div></div>':'')
     +'</div>'
-    +(!desde&&!hasta?'<div class="alert alert-info" style="margin-top:10px">Sin fechas seleccionadas se muestran TODAS las liquidaciones cerradas del sistema.</div>':'');
+    +(!desde&&!hasta?'<div class="alert alert-info" style="margin-top:10px">Sin fechas seleccionadas se muestran TODAS las liquidaciones cerradas del sistema.</div>':'')
+    +'<div class="alert alert-info" style="margin-top:10px">ℹ️ La columna "Utilidad %" es el margen sobre ingresos — úsala para comparar operadores con poco tiempo trabajando contra los que llevan más, ya que el $ solo favorece a quien lleva más tiempo. Los gastos manuales (maniobras/viáticos/otros) capturados antes de que el formulario pidiera fecha se ubican aproximadamente en la fecha de llegada de su liquidación.</div>';
   $('repTablaWrap').innerHTML=tablaHTML(headers,rows);
   repDatosActuales={headers,rows};
   repNombreActual='reporte_gerencial'+(desde?'_'+desde:'')+(hasta?'_a_'+hasta:'');
