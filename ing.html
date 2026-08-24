@@ -1638,7 +1638,12 @@ function _fechaExcelAISO(v){
   return String(v).trim();
 }
 async function procesarFacturaManiobrasExcel(){
-  if(usuarioBloqueadoIngresos())return;
+  // OJO: a propósito NO se llama usuarioBloqueadoIngresos() aquí — igual que
+  // el botón 🔄 XML de una fila individual, esta es justo la forma de
+  // resolver autorizaciones "sin factura" vencidas. Si se bloqueara, un
+  // usuario con autorizaciones vencidas de ESTA MISMA factura nunca podría
+  // sustituirlas (el candado se lo impediría, y el candado nunca se
+  // resolvería porque nunca podría sustituir).
   var fXml=$('fFacturaManiobrasXML').files[0];
   var fXlsx=$('fFacturaManiobrasXLSX').files[0];
   if(!fXml||!fXlsx){alert('Sube el XML de la factura y el Excel de desglose, los dos.');return;}
@@ -1705,20 +1710,15 @@ async function procesarFacturaManiobrasExcel(){
     if(!renglones.length)throw new Error(fXlsx.name+': no se encontró ningún renglón de viaje con datos.');
 
     var TOLERANCIA=50;
-    var sustituidos=[],diferencias=[],sinMatch=[],porDestinoMonto=[];
-    // Aplica la sustitución a un candidato ya encontrado: el Excel trae el
-    // monto REAL facturado (subtotal, dentro de tolerancia de lo
-    // autorizado) — se recalcula el IVA sobre ese monto real, no sobre el
-    // autorizado original.
-    function _sustituirRenglon(candidato,rg){
-      var ivaReal=Math.round(rg.total*0.16*100)/100;
-      candidato.subtotal=rg.total;candidato.subtManiobras=rg.total;candidato.iva=ivaReal;candidato.total=rg.total+ivaReal;
-      candidato.folio=folioCompleto;candidato.uuid=uuid;candidato.facturaUUID=uuid;
-      candidato.cliente=cliente;candidato.rfcEmisor=rfcEmisor;
-      if(rg.fecha)candidato.fecha=rg.fecha;
-      candidato.sustituidoPorXML=true;
-      candidato.observaciones=(candidato.observaciones||'')+' — sustituido por XML '+folioCompleto+' el '+hoy();
-    }
+    var resueltos=[],diferencias=[],sinMatch=[],porDestinoMonto=[];
+    var usadosIds={};
+    // Todo o nada: si CUALQUIER renglón del Excel no encuentra su
+    // autorización (o la encuentra pero el monto no cuadra), NO se guarda
+    // NINGUNA sustitución — ni las que sí hubieran salido bien. Si se
+    // dejaran 19 sustituidas y 1 pendiente, esa 1 ya nunca podría
+    // sustituirse después (su factura real es justo esta que ya se usó
+    // para las otras 19), así que hay que corregir el Excel/correo y volver
+    // a subir todo junto.
     // PASADA 1: solo matcheo por T.U. (el más confiable), para TODOS los
     // renglones antes de intentar el respaldo por tienda/destino/monto. Si
     // se hiciera todo en una sola pasada en orden, un renglón que necesita
@@ -1731,15 +1731,15 @@ async function procesarFacturaManiobrasExcel(){
       for(var i=0;i<rg.tus.length&&!candidato;i++){
         var idNorm=_normTxtFactManiobras(rg.tus[i]);
         candidato=ingresosDB.find(function(v){
-          return v.esAutorizacionCliente&&!v.sustituidoPorXML&&!v.montoPendiente&&
+          return v.esAutorizacionCliente&&!v.sustituidoPorXML&&!v.montoPendiente&&!usadosIds[v.id]&&
             _normTxtFactManiobras(v.observaciones).indexOf(idNorm)!==-1;
         });
       }
       if(candidato){
         var diff0=Math.abs((candidato.subtotal||0)-rg.total);
         if(diff0>TOLERANCIA){diferencias.push({rg:rg,candidato:candidato,diff:diff0});return;}
-        _sustituirRenglon(candidato,rg);
-        sustituidos.push({rg:rg,candidato:candidato});
+        usadosIds[candidato.id]=true;
+        resueltos.push({rg:rg,candidato:candidato});
       }else{
         pendientesPase2.push(rg);
       }
@@ -1755,7 +1755,7 @@ async function procesarFacturaManiobrasExcel(){
         var tiendaNorm=_normTxtFactManiobras(rg.tienda);
         var destinoNorm=_normTxtFactManiobras(rg.destino);
         var candidatos=ingresosDB.filter(function(v){
-          if(!v.esAutorizacionCliente||v.sustituidoPorXML||v.montoPendiente)return false;
+          if(!v.esAutorizacionCliente||v.sustituidoPorXML||v.montoPendiente||usadosIds[v.id])return false;
           if(Math.abs((v.subtotal||0)-rg.total)>=0.01)return false;
           var vTienda=_normTxtFactManiobras(v.tienda);
           if(tiendaNorm&&vTienda&&vTienda===tiendaNorm)return true;
@@ -1771,7 +1771,7 @@ async function procesarFacturaManiobrasExcel(){
           // sustituido hay UN SOLO renglón con este monto exacto, se usa
           // ese — pero solo si es único, para no adivinar entre varios.
           var porMonto=ingresosDB.filter(function(v){
-            return v.esAutorizacionCliente&&!v.sustituidoPorXML&&!v.montoPendiente&&
+            return v.esAutorizacionCliente&&!v.sustituidoPorXML&&!v.montoPendiente&&!usadosIds[v.id]&&
               Math.abs((v.subtotal||0)-rg.total)<0.01;
           });
           if(porMonto.length===1){candidato=porMonto[0];porDestinoMonto.push({rg:rg,candidato:candidato,soloMonto:true});}
@@ -1781,17 +1781,34 @@ async function procesarFacturaManiobrasExcel(){
       if(!candidato){sinMatch.push(rg);return;}
       var diff=Math.abs((candidato.subtotal||0)-rg.total);
       if(diff>TOLERANCIA){diferencias.push({rg:rg,candidato:candidato,diff:diff});return;}
-      _sustituirRenglon(candidato,rg);
-      sustituidos.push({rg:rg,candidato:candidato});
+      usadosIds[candidato.id]=true;
+      resueltos.push({rg:rg,candidato:candidato});
     });
 
-    if(sustituidos.length){guardar();renderIngresos();}
+    var sustituidos=[];
+    if(!diferencias.length&&!sinMatch.length){
+      // Todos los renglones resolvieron a un candidato válido — recién
+      // ahora se aplican las sustituciones de verdad y se guarda.
+      resueltos.forEach(function(x){
+        var candidato=x.candidato,rg=x.rg;
+        var ivaReal=Math.round(rg.total*0.16*100)/100;
+        candidato.subtotal=rg.total;candidato.subtManiobras=rg.total;candidato.iva=ivaReal;candidato.total=rg.total+ivaReal;
+        candidato.folio=folioCompleto;candidato.uuid=uuid;candidato.facturaUUID=uuid;
+        candidato.cliente=cliente;candidato.rfcEmisor=rfcEmisor;
+        if(rg.fecha)candidato.fecha=rg.fecha;
+        candidato.sustituidoPorXML=true;
+        candidato.observaciones=(candidato.observaciones||'')+' — sustituido por XML '+folioCompleto+' el '+hoy();
+      });
+      sustituidos=resueltos;
+      guardar();renderIngresos();
+    }
 
+    var huboProblema=diferencias.length||sinMatch.length;
     var sumaExcel=renglones.reduce(function(s,rg){return s+rg.total;},0);
-    var html='<div class="alert '+(diferencias.length||sinMatch.length?'alert-warn':'alert-ok')+'">'+
-      '✅ '+sustituidos.length+' renglón(es) sustituido(s) automáticamente'+
-      (diferencias.length?' · ⚠️ '+diferencias.length+' con diferencia de monto mayor a $'+TOLERANCIA+' (no se sustituyeron solos)':'')+
-      (sinMatch.length?' · ⚠️ '+sinMatch.length+' sin autorización pendiente encontrada':'')+
+    var html='<div class="alert '+(huboProblema?'alert-warn':'alert-ok')+'">'+
+      (huboProblema
+        ?'🚫 NO se sustituyó nada — de los '+renglones.length+' renglón(es) del Excel, '+(diferencias.length+sinMatch.length)+' no encontraron su autorización correctamente. Es todo o nada: corrige lo de abajo (en Maniobras o en el Excel) y vuelve a subir el XML+Excel completos.'
+        :'✅ '+sustituidos.length+' renglón(es) sustituido(s) automáticamente')+
       (porDestinoMonto.length?' · ℹ️ '+porDestinoMonto.length+' matcheado(s) por destino+monto (T.U. reasignado en CEDIS, revisa que sea correcto)':'')+
       '<br>Suma del Excel: '+fmt(sumaExcel)+' — Subtotal de la factura: '+fmt(subtotalXml)+
       (Math.abs(sumaExcel-subtotalXml)>1?' <strong style="color:#9b1c1c">⚠️ no coinciden</strong>':' ✓ coincide')+
