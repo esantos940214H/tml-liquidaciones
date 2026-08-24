@@ -1719,18 +1719,36 @@ async function procesarFacturaManiobrasExcel(){
       // terminar de repartir, nos reasigna un T.U. nuevo para ese segundo
       // tramo — el T.U. que trae el Excel (el de Tultitlán) ya no aparece
       // en esa autorización. Si no hubo match por T.U., buscamos por
-      // destino + monto EXACTO entre lo aún no sustituido; si hay más de
-      // un candidato posible, no adivinamos — se reporta para revisar a mano.
+      // TIENDA (el código de tienda es el mismo en el correo del cliente y
+      // en el Excel de Raúl, aunque el texto del destino varíe) + monto
+      // EXACTO entre lo aún no sustituido; si hay más de un candidato
+      // posible, no adivinamos — se reporta para revisar a mano.
       if(!candidato){
+        var tiendaNorm=_normTxtFactManiobras(rg.tienda);
         var destinoNorm=_normTxtFactManiobras(rg.destino);
         var candidatos=ingresosDB.filter(function(v){
           if(!v.esAutorizacionCliente||v.sustituidoPorXML||v.montoPendiente)return false;
           if(Math.abs((v.subtotal||0)-rg.total)>=0.01)return false;
+          var vTienda=_normTxtFactManiobras(v.tienda);
+          if(tiendaNorm&&vTienda&&vTienda===tiendaNorm)return true;
           var vDestino=_normTxtFactManiobras((v.ruta&&v.ruta[0]&&v.ruta[0].destino)||'');
           return destinoNorm&&vDestino&&(vDestino.indexOf(destinoNorm)!==-1||destinoNorm.indexOf(vDestino)!==-1);
         });
         if(candidatos.length===1){candidato=candidatos[0];porDestinoMonto.push({rg:rg,candidato:candidato});}
         else if(candidatos.length>1){sinMatch.push(rg);return;}
+        else{
+          // Último recurso: a veces ni la tienda ni el destino coinciden
+          // entre el correo del cliente y el Excel de Raúl (usan distintas
+          // convenciones de numeración de tienda). Si de todo lo aún no
+          // sustituido hay UN SOLO renglón con este monto exacto, se usa
+          // ese — pero solo si es único, para no adivinar entre varios.
+          var porMonto=ingresosDB.filter(function(v){
+            return v.esAutorizacionCliente&&!v.sustituidoPorXML&&!v.montoPendiente&&
+              Math.abs((v.subtotal||0)-rg.total)<0.01;
+          });
+          if(porMonto.length===1){candidato=porMonto[0];porDestinoMonto.push({rg:rg,candidato:candidato,soloMonto:true});}
+          else if(porMonto.length>1){sinMatch.push(rg);return;}
+        }
       }
       if(!candidato){sinMatch.push(rg);return;}
       var diff=Math.abs((candidato.subtotal||0)-rg.total);
@@ -1760,8 +1778,8 @@ async function procesarFacturaManiobrasExcel(){
       (Math.abs(sumaExcel-subtotalXml)>1?' <strong style="color:#9b1c1c">⚠️ no coinciden</strong>':' ✓ coincide')+
       '</div>';
     if(porDestinoMonto.length){
-      html+='<div style="margin-top:8px"><strong>Matcheados por destino+monto (no por T.U. — revisar):</strong><ul style="margin:6px 0 0 18px;font-size:12px">'+
-        porDestinoMonto.map(function(d){return '<li>'+(nombreOp(d.candidato.unidad)||d.candidato.unidad)+' — '+d.rg.destino+' — T.U. Excel '+d.rg.tus.join('/')+' vs. autorización con FOLIO/T.U. "'+(d.candidato.observaciones||'')+'" — '+fmt(d.rg.total)+'</li>';}).join('')+
+      html+='<div style="margin-top:8px"><strong>Matcheados sin usar el T.U. (revisar que sea correcto):</strong><ul style="margin:6px 0 0 18px;font-size:12px">'+
+        porDestinoMonto.map(function(d){return '<li>'+(nombreOp(d.candidato.unidad)||d.candidato.unidad)+' — '+d.rg.destino+' — T.U. Excel '+d.rg.tus.join('/')+' vs. autorización con FOLIO/T.U. "'+(d.candidato.observaciones||'')+'" — '+fmt(d.rg.total)+(d.soloMonto?' <strong>(matcheado solo por monto — tienda/destino no coincidieron, verifica bien este)</strong>':' (por tienda/destino)')+'</li>';}).join('')+
         '</ul></div>';
     }
     if(diferencias.length){
