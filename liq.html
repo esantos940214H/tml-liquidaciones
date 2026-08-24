@@ -47,6 +47,9 @@ header{background:#1a1a2e;color:#fff;padding:14px 28px;display:flex;align-items:
 .alert-ok{background:#d1e7dd;color:#0a5233;border:1px solid #a3cfbb}
 .alert-warn{background:#fffbeb;color:#92400e;border:1px solid #fde68a}
 .alert-err{background:#fde8e8;color:#9b1c1c;border:1px solid #f9a8a8}
+.info-tip{position:relative;display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;border-radius:50%;background:#dde4ee;color:#4a5568;font-size:11px;font-weight:700;font-style:normal;text-transform:none;letter-spacing:normal;cursor:help;flex-shrink:0}
+.info-tip .info-tip-box{visibility:hidden;opacity:0;position:absolute;z-index:200;left:0;top:22px;width:300px;max-width:80vw;background:#1a1a2e;color:#fff;font-size:12px;font-weight:400;line-height:1.5;padding:10px 12px;border-radius:8px;box-shadow:0 6px 18px rgba(0,0,0,.25);transition:opacity .15s}
+.info-tip:hover .info-tip-box,.info-tip:focus .info-tip-box{visibility:visible;opacity:1}
 .tbl-wrap{overflow-x:auto}
 table{width:100%;border-collapse:collapse;min-width:400px;font-size:13px}
 th{background:#1a1a2e;color:#fff;padding:8px 10px;font-size:11px;text-transform:uppercase;letter-spacing:.7px;text-align:left;font-weight:600}
@@ -423,8 +426,7 @@ tr:hover td{background:#fafafa}
       <div id="autXMLInfo" style="display:none;margin-top:8px"></div>
     </div>
     <div class="card">
-      <div class="card-title">🚧 Caseta sin comprobante (con evidencia)</div>
-      <div class="alert alert-info" style="margin-bottom:10px">Costo operativo real, sin tope. Requiere foto del ticket (o justificación si no hay). Si lo paga el <strong>operador</strong>, queda PENDIENTE hasta que un supervisor lo autorice en "🔐 Autorizaciones" (autorizaciones.mudanzastml.mx).</div>
+      <div class="card-title">🚧 Caseta sin comprobante (con evidencia) <span class="info-tip">?<span class="info-tip-box">Costo operativo real, sin tope. Requiere foto del ticket (o justificación si no hay). Si lo paga el <strong>operador</strong>, queda PENDIENTE hasta que un supervisor lo autorice en "🔐 Autorizaciones" (autorizaciones.mudanzastml.mx).</span></span></div>
       <div class="row" style="gap:8px;flex-wrap:wrap;align-items:flex-end;margin-bottom:12px">
         <div class="field" style="min-width:130px"><label>Fecha</label><input type="date" id="cnfFecha"></div>
         <div class="field" style="flex:2;min-width:160px"><label>Caseta / ubicación</label><input type="text" id="cnfCaseta" placeholder="Ej. Tequisquiapan-Querétaro"></div>
@@ -515,8 +517,7 @@ tr:hover td{background:#fafafa}
       <div id="advertenciasFechaInfo" style="display:none;margin-top:10px"></div>
     </div>
     <div class="card">
-      <div class="card-title">📝 Gastos sin factura</div>
-      <div class="alert alert-info" style="margin-bottom:14px">⚠️ Todo gasto que paga el <strong>operador</strong> sin factura, desde $1 en adelante, se registra igual, pero queda PENDIENTE y no cuenta en la liquidación hasta que un supervisor lo autorice en el módulo "🔐 Autorizaciones" (autorizaciones.mudanzastml.mx). Los gastos que paga la <strong>empresa</strong> no requieren autorización (no afectan el saldo del operador).</div>
+      <div class="card-title">📝 Gastos sin factura <span class="info-tip">?<span class="info-tip-box">⚠️ Todo gasto que paga el <strong>operador</strong> sin factura, desde $1 en adelante, se registra igual, pero queda PENDIENTE y no cuenta en la liquidación hasta que un supervisor lo autorice en el módulo "🔐 Autorizaciones" (autorizaciones.mudanzastml.mx). Los gastos que paga la <strong>empresa</strong> no requieren autorización (no afectan el saldo del operador).</span></span></div>
       <div class="row" style="margin-bottom:12px">
         <div class="field"><label>Concepto</label>
           <select id="gastoConcepto">
@@ -538,16 +539,14 @@ tr:hover td{background:#fafafa}
       </table></div>
     </div>
     <div class="card" id="cardIncidentesLiq" style="display:none">
-      <div class="card-title">🚨 Incidentes de vialidad pendientes de esta unidad</div>
-      <div class="alert alert-info" style="margin-bottom:10px">Se registran en el módulo <strong>Incidentes</strong> en el momento que ocurren — no se asocian manualmente aquí. Los "pendiente" de esta unidad se incluyen automáticamente al cerrar la liquidación, con un <strong>tope de $1,500 en total por liquidación</strong>: si juntos superan ese monto, el excedente se descarta y no se paga (no se traslada a otra liquidación).</div>
+      <div class="card-title">🚨 Incidentes de vialidad pendientes de esta unidad <span class="info-tip">?<span class="info-tip-box">Se registran en el módulo <strong>Incidentes</strong> en el momento que ocurren — no se asocian manualmente aquí. Los "pendiente" de esta unidad se incluyen automáticamente al cerrar la liquidación, con un <strong>tope de $1,500 en total por liquidación</strong>: si juntos superan ese monto, el excedente se descarta y no se paga (no se traslada a otra liquidación).</span></span></div>
       <div class="tbl-wrap"><table>
         <thead><tr><th>Fecha evento</th><th>Causa</th><th class="r">Reconocido</th><th>Se aplica en esta liquidación</th></tr></thead>
         <tbody id="tbIncidentesLiq"></tbody><tfoot id="tfIncidentesLiq"></tfoot>
       </table></div>
     </div>
     <div class="card" id="cardCargosFlotaLiq" style="display:none">
-      <div class="card-title">🔧 Cargos de mantenimiento/flota pendientes</div>
-      <div class="alert alert-info" style="margin-bottom:10px">Se generan en el módulo <strong>Flota</strong> cuando el encargado de mantenimiento revisa la unidad (colchonetas/extintores faltantes, daños no reportados, etc.) — no se capturan manualmente aquí. Todos los pendientes se aplican en esta liquidación, sin tope.</div>
+      <div class="card-title">🔧 Cargos de mantenimiento/flota pendientes <span class="info-tip">?<span class="info-tip-box">Se generan en el módulo <strong>Flota</strong> cuando el encargado de mantenimiento revisa la unidad (colchonetas/extintores faltantes, daños no reportados, etc.) — no se capturan manualmente aquí. Todos los pendientes se aplican en esta liquidación, sin tope.</span></span></div>
       <div class="tbl-wrap"><table>
         <thead><tr><th>Fecha</th><th>Concepto</th><th class="r">Importe</th></tr></thead>
         <tbody id="tbCargosFlotaLiq"></tbody><tfoot id="tfCargosFlotaLiq"></tfoot>
@@ -656,10 +655,8 @@ tr:hover td{background:#fafafa}
 </div></div>
 
 <div id="panel-5" class="panel"><div class="container">
-  <div class="alert alert-info">📊 Reporte agregado sobre TODAS las liquidaciones ya CERRADAS (colección "historial") — a diferencia de la pestaña "💰 Reporte", que solo muestra la liquidación activa en este momento.</div>
-
   <div class="card no-print">
-    <div class="card-title">🔍 Filtros</div>
+    <div class="card-title">🔍 Filtros <span class="info-tip">?<span class="info-tip-box">📊 Reporte agregado sobre TODAS las liquidaciones ya CERRADAS (colección "historial") — a diferencia de la pestaña "💰 Reporte", que solo muestra la liquidación activa en este momento.</span></span></div>
     <div class="row">
       <div class="field"><label>Operador</label><select id="rgOperador" onchange="generarReporteGeneral()"><option value="">Todos</option></select></div>
       <div class="field"><label>Económico / Unidad</label><select id="rgUnidad" onchange="generarReporteGeneral()"><option value="">Todos</option></select></div>
