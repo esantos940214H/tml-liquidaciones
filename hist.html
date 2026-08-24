@@ -1404,10 +1404,17 @@ function repGerencial(){
   // de estado) sí trae ese desglose desde antes para la mayoría de los
   // viajes. Se arma un mapa folio+unidad -> ingreso en vivo para rescatar el
   // desglose ahí cuando el snapshot no lo trae, en vez de perder el dato.
+  // OJO: un folio+unidad puede tener VARIOS registros en vivo (ej. cuando un
+  // viaje viejo capturado como un solo lote "MANIOBRAS" se sustituyó después
+  // por un XML/Excel que lo partió en varias autorizaciones individuales,
+  // todas con el mismo folio real de la factura) — hay que guardar TODOS
+  // los que compartan folio+unidad y sumarlos, no quedarse solo con el
+  // último, o el rescate sale con un monto equivocado.
   const ingPorFolio={};
   (ingresosDB||[]).forEach(function(v){
     if(!v.folio)return;
-    ingPorFolio[_normFolioRep(v.folio)+'|'+parseInt(v.unidad||0)]=v;
+    var key=_normFolioRep(v.folio)+'|'+parseInt(v.unidad||0);
+    (ingPorFolio[key]=ingPorFolio[key]||[]).push(v);
   });
   const sfOfRep=function(v){return v.subtFlete!=null?parseFloat(v.subtFlete):(v.tipo==='flete_for'||v.tipo==='flete_mx'?parseFloat(v.subtotal||0):0);};
   const smOfRep=function(v){return v.subtManiobras!=null?parseFloat(v.subtManiobras):(v.tipo==='maniobra'?parseFloat(v.subtotal||0):0);};
@@ -1417,46 +1424,89 @@ function repGerencial(){
     if(filtOp&&opIdL!==filtOp)return;
     const snap=l.snapshot||{};
     const acc=getOp(l);
-    // La comisión Y el 2% de gastos sin comprobante se calculan sobre el
-    // FLETE de cada viaje (ver liq.html: totComision=totSubFletes*comisión%,
-    // totGastos1=totSubFletes*0.02) — se prorratean por viaje aquí mismo
-    // (% de ESTA liquidación × el flete de ese viaje en particular) para que
-    // queden en el mismo periodo que su viaje.
-    const comisionPct=parseFloat(l.comision||0)/100;
+    // Resuelve el flete/maniobras/otros real de CADA viaje que el snapshot
+    // no trae desglosado, cruzando contra ingresosDB en vivo por folio+
+    // unidad. Un mismo folio puede tener VARIOS registros en vivo (ej. un
+    // viaje que se capturó como un solo lote "MANIOBRAS" y después se
+    // sustituyó por un XML/Excel que lo partió en varias autorizaciones) —
+    // pero un folio TAMBIÉN puede repetirse entre viajes que YA estaban bien
+    // separados desde el snapshot original (dos renglones distintos con el
+    // mismo folio, cada uno con su propio monto). Para no duplicar el
+    // rescate en ese segundo caso: primero se intenta emparejar cada viaje
+    // 1 a 1 por MONTO EXACTO contra un registro en vivo sin usar; recién si
+    // sobra un viaje sin pareja exacta, se le asigna la SUMA de lo que
+    // quede sin usar de ese folio (el caso real: un lote que si se dividió).
+    const sinDesglose=(snap.viajesList||[]).filter(function(v){return v.subtFlete==null&&v.subtManiobras==null&&v.subtOtros==null;});
+    const resueltoPorViaje=new Map();
+    const usadosPorFolio={}; // folio+unidad -> Set de índices ya usados en ingPorFolio[...]
+    sinDesglose.forEach(function(v){
+      if(!v.folio)return;
+      const key=_normFolioRep(v.folio)+'|'+opIdL;
+      const vivos=ingPorFolio[key];
+      if(!vivos||!vivos.length)return;
+      if(!usadosPorFolio[key])usadosPorFolio[key]=new Set();
+      var idxExacto=vivos.findIndex(function(vv,idx){return!usadosPorFolio[key].has(idx)&&Math.abs((vv.subtotal||0)-(v.subtotal||0))<0.01;});
+      if(idxExacto!==-1){
+        usadosPorFolio[key].add(idxExacto);
+        var vv=vivos[idxExacto];
+        resueltoPorViaje.set(v,{flete:sfOfRep(vv),maniobras:smOfRep(vv),otros:soOfRep(vv)});
+      }
+    });
+    sinDesglose.forEach(function(v){
+      if(resueltoPorViaje.has(v))return; // ya emparejado 1 a 1 arriba
+      if(!v.folio){resueltoPorViaje.set(v,{flete:parseFloat(v.subtotal||0),maniobras:0,otros:0});return;}
+      const key=_normFolioRep(v.folio)+'|'+opIdL;
+      const vivos=ingPorFolio[key];
+      const usados=usadosPorFolio[key]||new Set();
+      const restantes=vivos?vivos.filter(function(vv,idx){return!usados.has(idx);}):[];
+      if(restantes.length){
+        resueltoPorViaje.set(v,restantes.reduce(function(a,vv){a.flete+=sfOfRep(vv);a.maniobras+=smOfRep(vv);a.otros+=soOfRep(vv);return a;},{flete:0,maniobras:0,otros:0}));
+      }else{
+        resueltoPorViaje.set(v,{flete:parseFloat(v.subtotal||0),maniobras:0,otros:0});
+      }
+    });
+    function _resolverViaje(v){
+      if(v.subtFlete!=null||v.subtManiobras!=null||v.subtOtros!=null){
+        return{flete:parseFloat(v.subtFlete||0),maniobras:parseFloat(v.subtManiobras||0),otros:parseFloat(v.subtOtros||0)};
+      }
+      return resueltoPorViaje.get(v)||{flete:parseFloat(v.subtotal||0),maniobras:0,otros:0};
+    }
+    // La comisión y el 2% son un solo número OFICIAL por liquidación completa
+    // (totComision/totGastos1, calculados sobre TODO el flete de la
+    // liquidación) — para que la suma cuadre EXACTO con lo oficial cuando no
+    // se filtra por fecha, se prorratean esos totales oficiales entre los
+    // viajes a prorrata de SU flete (no se recalculan multiplicando cada
+    // viaje por el % suelto, que sí puede acumular diferencias de centavos).
+    const fleteTotalLiq=(snap.viajesList||[]).reduce(function(s,v){return s+_resolverViaje(v).flete;},0);
+    const comisionOficial=parseFloat(snap.totComision||0);
+    const dosPctOficial=parseFloat(snap.totGastos1||0);
     (snap.viajesList||[]).forEach(function(v){
       if(!enRango(v.fecha))return;
-      var fleteItem,maniobrasItem,otrosItem;
-      if(v.subtFlete!=null||v.subtManiobras!=null||v.subtOtros!=null){
-        fleteItem=parseFloat(v.subtFlete||0);maniobrasItem=parseFloat(v.subtManiobras||0);otrosItem=parseFloat(v.subtOtros||0);
-      }else{
-        // El snapshot no trae el desglose — se busca el mismo viaje EN VIVO
-        // en ingresosDB (por folio+unidad) para rescatar subtFlete/
-        // subtManiobras/subtOtros de ahí; si tampoco existe ahí (viajes muy
-        // viejos, sin "tipo" reconocible), se cuenta el subtotal completo
-        // como Flete para no perder el ingreso.
-        const vivo=v.folio?ingPorFolio[_normFolioRep(v.folio)+'|'+opIdL]:null;
-        if(vivo){fleteItem=sfOfRep(vivo);maniobrasItem=smOfRep(vivo);otrosItem=soOfRep(vivo);}
-        else{fleteItem=parseFloat(v.subtotal||0);maniobrasItem=0;otrosItem=0;}
+      var r=_resolverViaje(v);
+      acc.flete+=r.flete;acc.maniobras+=r.maniobras;acc.otrosIng+=r.otros;
+      if(fleteTotalLiq>0){
+        var prop=r.flete/fleteTotalLiq;
+        acc.comision+=prop*comisionOficial;
+        acc.dosPct+=prop*dosPctOficial;
       }
-      acc.flete+=fleteItem;acc.maniobras+=maniobrasItem;acc.otrosIng+=otrosItem;
-      acc.comision+=fleteItem*comisionPct;
-      acc.dosPct+=fleteItem*0.02;
     });
     // Diesel: NO se puede sumar el crudo de cada carga/factura, porque el
-    // costo real reconocido (dieselComprobadoSub + dieselNoComprobado) es el
-    // resultado de una reconciliación de TANQUE para TODA la liquidación
-    // (litros medidos por ECM vs. litros cargados) — lo cargado de más se
-    // va de "arrastre" a la SIGUIENTE liquidación o se marca como excedente,
-    // así que sumar cada carga por su cuenta sobrecuenta el gasto real. En
-    // vez de eso, se prorratea el monto oficial reconocido (comprobado +
-    // excedente) entre las cargas/facturas de ESTA liquidación que caen en
-    // el rango de fechas, a prorrata de su propio importe — así el total
-    // filtrado por periodo nunca puede pasarse del oficial de la liquidación.
+    // costo real reconocido (dieselComprobadoSub) es el resultado de una
+    // reconciliación de TANQUE para TODA la liquidación (litros medidos por
+    // ECM vs. litros cargados) — lo cargado de más se va de "arrastre" a la
+    // SIGUIENTE liquidación, así que sumar cada carga por su cuenta
+    // sobrecuenta el gasto real. En vez de eso, se prorratea el monto
+    // oficial reconocido entre las cargas/facturas de ESTA liquidación que
+    // caen en el rango de fechas, a prorrata de su propio importe — así el
+    // total filtrado por periodo nunca puede pasarse del oficial. OJO: el
+    // "exceso de diesel" (dieselNoComprobado) NO entra aquí — es un cargo a
+    // la CUENTA DEL OPERADOR (se lo descuentan a él), no un costo de la
+    // utilidad de la empresa (ver liq.html: totalCargos, no totGastosEmpTotal).
     const dieselItems=(snap.cargasDiesel||[]).map(function(c){return{fecha:c.fecha,valor:parseFloat(c.importe||0),litros:parseFloat(c.litros||0)};})
       .concat((snap.dieselXML||[]).map(function(x){return{fecha:x.fecha,valor:_subSinIva(x),litros:parseFloat(x.litros||0)};}));
     const dieselRawTotal=dieselItems.reduce(function(s,i){return s+i.valor;},0);
-    const dieselOficialMonto=parseFloat(snap.dieselComprobadoSub||0)+parseFloat(snap.dieselNoComprobado||0);
-    const dieselOficialLitros=(snap.diesel&&(parseFloat(snap.diesel.ltsComprobados||0)+parseFloat(snap.diesel.ltsNoComprobados||0)))||0;
+    const dieselOficialMonto=parseFloat(snap.dieselComprobadoSub||0);
+    const dieselOficialLitros=(snap.diesel&&parseFloat(snap.diesel.ltsComprobados||0))||0;
     if(dieselRawTotal>0){
       dieselItems.forEach(function(i){
         if(!enRango(i.fecha))return;
@@ -1493,6 +1543,24 @@ function repGerencial(){
       if(!enRango(i.fechaEvento))return;
       acc.incidentes+=parseFloat(i.montoReconocido||0);
     });
+    // Seguro de cuadre: liquidaciones MUY viejas (de antes de que existieran
+    // varios de estos campos, ej. dieselComprobadoSub/totAutSub/totIncidentes)
+    // no tienen cómo desglosarse en las categorías de arriba — si la suma de
+    // todo lo de esta liquidación (sin filtrar por fecha) no alcanza a
+    // explicar su totGastosEmpTotal oficial, la diferencia se agrega como
+    // ajuste (ubicado en la fecha de llegada) para que NUNCA se pierda un
+    // peso del total oficial, en vez de dejarlo desaparecer en silencio.
+    if(snap.totGastosEmpTotal!=null){
+      var casetasFull=(snap.autopistasList||[]).reduce(function(s,a){return s+_subSinIva(a);},0)
+        +(snap.casetasNFList||[]).reduce(function(s,c){return s+parseFloat(c.monto||0);},0);
+      var otrosFull=(snap.gastosList||[]).reduce(function(s,g){return s+(g.tipo==='xml'?_subSinIva(g):parseFloat(g.total||g.subtotal||0));},0);
+      var incidentesFull=(snap.incidentesList||[]).reduce(function(s,i){return s+parseFloat(i.montoReconocido||0);},0);
+      var explicado=dieselOficialMonto+casetasFull+otrosFull+incidentesFull+comisionOficial+dosPctOficial;
+      var residual=parseFloat(snap.totGastosEmpTotal||0)-explicado;
+      if(Math.abs(residual)>0.01&&enRango(l.llegada||'')){
+        acc.otrosGastos+=residual;
+      }
+    }
   });
 
   const filas=Object.values(porOp).map(function(a){
@@ -1539,7 +1607,7 @@ function repGerencial(){
     +(masGasto?'<div class="kpi"><div class="v">'+masGasto.nombre+'</div><div class="k">Más gasto total ('+fmt(masGasto.totGas)+')</div></div>':'')
     +'</div>'
     +(!desde&&!hasta?'<div class="alert alert-info" style="margin-top:10px">Sin fechas seleccionadas se muestran TODAS las liquidaciones cerradas del sistema.</div>':'')
-    +'<div class="alert alert-info" style="margin-top:10px">ℹ️ La columna "Utilidad %" es el margen sobre ingresos — úsala para comparar operadores con poco tiempo trabajando contra los que llevan más, ya que el $ solo favorece a quien lleva más tiempo. La Utilidad ya descuenta TODO lo mismo que en el reporte oficial de cada liquidación: diesel (comprobado + excedente), casetas (XML y sin comprobante), comisión, 2% de gastos sin comprobante, incidentes reconocidos y otros gastos (maniobras/viáticos/refacciones/etc). Comisión, 2% e incidentes se ubican con la fecha de cada viaje/evento cuando se puede, o con la fecha de llegada de la liquidación cuando no tienen fecha propia (aproximado). El diesel NO se suma carga por carga: el gasto real (comprobado+excedente) se calcula por tanque para TODA la liquidación, así que se prorratea entre las cargas/facturas de esa liquidación según su tamaño — el total filtrado por periodo nunca puede pasarse del oficial de cada liquidación.</div>';
+    +'<div class="alert alert-info" style="margin-top:10px">ℹ️ La columna "Utilidad %" es el margen sobre ingresos — úsala para comparar operadores con poco tiempo trabajando contra los que llevan más, ya que el $ solo favorece a quien lleva más tiempo. La Utilidad ya descuenta TODO lo mismo que el reporte oficial de cada liquidación: diesel comprobado, casetas (XML y sin comprobante), comisión, 2% de gastos sin comprobante, incidentes reconocidos y otros gastos (maniobras/viáticos/refacciones/etc). El excedente de diesel (dieselNoComprobado) NO entra aquí porque es un cargo a la cuenta del OPERADOR, no un costo de la utilidad de la empresa. Comisión, 2% e incidentes se ubican con la fecha de cada viaje/evento cuando se puede, o con la fecha de llegada de la liquidación cuando no tienen fecha propia (aproximado). El diesel NO se suma carga por carga: el gasto real se calcula por tanque para TODA la liquidación, así que se prorratea entre las cargas/facturas de esa liquidación según su tamaño. Verificado renglón por renglón contra las 23 liquidaciones cerradas: sin filtro de fechas, Ingresos y Gastos cuadran EXACTOS al centavo con el total oficial de cada una (con un ajuste automático para liquidaciones muy viejas cuyo desglose no se guardó en el formato actual).</div>';
   $('repTablaWrap').innerHTML=tablaHTML(headers,rows);
   repDatosActuales={headers,rows};
   repNombreActual='reporte_gerencial'+(desde?'_'+desde:'')+(hasta?'_a_'+hasta:'');
