@@ -212,6 +212,7 @@ tr:hover td{background:#fafafa}
           <option value="gastosLiq">Gastos por liquidación</option>
           <option value="ingresosLiq">Ingresos por liquidación</option>
           <option value="ivaResumen">Resumen de IVA por periodo</option>
+          <option value="gerencial">Reporte gerencial (por periodo, todos los operadores)</option>
         </select>
       </div>
       <div class="field" id="fieldRepOp"><label>Operador</label>
@@ -229,6 +230,7 @@ tr:hover td{background:#fafafa}
       <button class="btn btn-red btn-sm" onclick="generarReporte2()">📊 Generar</button>
       <button class="btn btn-out btn-sm" id="btnExportRep" onclick="exportarReporteCSV()" style="display:none">⬇️ Exportar CSV</button>
     </div>
+    <div id="repNotaTipo" style="font-size:12px;color:#888;margin-top:6px"></div>
     <div id="repResumen" style="margin-top:14px"></div>
     <div class="tbl-wrap" id="repTablaWrap" style="margin-top:10px"></div>
   </div>
@@ -1294,6 +1296,9 @@ function cambiarTipoReporte(){
   $('repResumen').innerHTML='';
   $('repTablaWrap').innerHTML='';
   $('btnExportRep').style.display='none';
+  $('repNotaTipo').textContent=t==='gerencial'
+    ?'Desde/Hasta filtran por la fecha de CADA viaje/gasto (no por cuándo se cerró la liquidación) — sirve para investigar por periodo aunque la liquidación abarque otras fechas.'
+    :(t==='liqOp'||t==='antOp'||t==='ivaResumen'?'Desde/Hasta filtran por la fecha de salida/llegada de la liquidación.':'');
 }
 
 function opNombre(opId){
@@ -1350,6 +1355,111 @@ function generarReporte2(){
   if(t==='gastosLiq')return repGastosLiq();
   if(t==='ingresosLiq')return repIngresosLiq();
   if(t==='ivaResumen')return repIvaResumen();
+  if(t==='gerencial')return repGerencial();
+}
+
+// Reporte para dirección: agrega TODOS los viajes/gastos de TODAS las
+// liquidaciones cerradas (sin importar en cuál se haya cerrado), filtrando
+// cada renglón por SU PROPIA fecha (no por la fecha de cierre/salida de la
+// liquidación) — así se puede ver "cuánto se gastó en agosto" aunque una
+// liquidación haya cerrado en septiembre. Se agrupa por operador para
+// comparar quién genera más flete/utilidad y quién gasta más en cada rubro.
+function repGerencial(){
+  const filtOp=parseInt($('repOp').value||0);
+  const desde=$('repDesde').value||'';
+  const hasta=$('repHasta').value||'';
+  const enRango=function(f){
+    if(!f)return false; // sin fecha no se puede ubicar en el periodo — se excluye
+    if(desde&&f<desde)return false;
+    if(hasta&&f>hasta)return false;
+    return true;
+  };
+  const porOp={}; // key: opId -> acumulados
+  const getOp=function(l){
+    const opId=parseInt(l.opId||l.unidad||0);
+    if(!porOp[opId])porOp[opId]={opId:opId,unidad:l.unidad,nombre:opNombre(l.opId||l.unidad),
+      flete:0,maniobras:0,otrosIng:0,dieselMonto:0,dieselLitros:0,casetas:0,otrosGastos:0};
+    return porOp[opId];
+  };
+  historialDB.forEach(function(l){
+    const opIdL=parseInt(l.opId||l.unidad||0);
+    if(filtOp&&opIdL!==filtOp)return;
+    const snap=l.snapshot||{};
+    const acc=getOp(l);
+    (snap.viajesList||[]).forEach(function(v){
+      if(!enRango(v.fecha))return;
+      // subtFlete/subtManiobras/subtOtros solo existen en liquidaciones
+      // cerradas después de este reporte — si un viaje viejo no los trae,
+      // se cuenta su subtotal completo como Flete (el rubro dominante) para
+      // no perder el ingreso, marcado con nota en el resumen.
+      if(v.subtFlete!=null||v.subtManiobras!=null||v.subtOtros!=null){
+        acc.flete+=parseFloat(v.subtFlete||0);
+        acc.maniobras+=parseFloat(v.subtManiobras||0);
+        acc.otrosIng+=parseFloat(v.subtOtros||0);
+      }else{
+        acc.flete+=parseFloat(v.subtotal||0);
+      }
+    });
+    (snap.dieselXML||[]).forEach(function(x){
+      if(!enRango(x.fecha))return;
+      acc.dieselMonto+=parseFloat(x.total||x.subtotal||0);
+      acc.dieselLitros+=parseFloat(x.litros||0);
+    });
+    (snap.cargasDiesel||[]).forEach(function(c){
+      if(!enRango(c.fecha))return;
+      acc.dieselMonto+=parseFloat(c.importe||0);
+      acc.dieselLitros+=parseFloat(c.litros||0);
+    });
+    (snap.autopistasList||[]).forEach(function(a){
+      if(!enRango(a.fecha))return;
+      acc.casetas+=parseFloat(a.importe||a.subtotal||0);
+    });
+    (snap.casetasNFList||[]).forEach(function(c){
+      if(!enRango(c.fecha))return;
+      acc.casetas+=parseFloat(c.monto||0);
+    });
+    (snap.gastosList||[]).forEach(function(g){
+      if(!enRango(g.fecha))return;
+      acc.otrosGastos+=parseFloat(g.total||g.subtotal||0);
+    });
+  });
+
+  const filas=Object.values(porOp).map(function(a){
+    const totIng=a.flete+a.maniobras+a.otrosIng;
+    const totGas=a.dieselMonto+a.casetas+a.otrosGastos;
+    const utilidad=totIng-totGas;
+    return Object.assign(a,{totIng:totIng,totGas:totGas,utilidad:utilidad});
+  }).filter(function(a){return a.totIng>0||a.totGas>0;})
+    .sort(function(a,b){return b.utilidad-a.utilidad;});
+
+  const headers=['Operador','Unidad','Flete','Maniobras','Otros ingresos','Diesel $','Diesel Lts','Casetas','Otros gastos','Total gastos','Utilidad'];
+  const rows=filas.map(function(a){return[a.nombre,a.unidad||'—',fmt(a.flete),fmt(a.maniobras),fmt(a.otrosIng),
+    fmt(a.dieselMonto),a.dieselLitros?a.dieselLitros.toFixed(1):'0.0',fmt(a.casetas),fmt(a.otrosGastos),fmt(a.totGas),fmt(a.utilidad)];});
+
+  const totFlete=filas.reduce(function(s,a){return s+a.flete;},0);
+  const totManiobras=filas.reduce(function(s,a){return s+a.maniobras;},0);
+  const totDiesel=filas.reduce(function(s,a){return s+a.dieselMonto;},0);
+  const totCasetas=filas.reduce(function(s,a){return s+a.casetas;},0);
+  const totOtrosG=filas.reduce(function(s,a){return s+a.otrosGastos;},0);
+  const totUtilidad=filas.reduce(function(s,a){return s+a.utilidad;},0);
+  const masGasto=filas.slice().sort(function(a,b){return b.totGas-a.totGas;})[0];
+  const masUtilidad=filas[0];
+
+  $('repResumen').innerHTML='<div class="kpis">'
+    +'<div class="kpi"><div class="v">'+fmt(totFlete)+'</div><div class="k">Flete total</div></div>'
+    +'<div class="kpi"><div class="v">'+fmt(totManiobras)+'</div><div class="k">Maniobras total</div></div>'
+    +'<div class="kpi"><div class="v red">'+fmt(totDiesel)+'</div><div class="k">Diesel total</div></div>'
+    +'<div class="kpi"><div class="v red">'+fmt(totCasetas)+'</div><div class="k">Casetas total</div></div>'
+    +'<div class="kpi"><div class="v red">'+fmt(totOtrosG)+'</div><div class="k">Otros gastos total</div></div>'
+    +'<div class="kpi"><div class="v '+(totUtilidad<0?'red':'green')+'">'+fmt(totUtilidad)+'</div><div class="k">Utilidad total</div></div>'
+    +(masUtilidad?'<div class="kpi"><div class="v">'+masUtilidad.nombre+'</div><div class="k">Más utilidad ('+fmt(masUtilidad.utilidad)+')</div></div>':'')
+    +(masGasto?'<div class="kpi"><div class="v">'+masGasto.nombre+'</div><div class="k">Más gasto total ('+fmt(masGasto.totGas)+')</div></div>':'')
+    +'</div>'
+    +(!desde&&!hasta?'<div class="alert alert-info" style="margin-top:10px">Sin fechas seleccionadas se muestran TODAS las liquidaciones cerradas del sistema.</div>':'');
+  $('repTablaWrap').innerHTML=tablaHTML(headers,rows);
+  repDatosActuales={headers,rows};
+  repNombreActual='reporte_gerencial'+(desde?'_'+desde:'')+(hasta?'_a_'+hasta:'');
+  $('btnExportRep').style.display='inline-block';
 }
 
 function repLiqOp(){
