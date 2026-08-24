@@ -1389,9 +1389,15 @@ function repGerencial(){
   const getOp=function(l){
     const opId=parseInt(l.opId||l.unidad||0);
     if(!porOp[opId])porOp[opId]={opId:opId,unidad:l.unidad,nombre:opNombre(l.opId||l.unidad),
-      flete:0,maniobras:0,otrosIng:0,dieselMonto:0,dieselLitros:0,casetas:0,otrosGastos:0,comision:0};
+      flete:0,maniobras:0,otrosIng:0,dieselMonto:0,dieselLitros:0,casetas:0,otrosGastos:0,comision:0,dosPct:0,incidentes:0};
     return porOp[opId];
   };
+  // Autopistas (casetas XML) y gastos XML son CFDIs deducibles — su IVA es
+  // acreditable y NO es costo real, así que para la utilidad se usa el
+  // SUBTOTAL (sin IVA), igual que en el cálculo oficial de cada liquidación
+  // (ver liq.html: totAutSub/gastosXMLSub). Fallback /1.16 si el registro es
+  // viejo y no guardó el subtotal por separado.
+  const _subSinIva=function(item){return(item.subtotal!=null&&item.subtotal>0)?parseFloat(item.subtotal):parseFloat(item.total||item.importe||0)/1.16;};
   // El snapshot (viajesList) solo guarda subtFlete/subtManiobras/subtOtros en
   // liquidaciones cerradas DESPUÉS de que se agregó ese campo — pero el
   // registro EN VIVO de ingresosDB (que no se borra al liquidar, solo cambia
@@ -1411,10 +1417,11 @@ function repGerencial(){
     if(filtOp&&opIdL!==filtOp)return;
     const snap=l.snapshot||{};
     const acc=getOp(l);
-    // La comisión del operador se calcula sobre el FLETE de cada viaje (ver
-    // liq.html: totComision = totSubFletes * comisión%) — se prorratea por
-    // viaje aquí mismo (comisión% de ESTA liquidación × el flete de ese
-    // viaje en particular) para que quede en el mismo periodo que su viaje.
+    // La comisión Y el 2% de gastos sin comprobante se calculan sobre el
+    // FLETE de cada viaje (ver liq.html: totComision=totSubFletes*comisión%,
+    // totGastos1=totSubFletes*0.02) — se prorratean por viaje aquí mismo
+    // (% de ESTA liquidación × el flete de ese viaje en particular) para que
+    // queden en el mismo periodo que su viaje.
     const comisionPct=parseFloat(l.comision||0)/100;
     (snap.viajesList||[]).forEach(function(v){
       if(!enRango(v.fecha))return;
@@ -1433,21 +1440,37 @@ function repGerencial(){
       }
       acc.flete+=fleteItem;acc.maniobras+=maniobrasItem;acc.otrosIng+=otrosItem;
       acc.comision+=fleteItem*comisionPct;
+      acc.dosPct+=fleteItem*0.02;
     });
-    (snap.dieselXML||[]).forEach(function(x){
-      if(!enRango(x.fecha))return;
-      acc.dieselMonto+=parseFloat(x.total||x.subtotal||0);
-      acc.dieselLitros+=parseFloat(x.litros||0);
-    });
-    (snap.cargasDiesel||[]).forEach(function(c){
-      if(!enRango(c.fecha))return;
-      acc.dieselMonto+=parseFloat(c.importe||0);
-      acc.dieselLitros+=parseFloat(c.litros||0);
-    });
+    // Diesel: NO se puede sumar el crudo de cada carga/factura, porque el
+    // costo real reconocido (dieselComprobadoSub + dieselNoComprobado) es el
+    // resultado de una reconciliación de TANQUE para TODA la liquidación
+    // (litros medidos por ECM vs. litros cargados) — lo cargado de más se
+    // va de "arrastre" a la SIGUIENTE liquidación o se marca como excedente,
+    // así que sumar cada carga por su cuenta sobrecuenta el gasto real. En
+    // vez de eso, se prorratea el monto oficial reconocido (comprobado +
+    // excedente) entre las cargas/facturas de ESTA liquidación que caen en
+    // el rango de fechas, a prorrata de su propio importe — así el total
+    // filtrado por periodo nunca puede pasarse del oficial de la liquidación.
+    const dieselItems=(snap.cargasDiesel||[]).map(function(c){return{fecha:c.fecha,valor:parseFloat(c.importe||0),litros:parseFloat(c.litros||0)};})
+      .concat((snap.dieselXML||[]).map(function(x){return{fecha:x.fecha,valor:_subSinIva(x),litros:parseFloat(x.litros||0)};}));
+    const dieselRawTotal=dieselItems.reduce(function(s,i){return s+i.valor;},0);
+    const dieselOficialMonto=parseFloat(snap.dieselComprobadoSub||0)+parseFloat(snap.dieselNoComprobado||0);
+    const dieselOficialLitros=(snap.diesel&&(parseFloat(snap.diesel.ltsComprobados||0)+parseFloat(snap.diesel.ltsNoComprobados||0)))||0;
+    if(dieselRawTotal>0){
+      dieselItems.forEach(function(i){
+        if(!enRango(i.fecha))return;
+        const prop=i.valor/dieselRawTotal;
+        acc.dieselMonto+=prop*dieselOficialMonto;
+        acc.dieselLitros+=prop*dieselOficialLitros;
+      });
+    }
+    // Casetas XML (IAVE/PASE) — CFDI deducible, sin IVA (subtotal).
     (snap.autopistasList||[]).forEach(function(a){
       if(!enRango(a.fecha))return;
-      acc.casetas+=parseFloat(a.importe||a.subtotal||0);
+      acc.casetas+=_subSinIva(a);
     });
+    // Casetas sin comprobante — no llevan IVA, monto completo.
     (snap.casetasNFList||[]).forEach(function(c){
       if(!enRango(c.fecha))return;
       acc.casetas+=parseFloat(c.monto||0);
@@ -1459,13 +1482,22 @@ function repGerencial(){
       // llegada de la liquidación (aproximado, no el día exacto del gasto).
       var fGasto=(g.tipo==='manual'&&!g.fecha)?(l.llegada||''):g.fecha;
       if(!enRango(fGasto))return;
-      acc.otrosGastos+=parseFloat(g.total||g.subtotal||0);
+      // Los gastos XML son CFDI deducible (sin IVA); los manuales no llevan
+      // IVA desglosado (su "subtotal" ya es el monto completo).
+      acc.otrosGastos+=g.tipo==='xml'?_subSinIva(g):parseFloat(g.total||g.subtotal||0);
+    });
+    // Incidentes de vialidad reconocidos al operador (montoReconocido, ya
+    // con el tope de $1,500/liquidación aplicado) — sí traen fecha propia
+    // (fechaEvento) desde que existen.
+    (snap.incidentesList||[]).forEach(function(i){
+      if(!enRango(i.fechaEvento))return;
+      acc.incidentes+=parseFloat(i.montoReconocido||0);
     });
   });
 
   const filas=Object.values(porOp).map(function(a){
     const totIng=a.flete+a.maniobras+a.otrosIng;
-    const totGas=a.dieselMonto+a.casetas+a.otrosGastos+a.comision;
+    const totGas=a.dieselMonto+a.casetas+a.otrosGastos+a.comision+a.dosPct+a.incidentes;
     const utilidad=totIng-totGas;
     // Utilidad en % (margen sobre ingresos) — el $ solo no dice mucho si un
     // operador lleva pocos días trabajando: puede estar hasta abajo del
@@ -1475,15 +1507,17 @@ function repGerencial(){
   }).filter(function(a){return a.totIng>0||a.totGas>0;})
     .sort(function(a,b){return b.utilidad-a.utilidad;});
 
-  const headers=['Operador','Unidad','Flete','Maniobras','Otros ingresos','Diesel $','Diesel Lts','Casetas','Comisión','Otros gastos','Total gastos','Utilidad','Utilidad %'];
+  const headers=['Operador','Unidad','Flete','Maniobras','Otros ingresos','Diesel $','Diesel Lts','Casetas','Comisión','2%','Incidentes','Otros gastos','Total gastos','Utilidad','Utilidad %'];
   const rows=filas.map(function(a){return[a.nombre,a.unidad||'—',fmt(a.flete),fmt(a.maniobras),fmt(a.otrosIng),
-    fmt(a.dieselMonto),a.dieselLitros?a.dieselLitros.toFixed(1):'0.0',fmt(a.casetas),fmt(a.comision),fmt(a.otrosGastos),fmt(a.totGas),fmt(a.utilidad),a.utilidadPct.toFixed(1)+'%'];});
+    fmt(a.dieselMonto),a.dieselLitros?a.dieselLitros.toFixed(1):'0.0',fmt(a.casetas),fmt(a.comision),fmt(a.dosPct),fmt(a.incidentes),fmt(a.otrosGastos),fmt(a.totGas),fmt(a.utilidad),a.utilidadPct.toFixed(1)+'%'];});
 
   const totFlete=filas.reduce(function(s,a){return s+a.flete;},0);
   const totManiobras=filas.reduce(function(s,a){return s+a.maniobras;},0);
   const totDiesel=filas.reduce(function(s,a){return s+a.dieselMonto;},0);
   const totCasetas=filas.reduce(function(s,a){return s+a.casetas;},0);
   const totComision=filas.reduce(function(s,a){return s+a.comision;},0);
+  const totDosPct=filas.reduce(function(s,a){return s+a.dosPct;},0);
+  const totIncidentes=filas.reduce(function(s,a){return s+a.incidentes;},0);
   const totOtrosG=filas.reduce(function(s,a){return s+a.otrosGastos;},0);
   const totUtilidad=filas.reduce(function(s,a){return s+a.utilidad;},0);
   const masGasto=filas.slice().sort(function(a,b){return b.totGas-a.totGas;})[0];
@@ -1493,9 +1527,11 @@ function repGerencial(){
   $('repResumen').innerHTML='<div class="kpis">'
     +'<div class="kpi"><div class="v">'+fmt(totFlete)+'</div><div class="k">Flete total</div></div>'
     +'<div class="kpi"><div class="v">'+fmt(totManiobras)+'</div><div class="k">Maniobras total</div></div>'
-    +'<div class="kpi"><div class="v red">'+fmt(totDiesel)+'</div><div class="k">Diesel total</div></div>'
+    +'<div class="kpi"><div class="v red">'+fmt(totDiesel)+'</div><div class="k">Diesel total (comprobado + excedente)</div></div>'
     +'<div class="kpi"><div class="v red">'+fmt(totCasetas)+'</div><div class="k">Casetas total</div></div>'
     +'<div class="kpi"><div class="v red">'+fmt(totComision)+'</div><div class="k">Comisión total</div></div>'
+    +'<div class="kpi"><div class="v red">'+fmt(totDosPct)+'</div><div class="k">2% gastos sin comprobante</div></div>'
+    +'<div class="kpi"><div class="v red">'+fmt(totIncidentes)+'</div><div class="k">Incidentes reconocidos</div></div>'
     +'<div class="kpi"><div class="v red">'+fmt(totOtrosG)+'</div><div class="k">Otros gastos total</div></div>'
     +'<div class="kpi"><div class="v '+(totUtilidad<0?'red':'green')+'">'+fmt(totUtilidad)+'</div><div class="k">Utilidad total</div></div>'
     +(masUtilidad?'<div class="kpi"><div class="v">'+masUtilidad.nombre+'</div><div class="k">Más utilidad en $ ('+fmt(masUtilidad.utilidad)+')</div></div>':'')
@@ -1503,7 +1539,7 @@ function repGerencial(){
     +(masGasto?'<div class="kpi"><div class="v">'+masGasto.nombre+'</div><div class="k">Más gasto total ('+fmt(masGasto.totGas)+')</div></div>':'')
     +'</div>'
     +(!desde&&!hasta?'<div class="alert alert-info" style="margin-top:10px">Sin fechas seleccionadas se muestran TODAS las liquidaciones cerradas del sistema.</div>':'')
-    +'<div class="alert alert-info" style="margin-top:10px">ℹ️ La columna "Utilidad %" es el margen sobre ingresos — úsala para comparar operadores con poco tiempo trabajando contra los que llevan más, ya que el $ solo favorece a quien lleva más tiempo. Los gastos manuales (maniobras/viáticos/otros) capturados antes de que el formulario pidiera fecha se ubican aproximadamente en la fecha de llegada de su liquidación.</div>';
+    +'<div class="alert alert-info" style="margin-top:10px">ℹ️ La columna "Utilidad %" es el margen sobre ingresos — úsala para comparar operadores con poco tiempo trabajando contra los que llevan más, ya que el $ solo favorece a quien lleva más tiempo. La Utilidad ya descuenta TODO lo mismo que en el reporte oficial de cada liquidación: diesel (comprobado + excedente), casetas (XML y sin comprobante), comisión, 2% de gastos sin comprobante, incidentes reconocidos y otros gastos (maniobras/viáticos/refacciones/etc). Comisión, 2% e incidentes se ubican con la fecha de cada viaje/evento cuando se puede, o con la fecha de llegada de la liquidación cuando no tienen fecha propia (aproximado). El diesel NO se suma carga por carga: el gasto real (comprobado+excedente) se calcula por tanque para TODA la liquidación, así que se prorratea entre las cargas/facturas de esa liquidación según su tamaño — el total filtrado por periodo nunca puede pasarse del oficial de cada liquidación.</div>';
   $('repTablaWrap').innerHTML=tablaHTML(headers,rows);
   repDatosActuales={headers,rows};
   repNombreActual='reporte_gerencial'+(desde?'_'+desde:'')+(hasta?'_a_'+hasta:'');
