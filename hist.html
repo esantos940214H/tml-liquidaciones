@@ -17,6 +17,9 @@ header{background:#1a1a2e;color:#fff;padding:14px 24px;display:flex;align-items:
 .container{max-width:1150px;margin:0 auto;padding:20px 16px}
 .card{background:#fff;border-radius:10px;box-shadow:0 2px 12px rgba(0,0,0,.07);padding:20px 24px;margin-bottom:16px}
 .card-title{font-size:12px;font-weight:700;color:#1a1a2e;margin-bottom:14px;text-transform:uppercase;letter-spacing:1px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px}
+.info-tip{position:relative;display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;border-radius:50%;background:#dde4ee;color:#4a5568;font-size:11px;font-weight:700;font-style:normal;text-transform:none;letter-spacing:normal;cursor:help;flex-shrink:0}
+.info-tip .info-tip-box{visibility:hidden;opacity:0;position:absolute;z-index:200;left:0;top:22px;width:320px;max-width:80vw;background:#1a1a2e;color:#fff;font-size:12px;font-weight:400;line-height:1.5;padding:10px 12px;border-radius:8px;box-shadow:0 6px 18px rgba(0,0,0,.25);transition:opacity .15s}
+.info-tip:hover .info-tip-box,.info-tip:focus .info-tip-box{visibility:visible;opacity:1}
 .field{display:flex;flex-direction:column;gap:4px}
 .field label{font-size:11px;font-weight:700;color:#666;text-transform:uppercase;letter-spacing:.5px}
 .field input,.field select{border:1.5px solid #dde;border-radius:6px;padding:8px 10px;font-size:13px;color:#1a1a2e;background:#fafafa;width:100%}
@@ -1595,19 +1598,18 @@ function repGerencial(){
   $('repResumen').innerHTML='<div class="kpis">'
     +'<div class="kpi"><div class="v">'+fmt(totFlete)+'</div><div class="k">Flete total</div></div>'
     +'<div class="kpi"><div class="v">'+fmt(totManiobras)+'</div><div class="k">Maniobras total</div></div>'
-    +'<div class="kpi"><div class="v red">'+fmt(totDiesel)+'</div><div class="k">Diesel total (comprobado + excedente)</div></div>'
+    +'<div class="kpi"><div class="v red">'+fmt(totDiesel)+'</div><div class="k">Diesel total (comprobado)</div></div>'
     +'<div class="kpi"><div class="v red">'+fmt(totCasetas)+'</div><div class="k">Casetas total</div></div>'
     +'<div class="kpi"><div class="v red">'+fmt(totComision)+'</div><div class="k">Comisión total</div></div>'
     +'<div class="kpi"><div class="v red">'+fmt(totDosPct)+'</div><div class="k">2% gastos sin comprobante</div></div>'
     +'<div class="kpi"><div class="v red">'+fmt(totIncidentes)+'</div><div class="k">Incidentes reconocidos</div></div>'
     +'<div class="kpi"><div class="v red">'+fmt(totOtrosG)+'</div><div class="k">Otros gastos total</div></div>'
-    +'<div class="kpi"><div class="v '+(totUtilidad<0?'red':'green')+'">'+fmt(totUtilidad)+'</div><div class="k">Utilidad total</div></div>'
+    +'<div class="kpi"><div class="v '+(totUtilidad<0?'red':'green')+'">'+fmt(totUtilidad)+'</div><div class="k">Utilidad total <span class="info-tip">?<span class="info-tip-box">La "Utilidad %" es el margen sobre ingresos — úsala para comparar operadores con poco tiempo trabajando contra los que llevan más, ya que el $ solo favorece a quien lleva más tiempo. La Utilidad ya descuenta TODO lo mismo que el reporte oficial de cada liquidación: diesel comprobado, casetas (XML y sin comprobante), comisión, 2% de gastos sin comprobante, incidentes reconocidos y otros gastos (maniobras/viáticos/refacciones/etc). El excedente de diesel (dieselNoComprobado) NO entra aquí porque es un cargo a la cuenta del OPERADOR, no un costo de la utilidad de la empresa. Comisión, 2% e incidentes se ubican con la fecha de cada viaje/evento cuando se puede, o con la fecha de llegada de la liquidación cuando no tienen fecha propia (aproximado). El diesel NO se suma carga por carga: el gasto real se calcula por tanque para TODA la liquidación, así que se prorratea entre las cargas/facturas de esa liquidación según su tamaño. Verificado renglón por renglón contra las liquidaciones cerradas: sin filtro de fechas, Ingresos y Gastos cuadran EXACTOS al centavo con el total oficial de cada una (con un ajuste automático para liquidaciones muy viejas cuyo desglose no se guardó en el formato actual).</span></span></div></div>'
     +(masUtilidad?'<div class="kpi"><div class="v">'+masUtilidad.nombre+'</div><div class="k">Más utilidad en $ ('+fmt(masUtilidad.utilidad)+')</div></div>':'')
     +(masMargen?'<div class="kpi"><div class="v">'+masMargen.nombre+'</div><div class="k">Mejor margen % ('+masMargen.utilidadPct.toFixed(1)+'%)</div></div>':'')
     +(masGasto?'<div class="kpi"><div class="v">'+masGasto.nombre+'</div><div class="k">Más gasto total ('+fmt(masGasto.totGas)+')</div></div>':'')
     +'</div>'
-    +(!desde&&!hasta?'<div class="alert alert-info" style="margin-top:10px">Sin fechas seleccionadas se muestran TODAS las liquidaciones cerradas del sistema.</div>':'')
-    +'<div class="alert alert-info" style="margin-top:10px">ℹ️ La columna "Utilidad %" es el margen sobre ingresos — úsala para comparar operadores con poco tiempo trabajando contra los que llevan más, ya que el $ solo favorece a quien lleva más tiempo. La Utilidad ya descuenta TODO lo mismo que el reporte oficial de cada liquidación: diesel comprobado, casetas (XML y sin comprobante), comisión, 2% de gastos sin comprobante, incidentes reconocidos y otros gastos (maniobras/viáticos/refacciones/etc). El excedente de diesel (dieselNoComprobado) NO entra aquí porque es un cargo a la cuenta del OPERADOR, no un costo de la utilidad de la empresa. Comisión, 2% e incidentes se ubican con la fecha de cada viaje/evento cuando se puede, o con la fecha de llegada de la liquidación cuando no tienen fecha propia (aproximado). El diesel NO se suma carga por carga: el gasto real se calcula por tanque para TODA la liquidación, así que se prorratea entre las cargas/facturas de esa liquidación según su tamaño. Verificado renglón por renglón contra las 23 liquidaciones cerradas: sin filtro de fechas, Ingresos y Gastos cuadran EXACTOS al centavo con el total oficial de cada una (con un ajuste automático para liquidaciones muy viejas cuyo desglose no se guardó en el formato actual).</div>';
+    +(!desde&&!hasta?'<div style="font-size:12px;color:#888;margin-top:10px">Sin fechas seleccionadas se muestran TODAS las liquidaciones cerradas del sistema.</div>':'');
   $('repTablaWrap').innerHTML=tablaHTML(headers,rows);
   repDatosActuales={headers,rows};
   repNombreActual='reporte_gerencial'+(desde?'_'+desde:'')+(hasta?'_a_'+hasta:'');

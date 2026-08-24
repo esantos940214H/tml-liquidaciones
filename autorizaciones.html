@@ -26,6 +26,9 @@ header{background:#1a1a2e;color:#fff;padding:14px 24px;display:flex;align-items:
 .btn:disabled{opacity:.35;cursor:not-allowed}
 .btn-sm{padding:5px 11px;font-size:11px}
 .alert{padding:9px 13px;border-radius:7px;font-size:12px;margin-bottom:10px}
+.info-tip{position:relative;display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;border-radius:50%;background:#dde4ee;color:#4a5568;font-size:11px;font-weight:700;font-style:normal;text-transform:none;letter-spacing:normal;cursor:help;flex-shrink:0}
+.info-tip .info-tip-box{visibility:hidden;opacity:0;position:absolute;z-index:200;left:0;top:22px;width:300px;max-width:80vw;background:#1a1a2e;color:#fff;font-size:12px;font-weight:400;line-height:1.5;padding:10px 12px;border-radius:8px;box-shadow:0 6px 18px rgba(0,0,0,.25);transition:opacity .15s}
+.info-tip:hover .info-tip-box,.info-tip:focus .info-tip-box{visibility:visible;opacity:1}
 .alert-info{background:#e8f4fd;color:#0369a1;border:1px solid #bae6fd}
 .alert-ok{background:#d1e7dd;color:#0a5233;border:1px solid #a3cfbb}
 .alert-warn{background:#fffbeb;color:#92400e;border:1px solid #fde68a}
@@ -120,11 +123,9 @@ tr:hover td{background:#fafafa}
 
 <div class="container">
 
-  <div class="alert alert-info">🔐 Gastos y casetas sin comprobante fiscal, registrados en el módulo de Liquidaciones, que necesitan autorización antes de contar en la liquidación. Selecciona los que quieras aprobar y confirma con la contraseña de supervisor.</div>
-
   <div class="card">
     <div class="card-title">
-      <span>⏳ Pendientes de autorización <span id="liqActivaLabel" style="font-weight:400;color:#888;text-transform:none;letter-spacing:normal"></span></span>
+      <span>⏳ Pendientes de autorización <span id="liqActivaLabel" style="font-weight:400;color:#888;text-transform:none;letter-spacing:normal"></span> <span class="info-tip">?<span class="info-tip-box">🔐 Gastos y casetas sin comprobante fiscal, registrados en el módulo de Liquidaciones, que necesitan autorización antes de contar en la liquidación. Selecciona los que quieras aprobar y confirma con la contraseña de supervisor.</span></span></span>
       <button class="btn btn-out btn-sm" onclick="cargarPendientes()">🔄 Recargar</button>
     </div>
     <div id="pendientesWrap"><div style="text-align:center;padding:30px;color:#aaa">Cargando...</div></div>
@@ -136,10 +137,9 @@ tr:hover td{background:#fafafa}
 
   <div class="card">
     <div class="card-title">
-      <span>✂️ Divisiones de ingresos pendientes <span id="divPendLabel" style="font-weight:400;color:#888;text-transform:none;letter-spacing:normal"></span></span>
+      <span>✂️ Divisiones de ingresos pendientes <span id="divPendLabel" style="font-weight:400;color:#888;text-transform:none;letter-spacing:normal"></span> <span class="info-tip">?<span class="info-tip-box">Cuando un cliente exige facturar todo como un solo concepto (normalmente "Flete"), en Ingresos se puede solicitar repartir manualmente el subtotal entre Flete/Maniobras/Otros — pero ese reparto no afecta el cálculo de comisión hasta que se autorice aquí.</span></span></span>
       <button class="btn btn-out btn-sm" onclick="cargarDivisionesPendientes()">🔄 Recargar</button>
     </div>
-    <div class="alert alert-info" style="font-size:12px">Cuando un cliente exige facturar todo como un solo concepto (normalmente "Flete"), en Ingresos se puede solicitar repartir manualmente el subtotal entre Flete/Maniobras/Otros — pero ese reparto no afecta el cálculo de comisión hasta que se autorice aquí.</div>
     <div id="divPendWrap"><div style="text-align:center;padding:30px;color:#aaa">Cargando...</div></div>
     <div id="divPendAcciones" style="margin-top:12px;display:none;gap:8px;flex-wrap:wrap;align-items:center">
       <button class="btn btn-out btn-sm" onclick="toggleTodosDivPend(this)">Seleccionar todos</button>

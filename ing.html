@@ -39,6 +39,9 @@ header{background:#1a1a2e;color:#fff;padding:14px 24px;display:flex;align-items:
 .alert-info{background:#e8f4fd;color:#0369a1;border:1px solid #bae6fd}
 .alert-ok{background:#d1e7dd;color:#0a5233;border:1px solid #a3cfbb}
 .alert-warn{background:#fffbeb;color:#92400e;border:1px solid #fde68a}
+.info-tip{position:relative;display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;border-radius:50%;background:#dde4ee;color:#4a5568;font-size:11px;font-weight:700;font-style:normal;text-transform:none;letter-spacing:normal;cursor:help;flex-shrink:0}
+.info-tip .info-tip-box{visibility:hidden;opacity:0;position:absolute;z-index:200;left:0;top:22px;width:300px;max-width:80vw;background:#1a1a2e;color:#fff;font-size:12px;font-weight:400;line-height:1.5;padding:10px 12px;border-radius:8px;box-shadow:0 6px 18px rgba(0,0,0,.25);transition:opacity .15s}
+.info-tip:hover .info-tip-box,.info-tip:focus .info-tip-box{visibility:visible;opacity:1}
 .tbl-wrap{overflow-x:auto}
 table{width:100%;border-collapse:collapse;font-size:13px;min-width:600px}
 th{background:#1a1a2e;color:#fff;padding:8px 10px;font-size:11px;text-transform:uppercase;letter-spacing:.7px;text-align:left;font-weight:600}
@@ -178,8 +181,7 @@ tr:hover td{background:#fafafa}
 
   <!-- SUSTITUIR CON FACTURA DE MANIOBRAS CONSOLIDADA (XML + Excel de desglose) -->
   <div class="card">
-    <div class="card-title">📊 Sustituir con factura de maniobras (Excel)</div>
-    <div class="alert alert-info">Para cuando UNA factura junta varias semanas de maniobras ya autorizadas (normal con GRUPO COMERCIAL DSW — el cliente autoriza una vez por semana y se factura en lote, ver Maniobras). Sube el XML de esa factura + tu Excel de desglose (mismo formato de columnas VIAJE/TIENDA/DESTINO/ORDEN DE EMBARQUE/TOTAL) — el sistema empareja cada renglón por T.U.'s contra las autorizaciones pendientes y las sustituye automáticamente si el monto coincide (tolerancia $50).</div>
+    <div class="card-title">📊 Sustituir con factura de maniobras (Excel) <span class="info-tip">?<span class="info-tip-box">Para cuando UNA factura junta varias semanas de maniobras ya autorizadas (normal con GRUPO COMERCIAL DSW — el cliente autoriza una vez por semana y se factura en lote, ver Maniobras). Sube el XML de esa factura + tu Excel de desglose (mismo formato de columnas VIAJE/TIENDA/DESTINO/ORDEN DE EMBARQUE/TOTAL) — el sistema empareja cada renglón por T.U.'s contra las autorizaciones pendientes y las sustituye automáticamente si el monto coincide (tolerancia $50).</span></span></div>
     <div class="grid2">
       <div class="field"><label>XML de la factura</label><input type="file" id="fFacturaManiobrasXML" accept=".xml"></div>
       <div class="field"><label>Excel de desglose</label><input type="file" id="fFacturaManiobrasXLSX" accept=".xlsx,.xls"></div>
@@ -190,8 +192,7 @@ tr:hover td{background:#fafafa}
 
   <!-- REGISTRAR SIN FACTURA CON IA (solo admin) — Estimado de Transportación -->
   <div class="card" id="cardEstimadoIA" style="display:none">
-    <div class="card-title">🤖 Registrar sin factura (Estimado de Transportación)</div>
-    <div class="alert alert-info">Solo administrador. Sube el archivo del Estimado de Transportación (PDF, Excel o Word) o pega el texto — la IA extrae folio, fecha, cliente, origen/destino y separa Flete/Maniobras/Otros. El estimado NO trae operador ni económico, así que selecciónalo tú abajo.</div>
+    <div class="card-title">🤖 Registrar sin factura (Estimado de Transportación) <span class="info-tip">?<span class="info-tip-box">Solo administrador. Sube el archivo del Estimado de Transportación (PDF, Excel o Word) o pega el texto — la IA extrae folio, fecha, cliente, origen/destino y separa Flete/Maniobras/Otros. El estimado NO trae operador ni económico, así que selecciónalo tú abajo.</span></span></div>
     <div class="field"><label>Operador</label><select id="estOp"><option value="">— Selecciona —</option></select></div>
     <div class="field" style="margin-top:8px"><label>Archivo del estimado (PDF, Excel o Word — opcional si vas a pegar el texto)</label><input type="file" id="estArchivo" accept=".pdf,.xlsx,.xls,.docx,.doc" onchange="handleEstArchivo(event)"></div>
     <div class="field" style="margin-top:8px"><label>Texto del estimado</label><textarea id="estTexto" rows="6" placeholder="...o pega aquí el texto del Estimado de Transportación" oninput="_estPdfBase64=null"></textarea></div>

@@ -28,6 +28,9 @@ header{background:#1a1a2e;color:#fff;padding:14px 24px;display:flex;align-items:
 .btn-out{background:#fff;color:#1a1a2e;border:1.5px solid #1a1a2e}.btn-out:hover{background:#f0f2f5}
 .btn-sm{padding:5px 11px;font-size:11px}
 .alert{padding:9px 13px;border-radius:7px;font-size:12px;margin-bottom:10px}
+.info-tip{position:relative;display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;border-radius:50%;background:#dde4ee;color:#4a5568;font-size:11px;font-weight:700;font-style:normal;text-transform:none;letter-spacing:normal;cursor:help;flex-shrink:0}
+.info-tip .info-tip-box{visibility:hidden;opacity:0;position:absolute;z-index:200;left:0;top:22px;width:300px;max-width:80vw;background:#1a1a2e;color:#fff;font-size:12px;font-weight:400;line-height:1.5;padding:10px 12px;border-radius:8px;box-shadow:0 6px 18px rgba(0,0,0,.25);transition:opacity .15s}
+.info-tip:hover .info-tip-box,.info-tip:focus .info-tip-box{visibility:visible;opacity:1}
 .alert-info{background:#e8f4fd;color:#0369a1;border:1px solid #bae6fd}
 .alert-ok{background:#d1e7dd;color:#0a5233;border:1px solid #a3cfbb}
 .alert-warn{background:#fffbeb;color:#92400e;border:1px solid #fde68a}
@@ -131,8 +134,6 @@ tr:hover td{background:#fafafa}
 
 <div class="container">
 
-  <div class="alert alert-info">🚚 Alta y baja de operadores y unidades, asignación/reasignación entre ellos, y checklist de diesel en tanque al entregar/recibir una unidad — todo sin tocar código. Solo administradores.</div>
-
   <div class="tabs">
     <button class="tab active" id="tabBtnOperadores" onclick="cambiarTab('operadores')">👤 Operadores</button>
     <button class="tab" id="tabBtnUnidades" onclick="cambiarTab('unidades')">🚛 Unidades</button>
@@ -145,7 +146,7 @@ tr:hover td{background:#fafafa}
   <!-- OPERADORES -->
   <div class="tabpanel active" id="panelOperadores">
     <div class="card">
-      <div class="card-title">➕ Dar de alta un operador</div>
+      <div class="card-title">➕ Dar de alta un operador <span class="info-tip">?<span class="info-tip-box">🚚 Alta y baja de operadores y unidades, asignación/reasignación entre ellos, y checklist de diesel en tanque al entregar/recibir una unidad — todo sin tocar código. Solo administradores.</span></span></div>
       <div class="row">
         <div class="field" style="flex:2;min-width:200px"><label>Nombre completo</label><input type="text" id="nuevoOpNombre" placeholder="Nombre del operador"></div>
         <div class="field"><label>% Comisión</label><input type="number" id="nuevoOpComision" value="12" step="1" min="0" max="100"></div>
@@ -187,14 +188,12 @@ tr:hover td{background:#fafafa}
   <!-- ASIGNAR / REASIGNAR -->
   <div class="tabpanel" id="panelAsignar">
     <div class="card">
-      <div class="card-title">🔄 Asignar operador a unidad</div>
-      <div class="alert alert-info">Si el operador ya tenía otra unidad, o la unidad ya tenía otro operador, se desasignan automáticamente. Los litros que reciba el operador entrante quedan como "diesel inicial" de su siguiente liquidación en esa unidad.</div>
+      <div class="card-title">🔄 Asignar operador a unidad <span class="info-tip">?<span class="info-tip-box">Si el operador ya tenía otra unidad, o la unidad ya tenía otro operador, se desasignan automáticamente. Los litros que reciba el operador entrante quedan como "diesel inicial" de su siguiente liquidación en esa unidad.</span></span></div>
       <div class="row">
         <div class="field" style="flex:1;min-width:220px"><label>Operador</label><select id="asigOperador" onchange="onCambioAsignacion()"><option value="">— Selecciona —</option></select></div>
         <div class="field" style="flex:1;min-width:220px"><label>Unidad</label><select id="asigUnidad" onchange="onCambioAsignacion()"><option value="">— Selecciona —</option></select></div>
-        <div class="field"><label>Fecha real de la asignación</label><input type="date" id="asigFecha"></div>
+        <div class="field"><label>Fecha real de la asignación <span class="info-tip">?<span class="info-tip-box">💡 Si registras esto varios días después de que en realidad pasó (por ejemplo, hoy cambias al operador de camión en el sistema pero el cambio real fue la semana pasada), pon aquí la fecha REAL — así los anticipos/ingresos que se capturen después, con fecha de ANTES de este cambio, se van a seguir considerando del camión anterior, no del nuevo.</span></span></label><input type="date" id="asigFecha"></div>
       </div>
-      <div class="alert alert-info" style="margin-top:10px">💡 Si registras esto varios días después de que en realidad pasó (por ejemplo, hoy cambias al operador de camión en el sistema pero el cambio real fue la semana pasada), pon aquí la fecha REAL — así los anticipos/ingresos que se capturen después, con fecha de ANTES de este cambio, se van a seguir considerando del camión anterior, no del nuevo.</div>
       <div class="row" style="margin-top:10px">
         <div class="field" id="wrapLitrosEntrega" style="display:none">
           <label id="asigLitrosEntregaLabel">Litros que deja el operador saliente</label>
@@ -210,8 +209,7 @@ tr:hover td{background:#fafafa}
   <!-- REVISIÓN DE UNIDAD -->
   <div class="tabpanel" id="panelRevision">
     <div class="card">
-      <div class="card-title">🔍 Nueva revisión de unidad</div>
-      <div class="alert alert-info">Se puede hacer en cualquier momento, no solo al entregar/recibir la unidad. Si faltan colchonetas/extintores o hay daños, se genera un cargo pendiente que se aplica solo en la siguiente liquidación del operador asignado a la unidad — nunca de golpe, se avisa aquí mismo.</div>
+      <div class="card-title">🔍 Nueva revisión de unidad <span class="info-tip">?<span class="info-tip-box">Se puede hacer en cualquier momento, no solo al entregar/recibir la unidad. Si faltan colchonetas/extintores o hay daños, se genera un cargo pendiente que se aplica solo en la siguiente liquidación del operador asignado a la unidad — nunca de golpe, se avisa aquí mismo.</span></span></div>
       <div class="row">
         <div class="field" style="flex:1;min-width:200px"><label>Unidad</label><select id="revUnidad" onchange="onCambioRevUnidad()"><option value="">— Selecciona —</option></select></div>
         <div class="field"><label>Tipo de revisión</label><select id="revTipo"><option value="libre">Revisión libre</option><option value="entrega">Entrega de unidad</option><option value="recibe">Recepción de unidad</option></select></div>

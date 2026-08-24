@@ -34,6 +34,9 @@ header{background:#1a1a2e;color:#fff;padding:14px 24px;display:flex;align-items:
 .upload-zone .icon{font-size:26px;margin-bottom:6px}
 .upload-zone p{color:#666;font-size:12px}
 .alert{padding:9px 13px;border-radius:7px;font-size:12px;margin-bottom:10px}
+.info-tip{position:relative;display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;border-radius:50%;background:#dde4ee;color:#4a5568;font-size:11px;font-weight:700;font-style:normal;text-transform:none;letter-spacing:normal;cursor:help;flex-shrink:0}
+.info-tip .info-tip-box{visibility:hidden;opacity:0;position:absolute;z-index:200;left:0;top:22px;width:300px;max-width:80vw;background:#1a1a2e;color:#fff;font-size:12px;font-weight:400;line-height:1.5;padding:10px 12px;border-radius:8px;box-shadow:0 6px 18px rgba(0,0,0,.25);transition:opacity .15s}
+.info-tip:hover .info-tip-box,.info-tip:focus .info-tip-box{visibility:visible;opacity:1}
 .alert-info{background:#e8f4fd;color:#0369a1;border:1px solid #bae6fd}
 .alert-ok{background:#d1e7dd;color:#0a5233;border:1px solid #a3cfbb}
 .alert-warn{background:#fffbeb;color:#92400e;border:1px solid #fde68a}
@@ -132,11 +135,9 @@ tr:hover td{background:#fafafa}
 
 <div class="container">
 
-  <div class="alert alert-info">📥 Sube aquí los XML de casetas, parquímetros o facturas de gastos <strong>antes de que exista la liquidación</strong> del operador (por ejemplo, cuando llegan por adelantado o en lote). En cuanto se abra la liquidación de ese operador, estos comprobantes se jalan automáticamente — no hace falta volver a subirlos ahí. No hay contraseña de acción aquí: quien tenga permiso para entrar a este módulo puede registrar y reasignar libremente.</div>
-
   <!-- CARGA -->
   <div class="card">
-    <div class="card-title">📎 Cargar comprobante</div>
+    <div class="card-title">📎 Cargar comprobante <span class="info-tip">?<span class="info-tip-box">📥 Sube aquí los XML de casetas, parquímetros o facturas de gastos <strong>antes de que exista la liquidación</strong> del operador (por ejemplo, cuando llegan por adelantado o en lote). En cuanto se abra la liquidación de ese operador, estos comprobantes se jalan automáticamente — no hace falta volver a subirlos ahí. No hay contraseña de acción aquí: quien tenga permiso para entrar a este módulo puede registrar y reasignar libremente.</span></span></div>
     <div class="grid4" style="margin-bottom:12px">
       <div class="field"><label>Tipo de comprobante</label>
         <select id="pcTipo" onchange="sugerirPagaOp()">
