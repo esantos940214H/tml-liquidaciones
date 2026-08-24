@@ -1364,6 +1364,7 @@ function generarReporte2(){
 // liquidación) — así se puede ver "cuánto se gastó en agosto" aunque una
 // liquidación haya cerrado en septiembre. Se agrupa por operador para
 // comparar quién genera más flete/utilidad y quién gasta más en cada rubro.
+function _normFolioRep(s){return(s||'').toString().trim().toUpperCase();}
 function repGerencial(){
   const filtOp=parseInt($('repOp').value||0);
   const desde=$('repDesde').value||'';
@@ -1391,6 +1392,20 @@ function repGerencial(){
       flete:0,maniobras:0,otrosIng:0,dieselMonto:0,dieselLitros:0,casetas:0,otrosGastos:0};
     return porOp[opId];
   };
+  // El snapshot (viajesList) solo guarda subtFlete/subtManiobras/subtOtros en
+  // liquidaciones cerradas DESPUÉS de que se agregó ese campo — pero el
+  // registro EN VIVO de ingresosDB (que no se borra al liquidar, solo cambia
+  // de estado) sí trae ese desglose desde antes para la mayoría de los
+  // viajes. Se arma un mapa folio+unidad -> ingreso en vivo para rescatar el
+  // desglose ahí cuando el snapshot no lo trae, en vez de perder el dato.
+  const ingPorFolio={};
+  (ingresosDB||[]).forEach(function(v){
+    if(!v.folio)return;
+    ingPorFolio[_normFolioRep(v.folio)+'|'+parseInt(v.unidad||0)]=v;
+  });
+  const sfOfRep=function(v){return v.subtFlete!=null?parseFloat(v.subtFlete):(v.tipo==='flete_for'||v.tipo==='flete_mx'?parseFloat(v.subtotal||0):0);};
+  const smOfRep=function(v){return v.subtManiobras!=null?parseFloat(v.subtManiobras):(v.tipo==='maniobra'?parseFloat(v.subtotal||0):0);};
+  const soOfRep=function(v){return v.subtOtros!=null?parseFloat(v.subtOtros):(v.tipo==='otro'?parseFloat(v.subtotal||0):0);};
   historialDB.forEach(function(l){
     const opIdL=parseInt(l.opId||l.unidad||0);
     if(filtOp&&opIdL!==filtOp)return;
@@ -1398,14 +1413,20 @@ function repGerencial(){
     const acc=getOp(l);
     (snap.viajesList||[]).forEach(function(v){
       if(!enRango(v.fecha))return;
-      // subtFlete/subtManiobras/subtOtros solo existen en liquidaciones
-      // cerradas después de este reporte — si un viaje viejo no los trae,
-      // se cuenta su subtotal completo como Flete (el rubro dominante) para
-      // no perder el ingreso, marcado con nota en el resumen.
       if(v.subtFlete!=null||v.subtManiobras!=null||v.subtOtros!=null){
         acc.flete+=parseFloat(v.subtFlete||0);
         acc.maniobras+=parseFloat(v.subtManiobras||0);
         acc.otrosIng+=parseFloat(v.subtOtros||0);
+        return;
+      }
+      // El snapshot no trae el desglose — se busca el mismo viaje EN VIVO en
+      // ingresosDB (por folio+unidad) para rescatar subtFlete/subtManiobras/
+      // subtOtros de ahí; si tampoco existe ahí (viajes muy viejos, sin
+      // "tipo" reconocible), se cuenta el subtotal completo como Flete para
+      // no perder el ingreso.
+      const vivo=v.folio?ingPorFolio[_normFolioRep(v.folio)+'|'+opIdL]:null;
+      if(vivo){
+        acc.flete+=sfOfRep(vivo);acc.maniobras+=smOfRep(vivo);acc.otrosIng+=soOfRep(vivo);
       }else{
         acc.flete+=parseFloat(v.subtotal||0);
       }
