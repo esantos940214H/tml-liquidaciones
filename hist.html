@@ -1578,10 +1578,6 @@ function repGerencial(){
   }).filter(function(a){return a.totIng>0||a.totGas>0;})
     .sort(function(a,b){return b.utilidad-a.utilidad;});
 
-  const headers=['Operador','Unidad','Flete','Maniobras','Otros ingresos','Diesel $','Diesel Lts','Casetas','Comisión','2%','Incidentes','Otros gastos','Total gastos','Utilidad','Utilidad %'];
-  const rows=filas.map(function(a){return[a.nombre,a.unidad||'—',fmt(a.flete),fmt(a.maniobras),fmt(a.otrosIng),
-    fmt(a.dieselMonto),a.dieselLitros?a.dieselLitros.toFixed(1):'0.0',fmt(a.casetas),fmt(a.comision),fmt(a.dosPct),fmt(a.incidentes),fmt(a.otrosGastos),fmt(a.totGas),fmt(a.utilidad),a.utilidadPct.toFixed(1)+'%'];});
-
   const totFlete=filas.reduce(function(s,a){return s+a.flete;},0);
   const totManiobras=filas.reduce(function(s,a){return s+a.maniobras;},0);
   const totDiesel=filas.reduce(function(s,a){return s+a.dieselMonto;},0);
@@ -1610,10 +1606,61 @@ function repGerencial(){
     +(masGasto?'<div class="kpi"><div class="v">'+masGasto.nombre+'</div><div class="k">Más gasto total ('+fmt(masGasto.totGas)+')</div></div>':'')
     +'</div>'
     +(!desde&&!hasta?'<div style="font-size:12px;color:#888;margin-top:10px">Sin fechas seleccionadas se muestran TODAS las liquidaciones cerradas del sistema.</div>':'');
-  $('repTablaWrap').innerHTML=tablaHTML(headers,rows);
-  repDatosActuales={headers,rows};
+  _repGerencialFilas=filas;
   repNombreActual='reporte_gerencial'+(desde?'_'+desde:'')+(hasta?'_a_'+hasta:'');
+  _renderRepGerencialTabla();
   $('btnExportRep').style.display='inline-block';
+}
+
+// Columnas de la tabla del reporte gerencial: campo del objeto "filas" que
+// le corresponde a cada encabezado, para poder ordenar al hacer clic. "str"
+// ordena alfabético; el resto, numérico.
+const REP_GERENCIAL_COLS=[
+  {label:'Operador',campo:'nombre',tipo:'str'},
+  {label:'Unidad',campo:'unidad',tipo:'num'},
+  {label:'Flete',campo:'flete',tipo:'num'},
+  {label:'Maniobras',campo:'maniobras',tipo:'num'},
+  {label:'Otros ingresos',campo:'otrosIng',tipo:'num'},
+  {label:'Diesel $',campo:'dieselMonto',tipo:'num'},
+  {label:'Diesel Lts',campo:'dieselLitros',tipo:'num'},
+  {label:'Casetas',campo:'casetas',tipo:'num'},
+  {label:'Comisión',campo:'comision',tipo:'num'},
+  {label:'2%',campo:'dosPct',tipo:'num'},
+  {label:'Incidentes',campo:'incidentes',tipo:'num'},
+  {label:'Otros gastos',campo:'otrosGastos',tipo:'num'},
+  {label:'Total gastos',campo:'totGas',tipo:'num'},
+  {label:'Utilidad',campo:'utilidad',tipo:'num'},
+  {label:'Utilidad %',campo:'utilidadPct',tipo:'num'}
+];
+let _repGerencialFilas=null;
+let _repGerencialOrdenCampo='utilidad',_repGerencialOrdenDir=-1; // -1=mayor a menor (como ya ordenaba antes)
+
+function ordenarRepGerencial(campo){
+  if(_repGerencialOrdenCampo===campo)_repGerencialOrdenDir=-_repGerencialOrdenDir;
+  else{_repGerencialOrdenCampo=campo;_repGerencialOrdenDir=-1;} // primer clic en una columna nueva: mayor a menor
+  _renderRepGerencialTabla();
+}
+
+function _renderRepGerencialTabla(){
+  if(!_repGerencialFilas)return;
+  var col=REP_GERENCIAL_COLS.find(function(c){return c.campo===_repGerencialOrdenCampo;});
+  var ordenadas=_repGerencialFilas.slice().sort(function(a,b){
+    var va=a[_repGerencialOrdenCampo],vb=b[_repGerencialOrdenCampo];
+    if(col&&col.tipo==='str')return _repGerencialOrdenDir*(String(va||'').localeCompare(String(vb||'')));
+    return _repGerencialOrdenDir*((va||0)-(vb||0));
+  });
+  var headers=REP_GERENCIAL_COLS.map(function(c){
+    var flecha=_repGerencialOrdenCampo===c.campo?(_repGerencialOrdenDir===-1?' ▼':' ▲'):'';
+    return '<th class="r" style="cursor:pointer;user-select:none" onclick="ordenarRepGerencial(\''+c.campo+'\')" title="Ordenar por '+c.label+'">'+c.label+flecha+'</th>';
+  });
+  var rows=ordenadas.map(function(a){return[a.nombre,a.unidad||'—',fmt(a.flete),fmt(a.maniobras),fmt(a.otrosIng),
+    fmt(a.dieselMonto),a.dieselLitros?a.dieselLitros.toFixed(1):'0.0',fmt(a.casetas),fmt(a.comision),fmt(a.dosPct),fmt(a.incidentes),fmt(a.otrosGastos),fmt(a.totGas),fmt(a.utilidad),a.utilidadPct.toFixed(1)+'%'];});
+  var h='<table><thead><tr>'+headers.join('')+'</tr></thead><tbody>';
+  if(!rows.length){h+='<tr><td colspan="'+REP_GERENCIAL_COLS.length+'" style="text-align:center;color:#aaa;padding:16px">Sin datos para los filtros seleccionados.</td></tr>';}
+  rows.forEach(function(r){h+='<tr>'+r.map(function(x){return '<td class="r">'+x+'</td>';}).join('')+'</tr>';});
+  h+='</tbody></table>';
+  $('repTablaWrap').innerHTML=h;
+  repDatosActuales={headers:REP_GERENCIAL_COLS.map(function(c){return c.label;}),rows:rows};
 }
 
 function repLiqOp(){
