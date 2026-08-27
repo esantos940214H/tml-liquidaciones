@@ -524,6 +524,27 @@ function _crearAutorizacionEnMemoria(datos){
       return{ok:true,monto:monto,fechaLimite:existentePendiente.fechaLimiteJustificacion,idCombinado:existentePendiente.observaciones,actualizado:true};
     }
   }
+  // Corrección: ya existe una autorización REGISTRADA (no pendiente) para
+  // el mismo operador con el mismo folio/pedido (el identificador único real
+  // del documento — el T.U. se trata aparte más abajo, puede repetirse en
+  // dos tramos legítimos) pero con OTRO monto. Es el correo de corrección
+  // ("corrijo maniobra...", "monto actualizado...", etc.) — se SUSTITUYE el
+  // monto anterior por el nuevo en vez de bloquear o crear un duplicado (el
+  // correo más reciente manda).
+  var idsCorreccion=[folio,pedido].map(_normTxt).filter(function(s){return s;});
+  var existenteCorregible=(!pendiente&&monto&&idsCorreccion.length)?ingresosDB.find(function(v){
+    if(!v.esAutorizacionCliente||v.montoPendiente||v.sustituidoPorXML)return false;
+    if(v.unidad!==unidad)return false;
+    var vIds=_normTxt(v.observaciones);
+    if(!idsCorreccion.some(function(id){return vIds.indexOf(id)!==-1;}))return false;
+    return Math.abs((v.subtotal||0)-monto)>=0.01;
+  }):null;
+  if(existenteCorregible){
+    var montoAnterior=existenteCorregible.subtotal;
+    var ivaCorr=Math.round(monto*0.16*100)/100;
+    existenteCorregible.subtotal=monto;existenteCorregible.subtManiobras=monto;existenteCorregible.iva=ivaCorr;existenteCorregible.total=monto+ivaCorr;
+    return{ok:true,monto:monto,fechaLimite:existenteCorregible.fechaLimiteJustificacion,idCombinado:existenteCorregible.observaciones,actualizado:true,corregido:true,montoAnterior:montoAnterior};
+  }
   var dup=_buscarDuplicado(datos);
   if(dup)return{ok:false,error:'⚠️ DUPLICADO: ya existe una autorización igual (mismo operador, monto, fecha e identificador) — ID registrado: "'+dup.observaciones+'".'};
   // Solo folio/pedido chocan de verdad (son el identificador único del
@@ -608,7 +629,9 @@ async function agregarAutorizacionManiobra(){
   var responsable=($('autResponsable').value||'').trim()||u.usuario;
   $('autMonto').value='';$('autFolio').value='';$('autPedido').value='';$('autTu1').value='';$('autTu2').value='';$('autTienda').value='';$('autDestino').value='';
   renderPendientes();
-  if(r.actualizado){
+  if(r.corregido){
+    alert('✅ Corrección aplicada: se sustituyó el monto de '+fmt(r.montoAnterior)+' por '+fmt(r.monto)+' + IVA ('+r.idCombinado+').');
+  }else if(r.actualizado){
     alert('✅ Se actualizó la autorización pendiente con el monto real: '+fmt(r.monto)+' + IVA ('+r.idCombinado+').');
   }else{
     alert('✅ Autorización registrada: '+(pendiente?'monto PENDIENTE de confirmar':fmt(r.monto)+' + IVA')+' para '+(nombreOp(unidad)||unidad)+'.\n\nPlazo hasta '+r.fechaLimite.slice(0,10)+' ('+r.plazo+' días hábiles) para que '+responsable+' suba la factura real y la ligue con el identificador "'+r.idCombinado+'" desde Ingresos.');
@@ -676,7 +699,7 @@ function renderCorreosBuzon(){
       var ids=_idsDeCorreo(c);
       var yaReg=!c.error&&_correoYaRegistrado(ids);
       var repetido=!c.error&&!yaReg&&_correoRepetidoEnBuzon(ids,i);
-      var avisoDup=yaReg?'<div style="font-size:10px;color:#9b1c1c;font-weight:700">⚠️ posible duplicado — ya hay una autorización registrada con este folio/pedido/T.U.</div>'
+      var avisoDup=yaReg?'<div style="font-size:10px;color:#9b1c1c;font-weight:700">⚠️ ya hay una autorización registrada con este folio/pedido/T.U. — si el monto es distinto, al registrar se sustituirá el anterior (corrección); si es igual, se bloqueará como duplicado.</div>'
         :(repetido?'<div style="font-size:10px;color:#9b1c1c;font-weight:700">⚠️ posible duplicado — comparte folio/pedido/T.U. con otro correo de esta lista</div>':'');
       return '<tr'+(c.error||yaReg||repetido?' style="background:#fffbeb"':'')+'>'
         +'<td style="font-size:12px">'+(c.asunto||'')+avisoDup+'</td>'
@@ -943,7 +966,7 @@ async function registrarExtraidos(){
   var responsable=($('autResponsable').value||'').trim()||u.usuario;
   var cliente=($('autCliente').value||'').trim()||'GRUPO COMERCIAL DSW';
   var plazo=$('autPlazo').value||15;
-  var ok=0,errores=[];
+  var ok=0,corregidos=0,errores=[];
   // Se guarda el resultado FILA POR FILA (no por nombre de operador) — si
   // hay operadores repetidos en el lote con resultados distintos (uno se
   // registra, otro falla), antes se confundían al filtrar por texto y podía
@@ -951,14 +974,14 @@ async function registrarExtraidos(){
   var fallidos=[];
   _extraidos.forEach(function(x){
     var r=_crearAutorizacionEnMemoria({unidad:x.unidad,monto:x.monto,montoPendiente:x.montoPendiente,folio:x.folio,pedido:x.pedido,tu1:x.tu1,tu2:x.tu2,tienda:x.tienda,fecha:x.fecha,cliente:cliente,destino:x.destino,responsable:responsable,plazo:plazo});
-    if(r.ok){ok++;}else{errores.push((x.nombreOriginal||x.unidad)+': '+r.error);fallidos.push(x);}
+    if(r.ok){ok++;if(r.corregido)corregidos++;}else{errores.push((x.nombreOriginal||x.unidad)+': '+r.error);fallidos.push(x);}
   });
   if(ok)await window.FB.set('estado','ingresosDB',{data:JSON.stringify(ingresosDB)});
   renderPendientes();
   _extraidos=fallidos;
   renderExtraidos();
   if(!errores.length){$('autTexto').value='';$('extraerInfo').innerHTML='';$('wrapExtraidos').style.display='none';_autPdfBase64List=[];if($('autArchivo'))$('autArchivo').value='';}
-  alert('✅ Se registraron '+ok+' de '+(ok+errores.length)+' renglón(es).'+(errores.length?'\n\n⚠️ No se registraron:\n'+errores.join('\n'):''));
+  alert('✅ Se registraron '+ok+' de '+(ok+errores.length)+' renglón(es)'+(corregidos?' ('+corregidos+' de ellos sustituyeron el monto de una autorización anterior por corrección)':'')+'.'+(errores.length?'\n\n⚠️ No se registraron:\n'+errores.join('\n'):''));
 }
 
 window.onFBReady(async function(){
