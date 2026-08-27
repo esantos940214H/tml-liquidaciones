@@ -193,6 +193,7 @@ tr:hover td{background:#fafafa}
     <div class="tbl-wrap"><table>
       <thead><tr><th>Operador</th><th>Fecha</th><th>Cliente</th><th class="r">Autorizado (subtotal)</th><th>Pedido/ID</th><th>Responsable</th><th>Plazo</th><th></th></tr></thead>
       <tbody id="tbPendientes"></tbody>
+      <tfoot><tr><td colspan="3" style="text-align:right;font-weight:700">Total pendiente de facturar (subtotal):</td><td class="r" id="tdTotalPendientes" style="font-weight:700"></td><td colspan="4"></td></tr></tfoot>
     </table></div>
   </div>
 
@@ -417,8 +418,16 @@ function renderPendientes(){
   pendientes.sort(function(a,b){return(a.fechaLimiteJustificacion||'').localeCompare(b.fechaLimiteJustificacion||'');});
   if(!pendientes.length){
     tb.innerHTML='<tr><td colspan="8" style="text-align:center;color:#aaa;padding:16px">Sin autorizaciones pendientes de facturar.</td></tr>';
+    if($('tdTotalPendientes'))$('tdTotalPendientes').textContent=fmt(0);
     return;
   }
+  // El monto "PENDIENTE" (el cliente aún no confirma cuánto paga) no suma
+  // nada todavía — se cuenta aparte para no dar un total falso.
+  var totalConfirmado=0,conMontoPendiente=0;
+  pendientes.forEach(function(v){
+    if(v.montoPendiente)conMontoPendiente++;else totalConfirmado+=(v.subtotal||0);
+  });
+  if($('tdTotalPendientes'))$('tdTotalPendientes').textContent=fmt(totalConfirmado)+(conMontoPendiente?' (+'+conMontoPendiente+' con monto aún sin confirmar)':'');
   tb.innerHTML=pendientes.map(function(v){
     var vencido=yaVencioLimite(v.fechaLimiteJustificacion);
     var responsable=(v.capturadoPor&&v.capturadoPor.usuario)||'';
