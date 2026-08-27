@@ -129,6 +129,15 @@ tr:hover td{background:#fafafa}
 
 <div class="container">
 
+  <!-- BUZÓN AUTOMÁTICO -->
+  <div class="card">
+    <div class="card-title">📥 Buzón automático (maniobras@mudandote.mx) <span class="info-tip">?<span class="info-tip-box">El sistema revisa este buzón solo cada 30 minutos y deja aquí lo que encuentra — nada se registra automáticamente, cada correo pasa por la misma revisión de siempre antes de guardarse. Configura en tu correo personal que te copien (CC) a esta cuenta en los correos de maniobras del cliente.</span></span>
+      <button class="btn btn-out btn-sm" onclick="revisarBuzonAhora()" id="btnRevisarBuzon">🔄 Revisar buzón ahora</button>
+    </div>
+    <div id="buzonInfo" style="margin-top:8px"></div>
+    <div id="buzonWrap"></div>
+  </div>
+
   <!-- EXTRAER DE TEXTO DEL CORREO (IA) -->
   <div class="card">
     <div class="card-title">📋 Extraer de texto del correo (IA) <span class="info-tip">?<span class="info-tip-box">✅ Registra aquí el monto que el cliente autoriza por correo ANTES de que exista la factura real — este monto es el oficial (es el SUBTOTAL, sin IVA), no algo que quien capture ingresos deba sumar o adivinar. Su única obligación después es subir la factura real y que coincida con este monto + su 16% de IVA, usando el mismo pedido/PO/T.U. como ID (ver Ingresos → Conflictos si no coincide).</span></span></div>
@@ -605,7 +614,69 @@ async function agregarAutorizacionManiobra(){
 // TODO: reemplazar por la URL real que muestra `firebase deploy --only
 // functions` al desplegar functions/index.js (ver instrucciones ahí).
 const FUNCTION_URL_EXTRAER_MANIOBRAS='https://us-central1-tml-liquidaciones.cloudfunctions.net/extraerManiobras';
+// TODO: pegar la URL real que muestra `firebase deploy --only functions`
+// para "revisarBuzonManiobras" (ver instrucciones en functions/index.js).
+const FUNCTION_URL_REVISAR_BUZON='';
 let _extraidos=[];
+let _correosBuzon=[];
+async function cargarCorreosPendientesBuzon(){
+  var data=await window.FB.get('estado','correosManiobrasPendientes');
+  _correosBuzon=(data&&data.data)?JSON.parse(data.data):[];
+  if(!Array.isArray(_correosBuzon))_correosBuzon=[];
+  renderCorreosBuzon();
+}
+function renderCorreosBuzon(){
+  var wrap=$('buzonWrap');
+  if(!_correosBuzon.length){wrap.innerHTML='<p style="font-size:12px;color:#aaa;padding:8px 0">Sin correos nuevos pendientes de revisar.</p>';return;}
+  wrap.innerHTML='<div class="tbl-wrap"><table><thead><tr><th>Asunto</th><th>De</th><th>Fecha</th><th class="r">Renglones</th><th></th></tr></thead><tbody>'
+    +_correosBuzon.map(function(c,i){
+      return '<tr'+(c.error?' style="background:#fffbeb"':'')+'>'
+        +'<td style="font-size:12px">'+(c.asunto||'')+'</td>'
+        +'<td style="font-size:11px;color:#888">'+(c.de||'')+'</td>'
+        +'<td style="font-size:12px">'+(c.fecha||'')+'</td>'
+        +'<td class="num r">'+(c.error?'<span style="color:#9b1c1c" title="'+c.error.replace(/"/g,'&quot;')+'">⚠️ error</span>':(c.renglones||[]).length)+'</td>'
+        +'<td><button class="btn btn-red btn-sm" onclick="cargarRenglonesDeCorreo('+i+')" '+(c.error?'disabled':'')+'>Cargar arriba</button> '
+        +'<button class="btn btn-out btn-sm" onclick="descartarCorreoBuzon('+i+')">Descartar</button></td>'
+        +'</tr>';
+    }).join('')+'</tbody></table></div>';
+}
+async function _guardarCorreosBuzon(){
+  await window.FB.set('estado','correosManiobrasPendientes',{data:JSON.stringify(_correosBuzon)});
+}
+function cargarRenglonesDeCorreo(i){
+  var c=_correosBuzon[i];
+  if(!c)return;
+  _procesarRenglonesExtraidos(c.renglones||[]);
+  _correosBuzon.splice(i,1);
+  _guardarCorreosBuzon();
+  renderCorreosBuzon();
+  document.getElementById('wrapExtraidos').scrollIntoView({behavior:'smooth'});
+}
+function descartarCorreoBuzon(i){
+  if(!confirm('¿Descartar este correo sin registrar nada? (por si ya se venía repetido o no era nuestro)'))return;
+  _correosBuzon.splice(i,1);
+  _guardarCorreosBuzon();
+  renderCorreosBuzon();
+}
+async function revisarBuzonAhora(){
+  if(!FUNCTION_URL_REVISAR_BUZON){
+    alert('Todavía no está conectado el revisor automático del buzón — falta desplegar functions/index.js y pegar su URL en FUNCTION_URL_REVISAR_BUZON (ver instrucciones ahí).');
+    return;
+  }
+  $('btnRevisarBuzon').disabled=true;
+  $('buzonInfo').innerHTML='<div class="alert alert-info">⏳ Revisando el buzón...</div>';
+  try{
+    var r=await fetch(FUNCTION_URL_REVISAR_BUZON,{method:'POST'});
+    var data=await r.json();
+    if(data.error)throw new Error(data.error);
+    $('buzonInfo').innerHTML='<div class="alert alert-ok">✅ '+data.correosNuevos+' correo(s) nuevo(s) encontrado(s).</div>';
+    await cargarCorreosPendientesBuzon();
+  }catch(e){
+    $('buzonInfo').innerHTML='<div class="alert alert-warn">⚠️ '+e.message+'</div>';
+  }finally{
+    $('btnRevisarBuzon').disabled=false;
+  }
+}
 // Empareja el operador que devolvió la IA. Primero por el número
 // económico (columna "Eco." del correo, ej. "532 SV" → 532) contra la
 // unidad ACTUAL de cada operador — es más confiable que el nombre, porque
@@ -692,79 +763,86 @@ async function extraerConIA(){
       if(data.error)throw new Error(data.error);
       renglones=data.renglones||[];
     }
-    // El correo se manda con visibilidad compartida a VARIAS transportistas
-    // a la vez — puede traer renglones de otras empresas (Benitez, Merlos,
-    // etc.) mezclados con los de nosotros (SILVIA). Si no filtramos por
-    // Línea de Transporte, esos renglones ajenos se registrarían como nuestro
-    // ingreso — se descartan aquí, ANTES de mostrarle nada al admin.
-    var norm=function(s){return(s||'').toString().trim().toUpperCase().normalize('NFD').replace(/[̀-ͯ]/g,'');};
-    var otrasCount=0,otrasNombres=[];
-    var renglonesSilvia=renglones.filter(function(x){
-      var linea=norm(x.lineaTransporte);
-      if(linea&&linea!=='SILVIA'){
-        otrasCount++;
-        if(otrasNombres.indexOf(x.lineaTransporte)===-1)otrasNombres.push(x.lineaTransporte);
-        return false;
-      }
-      return true;
-    });
-    // "NO_PAGA" (o "-") significa que esa maniobra NO se paga — no hay nada
-    // que autorizar ni registrar, se descarta directo (no se le muestra al
-    // admin como si fuera un dato faltante). "PENDIENTE" sí se registra,
-    // pero marcado como monto pendiente de confirmar (ver
-    // _crearAutorizacionEnMemoria) — normalmente llega un correo posterior
-    // con el monto real para el mismo folio/T.U.
-    var noPagaCount=0;
-    _extraidos=renglonesSilvia.filter(function(x){
-      var m=(x.monto==null)?'':String(x.monto).trim().toUpperCase();
-      if(m==='NO_PAGA'||m==='NO PAGA'||m==='-'){noPagaCount++;return false;}
-      return true;
-    }).map(function(x){
-      var match=_matchOperadorPorNombre(x.operador,x.eco);
-      var mRaw=(x.monto==null)?'':String(x.monto).trim().toUpperCase();
-      var pendiente=(mRaw==='PENDIENTE');
-      return{nombreOriginal:x.operador||'',eco:x.eco||'',unidad:match?match.operadorId:0,
-        monto:pendiente?'':(x.monto||''),montoPendiente:pendiente,fecha:x.fecha||hoy(),
-        folio:x.folio||'',pedido:x.pedido||'',tu1:x.tu1||'',tu2:x.tu2||'',tienda:x.tienda||'',destino:x.destino||''};
-    });
-    // Red de seguridad por si la IA no reconoce la frase de corrección
-    // ("envío corrección de maniobra(s)", "maniobras actualizadas", etc.):
-    // si el mismo folio quedó dos veces en este mismo lote con montos
-    // distintos, es casi seguro un correo con historial de respuestas donde
-    // el monto se corrigió — se marca cada renglón para que el admin lo
-    // revise y borre el que no aplica antes de registrar (nunca se borra
-    // solo, para no adivinar cuál es el vigente).
-    (function(){
-      var porFolio={};
-      _extraidos.forEach(function(x){
-        if(!x.folio)return;
-        (porFolio[x.folio]=porFolio[x.folio]||[]).push(x);
-      });
-      Object.keys(porFolio).forEach(function(folio){
-        var grupo=porFolio[folio];
-        var montos=Array.from(new Set(grupo.map(function(x){return String(x.monto||'').trim();})));
-        if(grupo.length>1&&montos.length>1){
-          grupo.forEach(function(x){x.posibleCorreccion=true;});
-        }
-      });
-    })();
-    var hayPosibleCorreccion=_extraidos.some(function(x){return x.posibleCorreccion;});
-    var avisoOtras=otrasCount?(' · <strong>se excluyeron '+otrasCount+' renglón(es) de otra(s) transportista(s) ('+otrasNombres.join(', ')+'), no son nuestros</strong>'):'';
-    var avisoCorreccion=hayPosibleCorreccion?' · <strong style="color:#9b1c1c">⚠️ hay folios repetidos con monto distinto — probablemente el correo trae una corrección, revisa cuál es el vigente y borra el otro antes de registrar</strong>':'';
-    if(!_extraidos.length&&!noPagaCount&&!otrasCount){
-      $('extraerInfo').innerHTML='<div class="alert alert-warn">⚠️ La IA no encontró ningún renglón reconocible en ese texto.</div>';
-      $('wrapExtraidos').style.display='none';
-    }else if(!_extraidos.length){
-      $('extraerInfo').innerHTML='<div class="alert alert-warn">⚠️ No quedó ningún renglón nuestro para registrar'+(noPagaCount?' ('+noPagaCount+' "NO PAGA")':'')+avisoOtras+'.</div>';
-      $('wrapExtraidos').style.display='none';
-    }else{
-      $('extraerInfo').innerHTML='<div class="alert '+(hayPosibleCorreccion?'alert-warn':'alert-ok')+'">'+(hayPosibleCorreccion?'⚠️':'✅')+' Se encontraron '+_extraidos.length+' renglón(es) por registrar'+(noPagaCount?' (se descartaron '+noPagaCount+' marcados "NO PAGA", no se registran)':'')+avisoOtras+avisoCorreccion+' — revisa cada uno (el operador se empareja por económico/nombre, corrígelo si hace falta) antes de registrar.</div>';
-      renderExtraidos();
-    }
+    _procesarRenglonesExtraidos(renglones);
   }catch(e){
     $('extraerInfo').innerHTML='<div class="alert alert-warn">⚠️ Error al extraer: '+e.message+'. Captura a mano abajo.</div>';
   }finally{
     $('btnExtraerIA').disabled=false;
+  }
+}
+// Filtra/procesa lo que regresó la IA (venga de un PDF/texto pegado a mano
+// o de un correo jalado automáticamente del buzón) y llena _extraidos —
+// compartido para que ambos caminos pasen por la MISMA revisión antes de
+// registrar nada.
+function _procesarRenglonesExtraidos(renglones){
+  // El correo se manda con visibilidad compartida a VARIAS transportistas
+  // a la vez — puede traer renglones de otras empresas (Benitez, Merlos,
+  // etc.) mezclados con los de nosotros (SILVIA). Si no filtramos por
+  // Línea de Transporte, esos renglones ajenos se registrarían como nuestro
+  // ingreso — se descartan aquí, ANTES de mostrarle nada al admin.
+  var norm=function(s){return(s||'').toString().trim().toUpperCase().normalize('NFD').replace(/[̀-ͯ]/g,'');};
+  var otrasCount=0,otrasNombres=[];
+  var renglonesSilvia=renglones.filter(function(x){
+    var linea=norm(x.lineaTransporte);
+    if(linea&&linea!=='SILVIA'){
+      otrasCount++;
+      if(otrasNombres.indexOf(x.lineaTransporte)===-1)otrasNombres.push(x.lineaTransporte);
+      return false;
+    }
+    return true;
+  });
+  // "NO_PAGA" (o "-") significa que esa maniobra NO se paga — no hay nada
+  // que autorizar ni registrar, se descarta directo (no se le muestra al
+  // admin como si fuera un dato faltante). "PENDIENTE" sí se registra,
+  // pero marcado como monto pendiente de confirmar (ver
+  // _crearAutorizacionEnMemoria) — normalmente llega un correo posterior
+  // con el monto real para el mismo folio/T.U.
+  var noPagaCount=0;
+  _extraidos=renglonesSilvia.filter(function(x){
+    var m=(x.monto==null)?'':String(x.monto).trim().toUpperCase();
+    if(m==='NO_PAGA'||m==='NO PAGA'||m==='-'){noPagaCount++;return false;}
+    return true;
+  }).map(function(x){
+    var match=_matchOperadorPorNombre(x.operador,x.eco);
+    var mRaw=(x.monto==null)?'':String(x.monto).trim().toUpperCase();
+    var pendiente=(mRaw==='PENDIENTE');
+    return{nombreOriginal:x.operador||'',eco:x.eco||'',unidad:match?match.operadorId:0,
+      monto:pendiente?'':(x.monto||''),montoPendiente:pendiente,fecha:x.fecha||hoy(),
+      folio:x.folio||'',pedido:x.pedido||'',tu1:x.tu1||'',tu2:x.tu2||'',tienda:x.tienda||'',destino:x.destino||''};
+  });
+  // Red de seguridad por si la IA no reconoce la frase de corrección
+  // ("envío corrección de maniobra(s)", "maniobras actualizadas", etc.):
+  // si el mismo folio quedó dos veces en este mismo lote con montos
+  // distintos, es casi seguro un correo con historial de respuestas donde
+  // el monto se corrigió — se marca cada renglón para que el admin lo
+  // revise y borre el que no aplica antes de registrar (nunca se borra
+  // solo, para no adivinar cuál es el vigente).
+  (function(){
+    var porFolio={};
+    _extraidos.forEach(function(x){
+      if(!x.folio)return;
+      (porFolio[x.folio]=porFolio[x.folio]||[]).push(x);
+    });
+    Object.keys(porFolio).forEach(function(folio){
+      var grupo=porFolio[folio];
+      var montos=Array.from(new Set(grupo.map(function(x){return String(x.monto||'').trim();})));
+      if(grupo.length>1&&montos.length>1){
+        grupo.forEach(function(x){x.posibleCorreccion=true;});
+      }
+    });
+  })();
+  var hayPosibleCorreccion=_extraidos.some(function(x){return x.posibleCorreccion;});
+  var avisoOtras=otrasCount?(' · <strong>se excluyeron '+otrasCount+' renglón(es) de otra(s) transportista(s) ('+otrasNombres.join(', ')+'), no son nuestros</strong>'):'';
+  var avisoCorreccion=hayPosibleCorreccion?' · <strong style="color:#9b1c1c">⚠️ hay folios repetidos con monto distinto — probablemente el correo trae una corrección, revisa cuál es el vigente y borra el otro antes de registrar</strong>':'';
+  if(!_extraidos.length&&!noPagaCount&&!otrasCount){
+    $('extraerInfo').innerHTML='<div class="alert alert-warn">⚠️ La IA no encontró ningún renglón reconocible en ese texto.</div>';
+    $('wrapExtraidos').style.display='none';
+  }else if(!_extraidos.length){
+    $('extraerInfo').innerHTML='<div class="alert alert-warn">⚠️ No quedó ningún renglón nuestro para registrar'+(noPagaCount?' ('+noPagaCount+' "NO PAGA")':'')+avisoOtras+'.</div>';
+    $('wrapExtraidos').style.display='none';
+  }else{
+    $('extraerInfo').innerHTML='<div class="alert '+(hayPosibleCorreccion?'alert-warn':'alert-ok')+'">'+(hayPosibleCorreccion?'⚠️':'✅')+' Se encontraron '+_extraidos.length+' renglón(es) por registrar'+(noPagaCount?' (se descartaron '+noPagaCount+' marcados "NO PAGA", no se registran)':'')+avisoOtras+avisoCorreccion+' — revisa cada uno (el operador se empareja por económico/nombre, corrígelo si hace falta) antes de registrar.</div>';
+    renderExtraidos();
   }
 }
 function renderExtraidos(){
@@ -820,6 +898,7 @@ window.onFBReady(async function(){
   $('fbStatus').className='fb-status fb-ok';
   verificarSesionModulo();
   await cargarIngresos();
+  await cargarCorreosPendientesBuzon();
   window.FB.listen('estado','ingresosDB',function(data){
     if(data&&data.data){ingresosDB=JSON.parse(data.data);if(!Array.isArray(ingresosDB))ingresosDB=[];renderPendientes();}
   });
