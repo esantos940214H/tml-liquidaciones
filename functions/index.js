@@ -250,67 +250,86 @@ exports.extraerEstimado = onRequest(
 // El revisor también corre solo cada 30 minutos (onSchedule, abajo) — el
 // botón en la página es nada más para no tener que esperar al probar.
 // ══════════════════════════════════════════════════════════════════════════
-async function _revisarBuzonCore(apiKey, user, pass) {
-  const { ImapFlow } = require('imapflow');
+// Descarga (con mailparser) y procesa con la IA un solo mensaje ya leído
+// del buzón — separado para no repetir el try/catch por mensaje.
+async function _procesarMensajeImap(rawBuffer, apiKey) {
   const { simpleParser } = require('mailparser');
-  const client = new ImapFlow({
-    host: 'imap.ionos.mx',
-    port: 993,
-    secure: true,
-    auth: { user: user, pass: pass },
-    logger: false
+  const parsed = await simpleParser(rawBuffer);
+  const pdfAdjunto = (parsed.attachments || []).find(function (a) {
+    return (a.contentType || '').indexOf('pdf') !== -1;
   });
-  const encontrados = [];
-  await client.connect();
-  try {
-    const lock = await client.getMailboxLock('INBOX');
-    try {
-      for await (const msg of client.fetch({ seen: false }, { source: true, envelope: true, uid: true })) {
-        let renglones = [];
-        let error = null;
-        try {
-          const parsed = await simpleParser(msg.source);
-          const pdfAdjunto = (parsed.attachments || []).find(function (a) {
-            return (a.contentType || '').indexOf('pdf') !== -1;
+  const content = pdfAdjunto
+    ? [
+        { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: pdfAdjunto.content.toString('base64') } },
+        { type: 'text', text: PROMPT_INSTRUCCIONES }
+      ]
+    : PROMPT_INSTRUCCIONES + '\n\n--- CORREO ---\n' + (parsed.text || parsed.html || '').slice(0, 20000);
+  return {
+    renglones: await extraerRenglonesConIA(content, apiKey),
+    asunto: parsed.subject || '(sin asunto)',
+    de: (parsed.from && parsed.from.value && parsed.from.value[0] && parsed.from.value[0].address) || '',
+    fecha: parsed.date ? parsed.date.toISOString().slice(0, 10) : ''
+  };
+}
+
+// node-imap (librería distinta a imapflow — más antigua y probada; imapflow
+// se quedaba pegada al conectar en este entorno de Cloud Functions aunque el
+// login IMAP crudo, sin librería, respondía en menos de 1 segundo — ver
+// pingImapLogin, era algo específico de esa librería, no de la red).
+function _revisarBuzonCore(apiKey, user, pass) {
+  const Imap = require('imap');
+  return new Promise(function (resolveTodo, rejectTodo) {
+    const imap = new Imap({ user: user, password: pass, host: 'imap.ionos.mx', port: 993, tls: true, connTimeout: 20000, authTimeout: 20000 });
+    const encontrados = [];
+    imap.once('error', function (err) { rejectTodo(err); });
+    imap.once('ready', function () {
+      imap.openBox('INBOX', false, function (err, box) {
+        if (err) { imap.end(); rejectTodo(err); return; }
+        imap.search(['UNSEEN'], function (err, uids) {
+          if (err) { imap.end(); rejectTodo(err); return; }
+          if (!uids || !uids.length) { imap.end(); resolveTodo(encontrados); return; }
+          const f = imap.fetch(uids, { bodies: '', markSeen: true });
+          const pendientes = [];
+          f.on('message', function (msg) {
+            const partes = [];
+            msg.on('body', function (stream) {
+              stream.on('data', function (chunk) { partes.push(chunk); });
+            });
+            msg.once('end', function () {
+              const raw = Buffer.concat(partes);
+              pendientes.push(
+                _procesarMensajeImap(raw, apiKey)
+                  .then(function (r) { encontrados.push(Object.assign({ error: null, revisadoEn: new Date().toISOString() }, r)); })
+                  .catch(function (e) { encontrados.push({ error: e.message || String(e), renglones: [], asunto: '(error al procesar)', de: '', fecha: '', revisadoEn: new Date().toISOString() }); })
+              );
+            });
           });
-          const content = pdfAdjunto
-            ? [
-                { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: pdfAdjunto.content.toString('base64') } },
-                { type: 'text', text: PROMPT_INSTRUCCIONES }
-              ]
-            : PROMPT_INSTRUCCIONES + '\n\n--- CORREO ---\n' + (parsed.text || parsed.html || '').slice(0, 20000);
-          renglones = await extraerRenglonesConIA(content, apiKey);
-        } catch (e) {
-          error = e.message || String(e);
-        }
-        const envelope = msg.envelope || {};
-        encontrados.push({
-          uid: msg.uid,
-          asunto: envelope.subject || '(sin asunto)',
-          de: (envelope.from && envelope.from[0] && envelope.from[0].address) || '',
-          fecha: envelope.date ? new Date(envelope.date).toISOString().slice(0, 10) : '',
-          renglones: renglones,
-          error: error,
-          revisadoEn: new Date().toISOString()
+          f.once('error', function (err) { imap.end(); rejectTodo(err); });
+          f.once('end', function () {
+            Promise.all(pendientes).then(function () {
+              imap.end();
+            }).catch(function (e) {
+              imap.end();
+              rejectTodo(e);
+            });
+          });
         });
-        await client.messageFlagsAdd(msg.uid, ['\\Seen'], { uid: true });
-      }
-    } finally {
-      lock.release();
-    }
-  } finally {
-    await client.logout();
-  }
-  if (encontrados.length) {
+      });
+    });
+    imap.once('end', function () { resolveTodo(encontrados); });
+    imap.connect();
+  }).then(async function (encontrados) {
+    if (encontrados.length) {
     // Nunca sobrescribir: leer lo que ya había pendiente de revisar y
     // agregar los nuevos correos al final (mismo principio que
     // ingresosDB/anticiposDB — fusionar, no reemplazar en bloque).
-    const ref = db.collection('estado').doc('correosManiobrasPendientes');
-    const snap = await ref.get();
-    const previos = (snap.exists && snap.data().data) ? JSON.parse(snap.data().data) : [];
-    await ref.set({ data: JSON.stringify(previos.concat(encontrados)) });
-  }
-  return encontrados;
+      const ref = db.collection('estado').doc('correosManiobrasPendientes');
+      const snap = await ref.get();
+      const previos = (snap.exists && snap.data().data) ? JSON.parse(snap.data().data) : [];
+      await ref.set({ data: JSON.stringify(previos.concat(encontrados)) });
+    }
+    return encontrados;
+  });
 }
 
 // Diagnóstico temporal: solo prueba si Cloud Functions puede abrir un socket
