@@ -35,9 +35,15 @@
 // ══════════════════════════════════════════════════════════════════════════
 
 const { onRequest } = require('firebase-functions/v2/https');
+const { onSchedule } = require('firebase-functions/v2/scheduler');
 const { defineSecret } = require('firebase-functions/params');
+const admin = require('firebase-admin');
+admin.initializeApp();
+const db = admin.firestore();
 
 const ANTHROPIC_API_KEY = defineSecret('ANTHROPIC_API_KEY');
+const MANIOBRAS_EMAIL_USER = defineSecret('MANIOBRAS_EMAIL_USER');
+const MANIOBRAS_EMAIL_PASS = defineSecret('MANIOBRAS_EMAIL_PASS');
 
 const PROMPT_INSTRUCCIONES =
   'Eres un asistente que extrae datos de correos de autorización de maniobras de una empresa de mudanzas (cliente fiscal: ' +
@@ -80,6 +86,44 @@ const PROMPT_INSTRUCCIONES =
   'Responde SOLO un arreglo JSON (sin texto explicativo, sin backticks, sin markdown) con un objeto por cada renglón de ' +
   'maniobra que encuentres en TODAS las tablas del correo (después de aplicar la regla de corrección de arriba). Si no hay ' +
   'ninguna tabla/renglón reconocible, responde [].';
+
+// Llama a la API de Anthropic con el prompt de maniobras (PROMPT_INSTRUCCIONES)
+// y regresa el arreglo de renglones ya parseado. Compartido entre el
+// endpoint manual (extraerManiobras, ver botón "Extraer con IA") y el
+// revisor automático del buzón (revisarBuzonManiobras, más abajo) para no
+// duplicar la llamada a la IA en dos lugares.
+async function extraerRenglonesConIA(content, apiKey) {
+  const respuesta = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': apiKey,
+      'anthropic-version': '2023-06-01'
+    },
+    body: JSON.stringify({
+      model: 'claude-sonnet-4-5',
+      max_tokens: 4000,
+      messages: [{ role: 'user', content: content }]
+    })
+  });
+  const datos = await respuesta.json();
+  if (datos.error) {
+    throw new Error('Error de la API de Anthropic: ' + (datos.error.message || JSON.stringify(datos.error)));
+  }
+  const textoRespuesta = (datos.content || [])
+    .filter(function (b) { return b.type === 'text'; })
+    .map(function (b) { return b.text; })
+    .join('');
+  const limpio = textoRespuesta.replace(/```json|```/g, '').trim();
+  let renglones;
+  try {
+    renglones = JSON.parse(limpio);
+  } catch (e) {
+    throw new Error('La IA no regresó un JSON válido. Respuesta cruda: ' + textoRespuesta.slice(0, 500));
+  }
+  if (!Array.isArray(renglones)) renglones = [renglones];
+  return renglones;
+}
 
 // ══════════════════════════════════════════════════════════════════════════
 // extraerEstimado — para registrar en Ingresos un "Estimado de
@@ -176,6 +220,119 @@ exports.extraerEstimado = onRequest(
       console.error('extraerEstimado:', e);
       res.status(500).json({ error: e.message || 'Error interno del servidor.' });
     }
+  }
+);
+
+// ══════════════════════════════════════════════════════════════════════════
+// revisarBuzonManiobras — revisa el buzón dedicado maniobras@mudandote.mx
+// (IMAP, IONOS) por correos NUEVOS, le pasa cada uno a la misma IA de
+// extraerManiobras, y guarda los renglones encontrados en
+// estado/correosManiobrasPendientes para que Raúl los revise y registre
+// desde maniobras.html (botón "📥 Revisar buzón ahora") — NUNCA se registran
+// solos: la IA puede equivocarse, así que sigue pasando por la misma
+// revisión manual de siempre antes de guardarse como autorización real.
+//
+// Por qué un buzón dedicado y no el correo personal de nadie: las
+// credenciales de este buzón quedan guardadas como secret de Firebase para
+// que la función pueda leerlas — si solo tuviera correos de maniobras
+// reenviados/en copia, lo peor que se expone ahí es eso, nunca contraseñas
+// ni correspondencia personal de alguien.
+//
+// ── CÓMO ACTIVARLO (una sola vez) ──────────────────────────────────────
+// 1. firebase functions:secrets:set MANIOBRAS_EMAIL_USER
+//    (pega: maniobras@mudandote.mx)
+// 2. firebase functions:secrets:set MANIOBRAS_EMAIL_PASS
+//    (pega la contraseña de ESE buzón, la que se configuró en IONOS)
+// 3. cd functions && npm install   (jala imapflow y mailparser, nuevos aquí)
+// 4. Desde la raíz del repo: firebase deploy --only functions
+// 5. Copia la URL de "revisarBuzonManiobras" que muestra la terminal al
+//    terminar y pégala en FUNCTION_URL_REVISAR_BUZON en maniobras.html.
+// El revisor también corre solo cada 30 minutos (onSchedule, abajo) — el
+// botón en la página es nada más para no tener que esperar al probar.
+// ══════════════════════════════════════════════════════════════════════════
+async function _revisarBuzonCore(apiKey, user, pass) {
+  const { ImapFlow } = require('imapflow');
+  const { simpleParser } = require('mailparser');
+  const client = new ImapFlow({
+    host: 'imap.ionos.mx',
+    port: 993,
+    secure: true,
+    auth: { user: user, pass: pass },
+    logger: false
+  });
+  const encontrados = [];
+  await client.connect();
+  try {
+    const lock = await client.getMailboxLock('INBOX');
+    try {
+      for await (const msg of client.fetch({ seen: false }, { source: true, envelope: true, uid: true })) {
+        let renglones = [];
+        let error = null;
+        try {
+          const parsed = await simpleParser(msg.source);
+          const pdfAdjunto = (parsed.attachments || []).find(function (a) {
+            return (a.contentType || '').indexOf('pdf') !== -1;
+          });
+          const content = pdfAdjunto
+            ? [
+                { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: pdfAdjunto.content.toString('base64') } },
+                { type: 'text', text: PROMPT_INSTRUCCIONES }
+              ]
+            : PROMPT_INSTRUCCIONES + '\n\n--- CORREO ---\n' + (parsed.text || parsed.html || '').slice(0, 20000);
+          renglones = await extraerRenglonesConIA(content, apiKey);
+        } catch (e) {
+          error = e.message || String(e);
+        }
+        const envelope = msg.envelope || {};
+        encontrados.push({
+          uid: msg.uid,
+          asunto: envelope.subject || '(sin asunto)',
+          de: (envelope.from && envelope.from[0] && envelope.from[0].address) || '',
+          fecha: envelope.date ? new Date(envelope.date).toISOString().slice(0, 10) : '',
+          renglones: renglones,
+          error: error,
+          revisadoEn: new Date().toISOString()
+        });
+        await client.messageFlagsAdd(msg.uid, ['\\Seen'], { uid: true });
+      }
+    } finally {
+      lock.release();
+    }
+  } finally {
+    await client.logout();
+  }
+  if (encontrados.length) {
+    // Nunca sobrescribir: leer lo que ya había pendiente de revisar y
+    // agregar los nuevos correos al final (mismo principio que
+    // ingresosDB/anticiposDB — fusionar, no reemplazar en bloque).
+    const ref = db.collection('estado').doc('correosManiobrasPendientes');
+    const snap = await ref.get();
+    const previos = (snap.exists && snap.data().data) ? JSON.parse(snap.data().data) : [];
+    await ref.set({ data: JSON.stringify(previos.concat(encontrados)) });
+  }
+  return encontrados;
+}
+
+exports.revisarBuzonManiobras = onRequest(
+  { secrets: [ANTHROPIC_API_KEY, MANIOBRAS_EMAIL_USER, MANIOBRAS_EMAIL_PASS], cors: true, region: 'us-central1', timeoutSeconds: 300 },
+  async (req, res) => {
+    try {
+      const encontrados = await _revisarBuzonCore(ANTHROPIC_API_KEY.value(), MANIOBRAS_EMAIL_USER.value(), MANIOBRAS_EMAIL_PASS.value());
+      res.json({ ok: true, correosNuevos: encontrados.length });
+    } catch (e) {
+      console.error('revisarBuzonManiobras:', e);
+      res.status(500).json({ error: e.message || 'Error interno del servidor.' });
+    }
+  }
+);
+
+// Corre solo cada 30 minutos — así aunque nadie entre a la página, los
+// correos nuevos se van juntando en estado/correosManiobrasPendientes para
+// cuando Raúl entre a revisarlos.
+exports.revisarBuzonManiobrasProgramado = onSchedule(
+  { schedule: 'every 30 minutes', secrets: [ANTHROPIC_API_KEY, MANIOBRAS_EMAIL_USER, MANIOBRAS_EMAIL_PASS], region: 'us-central1', timeoutSeconds: 300 },
+  async () => {
+    await _revisarBuzonCore(ANTHROPIC_API_KEY.value(), MANIOBRAS_EMAIL_USER.value(), MANIOBRAS_EMAIL_PASS.value());
   }
 );
 
