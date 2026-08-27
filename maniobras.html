@@ -625,13 +625,51 @@ async function cargarCorreosPendientesBuzon(){
   if(!Array.isArray(_correosBuzon))_correosBuzon=[];
   renderCorreosBuzon();
 }
+// Identificadores (folio/pedido/T.U.'s) de TODOS los renglones de un correo
+// del buzón, normalizados — para comparar contra lo ya registrado y contra
+// otros correos pendientes en la misma lista. Los renglones del buzón son
+// crudos (antes de _procesarRenglonesExtraidos), por eso se leen directo.
+function _idsDeCorreo(c){
+  var ids=[];
+  (c.renglones||[]).forEach(function(x){
+    [x.folio,x.pedido,x.tu1,x.tu2].forEach(function(v){var n=_normTxt(v);if(n)ids.push(n);});
+  });
+  return ids;
+}
+// ¿Alguno de estos identificadores ya quedó registrado como autorización de
+// cliente? (mismo criterio de "contiene" que usa _buscarDuplicado con
+// observaciones). Es solo un aviso — el bloqueo real ya ocurre al registrar.
+function _correoYaRegistrado(ids){
+  if(!ids.length)return false;
+  return ingresosDB.some(function(v){
+    if(!v.esAutorizacionCliente)return false;
+    var vIds=_normTxt(v.observaciones);
+    return ids.some(function(id){return vIds.indexOf(id)!==-1;});
+  });
+}
+// ¿Este correo comparte algún identificador con OTRO correo que sigue
+// pendiente en el buzón? (p.ej. el cliente reenvió el mismo correo dos
+// veces, o dos correos de seguimiento del mismo folio se acumularon).
+function _correoRepetidoEnBuzon(ids,i){
+  if(!ids.length)return false;
+  return _correosBuzon.some(function(c2,j){
+    if(j===i)return false;
+    var ids2=_idsDeCorreo(c2);
+    return ids.some(function(id){return ids2.indexOf(id)!==-1;});
+  });
+}
 function renderCorreosBuzon(){
   var wrap=$('buzonWrap');
   if(!_correosBuzon.length){wrap.innerHTML='<p style="font-size:12px;color:#aaa;padding:8px 0">Sin correos nuevos pendientes de revisar.</p>';return;}
   wrap.innerHTML='<div class="tbl-wrap"><table><thead><tr><th>Asunto</th><th>De</th><th>Fecha</th><th class="r">Renglones</th><th></th></tr></thead><tbody>'
     +_correosBuzon.map(function(c,i){
-      return '<tr'+(c.error?' style="background:#fffbeb"':'')+'>'
-        +'<td style="font-size:12px">'+(c.asunto||'')+'</td>'
+      var ids=_idsDeCorreo(c);
+      var yaReg=!c.error&&_correoYaRegistrado(ids);
+      var repetido=!c.error&&!yaReg&&_correoRepetidoEnBuzon(ids,i);
+      var avisoDup=yaReg?'<div style="font-size:10px;color:#9b1c1c;font-weight:700">⚠️ posible duplicado — ya hay una autorización registrada con este folio/pedido/T.U.</div>'
+        :(repetido?'<div style="font-size:10px;color:#9b1c1c;font-weight:700">⚠️ posible duplicado — comparte folio/pedido/T.U. con otro correo de esta lista</div>':'');
+      return '<tr'+(c.error||yaReg||repetido?' style="background:#fffbeb"':'')+'>'
+        +'<td style="font-size:12px">'+(c.asunto||'')+avisoDup+'</td>'
         +'<td style="font-size:11px;color:#888">'+(c.de||'')+'</td>'
         +'<td style="font-size:12px">'+(c.fecha||'')+'</td>'
         +'<td class="num r">'+(c.error?'<span style="color:#9b1c1c" title="'+c.error.replace(/"/g,'&quot;')+'">⚠️ error</span>':(c.renglones||[]).length)+'</td>'
