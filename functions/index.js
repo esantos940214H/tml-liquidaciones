@@ -337,10 +337,17 @@ function _revisarBuzonCore(apiKey, user, pass) {
     // Nunca sobrescribir: leer lo que ya había pendiente de revisar y
     // agregar los nuevos correos al final (mismo principio que
     // ingresosDB/anticiposDB — fusionar, no reemplazar en bloque).
-      const ref = db.collection('estado').doc('correosManiobrasPendientes');
-      const snap = await ref.get();
-      const previos = (snap.exists && snap.data().data) ? JSON.parse(snap.data().data) : [];
-      await ref.set({ data: JSON.stringify(previos.concat(encontrados)) });
+      try {
+        console.log('revisarBuzonManiobras: guardando ' + encontrados.length + ' correo(s) en Firestore...');
+        const ref = db.collection('estado').doc('correosManiobrasPendientes');
+        const snap = await ref.get();
+        const previos = (snap.exists && snap.data().data) ? JSON.parse(snap.data().data) : [];
+        await ref.set({ data: JSON.stringify(previos.concat(encontrados)) });
+        console.log('revisarBuzonManiobras: guardado en Firestore exitoso.');
+      } catch (e) {
+        console.error('revisarBuzonManiobras: error guardando en Firestore:', e);
+        throw e;
+      }
     }
     return encontrados;
   });
