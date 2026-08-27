@@ -313,6 +313,29 @@ async function _revisarBuzonCore(apiKey, user, pass) {
   return encontrados;
 }
 
+// Diagnóstico temporal: solo prueba si Cloud Functions puede abrir un socket
+// TLS hacia imap.ionos.mx:993 (con límite de 10s, no 5 minutos como el
+// revisor completo) — para confirmar rápido si el problema es de red/bloqueo
+// antes de meterle más tiempo a IMAP/mailparser. Se puede borrar en cuanto
+// se resuelva la conexión.
+exports.pingImap = onRequest({ cors: true, region: 'us-central1', timeoutSeconds: 20 }, async (req, res) => {
+  const tls = require('tls');
+  const inicio = Date.now();
+  try {
+    const resultado = await new Promise((resolve, reject) => {
+      const socket = tls.connect({ host: 'imap.ionos.mx', port: 993, timeout: 10000 }, () => {
+        resolve('conectado en ' + (Date.now() - inicio) + 'ms');
+        socket.end();
+      });
+      socket.on('timeout', () => { socket.destroy(); reject(new Error('timeout tras ' + (Date.now() - inicio) + 'ms')); });
+      socket.on('error', (e) => reject(e));
+    });
+    res.json({ ok: true, resultado: resultado });
+  } catch (e) {
+    res.json({ ok: false, error: e.message, ms: Date.now() - inicio });
+  }
+});
+
 exports.revisarBuzonManiobras = onRequest(
   { secrets: [ANTHROPIC_API_KEY, MANIOBRAS_EMAIL_USER, MANIOBRAS_EMAIL_PASS], cors: true, region: 'us-central1', timeoutSeconds: 300 },
   async (req, res) => {
