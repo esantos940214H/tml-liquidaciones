@@ -336,6 +336,42 @@ exports.pingImap = onRequest({ cors: true, region: 'us-central1', timeoutSeconds
   }
 });
 
+// Diagnóstico 2: hace el LOGIN de IMAP a mano (sin imapflow) para ver si el
+// bloqueo está en la librería o en el protocolo/credenciales en sí — lee la
+// respuesta cruda del servidor a cada paso.
+exports.pingImapLogin = onRequest(
+  { secrets: [MANIOBRAS_EMAIL_USER, MANIOBRAS_EMAIL_PASS], cors: true, region: 'us-central1', timeoutSeconds: 20 },
+  async (req, res) => {
+    const tls = require('tls');
+    const inicio = Date.now();
+    const pasos = [];
+    try {
+      const resultado = await new Promise((resolve, reject) => {
+        const socket = tls.connect({ host: 'imap.ionos.mx', port: 993, timeout: 15000 });
+        let buffer = '';
+        socket.on('data', (chunk) => {
+          buffer += chunk.toString('utf8');
+          pasos.push({ ms: Date.now() - inicio, recibido: chunk.toString('utf8').slice(0, 300) });
+          if (buffer.indexOf('* OK') !== -1 && !socket._enviadoLogin) {
+            socket._enviadoLogin = true;
+            const user = MANIOBRAS_EMAIL_USER.value();
+            const pass = MANIOBRAS_EMAIL_PASS.value();
+            socket.write('a1 LOGIN "' + user + '" "' + pass + '"\r\n');
+          } else if (/^a1 (OK|NO|BAD)/m.test(buffer)) {
+            resolve('login respondió: ' + buffer.split('\n').find(function (l) { return l.indexOf('a1 ') === 0; }));
+            socket.end();
+          }
+        });
+        socket.on('timeout', () => { socket.destroy(); reject(new Error('timeout tras ' + (Date.now() - inicio) + 'ms')); });
+        socket.on('error', (e) => reject(e));
+      });
+      res.json({ ok: true, resultado: resultado, pasos: pasos });
+    } catch (e) {
+      res.json({ ok: false, error: e.message, ms: Date.now() - inicio, pasos: pasos });
+    }
+  }
+);
+
 exports.revisarBuzonManiobras = onRequest(
   { secrets: [ANTHROPIC_API_KEY, MANIOBRAS_EMAIL_USER, MANIOBRAS_EMAIL_PASS], cors: true, region: 'us-central1', timeoutSeconds: 300 },
   async (req, res) => {
