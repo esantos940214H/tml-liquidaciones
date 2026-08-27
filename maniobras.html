@@ -616,7 +616,7 @@ async function agregarAutorizacionManiobra(){
 const FUNCTION_URL_EXTRAER_MANIOBRAS='https://us-central1-tml-liquidaciones.cloudfunctions.net/extraerManiobras';
 // TODO: pegar la URL real que muestra `firebase deploy --only functions`
 // para "revisarBuzonManiobras" (ver instrucciones en functions/index.js).
-const FUNCTION_URL_REVISAR_BUZON='';
+const FUNCTION_URL_REVISAR_BUZON='https://us-central1-tml-liquidaciones.cloudfunctions.net/revisarBuzonManiobras';
 let _extraidos=[];
 let _correosBuzon=[];
 async function cargarCorreosPendientesBuzon(){
