@@ -935,13 +935,18 @@ async function registrarExtraidos(){
   var cliente=($('autCliente').value||'').trim()||'GRUPO COMERCIAL DSW';
   var plazo=$('autPlazo').value||15;
   var ok=0,errores=[];
+  // Se guarda el resultado FILA POR FILA (no por nombre de operador) — si
+  // hay operadores repetidos en el lote con resultados distintos (uno se
+  // registra, otro falla), antes se confundían al filtrar por texto y podía
+  // quedarse en la tabla un renglón que YA se había registrado.
+  var fallidos=[];
   _extraidos.forEach(function(x){
     var r=_crearAutorizacionEnMemoria({unidad:x.unidad,monto:x.monto,montoPendiente:x.montoPendiente,folio:x.folio,pedido:x.pedido,tu1:x.tu1,tu2:x.tu2,tienda:x.tienda,fecha:x.fecha,cliente:cliente,destino:x.destino,responsable:responsable,plazo:plazo});
-    if(r.ok)ok++;else errores.push((x.nombreOriginal||x.unidad)+': '+r.error);
+    if(r.ok){ok++;}else{errores.push((x.nombreOriginal||x.unidad)+': '+r.error);fallidos.push(x);}
   });
   if(ok)await window.FB.set('estado','ingresosDB',{data:JSON.stringify(ingresosDB)});
   renderPendientes();
-  _extraidos=errores.length?_extraidos.filter(function(x,i){return errores.some(function(e){return e.indexOf(x.nombreOriginal||x.unidad)===0;});}):[];
+  _extraidos=fallidos;
   renderExtraidos();
   if(!errores.length){$('autTexto').value='';$('extraerInfo').innerHTML='';$('wrapExtraidos').style.display='none';_autPdfBase64List=[];if($('autArchivo'))$('autArchivo').value='';}
   alert('✅ Se registraron '+ok+' de '+(ok+errores.length)+' renglón(es).'+(errores.length?'\n\n⚠️ No se registraron:\n'+errores.join('\n'):''));
