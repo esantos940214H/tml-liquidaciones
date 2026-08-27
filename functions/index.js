@@ -281,6 +281,16 @@ function _revisarBuzonCore(apiKey, user, pass) {
   return new Promise(function (resolveTodo, rejectTodo) {
     const imap = new Imap({ user: user, password: pass, host: 'imap.ionos.mx', port: 993, tls: true, connTimeout: 20000, authTimeout: 20000 });
     const encontrados = [];
+    // El cierre de la conexión (LOGOUT/TLS) se puede quedar colgado en este
+    // entorno (mismo tipo de problema que tuvimos con imapflow al conectar).
+    // Por eso resolvemos en cuanto terminamos de procesar los correos —
+    // imap.end() solo se usa para cerrar limpio, sin esperar su evento 'end'.
+    let resuelto = false;
+    function terminar(encontrados) {
+      if (resuelto) return;
+      resuelto = true;
+      resolveTodo(encontrados);
+    }
     imap.once('error', function (err) { console.error('revisarBuzonManiobras: imap error:', err); rejectTodo(err); });
     imap.once('ready', function () {
       console.log('revisarBuzonManiobras: conectado, abriendo INBOX...');
@@ -290,7 +300,7 @@ function _revisarBuzonCore(apiKey, user, pass) {
         imap.search(['UNSEEN'], function (err, uids) {
           if (err) { console.error('revisarBuzonManiobras: error en search:', err); imap.end(); rejectTodo(err); return; }
           console.log('revisarBuzonManiobras: search encontró', uids ? uids.length : 0, 'correo(s):', JSON.stringify(uids));
-          if (!uids || !uids.length) { imap.end(); resolveTodo(encontrados); return; }
+          if (!uids || !uids.length) { imap.end(); terminar(encontrados); return; }
           const f = imap.fetch(uids, { bodies: '', markSeen: true });
           const pendientes = [];
           f.on('message', function (msg, seqno) {
@@ -321,6 +331,7 @@ function _revisarBuzonCore(apiKey, user, pass) {
             Promise.all(pendientes).then(function () {
               console.log('revisarBuzonManiobras: todos procesados, encontrados.length=' + encontrados.length + ', cerrando conexión.');
               imap.end();
+              terminar(encontrados);
             }).catch(function (e) {
               console.error('revisarBuzonManiobras: error inesperado esperando pendientes:', e);
               imap.end();
@@ -330,7 +341,7 @@ function _revisarBuzonCore(apiKey, user, pass) {
         });
       });
     });
-    imap.once('end', function () { resolveTodo(encontrados); });
+    imap.once('end', function () { terminar(encontrados); });
     imap.connect();
   }).then(async function (encontrados) {
     if (encontrados.length) {
