@@ -281,34 +281,48 @@ function _revisarBuzonCore(apiKey, user, pass) {
   return new Promise(function (resolveTodo, rejectTodo) {
     const imap = new Imap({ user: user, password: pass, host: 'imap.ionos.mx', port: 993, tls: true, connTimeout: 20000, authTimeout: 20000 });
     const encontrados = [];
-    imap.once('error', function (err) { rejectTodo(err); });
+    imap.once('error', function (err) { console.error('revisarBuzonManiobras: imap error:', err); rejectTodo(err); });
     imap.once('ready', function () {
+      console.log('revisarBuzonManiobras: conectado, abriendo INBOX...');
       imap.openBox('INBOX', false, function (err, box) {
-        if (err) { imap.end(); rejectTodo(err); return; }
+        if (err) { console.error('revisarBuzonManiobras: error abriendo INBOX:', err); imap.end(); rejectTodo(err); return; }
+        console.log('revisarBuzonManiobras: INBOX abierto, buscando UNSEEN...');
         imap.search(['UNSEEN'], function (err, uids) {
-          if (err) { imap.end(); rejectTodo(err); return; }
+          if (err) { console.error('revisarBuzonManiobras: error en search:', err); imap.end(); rejectTodo(err); return; }
+          console.log('revisarBuzonManiobras: search encontró', uids ? uids.length : 0, 'correo(s):', JSON.stringify(uids));
           if (!uids || !uids.length) { imap.end(); resolveTodo(encontrados); return; }
           const f = imap.fetch(uids, { bodies: '', markSeen: true });
           const pendientes = [];
-          f.on('message', function (msg) {
+          f.on('message', function (msg, seqno) {
+            console.log('revisarBuzonManiobras: mensaje #' + seqno + ' — empezando a recibir cuerpo...');
             const partes = [];
             msg.on('body', function (stream) {
               stream.on('data', function (chunk) { partes.push(chunk); });
             });
             msg.once('end', function () {
               const raw = Buffer.concat(partes);
+              console.log('revisarBuzonManiobras: mensaje #' + seqno + ' descargado (' + raw.length + ' bytes), procesando con IA...');
               pendientes.push(
                 _procesarMensajeImap(raw, apiKey)
-                  .then(function (r) { encontrados.push(Object.assign({ error: null, revisadoEn: new Date().toISOString() }, r)); })
-                  .catch(function (e) { encontrados.push({ error: e.message || String(e), renglones: [], asunto: '(error al procesar)', de: '', fecha: '', revisadoEn: new Date().toISOString() }); })
+                  .then(function (r) {
+                    console.log('revisarBuzonManiobras: mensaje #' + seqno + ' procesado, ' + (r.renglones || []).length + ' renglón(es).');
+                    encontrados.push(Object.assign({ error: null, revisadoEn: new Date().toISOString() }, r));
+                  })
+                  .catch(function (e) {
+                    console.error('revisarBuzonManiobras: error procesando mensaje #' + seqno + ':', e);
+                    encontrados.push({ error: e.message || String(e), renglones: [], asunto: '(error al procesar)', de: '', fecha: '', revisadoEn: new Date().toISOString() });
+                  })
               );
             });
           });
-          f.once('error', function (err) { imap.end(); rejectTodo(err); });
+          f.once('error', function (err) { console.error('revisarBuzonManiobras: error en fetch:', err); imap.end(); rejectTodo(err); });
           f.once('end', function () {
+            console.log('revisarBuzonManiobras: fetch terminado, esperando a que terminen de procesarse los ' + pendientes.length + ' mensaje(s)...');
             Promise.all(pendientes).then(function () {
+              console.log('revisarBuzonManiobras: todos procesados, encontrados.length=' + encontrados.length + ', cerrando conexión.');
               imap.end();
             }).catch(function (e) {
+              console.error('revisarBuzonManiobras: error inesperado esperando pendientes:', e);
               imap.end();
               rejectTodo(e);
             });
