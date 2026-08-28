@@ -718,6 +718,17 @@ async function confirmarAsignacion(){
   var operadorAnteriorDeLaUnidad=unidad.operadorActual?parseInt(unidad.operadorActual):null;
   var haySaliente=operadorAnteriorDeLaUnidad&&operadorAnteriorDeLaUnidad!==operadorId;
 
+  // El campo unidadActual del OPERADOR puede quedar desfasado (por ejemplo si
+  // se editó a mano fuera de este flujo). Antes de liberar "su unidad
+  // anterior", se verifica contra la colección unidades — la fuente real de
+  // quién trae cada camión — que esa unidad SIGUE siendo de este operador.
+  // Si ya es de alguien más, no se toca (para no borrarle la asignación real
+  // a ese otro operador por un dato viejo).
+  var unidadAnteriorReal=(unidadAnteriorDelOperador&&unidadAnteriorDelOperador!==unidadNum)
+    ?unidadesRaw.find(function(u){return u.numero===unidadAnteriorDelOperador;})
+    :null;
+  var liberarUnidadAnterior=unidadAnteriorReal&&unidadAnteriorReal.operadorActual&&parseInt(unidadAnteriorReal.operadorActual)===operadorId;
+
   var litrosEntrega=null;
   if(haySaliente)litrosEntrega=parseFloat($('asigLitrosEntrega').value||0);
 
@@ -726,15 +737,17 @@ async function confirmarAsignacion(){
     var opSaliente=operadoresRaw.find(function(o){return o.id===String(operadorAnteriorDeLaUnidad);});
     msgConfirm+='\n\nEsto desasigna a '+(opSaliente?opSaliente.nombre:'el operador actual')+' de esa unidad.';
   }
-  if(unidadAnteriorDelOperador&&unidadAnteriorDelOperador!==unidadNum){
+  if(liberarUnidadAnterior){
     msgConfirm+='\n\n'+operador.nombre+' deja de estar asignado a la unidad '+unidadAnteriorDelOperador+'.';
+  }else if(unidadAnteriorDelOperador&&unidadAnteriorDelOperador!==unidadNum){
+    msgConfirm+='\n\n⚠️ El sistema tenía registrada la unidad '+unidadAnteriorDelOperador+' como la anterior de '+operador.nombre+', pero esa unidad ya es de otro operador — se corrige el dato de '+operador.nombre+' sin tocar esa unidad.';
   }
   if(!confirm(msgConfirm))return;
 
   try{
     var db=firebase.firestore();
     var batch=db.batch();
-    if(unidadAnteriorDelOperador&&unidadAnteriorDelOperador!==unidadNum){
+    if(liberarUnidadAnterior){
       batch.update(db.collection('unidades').doc(String(unidadAnteriorDelOperador)),{operadorActual:null});
     }
     if(haySaliente){
