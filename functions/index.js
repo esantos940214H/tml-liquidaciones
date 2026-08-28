@@ -514,3 +514,63 @@ exports.extraerManiobras = onRequest(
     }
   }
 );
+
+// ══════════════════════════════════════════════════════════════════════════
+// extraerJustificacionCxP — Cuentas por Pagar (proveedores.html): algunos
+// proveedores mandan, junto con su factura, un documento de justificación
+// (ej. reporte de monitoreo GPS, desglose de viajes) detallando qué unidad
+// se atendió cada vez. Esta función solo EXTRAE los renglones (unidad,
+// fecha, descripción) — el prorrateo proporcional entre unidades y el
+// emparejamiento con el operador real se hace en el navegador
+// (proveedores.html), y SIEMPRE se le muestra al administrador para
+// revisar/ajustar antes de guardar, nunca se aplica solo.
+// ══════════════════════════════════════════════════════════════════════════
+const PROMPT_JUSTIFICACION_CXP =
+  'Eres un asistente que extrae datos de un documento de JUSTIFICACIÓN que un proveedor envía junto con su factura, ' +
+  'detallando los servicios que prestó por unidad/camión (ej. un reporte de monitoreo GPS, un desglose de viajes, un ' +
+  'listado de servicios por unidad/económico). El documento puede venir como tabla o como texto libre, y normalmente ' +
+  'trae, para cada servicio/viaje/registro: el número económico o identificador de la unidad, una fecha, y a veces una ' +
+  'descripción breve. Extrae UN renglón por cada servicio/viaje/registro que encuentres, con estas llaves exactas: ' +
+  '{"unidad":"el número económico o identificador de la unidad tal cual aparece en ese renglón, o null si no se puede ' +
+  'determinar","fecha":"YYYY-MM-DD si se puede convertir desde el formato que traiga, o null","descripcion":"una ' +
+  'descripción breve de ese renglón (tipo de servicio, ruta, concepto), o null"}. ' +
+  'No inventes datos que no estén en el documento. Responde SOLO un arreglo JSON (sin texto explicativo, sin ' +
+  'backticks, sin markdown) con un objeto por cada renglón que encuentres. Si no hay ningún renglón reconocible, ' +
+  'responde [].';
+
+exports.extraerJustificacionCxP = onRequest(
+  { secrets: [ANTHROPIC_API_KEY], cors: true, region: 'us-central1' },
+  async (req, res) => {
+    if (req.method !== 'POST') {
+      res.status(405).json({ error: 'Método no permitido, usa POST.' });
+      return;
+    }
+    const texto = ((req.body && req.body.texto) || '').toString().trim();
+    const pdfBase64 = ((req.body && req.body.pdfBase64) || '').toString().trim();
+    if (!texto && !pdfBase64) {
+      res.status(400).json({ error: 'Falta el texto o el PDF de la justificación (campo "texto" o "pdfBase64").' });
+      return;
+    }
+    if (texto.length > 20000) {
+      res.status(400).json({ error: 'El texto es demasiado largo (máximo 20,000 caracteres).' });
+      return;
+    }
+    if (pdfBase64.length > 15000000) {
+      res.status(400).json({ error: 'El PDF es demasiado grande (máximo ~10 MB).' });
+      return;
+    }
+    try {
+      const content = pdfBase64
+        ? [
+            { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: pdfBase64 } },
+            { type: 'text', text: PROMPT_JUSTIFICACION_CXP }
+          ]
+        : PROMPT_JUSTIFICACION_CXP + '\n\n--- DOCUMENTO ---\n' + texto;
+      const renglones = await extraerRenglonesConIA(content, ANTHROPIC_API_KEY.value());
+      res.json({ renglones: renglones });
+    } catch (e) {
+      console.error('extraerJustificacionCxP:', e);
+      res.status(500).json({ error: e.message || 'Error interno del servidor.' });
+    }
+  }
+);
