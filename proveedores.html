@@ -170,10 +170,13 @@ tr:hover td{background:#fafafa}
         <div class="field"><label>Fecha</label><input type="text" id="facFecha" disabled></div>
         <div class="field"><label>Total</label><input type="text" id="facTotal" disabled></div>
       </div>
-      <div class="card-title" style="margin-top:6px">⚖️ Prorrateo por unidad <span class="info-tip">?<span class="info-tip-box">La suma de los montos por unidad debe ser igual al Total del CFDI (con tolerancia de centavos) antes de poder guardar.</span></span></div>
-      <div id="facProrrateoWrap"></div>
-      <button class="btn btn-out btn-sm" onclick="agregarFilaProrrateo()" style="margin-top:6px">+ Agregar unidad</button>
-      <div id="facProrrateoTotal" style="font-size:12px;margin-top:8px;font-weight:700"></div>
+      <div class="card-title" style="margin-top:6px">⚖️ Prorrateo por unidad <span class="info-tip">?<span class="info-tip-box">La suma de los montos por unidad debe ser igual al Total del CFDI (con tolerancia de centavos) antes de poder guardar. Si el gasto es general de la empresa (no corresponde a ningún camión/operador en particular — ej. renta de oficina, software), marca la casilla de abajo en vez de prorratear.</span></span></div>
+      <label style="font-size:12px;font-weight:400;display:block;margin-bottom:8px"><input type="checkbox" id="facSinUnidad" onchange="toggleFacSinUnidad()"> Este gasto NO corresponde a ninguna unidad (gasto general de la empresa)</label>
+      <div id="facProrrateoBloque">
+        <div id="facProrrateoWrap"></div>
+        <button class="btn btn-out btn-sm" onclick="agregarFilaProrrateo()" style="margin-top:6px">+ Agregar unidad</button>
+        <div id="facProrrateoTotal" style="font-size:12px;margin-top:8px;font-weight:700"></div>
+      </div>
       <div id="facInfo" style="margin-top:10px"></div>
       <button class="btn btn-red" style="margin-top:8px" onclick="guardarFactura()" id="btnGuardarFactura">💾 Guardar factura</button>
       <button class="btn btn-out" style="margin-top:8px" onclick="cancelarCapturaFactura()">Cancelar</button>
@@ -608,10 +611,19 @@ function mostrarFacFormulario(){
   $('facFolio').value=(data.serie?data.serie+'-':'')+data.folio;
   $('facFecha').value=data.fechaEmision;
   $('facTotal').value=fmt(data.total);
+  $('facSinUnidad').checked=false;
+  $('facProrrateoBloque').style.display='block';
   _facProrrateo=[{unidad:'',monto:data.total.toFixed(2)}];
   renderFacProrrateo();
   $('facInfo').innerHTML='';
   $('facFormWrap').style.display='block';
+}
+// Un gasto general (renta, software, etc.) no se prorratea a ninguna
+// unidad — sin esta opción, el prorrateo era obligatorio y no había forma
+// de registrar ese tipo de factura.
+function toggleFacSinUnidad(){
+  var sinUnidad=$('facSinUnidad').checked;
+  $('facProrrateoBloque').style.display=sinUnidad?'none':'block';
 }
 function renderFacProrrateo(){
   $('facProrrateoWrap').innerHTML=_facProrrateo.map(function(r,i){
@@ -643,9 +655,12 @@ async function guardarFactura(){
   if(!data)return;
   if(_facCandados.some(function(c){return c.duro&&!c.ok;})){alert('Hay candados sin pasar arriba — revísalos antes de guardar.');return;}
   if(!_facProveedorMatch){alert('Falta el proveedor.');return;}
-  if(_facProrrateo.some(function(r){return !r.unidad;})){alert('Falta seleccionar la unidad en alguna fila del prorrateo.');return;}
-  var suma=_facProrrateo.reduce(function(s,r){return s+(parseFloat(r.monto)||0);},0);
-  if(Math.abs(suma-data.total)>=0.02){alert('⚠️ La suma del prorrateo ('+fmt(suma)+') no cuadra con el total de la factura ('+fmt(data.total)+').');return;}
+  var sinUnidad=$('facSinUnidad').checked;
+  if(!sinUnidad){
+    if(_facProrrateo.some(function(r){return !r.unidad;})){alert('Falta seleccionar la unidad en alguna fila del prorrateo (o marca "gasto general" si no aplica a ninguna unidad).');return;}
+    var suma=_facProrrateo.reduce(function(s,r){return s+(parseFloat(r.monto)||0);},0);
+    if(Math.abs(suma-data.total)>=0.02){alert('⚠️ La suma del prorrateo ('+fmt(suma)+') no cuadra con el total de la factura ('+fmt(data.total)+').');return;}
+  }
   $('btnGuardarFactura').disabled=true;
   try{
     var yaExiste=await window.FB.get('cxpFacturas',data.uuid);
@@ -663,7 +678,8 @@ async function guardarFactura(){
       subtotal:data.subtotal,totalImpuestos:data.traslados-data.retenciones,total:data.total,
       fechaEmision:data.fechaEmision,diasCredito:diasCredito,fechaVencimiento:fechaVencimiento,
       estadoPago:estadoPago,
-      prorrateo:_facProrrateo.map(function(r){return{unidad:parseInt(r.unidad),monto:parseFloat(r.monto)||0,aplicado:false,liqNum:null};}),
+      estadoProrrateo:sinUnidad?'n_aplica':'completo',
+      prorrateo:sinUnidad?[]:_facProrrateo.map(function(r){return{unidad:parseInt(r.unidad),monto:parseFloat(r.monto)||0,aplicado:false,liqNum:null};}),
       xmlURL:null,capturadoPor:u?(u.nombre||u.usuario):'',fechaAlta:new Date().toISOString()
     });
     TMLComprobantes.subirXML('comprobantes/proveedores/'+data.uuid+'.xml',_facXmlTexto).then(function(url){
@@ -697,7 +713,7 @@ function renderFacturas(){
       var vencido=yaVencioLimite(f.fechaVencimiento);
       var bloqueada=f.estadoPago==='pendiente_pago';
       return '<tr>'
-        +'<td style="font-size:12px">'+(f.proveedorNombre||f.proveedorId||'')+'</td>'
+        +'<td style="font-size:12px">'+(f.proveedorNombre||f.proveedorId||'')+(f.estadoProrrateo==='n_aplica'?'<div style="font-size:10px;color:#888">gasto general (sin unidad)</div>':'')+'</td>'
         +'<td class="num">'+(f.serie?f.serie+'-':'')+f.folio+'</td>'
         +'<td>'+f.fechaEmision+'</td>'
         +'<td class="num r">'+fmt(f.total)+'</td>'
