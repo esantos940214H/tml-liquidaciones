@@ -914,6 +914,11 @@ function _procesarRenglonesExtraidos(renglones){
   // el monto se corrigió — se marca cada renglón para que el admin lo
   // revise y borre el que no aplica antes de registrar (nunca se borra
   // solo, para no adivinar cuál es el vigente).
+  // Una fila "PENDIENTE" seguida de otra con el monto real del MISMO folio
+  // NO es una corrección — es el flujo normal de seguimiento (ver
+  // _crearAutorizacionEnMemoria: la fila con monto real actualiza a la
+  // PENDIENTE en vez de duplicarla), así que se excluyen las filas
+  // PENDIENTE de esta comparación para no marcarlas como conflicto.
   (function(){
     var porFolio={};
     _extraidos.forEach(function(x){
@@ -921,7 +926,7 @@ function _procesarRenglonesExtraidos(renglones){
       (porFolio[x.folio]=porFolio[x.folio]||[]).push(x);
     });
     Object.keys(porFolio).forEach(function(folio){
-      var grupo=porFolio[folio];
+      var grupo=porFolio[folio].filter(function(x){return !x.montoPendiente;});
       var montos=Array.from(new Set(grupo.map(function(x){return String(x.monto||'').trim();})));
       if(grupo.length>1&&montos.length>1){
         grupo.forEach(function(x){x.posibleCorreccion=true;});
