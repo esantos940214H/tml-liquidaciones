@@ -197,6 +197,7 @@ tr:hover td{background:#fafafa}
       <span>🧾 Facturas de proveedor registradas <span id="facCountLabel" style="font-weight:400;color:#888;text-transform:none;letter-spacing:normal"></span></span>
       <button class="btn btn-out btn-sm" onclick="cargarYRenderFacturas(true)">🔄 Recargar</button>
     </div>
+    <div id="facResumenProrrateo" style="font-size:12px;margin-bottom:10px"></div>
     <div id="facWrap"><div style="text-align:center;padding:30px;color:#aaa">Cargando...</div></div>
   </div>
 
@@ -817,24 +818,51 @@ function renderFacturas(){
   $('facCountLabel').textContent=FACTURAS.length?'— '+FACTURAS.length+' factura(s)':'';
   var wrap=$('facWrap');
   if(!FACTURAS.length){
+    $('facResumenProrrateo').innerHTML='';
     wrap.innerHTML='<p style="font-size:13px;color:#aaa;padding:10px 0">Todavía no hay facturas de proveedor registradas.</p>';
     return;
   }
+  var pendiente=0,aplicado=0;
+  FACTURAS.forEach(function(f){
+    (f.prorrateo||[]).forEach(function(p){
+      if(p.aplicado)aplicado+=(p.monto||0);else pendiente+=(p.monto||0);
+    });
+  });
+  $('facResumenProrrateo').innerHTML='<strong>Prorrateo pendiente de liquidar:</strong> '+fmt(pendiente)+' &nbsp;·&nbsp; <span style="color:#888">ya aplicado a alguna liquidación: '+fmt(aplicado)+'</span>';
   var ordenadas=FACTURAS.slice().sort(function(a,b){return(b.fechaEmision||'').localeCompare(a.fechaEmision||'');});
-  wrap.innerHTML='<div class="tbl-wrap"><table><thead><tr><th>Proveedor</th><th>Folio</th><th>Fecha</th><th class="r">Total</th><th>Vencimiento</th><th>Estado</th><th></th></tr></thead><tbody>'
+  wrap.innerHTML='<div class="tbl-wrap"><table><thead><tr><th>Proveedor</th><th>Folio</th><th>Fecha</th><th class="r">Total</th><th>Vencimiento</th><th>Estado</th><th>Prorrateo</th><th></th></tr></thead><tbody>'
     +ordenadas.map(function(f){
       var vencido=yaVencioLimite(f.fechaVencimiento);
       var bloqueada=f.estadoPago==='pendiente_pago';
-      return '<tr>'
+      var tieneProrrateo=f.prorrateo&&f.prorrateo.length;
+      var fila='<tr>'
         +'<td style="font-size:12px">'+(f.proveedorNombre||f.proveedorId||'')+(f.estadoProrrateo==='n_aplica'?'<div style="font-size:10px;color:#888">gasto general (sin unidad)</div>':'')+'</td>'
         +'<td class="num">'+(f.serie?f.serie+'-':'')+f.folio+'</td>'
         +'<td>'+f.fechaEmision+'</td>'
         +'<td class="num r">'+fmt(f.total)+'</td>'
         +'<td>'+(vencido&&!bloqueada?'<span class="badge bg-red">⚠ Vencida '+f.fechaVencimiento+'</span>':'<span class="badge bg-green">'+f.fechaVencimiento+'</span>')+'</td>'
         +'<td>'+(bloqueada?'<span class="badge bg-red">🚫 PUE sin pago</span>':'<span class="badge bg-green">'+(f.metodoPago||'')+'</span>')+'</td>'
+        +'<td>'+(f.estadoProrrateo==='n_aplica'?'<span style="color:#888;font-size:11px">— gasto general</span>':(tieneProrrateo?'<button class="btn btn-out btn-sm" onclick="toggleProrrateoDetalle(\''+f.id+'\')">👁️ '+f.prorrateo.length+' unidad(es)</button>':'<span style="color:#c1121f;font-size:11px">sin prorrateo</span>'))+'</td>'
         +'<td><button class="btn btn-out btn-sm" onclick="eliminarFacturaUI(\''+f.id+'\')">🗑️ Eliminar</button></td>'
         +'</tr>';
+      if(tieneProrrateo){
+        fila+='<tr id="prorrateoDetalle_'+f.id+'" style="display:none;background:#fafafa"><td colspan="8" style="padding:10px 20px">'
+          +'<table style="width:100%;font-size:11px"><thead><tr><th>Unidad</th><th class="r">Monto</th><th>¿Ya se liquidó?</th></tr></thead><tbody>'
+          +f.prorrateo.map(function(p){
+            return '<tr><td>'+nombreOperadorPorUnidad(p.unidad)+'</td><td class="num r">'+fmt(p.monto)+'</td><td>'+(p.aplicado?'<span class="badge bg-green">✅ Sí — Liq #'+p.liqNum+'</span>':'<span class="badge bg-red">⏳ Pendiente de liquidar</span>')+'</td></tr>';
+          }).join('')
+          +'</tbody></table></td></tr>';
+      }
+      return fila;
     }).join('')+'</tbody></table></div>';
+}
+function nombreOperadorPorUnidad(unidad){
+  var op=OPERADORES.find(function(o){return o.unidad===parseInt(unidad);});
+  return op?op.clave+' · '+op.nombre:('Unidad '+unidad);
+}
+function toggleProrrateoDetalle(id){
+  var el=document.getElementById('prorrateoDetalle_'+id);
+  if(el)el.style.display=(el.style.display==='none'?'table-row':'none');
 }
 
 window.onFBReady(async function(){
