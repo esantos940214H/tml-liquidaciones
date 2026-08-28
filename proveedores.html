@@ -1,0 +1,440 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TML · Proveedores</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Segoe UI',Arial,sans-serif;background:#f0f2f5;color:#1a1a2e;min-height:100vh}
+html.in-iframe header{display:none!important}
+header{background:#1a1a2e;color:#fff;padding:14px 24px;display:flex;align-items:center;justify-content:space-between;border-bottom:3px solid #e63946}
+.logo{font-size:18px;font-weight:800}.logo span{color:#e63946}
+.nav{display:flex;gap:8px;flex-wrap:wrap}
+.nav a{color:#aaa;text-decoration:none;font-size:12px;padding:6px 12px;border-radius:5px;border:1px solid #333;transition:all .15s}
+.nav a:hover{color:#fff;border-color:#555}
+.nav a.active{color:#fff;background:#e63946;border-color:#e63946}
+.container{max-width:1100px;margin:0 auto;padding:20px 16px}
+.card{background:#fff;border-radius:10px;box-shadow:0 2px 12px rgba(0,0,0,.07);padding:20px 24px;margin-bottom:16px}
+.card-title{font-size:12px;font-weight:700;color:#1a1a2e;margin-bottom:14px;text-transform:uppercase;letter-spacing:1px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px}
+.grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px}
+.field label{display:block;font-size:11px;font-weight:700;color:#666;margin-bottom:4px;text-transform:uppercase;letter-spacing:.4px}
+.field input,.field select,.field textarea{width:100%;padding:8px 10px;border:1.5px solid #dde;border-radius:6px;font-size:13px;outline:none}
+.field input:focus,.field select:focus,.field textarea:focus{border-color:#e63946}
+.btn{padding:8px 18px;border-radius:6px;border:none;font-size:12px;font-weight:700;cursor:pointer;transition:all .15s;text-transform:uppercase;letter-spacing:.5px}
+.btn-red{background:#e63946;color:#fff}.btn-red:hover{background:#c1121f}
+.btn-dark{background:#1a1a2e;color:#fff}.btn-dark:hover{background:#0d0d1a}
+.btn-out{background:#fff;color:#1a1a2e;border:1.5px solid #1a1a2e}.btn-out:hover{background:#f0f2f5}
+.btn-green{background:#2d6a4f;color:#fff}.btn-green:hover{background:#1b4332}
+.btn:disabled{opacity:.35;cursor:not-allowed}
+.btn-sm{padding:5px 11px;font-size:11px}
+.alert{padding:9px 13px;border-radius:7px;font-size:12px;margin-bottom:10px}
+.alert-info{background:#e8f4fd;color:#0369a1;border:1px solid #bae6fd}
+.alert-ok{background:#d1e7dd;color:#0a5233;border:1px solid #a3cfbb}
+.alert-warn{background:#fffbeb;color:#92400e;border:1px solid #fde68a}
+.alert-err{background:#fde8e8;color:#9b1c1c;border:1px solid #f9a8a8}
+.tbl-wrap{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:13px;min-width:500px}
+th{background:#1a1a2e;color:#fff;padding:8px 10px;font-size:11px;text-transform:uppercase;letter-spacing:.7px;text-align:left;font-weight:600}
+th.r{text-align:right}
+td{padding:7px 10px;border-bottom:1px solid #f0f0f0;vertical-align:middle}
+tr:last-child td{border-bottom:none}
+tr:hover td{background:#fafafa}
+.r{text-align:right}.num{font-family:monospace;font-weight:600}
+.badge{display:inline-block;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:700}
+.bg-green{background:#d1e7dd;color:#0a5233}.bg-red{background:#fde8e8;color:#9b1c1c}
+.fb-status{font-size:11px;color:#aaa}
+.fb-ok{color:#2d6a4f}.fb-err{color:#e63946}
+
+/* ── SESIÓN (login por módulo) ── */
+.session-overlay{position:fixed;inset:0;background:#1a1a2e;z-index:999999;display:none;align-items:center;justify-content:center}
+.session-overlay.show{display:flex}
+.session-box{background:#fff;border-radius:14px;padding:36px;width:320px;box-shadow:0 20px 60px rgba(0,0,0,.4);text-align:center}
+.session-logo{font-size:20px;font-weight:800;margin-bottom:4px;color:#1a1a2e}
+.session-logo span{color:#e63946}
+.session-modulo{font-size:13px;color:#666;margin-bottom:18px;font-weight:700}
+.session-input{width:100%;border:1.5px solid #dde;border-radius:8px;padding:10px 14px;font-size:14px;margin-bottom:10px;outline:none}
+.session-input:focus{border-color:#e63946}
+.session-btn{width:100%;padding:11px;background:#e63946;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer}
+.session-btn:hover{background:#c1121f}
+.session-err{color:#e63946;font-size:12px;margin-top:8px}
+.session-user-label{font-size:11px;color:#aaa}
+.session-logout{font-size:11px;color:#aaa;text-decoration:underline;cursor:pointer;background:none;border:none}
+.session-logout:hover{color:#fff}
+</style>
+<script>if(window!==window.top)document.documentElement.className+=' in-iframe';</script>
+</head>
+<body>
+
+<!-- OVERLAY DE SESIÓN -->
+<div class="session-overlay" id="sessionOverlay">
+  <div class="session-box">
+    <div class="session-logo">MUDANZAS <span>TML</span></div>
+    <div class="session-modulo" id="sessionModuloLabel">Iniciar sesión — Proveedores</div>
+    <input type="email" id="sessionUser" class="session-input" placeholder="Email" autocomplete="username" onkeydown="if(event.key==='Enter')document.getElementById('sessionPass').focus()">
+    <input type="password" id="sessionPass" class="session-input" placeholder="Contraseña" autocomplete="current-password" onkeydown="if(event.key==='Enter')intentarLoginFirebase()">
+    <button class="session-btn" onclick="intentarLoginFirebase()">Entrar</button>
+    <div class="session-err" id="sessionErr" style="display:none"></div>
+    <div style="margin-top:10px"><a href="#" onclick="recuperarContrasena();return false;" style="color:#aaa;font-size:11px">¿Olvidaste tu contraseña?</a></div>
+    <div class="session-err" id="sessionRecupMsg" style="display:none"></div>
+  </div>
+</div>
+<div class="session-overlay" id="sessionDenied">
+  <div class="session-box">
+    <div class="session-logo">MUDANZAS <span>TML</span></div>
+    <div class="session-modulo">⛔ Tu usuario no tiene permiso para entrar a este módulo.</div>
+    <div style="font-size:12px;color:#888;margin-bottom:16px">Sesión iniciada como <strong id="sessionDeniedUser"></strong></div>
+    <button class="session-btn" onclick="cerrarSesionTML()">Cerrar sesión</button>
+  </div>
+</div>
+<div class="session-overlay" id="modalCambiarPass">
+  <div class="session-box">
+    <div class="session-logo">MUDANZAS <span>TML</span></div>
+    <div class="session-modulo">🔑 Cambiar contraseña</div>
+    <input type="password" id="cpActual" class="session-input" placeholder="Contraseña actual" autocomplete="current-password">
+    <input type="password" id="cpNueva" class="session-input" placeholder="Contraseña nueva (mínimo 6 caracteres)" autocomplete="new-password">
+    <input type="password" id="cpConfirmar" class="session-input" placeholder="Confirmar contraseña nueva" autocomplete="new-password" onkeydown="if(event.key==='Enter')confirmarCambiarPass()">
+    <button class="session-btn" onclick="confirmarCambiarPass()">Guardar</button>
+    <button class="session-logout" style="margin-top:10px" onclick="cerrarModalCambiarPass()">Cancelar</button>
+    <div class="session-err" id="cpErr" style="display:none"></div>
+    <div class="session-err" id="cpOk" style="display:none;color:#2d6a4f">✅ Contraseña actualizada.</div>
+  </div>
+</div>
+
+<header>
+  <div class="logo">MUDANZAS <span>TML</span> <span style="font-size:13px;font-weight:400;color:#aaa;margin-left:8px">· Proveedores</span></div>
+  <div style="display:flex;align-items:center;gap:12px">
+    <span class="session-user-label" id="sesionUsuarioLabel"></span>
+    <button class="session-logout" id="btnCambiarPass" onclick="abrirModalCambiarPass()" style="display:none">🔑 Cambiar contraseña</button>
+    <button class="session-logout" id="btnCerrarSesion" onclick="cerrarSesionTML()" style="display:none">Cerrar sesión</button>
+    <span class="fb-status" id="fbStatus">⏳ Conectando...</span>
+    <nav class="nav">
+      <a href="https://anticipos.mudanzastml.mx">📋 Anticipos</a>
+      <a href="https://cxc.mudanzastml.mx">📄 Ingresos</a>
+      <a href="https://cxc.mudanzastml.mx/maniobras.html">✅ Maniobras</a>
+      <a href="https://liquidaciones.mudanzastml.mx">🚛 Liquidaciones</a>
+      <a href="https://nomina.mudanzastml.mx">🧾 Nómina</a>
+      <a href="https://incidentes.mudanzastml.mx">🚨 Incidentes</a>
+      <a href="https://historial.mudanzastml.mx">🗂️ Historial</a>
+      <a href="https://autorizaciones.mudanzastml.mx">🔐 Autorizaciones</a>
+      <a href="https://precarga.mudanzastml.mx">📥 Pre-carga</a>
+      <a href="https://usuarios.mudanzastml.mx">👤 Usuarios</a>
+      <a href="https://usuarios.mudanzastml.mx/flota.html">🚚 Flota</a>
+      <a href="https://cxc.mudanzastml.mx/proveedores.html" class="active">🧾 Proveedores</a>
+    </nav>
+  </div>
+</header>
+
+<div class="container">
+
+  <div class="card">
+    <div class="card-title">➕ <span id="tituloForm">Dar de alta un proveedor</span></div>
+    <div class="grid2" style="margin-bottom:10px">
+      <div class="field"><label>RFC</label><input type="text" id="provRfc" placeholder="XAXX010101000" maxlength="13" style="text-transform:uppercase"></div>
+      <div class="field"><label>Razón social</label><input type="text" id="provRazonSocial" placeholder="Como aparece en el CFDI"></div>
+      <div class="field"><label>Nombre comercial <span style="font-weight:400;color:#aaa">(opcional)</span></label><input type="text" id="provNombreComercial"></div>
+      <div class="field"><label>Días de crédito</label><input type="number" id="provDiasCredito" value="15" min="0" step="1"></div>
+    </div>
+    <div class="grid2" style="margin-bottom:10px">
+      <div class="field"><label>Banco <span style="font-weight:400;color:#aaa">(opcional)</span></label><input type="text" id="provBanco"></div>
+      <div class="field"><label>CLABE <span style="font-weight:400;color:#aaa">(opcional)</span></label><input type="text" id="provClabe" maxlength="18"></div>
+      <div class="field"><label>Cuenta <span style="font-weight:400;color:#aaa">(opcional)</span></label><input type="text" id="provCuenta"></div>
+      <div class="field"><label>Moneda</label><select id="provMoneda"><option value="MXN">MXN</option><option value="USD">USD</option></select></div>
+    </div>
+    <div class="field" style="margin-bottom:12px"><label>Notas <span style="font-weight:400;color:#aaa">(opcional)</span></label><textarea id="provNotas" rows="2"></textarea></div>
+    <div id="provInfo"></div>
+    <button class="btn btn-red" onclick="guardarProveedorForm()">💾 Guardar</button>
+    <button class="btn btn-out" id="btnCancelarEdicion" onclick="cancelarEdicionProveedor()" style="display:none">Cancelar edición</button>
+  </div>
+
+  <div class="card">
+    <div class="card-title">
+      <span>📇 Proveedores registrados <span id="provCountLabel" style="font-weight:400;color:#888;text-transform:none;letter-spacing:normal"></span></span>
+      <label style="font-size:11px;font-weight:400;text-transform:none;color:#666"><input type="checkbox" id="chkVerInactivos" onchange="renderProveedores()"> ver inactivos</label>
+    </div>
+    <div id="provWrap"><div style="text-align:center;padding:30px;color:#aaa">Cargando...</div></div>
+  </div>
+
+</div>
+
+<!-- Firebase compat -->
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+<!-- Firebase Auth (login del módulo — ver shared/sesion.js) -->
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
+<script src="shared/sesion.js"></script>
+<script src="shared/proveedores.js"></script>
+<script>
+window._fbInit=false;
+window._fbCallbacks=[];
+window.onFBReady=function(cb){if(window._fbInit)cb();else window._fbCallbacks.push(cb);};
+(function(){
+  try{
+    var cfg={apiKey:"AIzaSyDqlhREJFVFLGzz7bVlPcNl1Uba9HI3r8s",authDomain:"tml-liquidaciones.firebaseapp.com",
+      projectId:"tml-liquidaciones",storageBucket:"tml-liquidaciones.firebasestorage.app",
+      messagingSenderId:"268455373953",appId:"1:268455373953:web:ad359c5dbcba9f53557180"};
+    if(!firebase.apps.length)firebase.initializeApp(cfg);
+    var db=firebase.firestore();
+    window.FB={
+      set:function(col,id,data){return db.collection(col).doc(id).set(data);},
+      get:async function(col,id){try{var s=await db.collection(col).doc(id).get();return s.exists?s.data():null;}catch(e){console.error('FB.get:',e);return null;}},
+      del:function(col,id){return db.collection(col).doc(id).delete();},
+      listen:function(col,id,cb){return db.collection(col).doc(id).onSnapshot(function(s){cb(s.exists?s.data():null);});},
+      getAll:async function(col){
+        try{var s=await db.collection(col).get();var r=[];s.forEach(function(d){r.push(Object.assign({id:d.id},d.data()));});return r.sort(function(a,b){return(b.num||0)-(a.num||0);});}
+        catch(e){console.error('FB.getAll:',e);return[];}
+      }
+    };
+    window._fbInit=true;
+    window._fbCallbacks.forEach(function(cb){try{cb();}catch(e){console.error(e);}});
+    window._fbCallbacks=[];
+    setTimeout(function(){window.dispatchEvent(new Event('firebase-ready'));},0);
+  }catch(e){console.error('Firebase init error:',e);}
+})();
+</script>
+
+<script>
+const $=id=>document.getElementById(id);
+let fbReady=false;
+let PROVEEDORES=[];
+
+// ══════════════════════════════════════════════
+// SESIÓN (login general con permisos por módulo — mismo patrón que los demás)
+// ══════════════════════════════════════════════
+const MODULO_ACTUAL='proveedores';
+const NOMBRES_MODULO={ant:'Anticipos',ing:'Ingresos',liq:'Liquidaciones',nom:'Nómina',inc:'Incidentes',hist:'Historial',autoriz:'Autorizaciones',precarga:'Pre-carga',proveedores:'Proveedores'};
+
+function tmlSetCookie(name,value,days){
+  var expires='';
+  if(days){var d=new Date();d.setTime(d.getTime()+days*24*60*60*1000);expires=';expires='+d.toUTCString();}
+  document.cookie=name+'='+encodeURIComponent(value)+expires+';domain=.mudanzastml.mx;path=/;SameSite=Lax;Secure';
+}
+function tmlGetCookie(name){
+  var m=document.cookie.match('(^|;\\s*)'+name+'=([^;]*)');
+  return m?decodeURIComponent(m[2]):null;
+}
+function tmlDeleteCookie(name){
+  document.cookie=name+'=;expires=Thu, 01 Jan 1970 00:00:00 GMT;domain=.mudanzastml.mx;path=/;SameSite=Lax;Secure';
+}
+function usuarioSesion(){
+  try{return JSON.parse(tmlGetCookie('tml_user')||'null');}catch(e){return null;}
+}
+async function cerrarSesionTML(){
+  if(window.TMLSesion) await TMLSesion.cerrarSesion();
+  else tmlDeleteCookie('tml_user');
+  location.reload();
+}
+// ── CAMBIAR CONTRASEÑA (Firebase Auth) ───────────────────────────────────
+function abrirModalCambiarPass(){
+  $('cpActual').value='';$('cpNueva').value='';$('cpConfirmar').value='';
+  $('cpErr').style.display='none';$('cpOk').style.display='none';
+  $('modalCambiarPass').classList.add('show');
+  setTimeout(function(){$('cpActual').focus();},100);
+}
+function cerrarModalCambiarPass(){
+  $('modalCambiarPass').classList.remove('show');
+}
+async function confirmarCambiarPass(){
+  var actual=$('cpActual').value||'';
+  var nueva=$('cpNueva').value||'';
+  var confirmar=$('cpConfirmar').value||'';
+  var err=$('cpErr'),ok=$('cpOk');
+  err.style.display='none';ok.style.display='none';
+  if(!actual||!nueva||!confirmar){err.textContent='Llena los tres campos.';err.style.display='block';return;}
+  if(nueva.length<6){err.textContent='La contraseña nueva debe tener al menos 6 caracteres.';err.style.display='block';return;}
+  if(nueva!==confirmar){err.textContent='La confirmación no coincide con la contraseña nueva.';err.style.display='block';return;}
+  try{
+    await TMLSesion.cambiarContrasena(actual,nueva);
+    ok.style.display='block';
+    setTimeout(function(){cerrarModalCambiarPass();},1500);
+  }catch(e){
+    var msg='No se pudo cambiar la contraseña.';
+    if(e.code==='auth/wrong-password'||e.code==='auth/invalid-credential')msg='La contraseña actual no es correcta.';
+    else if(e.code==='auth/weak-password')msg='La contraseña nueva es muy débil (mínimo 6 caracteres).';
+    else if(e.code==='auth/requires-recent-login')msg='Tu sesión es muy antigua — cierra sesión, vuelve a entrar, e intenta de nuevo.';
+    err.textContent=msg;err.style.display='block';
+  }
+}
+function mostrarLoginModulo(){
+  $('sessionModuloLabel').textContent='Iniciar sesión — '+NOMBRES_MODULO[MODULO_ACTUAL];
+  $('sessionOverlay').classList.add('show');
+  setTimeout(function(){$('sessionUser').focus();},100);
+}
+async function intentarLoginFirebase(){
+  var email=($('sessionUser').value||'').trim();
+  var pass=$('sessionPass').value||'';
+  var err=$('sessionErr');
+  err.style.display='none';
+  if(!email||!pass){err.textContent='Ingresa tu email y contraseña.';err.style.display='block';return;}
+  try{
+    await TMLSesion.iniciarSesion(email,pass);
+    var u=usuarioSesion();
+    if(!u){err.textContent='No se pudo iniciar sesión.';err.style.display='block';return;}
+    if(!u.esAdmin&&(!u.permisos||!u.permisos[MODULO_ACTUAL])){
+      err.textContent='Tu usuario no tiene permiso para entrar a '+NOMBRES_MODULO[MODULO_ACTUAL]+'.';err.style.display='block';
+      await TMLSesion.cerrarSesion();
+      return;
+    }
+    $('sessionOverlay').classList.remove('show');
+    mostrarSesionEnHeader();
+  }catch(e){
+    err.textContent='No se pudo iniciar sesión: '+(e.message||e.code||'error desconocido');err.style.display='block';
+  }
+}
+async function recuperarContrasena(){
+  var email=($('sessionUser').value||'').trim();
+  var msg=$('sessionRecupMsg');
+  if(!email){msg.style.color='#e63946';msg.textContent='Escribe tu email arriba y da clic de nuevo.';msg.style.display='block';return;}
+  try{
+    await TMLSesion.enviarCorreoRecuperacion(email);
+    msg.style.color='#2d6a4f';msg.textContent='✅ Te enviamos un correo a '+email+' con instrucciones para restablecer tu contraseña.';msg.style.display='block';
+  }catch(e){
+    msg.style.color='#e63946';msg.textContent='No se pudo enviar el correo: '+(e.message||e.code||'error desconocido');msg.style.display='block';
+  }
+}
+function aplicarPermisosNav(u){
+  if(!u||u.esAdmin)return;
+  var mapa={ant:'https://anticipos.mudanzastml.mx',ing:'https://cxc.mudanzastml.mx',liq:'https://liquidaciones.mudanzastml.mx',nom:'https://nomina.mudanzastml.mx',inc:'https://incidentes.mudanzastml.mx',hist:'https://historial.mudanzastml.mx',autoriz:'https://autorizaciones.mudanzastml.mx',precarga:'https://precarga.mudanzastml.mx',proveedores:'https://cxc.mudanzastml.mx/proveedores.html'};
+  Object.keys(mapa).forEach(function(mod){
+    if(!u.permisos||!u.permisos[mod]){
+      document.querySelectorAll('nav a[href="'+mapa[mod]+'"]').forEach(function(el){el.style.display='none';});
+    }
+  });
+  var usuariosLink=document.querySelector('nav a[href="https://usuarios.mudanzastml.mx"]');
+  if(usuariosLink)usuariosLink.style.display='none';
+  var flotaLink=document.querySelector('nav a[href="https://usuarios.mudanzastml.mx/flota.html"]');
+  if(flotaLink)flotaLink.style.display='none';
+}
+function mostrarSesionEnHeader(){
+  var u=usuarioSesion();
+  if(!u)return;
+  if($('sesionUsuarioLabel'))$('sesionUsuarioLabel').textContent='👤 '+(u.nombre||u.usuario)+(u.esAdmin?' (admin)':'');
+  if($('btnCerrarSesion'))$('btnCerrarSesion').style.display='inline';
+  if($('btnCambiarPass'))$('btnCambiarPass').style.display='inline';
+  aplicarPermisosNav(u);
+}
+function verificarSesionModulo(){
+  var u=usuarioSesion();
+  if(!u){mostrarLoginModulo();return;}
+  if(!u.esAdmin&&(!u.permisos||!u.permisos[MODULO_ACTUAL])){
+    $('sessionDeniedUser').textContent=u.nombre||u.usuario;
+    $('sessionDenied').classList.add('show');
+    return;
+  }
+  mostrarSesionEnHeader();
+  cargarYRenderProveedores();
+}
+
+// ══════════════════════════════════════════════
+// CATÁLOGO DE PROVEEDORES (ver shared/proveedores.js)
+// ══════════════════════════════════════════════
+let _editandoRfc=null;
+
+async function cargarYRenderProveedores(forzar){
+  PROVEEDORES=await window.cargarProveedores(forzar);
+  renderProveedores();
+}
+
+function renderProveedores(){
+  var verInactivos=$('chkVerInactivos').checked;
+  var lista=verInactivos?PROVEEDORES:PROVEEDORES.filter(function(p){return p.activo;});
+  $('provCountLabel').textContent=lista.length?'— '+lista.length+' proveedor(es)':'';
+  var wrap=$('provWrap');
+  if(!lista.length){
+    wrap.innerHTML='<p style="font-size:13px;color:#aaa;padding:10px 0">'+(PROVEEDORES.length?'Sin proveedores activos (marca "ver inactivos" para verlos).':'Todavía no hay proveedores registrados.')+'</p>';
+    return;
+  }
+  wrap.innerHTML='<div class="tbl-wrap"><table><thead><tr><th>RFC</th><th>Razón social</th><th class="r">Días de crédito</th><th>Banco / CLABE</th><th>Estado</th><th></th></tr></thead><tbody>'
+    +lista.map(function(p){
+      return '<tr>'
+        +'<td class="num">'+p.rfc+'</td>'
+        +'<td style="font-size:12px">'+(p.razonSocial||'')+(p.nombreComercial?' <span style="color:#888">('+p.nombreComercial+')</span>':'')+'</td>'
+        +'<td class="num r">'+p.diasCredito+'</td>'
+        +'<td style="font-size:11px">'+(p.banco||'—')+(p.clabe?' · '+p.clabe:'')+'</td>'
+        +'<td>'+(p.activo?'<span class="badge bg-green">Activo</span>':'<span class="badge bg-red">Inactivo</span>')+'</td>'
+        +'<td>'
+        +'<button class="btn btn-out btn-sm" onclick="editarProveedor(\''+p.rfc+'\')">✏️ Editar</button> '
+        +(p.activo
+          ?'<button class="btn btn-out btn-sm" onclick="darDeBajaProveedorUI(\''+p.rfc+'\')">Dar de baja</button>'
+          :'<button class="btn btn-green btn-sm" onclick="reactivarProveedorUI(\''+p.rfc+'\')">Reactivar</button>')
+        +'</td>'
+        +'</tr>';
+    }).join('')+'</tbody></table></div>';
+}
+
+function limpiarFormProveedor(){
+  $('provRfc').value='';$('provRazonSocial').value='';$('provNombreComercial').value='';
+  $('provDiasCredito').value='15';$('provBanco').value='';$('provClabe').value='';
+  $('provCuenta').value='';$('provMoneda').value='MXN';$('provNotas').value='';
+  $('provRfc').disabled=false;
+  _editandoRfc=null;
+  $('tituloForm').textContent='Dar de alta un proveedor';
+  $('btnCancelarEdicion').style.display='none';
+  $('provInfo').innerHTML='';
+}
+
+function editarProveedor(rfc){
+  var p=PROVEEDORES.find(function(x){return x.rfc===rfc;});
+  if(!p)return;
+  _editandoRfc=rfc;
+  $('provRfc').value=p.rfc;$('provRfc').disabled=true;
+  $('provRazonSocial').value=p.razonSocial;$('provNombreComercial').value=p.nombreComercial;
+  $('provDiasCredito').value=p.diasCredito;$('provBanco').value=p.banco;$('provClabe').value=p.clabe;
+  $('provCuenta').value=p.cuenta;$('provMoneda').value=p.moneda||'MXN';$('provNotas').value=p.notas;
+  $('tituloForm').textContent='Editando: '+p.razonSocial+' ('+p.rfc+')';
+  $('btnCancelarEdicion').style.display='inline-block';
+  $('provInfo').innerHTML='';
+  window.scrollTo({top:0,behavior:'smooth'});
+}
+function cancelarEdicionProveedor(){ limpiarFormProveedor(); }
+
+async function guardarProveedorForm(){
+  var rfc=(_editandoRfc||$('provRfc').value||'').trim();
+  var razonSocial=($('provRazonSocial').value||'').trim();
+  if(!rfc){$('provInfo').innerHTML='<div class="alert alert-warn">⚠️ Falta el RFC.</div>';return;}
+  if(!razonSocial){$('provInfo').innerHTML='<div class="alert alert-warn">⚠️ Falta la razón social.</div>';return;}
+  if(!_editandoRfc){
+    var yaExiste=window.buscarProveedorPorRfc(PROVEEDORES,rfc);
+    if(yaExiste){$('provInfo').innerHTML='<div class="alert alert-err">⚠️ Ya existe un proveedor con el RFC '+window.normRfc(rfc)+' ('+yaExiste.razonSocial+'). Si quieres editarlo, dale "Editar" en la lista de abajo.</div>';return;}
+  }
+  try{
+    await window.guardarProveedor({
+      rfc:rfc,razonSocial:razonSocial,nombreComercial:$('provNombreComercial').value,
+      diasCredito:$('provDiasCredito').value,banco:$('provBanco').value,clabe:$('provClabe').value,
+      cuenta:$('provCuenta').value,moneda:$('provMoneda').value,notas:$('provNotas').value
+    });
+    await cargarYRenderProveedores(true);
+    var eraEdicion=!!_editandoRfc;
+    limpiarFormProveedor();
+    $('provInfo').innerHTML='<div class="alert alert-ok">✅ Proveedor '+(eraEdicion?'actualizado':'registrado')+' correctamente.</div>';
+  }catch(e){
+    console.error('guardarProveedorForm:',e);
+    $('provInfo').innerHTML='<div class="alert alert-err">⚠️ Error al guardar: '+e.message+'</div>';
+  }
+}
+
+async function darDeBajaProveedorUI(rfc){
+  var p=window.buscarProveedorPorRfc(PROVEEDORES,rfc);
+  if(!confirm('¿Dar de baja a '+(p?p.razonSocial:rfc)+'? No se borra nada — solo deja de aparecer disponible para nuevas facturas, y puedes reactivarlo cuando quieras.'))return;
+  try{
+    await window.darDeBajaProveedor(rfc);
+    await cargarYRenderProveedores(true);
+  }catch(e){alert('⚠️ Error: '+e.message);}
+}
+async function reactivarProveedorUI(rfc){
+  try{
+    await window.reactivarProveedor(rfc);
+    await cargarYRenderProveedores(true);
+  }catch(e){alert('⚠️ Error: '+e.message);}
+}
+
+window.onFBReady(async function(){
+  fbReady=true;
+  $('fbStatus').textContent='✅ Conectado';
+  $('fbStatus').className='fb-status fb-ok';
+  verificarSesionModulo();
+});
+setTimeout(function(){if(!fbReady){$('fbStatus').textContent='❌ Sin conexión';$('fbStatus').className='fb-status fb-err';}},6000);
+</script>
+</body>
+</html>

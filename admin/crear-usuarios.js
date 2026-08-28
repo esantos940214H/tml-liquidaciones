@@ -61,7 +61,7 @@ const auth = getAuth();
 // permisos: dos tipos de banderas en el mismo objeto —
 //   1) VER un módulo (mismo criterio que ya usaba el login viejo en
 //      Firestore/usuarios.permisos): ant, ing, liq, nom, inc, hist,
-//      autoriz, precarga.
+//      autoriz, precarga, proveedores (Cuentas por Pagar — cxc.mudanzastml.mx/proveedores.html).
 //   2) Candados de ACCIÓN dentro de un módulo (reemplazan las contraseñas
 //      fijas del código): anticipos_editar (antes KM2026 en ant.html),
 //      ingresos_editar (antes RM2026 en ing.html), incidentes_editar
