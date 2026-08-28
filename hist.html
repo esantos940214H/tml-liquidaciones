@@ -901,6 +901,7 @@ function verDetalle(id){
     +dr('Maniobras y otros gastos',gastosModulo)
     +dr('Comisión operador ('+l.comision+'%)',snap.totComision||0)
     +dr('2% gastos sin comprobante',snap.totGastos1||0)
+    +(snap.totCxpFacturas?dr('Facturas de proveedor (Cuentas por Pagar)',snap.totCxpFacturas):'')
     +`<div class="det-row subtotal"><span>TOTAL GASTOS</span><span class="num">${fmt(snap.totGastosEmpTotal||0)}</span></div>`;
 
   // Resultado empresa

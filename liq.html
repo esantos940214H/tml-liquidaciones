@@ -554,6 +554,13 @@ tr:hover td{background:#fafafa}
         <tbody id="tbCargosFlotaLiq"></tbody><tfoot id="tfCargosFlotaLiq"></tfoot>
       </table></div>
     </div>
+    <div class="card" id="cardCxpFacturasLiq" style="display:none">
+      <div class="card-title">🧾 Facturas de proveedor (Cuentas por Pagar) prorrateadas a esta unidad <span class="info-tip">?<span class="info-tip-box">Se registran en el módulo <strong>Proveedores</strong> — no se capturan manualmente aquí. SIEMPRE las paga la empresa (el comprobante de pago se sube por separado en Proveedores), así que solo bajan la utilidad, nunca el saldo del operador. Todas las pendientes se aplican en esta liquidación, sin tope.</span></span></div>
+      <div class="tbl-wrap"><table>
+        <thead><tr><th>Proveedor</th><th>Folio</th><th class="r">Monto</th></tr></thead>
+        <tbody id="tbCxpFacturasLiq"></tbody><tfoot id="tfCxpFacturasLiq"></tfoot>
+      </table></div>
+    </div>
   </div>
 </div></div>
 
@@ -743,7 +750,7 @@ window.onFBReady=function(cb){if(window._fbInit)cb();else window._fbCallbacks.pu
     var db=firebase.firestore();
     var storage=firebase.storage();
     window.FB={
-      set:function(col,id,data){return db.collection(col).doc(id).set(data);},
+      set:function(col,id,data,options){return db.collection(col).doc(id).set(data,options);},
       get:async function(col,id){try{var s=await db.collection(col).doc(id).get();return s.exists?s.data():null;}catch(e){console.error('FB.get:',e);return null;}},
       del:function(col,id){return db.collection(col).doc(id).delete();},
       uploadFile:async function(path,file){
@@ -1140,6 +1147,7 @@ let anticiposDB={};   // {unidad:[{...anticipo,estado,liqNum}]}
 let ingresosDB=[];    // [{id,unidad,folio,fecha,cliente,tipo,subtotal,iva,ret,total,estado,liqNum,origen}]
 let incidentesDB={};  // {unidad:[{...incidente,montoReconocido,estado,liqNum}]} — módulo incidentes.html (independiente)
 let cargosFlotaDB={};  // {opId:[{...cargo,concepto,importe,estado,liqNum}]} — módulo flota.html (checklist de colchonetas/extintores/daños), independiente
+let CXP_FACTURAS=[];  // [{id(=UUID),proveedorNombre,folio,prorrateo:[{unidad,monto,aplicado,liqNum}],...}] — módulo proveedores.html (Cuentas por Pagar), colección real, independiente
 let nominaDB={};       // {unidad:[{id,uuid,folio,fecha,periodoIni,periodoFin,totalPercepciones,totalDeducciones,estado,liqNum}]}
 let liq=null;
 // El candado de "una liquidación activa a la vez" es POR OPERADOR (ver
@@ -1648,6 +1656,18 @@ async function cargarEstado(){
         if(Array.from(tabs).indexOf(tabActivo)===4) generarReporte();
       }
     });
+    // cxpFacturas: colección real (un documento por factura, no un blob) del
+    // módulo Proveedores/Cuentas por Pagar — cada factura ya trae su
+    // prorrateo por unidad. A diferencia de incidentes/cargosFlota (que
+    // viven en un solo doc con onSnapshot), aquí se lee la colección
+    // completa una vez al entrar; se vuelve a leer fresca justo antes de
+    // cerrar la liquidación (ver cerrarLiquidacion) para no aplicar datos
+    // desactualizados.
+    try{
+      CXP_FACTURAS=await window.FB.getAll('cxpFacturas');
+      renderCxpFacturasLiq();
+    }catch(e){console.error('No se pudieron cargar cxpFacturas:',e);}
+
     // Suscribirse en vivo al doc liqActivas/{opId} del operador que quedó
     // cargado (si lo hay), para reflejar cambios hechos desde otra pestaña/
     // usuario o desde "Reabrir" en Historial.
@@ -1745,6 +1765,7 @@ function restaurarUILiquidacion(){
   if(liq.gastosXML||liq.gastos) renderGastos();
   renderIncidentesLiq();
   renderCargosFlotaLiq();
+  renderCxpFacturasLiq();
   if(!liq.casetasNF)liq.casetasNF=[];
   renderCasetasNF();
   if($('btnRevalidarSATWrap'))$('btnRevalidarSATWrap').style.display='block';
@@ -2798,6 +2819,7 @@ async function iniciarLiquidacion(){
   renderGastos();
   renderIncidentesLiq();
   renderCargosFlotaLiq();
+  renderCxpFacturasLiq();
   renderCasetasNF();
   if($('btnRevalidarSATWrap'))$('btnRevalidarSATWrap').style.display='block';
   actualizarBotonEliminarLiq();
@@ -2875,6 +2897,7 @@ function eliminarLiquidacionActual(){
   cargasOp=[];
   renderIncidentesLiq();
   renderCargosFlotaLiq();
+  renderCxpFacturasLiq();
   if($('btnRevalidarSATWrap'))$('btnRevalidarSATWrap').style.display='none';
   if($('btnEliminarLiqWrap'))$('btnEliminarLiqWrap').style.display='none';
   if($('satValidandoInfo'))$('satValidandoInfo').style.display='none';
@@ -3891,6 +3914,48 @@ function renderCargosFlotaLiq(){
 }
 
 // ══════════════════════════════════════════════
+// FACTURAS DE PROVEEDOR (Cuentas por Pagar — proveedores.html)
+// A diferencia de incidentes/cargosFlota (un solo doc con onSnapshot),
+// cxpFacturas es una colección real (un documento por factura, id=UUID),
+// con un arreglo "prorrateo" por dentro ([{unidad,monto,aplicado,liqNum}]).
+// liq.html solo lee los renglones de prorrateo NO aplicados de la unidad
+// activa. SIEMPRE los paga la empresa (nunca el operador — el comprobante
+// de pago se sube por separado en Proveedores), así que entran del lado
+// de gastos de empresa (bajan la utilidad), igual que los incidentes —
+// nunca como un cargo al operador.
+// ══════════════════════════════════════════════
+function cxpFacturasPendientesLiq(){
+  if(!liq)return[];
+  var opId=parseInt(liq.opId||liq.unidad);
+  var out=[];
+  (CXP_FACTURAS||[]).forEach(function(f){
+    (f.prorrateo||[]).forEach(function(p,i){
+      if(!p.aplicado&&parseInt(p.unidad)===opId){
+        out.push({facturaId:f.id,idx:i,monto:p.monto||0,proveedorNombre:f.proveedorNombre||f.proveedorId||'',folio:(f.serie?f.serie+'-':'')+f.folio});
+      }
+    });
+  });
+  return out;
+}
+function totCxpFacturasPendientes(){
+  return cxpFacturasPendientesLiq().reduce(function(s,x){return s+(x.monto||0);},0);
+}
+function renderCxpFacturasLiq(){
+  if(!liq){
+    if($('cardCxpFacturasLiq'))$('cardCxpFacturasLiq').style.display='none';
+    return;
+  }
+  var pend=cxpFacturasPendientesLiq();
+  var cardCxp=$('cardCxpFacturasLiq');
+  if(!cardCxp)return;
+  cardCxp.style.display=pend.length?'block':'none';
+  $('tbCxpFacturasLiq').innerHTML=pend.map(function(x){
+    return '<tr><td style="font-size:12px">'+x.proveedorNombre+'</td><td class="num">'+x.folio+'</td><td class="num r">'+fmt(x.monto)+'</td></tr>';
+  }).join('');
+  $('tfCxpFacturasLiq').innerHTML='<tr style="background:#f5f5f8;font-weight:700"><td colspan="2">TOTAL A APLICAR</td><td class="num r">'+fmt(totCxpFacturasPendientes())+'</td></tr>';
+}
+
+// ══════════════════════════════════════════════
 // CASETAS SIN COMPROBANTE
 // (se capturan aquí mismo, dentro de la liquidación activa — viven en
 // liq.casetasNF, igual que liq.autopistas. No hay colección global de
@@ -4286,6 +4351,12 @@ function generarReporte(){
   const totCasetasNFOp=casetasNFAplicar.filter(function(a){return a.pagaOp;}).reduce(function(s,a){return s+a.monto;},0);
   const totCasetasNFEmp=casetasNFAplicar.filter(function(a){return !a.pagaOp;}).reduce(function(s,a){return s+a.monto;},0);
   const totCasetasNF=totCasetasNFOp+totCasetasNFEmp;
+  // Facturas de proveedor prorrateadas a esta unidad (módulo proveedores.html,
+  // independiente) — sin tope, se aplican todas las pendientes. SIEMPRE las
+  // paga la empresa (el comprobante de pago se sube por separado en
+  // Proveedores, nunca se descuenta al operador), así que baja la utilidad
+  // igual que los incidentes, nunca entra como cargo al operador.
+  const totCxpFacturas=totCxpFacturasPendientes();
 
   // Totales empresa
   // dieselTotal = lo que se cargó a empresa (por comprobar × precio promedio)
@@ -4294,7 +4365,7 @@ function generarReporte(){
   // porque son CFDIs deducibles y su IVA es acreditable. Los gastos manuales
   // sin factura, la comisión, el 2%, incidentes y casetas sin comprobante no
   // llevan IVA desglosado y entran con su monto completo tal cual.
-  const totGastosEmpTotal=dieselComprobadoSub+totAutSub+totGastosManual+gastosXMLSub+totComision+totGastos1+totIncidentes+totCasetasNF;
+  const totGastosEmpTotal=dieselComprobadoSub+totAutSub+totGastosManual+gastosXMLSub+totComision+totGastos1+totIncidentes+totCasetasNF+totCxpFacturas;
   const utilidad=totIngSubtotal-totGastosEmpTotal;
 
   // Cuenta operador
@@ -4365,6 +4436,12 @@ function generarReporte(){
     gastosHTML+=rr('Casetas sin comprobante',totCasetasNF);
     casetasNFAplicar.forEach(function(a){
       gastosHTML+=rrDetail('Caseta sin comprobante #'+a.id+' · '+(a.fecha||'')+' · '+(a.caseta||''),a.monto);
+    });
+  }
+  if(totCxpFacturas){
+    gastosHTML+=rr('Facturas de proveedor (Cuentas por Pagar)',totCxpFacturas);
+    cxpFacturasPendientesLiq().forEach(function(x){
+      gastosHTML+=rrDetail(x.proveedorNombre+' · folio '+x.folio,x.monto);
     });
   }
   gastosHTML+='<div style="height:1px;background:#eee;margin:6px 0"></div>'
@@ -4623,6 +4700,8 @@ function generarReporte(){
     incidentesList:incidentesAplicar.map(function(a){return{id:a.id,fechaEvento:a.fechaEvento,causa:a.causa,montoReportado:a.montoReportado,montoReconocido:a.montoReconocido,fueraDeTiempo:!!a.fueraDeTiempo};}),
     totCargosFlota:totCargosFlota,
     cargosFlotaList:cargosFlotaPendientesLiq().map(function(a){return{id:a.id,fecha:a.fecha,concepto:a.concepto,importe:a.importe};}),
+    totCxpFacturas:totCxpFacturas,
+    cxpFacturasList:cxpFacturasPendientesLiq().map(function(x){return{facturaId:x.facturaId,proveedorNombre:x.proveedorNombre,folio:x.folio,monto:x.monto};}),
     casetasNFList:casetasNFAplicar.map(function(a){return{id:a.id,fecha:a.fecha,caseta:a.caseta,monto:a.monto,motivo:a.motivo,evidenciaURL:a.evidenciaURL||null,sinFoto:!!a.sinFoto};}),
     advertenciasFecha:(liq.advertenciasFecha||[]).slice()
   };
@@ -4917,6 +4996,33 @@ async function cerrarLiquidacion(){
       });
     }
   });
+  // Marcar como "aplicado" las facturas de proveedor (Cuentas por Pagar)
+  // prorrateadas a esta unidad — a diferencia de incidentes/cargosFlota,
+  // cxpFacturas es una colección real (un documento por factura, no un
+  // blob), así que cada una se relee fresca y se escribe por separado
+  // justo antes de cerrar, para no pisar un cambio hecho mientras tanto
+  // desde Proveedores.
+  var _cxpPend=cxpFacturasPendientesLiq();
+  var nCxpMarcados=0;
+  if(_cxpPend.length){
+    var _porFactura={};
+    _cxpPend.forEach(function(x){(_porFactura[x.facturaId]=_porFactura[x.facturaId]||[]).push(x.idx);});
+    await Promise.all(Object.keys(_porFactura).map(async function(facturaId){
+      try{
+        var freshDoc=await window.FB.get('cxpFacturas',facturaId);
+        if(!freshDoc)return;
+        var prorrateoFresco=freshDoc.prorrateo||[];
+        _porFactura[facturaId].forEach(function(idx){
+          if(prorrateoFresco[idx]&&!prorrateoFresco[idx].aplicado){
+            prorrateoFresco[idx].aplicado=true;
+            prorrateoFresco[idx].liqNum=liqCopia.num;
+            nCxpMarcados++;
+          }
+        });
+        await window.FB.set('cxpFacturas',facturaId,{prorrateo:prorrateoFresco},{merge:true});
+      }catch(e){console.error('cerrarLiquidacion: error marcando factura de proveedor '+facturaId+':',e);}
+    }));
+  }
   // Marcar recibos de nómina: idem, exactamente los ids ya contados en el reporte
   var idsNominaCerrar=window._idsNominaReporte||[];
   var nNMarcados=0;
@@ -5027,13 +5133,14 @@ async function cerrarLiquidacion(){
     });
   }
 
-  alert('✅ Liquidación #'+liqCopia.num+' cerrada.\n'+nAMarcados+' anticipos, '+nVMarcados+' viajes'+(nNMarcados?', '+nNMarcados+' recibo(s) de nómina':'')+(nIMarcados?', '+nIMarcados+' incidente(s) de vialidad':'')+(nCFMarcados?', '+nCFMarcados+' cargo(s) de mantenimiento/flota':'')+(nCMarcados?' y '+nCMarcados+' caseta(s) sin comprobante':'')+' incluidos.'+(nIDescartados?'\n⚠️ '+nIDescartados+' incidente(s) excedieron el tope de $1,500 de esta liquidación y se descartaron (no se pagan).':''));
+  alert('✅ Liquidación #'+liqCopia.num+' cerrada.\n'+nAMarcados+' anticipos, '+nVMarcados+' viajes'+(nNMarcados?', '+nNMarcados+' recibo(s) de nómina':'')+(nIMarcados?', '+nIMarcados+' incidente(s) de vialidad':'')+(nCFMarcados?', '+nCFMarcados+' cargo(s) de mantenimiento/flota':'')+(nCxpMarcados?', '+nCxpMarcados+' factura(s) de proveedor':'')+(nCMarcados?' y '+nCMarcados+' caseta(s) sin comprobante':'')+' incluidos.'+(nIDescartados?'\n⚠️ '+nIDescartados+' incidente(s) excedieron el tope de $1,500 de esta liquidación y se descartaron (no se pagan).':''));
 
   suscribirLiqActiva(null);
   liq=null;
   cargasOp=[];
   renderIncidentesLiq();
   renderCargosFlotaLiq();
+  renderCxpFacturasLiq();
   if($('btnRevalidarSATWrap'))$('btnRevalidarSATWrap').style.display='none';
   if($('btnEliminarLiqWrap'))$('btnEliminarLiqWrap').style.display='none';
   if($('satValidandoInfo'))$('satValidandoInfo').style.display='none';
