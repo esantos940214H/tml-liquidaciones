@@ -707,6 +707,14 @@ function aplicarSugerenciaProrrateo(renglones){
   var filas=claves.map(function(k){
     var ecoNum=parseInt(k.replace(/[^0-9]/g,'')||0);
     var op=ecoNum?OPERADORES.find(function(o){return o.unidad===ecoNum;}):null;
+    // Algunas unidades viven en el sistema con un "4" antepuesto (ej. 521 es
+    // en realidad la unidad 4521) porque se intentó renumerarlas más simple,
+    // pero varios clientes/proveedores las siguen anotando sin el prefijo —
+    // si no hubo coincidencia directa, se intenta también con el "4" puesto.
+    if(!op&&ecoNum&&ecoNum<1000){
+      var ecoConPrefijo=parseInt('4'+ecoNum);
+      op=OPERADORES.find(function(o){return o.unidad===ecoConPrefijo;});
+    }
     if(!op)sinMatch.push(k);
     var monto=Math.round(total*conteos[k]/totalConteo*100)/100;
     return{unidad:op?op.unidad:'',monto:monto.toFixed(2)};
