@@ -170,7 +170,16 @@ tr:hover td{background:#fafafa}
         <div class="field"><label>Fecha</label><input type="text" id="facFecha" disabled></div>
         <div class="field"><label>Total</label><input type="text" id="facTotal" disabled></div>
       </div>
-      <div class="card-title" style="margin-top:6px">⚖️ Prorrateo por unidad <span class="info-tip">?<span class="info-tip-box">La suma de los montos por unidad debe ser igual al Total del CFDI (con tolerancia de centavos) antes de poder guardar. Si el gasto es general de la empresa (no corresponde a ningún camión/operador en particular — ej. renta de oficina, software), marca la casilla de abajo en vez de prorratear.</span></span></div>
+      <div class="card-title" style="margin-top:6px">🤖 Justificación del proveedor <span class="info-tip">?<span class="info-tip-box">Algunos proveedores mandan, junto con la factura, un documento aparte justificando el cobro (ej. un reporte de monitoreo con los viajes/fechas/unidades atendidas). Súbelo aquí (PDF o pega el texto) y la IA sugiere cómo repartir el total entre las unidades, según cuántas veces aparece cada una — SIEMPRE revisa y ajusta los montos antes de guardar, nunca se aplica solo.</span></span></div>
+      <div class="field" style="margin-bottom:8px">
+        <label>Archivo (PDF) <span style="font-weight:400;color:#aaa">— o pega el texto abajo</span></label>
+        <input type="file" id="facJustifArchivo" accept=".pdf">
+        <textarea id="facJustifTexto" rows="3" placeholder="...o pega aquí el texto de la justificación" style="margin-top:6px"></textarea>
+      </div>
+      <button class="btn btn-out btn-sm" onclick="extraerJustificacionIA()" id="btnExtraerJustif">🤖 Sugerir prorrateo con IA</button>
+      <div id="facJustifInfo" style="margin-top:8px"></div>
+
+      <div class="card-title" style="margin-top:16px">⚖️ Prorrateo por unidad <span class="info-tip">?<span class="info-tip-box">La suma de los montos por unidad debe ser igual al Total del CFDI (con tolerancia de centavos) antes de poder guardar. Si el gasto es general de la empresa (no corresponde a ningún camión/operador en particular — ej. renta de oficina, software), marca la casilla de abajo en vez de prorratear.</span></span></div>
       <label style="font-size:12px;font-weight:400;display:block;margin-bottom:8px"><input type="checkbox" id="facSinUnidad" onchange="toggleFacSinUnidad()"> Este gasto NO corresponde a ninguna unidad (gasto general de la empresa)</label>
       <div id="facProrrateoBloque">
         <div id="facProrrateoWrap"></div>
@@ -616,6 +625,7 @@ function mostrarFacFormulario(){
   _facProrrateo=[{unidad:'',monto:data.total.toFixed(2)}];
   renderFacProrrateo();
   $('facInfo').innerHTML='';
+  $('facJustifArchivo').value='';$('facJustifTexto').value='';$('facJustifInfo').innerHTML='';
   $('facFormWrap').style.display='block';
 }
 // Un gasto general (renta, software, etc.) no se prorratea a ninguna
@@ -624,6 +634,92 @@ function mostrarFacFormulario(){
 function toggleFacSinUnidad(){
   var sinUnidad=$('facSinUnidad').checked;
   $('facProrrateoBloque').style.display=sinUnidad?'none':'block';
+}
+
+// ══════════════════════════════════════════════
+// SUGERENCIA DE PRORRATEO CON IA a partir de la justificación del proveedor
+// (ver functions/index.js → extraerJustificacionCxP). La IA solo EXTRAE
+// renglones (unidad/fecha/descripción) — el reparto proporcional del total
+// entre unidades y el emparejamiento con el operador real se hace aquí, y
+// SIEMPRE se muestra para revisar/ajustar antes de guardar (nunca se aplica
+// solo, mismo criterio que el resto del sistema con la IA).
+// TODO: pegar la URL real que muestra `firebase deploy --only functions`
+// para "extraerJustificacionCxP" (ver instrucciones en functions/index.js).
+const FUNCTION_URL_EXTRAER_JUSTIFICACION_CXP='https://us-central1-tml-liquidaciones.cloudfunctions.net/extraerJustificacionCxP';
+
+async function extraerJustificacionIA(){
+  if(!_facParsed){alert('Primero sube el XML de la factura.');return;}
+  var archivo=($('facJustifArchivo').files||[])[0];
+  var texto=($('facJustifTexto').value||'').trim();
+  if(!archivo&&!texto){alert('Sube el PDF de la justificación o pega su texto.');return;}
+  $('btnExtraerJustif').disabled=true;
+  $('facJustifInfo').innerHTML='<div class="alert alert-info">⏳ Leyendo la justificación con IA...</div>';
+  try{
+    var body={};
+    if(archivo){
+      var dataUrl=await new Promise(function(resolve,reject){
+        var r=new FileReader();
+        r.onload=function(e){resolve(e.target.result);};
+        r.onerror=reject;
+        r.readAsDataURL(archivo);
+      });
+      body.pdfBase64=dataUrl.split(',')[1]||'';
+    }else{
+      body.texto=texto;
+    }
+    var resp=await fetch(FUNCTION_URL_EXTRAER_JUSTIFICACION_CXP,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    var data=await resp.json();
+    if(data.error)throw new Error(data.error);
+    aplicarSugerenciaProrrateo(data.renglones||[]);
+  }catch(e){
+    console.error('extraerJustificacionIA:',e);
+    $('facJustifInfo').innerHTML='<div class="alert alert-warn">⚠️ '+e.message+'</div>';
+  }finally{
+    $('btnExtraerJustif').disabled=false;
+  }
+}
+
+// aplicarSugerenciaProrrateo(renglones): agrupa por unidad (texto tal cual
+// vino) y cuenta cuántas veces aparece cada una — el monto sugerido por
+// unidad es proporcional a ese conteo sobre el total de renglones
+// (ej. 25 de 40 viajes monitoreados → 25/40 del total de la factura). El
+// ajuste de redondeo se le suma a la primera fila para que la suma cuadre
+// exacto con el total.
+function aplicarSugerenciaProrrateo(renglones){
+  if(!renglones.length){
+    $('facJustifInfo').innerHTML='<div class="alert alert-warn">⚠️ La IA no encontró ningún renglón reconocible en ese documento.</div>';
+    return;
+  }
+  var conteos={};
+  renglones.forEach(function(r){
+    var u=(r.unidad||'').toString().trim();
+    if(!u)return;
+    conteos[u]=(conteos[u]||0)+1;
+  });
+  var claves=Object.keys(conteos);
+  if(!claves.length){
+    $('facJustifInfo').innerHTML='<div class="alert alert-warn">⚠️ La IA encontró '+renglones.length+' renglón(es), pero ninguno traía una unidad identificable.</div>';
+    return;
+  }
+  var totalConteo=claves.reduce(function(s,k){return s+conteos[k];},0);
+  var total=_facParsed.total;
+  var sinMatch=[];
+  var filas=claves.map(function(k){
+    var ecoNum=parseInt(k.replace(/[^0-9]/g,'')||0);
+    var op=ecoNum?OPERADORES.find(function(o){return o.unidad===ecoNum;}):null;
+    if(!op)sinMatch.push(k);
+    var monto=Math.round(total*conteos[k]/totalConteo*100)/100;
+    return{unidad:op?op.unidad:'',monto:monto.toFixed(2)};
+  });
+  var sumaFilas=filas.reduce(function(s,f){return s+parseFloat(f.monto);},0);
+  var diff=Math.round((total-sumaFilas)*100)/100;
+  if(filas.length&&Math.abs(diff)>=0.01)filas[0].monto=(parseFloat(filas[0].monto)+diff).toFixed(2);
+
+  $('facSinUnidad').checked=false;
+  $('facProrrateoBloque').style.display='block';
+  _facProrrateo=filas;
+  renderFacProrrateo();
+  $('facJustifInfo').innerHTML='<div class="alert '+(sinMatch.length?'alert-warn':'alert-ok')+'">'+(sinMatch.length?'⚠️':'✅')+' Prorrateo sugerido a partir de '+renglones.length+' renglón(es) ('+claves.length+' unidad(es) distinta(s))'+(sinMatch.length?' — no se encontró operador para: "'+sinMatch.join('", "')+'", selecciónalo(s) a mano abajo':'')+'. <strong>Revisa los montos antes de guardar.</strong></div>';
 }
 function renderFacProrrateo(){
   $('facProrrateoWrap').innerHTML=_facProrrateo.map(function(r,i){
