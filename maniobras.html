@@ -772,22 +772,29 @@ async function revisarBuzonAhora(){
 // vez de "Andrés"). Si el eco no aparece o no coincide con nadie, cae al
 // nombre por coincidencia de palabras.
 function _matchOperadorPorNombre(nombre,eco){
-  if(eco){
-    var ecoNum=parseInt(String(eco).replace(/[^0-9]/g,'')||0);
-    if(ecoNum){
-      var porEco=OPERADORES.find(function(o){return o.unidad===ecoNum;});
-      if(porEco)return porEco;
-    }
-  }
-  if(!nombre)return null;
   var norm=function(s){return(s||'').toString().toUpperCase().normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[^A-Z0-9 ]/g,' ').replace(/\s+/g,' ').trim();};
   var palabras=norm(nombre).split(' ').filter(function(w){return w.length>2;});
+  function scoreDe(op){
+    var opPalabras=norm(op.nombre).split(' ').filter(function(w){return w.length>2;});
+    var coincidencias=palabras.filter(function(w){return opPalabras.indexOf(w)!==-1;}).length;
+    return coincidencias/Math.max(palabras.length,opPalabras.length,1);
+  }
+  var porEco=null;
+  if(eco){
+    var ecoNum=parseInt(String(eco).replace(/[^0-9]/g,'')||0);
+    if(ecoNum)porEco=OPERADORES.find(function(o){return o.unidad===ecoNum;})||null;
+  }
+  // El económico solo se usa si el NOMBRE concuerda con él (aunque sea poco)
+  // o si no vino nombre para contrastar. Si la IA leyó bien el nombre pero
+  // mal el económico (columnas corridas, dígito confundido), sin esta
+  // verificación se le cargaba el monto al operador equivocado sin que nada
+  // lo delatara — el nombre mostrado en pantalla no coincidía con quien
+  // realmente quedaba seleccionado.
+  if(porEco&&(!palabras.length||scoreDe(porEco)>=0.3))return porEco;
   if(!palabras.length)return null;
   var mejor=null,mejorScore=0;
   OPERADORES.forEach(function(op){
-    var opPalabras=norm(op.nombre).split(' ').filter(function(w){return w.length>2;});
-    var coincidencias=palabras.filter(function(w){return opPalabras.indexOf(w)!==-1;}).length;
-    var score=coincidencias/Math.max(palabras.length,opPalabras.length);
+    var score=scoreDe(op);
     if(score>mejorScore){mejorScore=score;mejor=op;}
   });
   return mejorScore>=0.4?mejor:null;
