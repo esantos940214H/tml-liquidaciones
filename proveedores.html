@@ -155,6 +155,39 @@ tr:hover td{background:#fafafa}
     <div id="provWrap"><div style="text-align:center;padding:30px;color:#aaa">Cargando...</div></div>
   </div>
 
+  <!-- FACTURAS DE PROVEEDOR -->
+  <div class="card">
+    <div class="card-title">📄 Registrar factura de proveedor (CFDI)</div>
+    <div class="field" style="margin-bottom:12px">
+      <label>Archivo XML del CFDI</label>
+      <input type="file" id="facXmlArchivo" accept=".xml" onchange="handleFacXmlArchivo(event)">
+    </div>
+    <div id="facCandadosWrap"></div>
+    <div id="facFormWrap" style="display:none">
+      <div class="grid2" style="margin-bottom:10px">
+        <div class="field"><label>Proveedor</label><input type="text" id="facProveedorLabel" disabled></div>
+        <div class="field"><label>Folio</label><input type="text" id="facFolio" disabled></div>
+        <div class="field"><label>Fecha</label><input type="text" id="facFecha" disabled></div>
+        <div class="field"><label>Total</label><input type="text" id="facTotal" disabled></div>
+      </div>
+      <div class="card-title" style="margin-top:6px">⚖️ Prorrateo por unidad <span class="info-tip">?<span class="info-tip-box">La suma de los montos por unidad debe ser igual al Total del CFDI (con tolerancia de centavos) antes de poder guardar.</span></span></div>
+      <div id="facProrrateoWrap"></div>
+      <button class="btn btn-out btn-sm" onclick="agregarFilaProrrateo()" style="margin-top:6px">+ Agregar unidad</button>
+      <div id="facProrrateoTotal" style="font-size:12px;margin-top:8px;font-weight:700"></div>
+      <div id="facInfo" style="margin-top:10px"></div>
+      <button class="btn btn-red" style="margin-top:8px" onclick="guardarFactura()" id="btnGuardarFactura">💾 Guardar factura</button>
+      <button class="btn btn-out" style="margin-top:8px" onclick="cancelarCapturaFactura()">Cancelar</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">
+      <span>🧾 Facturas de proveedor registradas <span id="facCountLabel" style="font-weight:400;color:#888;text-transform:none;letter-spacing:normal"></span></span>
+      <button class="btn btn-out btn-sm" onclick="cargarYRenderFacturas(true)">🔄 Recargar</button>
+    </div>
+    <div id="facWrap"><div style="text-align:center;padding:30px;color:#aaa">Cargando...</div></div>
+  </div>
+
 </div>
 
 <!-- Firebase compat -->
@@ -162,8 +195,12 @@ tr:hover td{background:#fafafa}
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
 <!-- Firebase Auth (login del módulo — ver shared/sesion.js) -->
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
+<!-- Firebase Storage (para guardar el XML original de cada factura — ver shared/comprobantes.js) -->
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-storage-compat.js"></script>
 <script src="shared/sesion.js"></script>
 <script src="shared/proveedores.js"></script>
+<script src="shared/operadores.js"></script>
+<script src="shared/comprobantes.js"></script>
 <script>
 window._fbInit=false;
 window._fbCallbacks=[];
@@ -176,7 +213,7 @@ window.onFBReady=function(cb){if(window._fbInit)cb();else window._fbCallbacks.pu
     if(!firebase.apps.length)firebase.initializeApp(cfg);
     var db=firebase.firestore();
     window.FB={
-      set:function(col,id,data){return db.collection(col).doc(id).set(data);},
+      set:function(col,id,data,options){return db.collection(col).doc(id).set(data,options);},
       get:async function(col,id){try{var s=await db.collection(col).doc(id).get();return s.exists?s.data():null;}catch(e){console.error('FB.get:',e);return null;}},
       del:function(col,id){return db.collection(col).doc(id).delete();},
       listen:function(col,id,cb){return db.collection(col).doc(id).onSnapshot(function(s){cb(s.exists?s.data():null);});},
@@ -195,8 +232,10 @@ window.onFBReady=function(cb){if(window._fbInit)cb();else window._fbCallbacks.pu
 
 <script>
 const $=id=>document.getElementById(id);
+const fmt=(n,d=2)=>'$'+parseFloat(n||0).toLocaleString('es-MX',{minimumFractionDigits:d,maximumFractionDigits:d});
 let fbReady=false;
 let PROVEEDORES=[];
+let OPERADORES=[];
 
 // ══════════════════════════════════════════════
 // SESIÓN (login general con permisos por módulo — mismo patrón que los demás)
@@ -323,6 +362,7 @@ function verificarSesionModulo(){
   }
   mostrarSesionEnHeader();
   cargarYRenderProveedores();
+  cargarYRenderFacturas();
 }
 
 // ══════════════════════════════════════════════
@@ -428,7 +468,247 @@ async function reactivarProveedorUI(rfc){
   }catch(e){alert('⚠️ Error: '+e.message);}
 }
 
+// ══════════════════════════════════════════════
+// FACTURAS DE PROVEEDOR (CFDI) — candados + prorrateo por unidad
+// Fase 1: sin validación en vivo contra el SAT/69-B (queda para Fase 2,
+// con Cloud Functions) — solo lo verificable con lo que ya trae el propio
+// XML y lo que ya hay en las colecciones de Firestore.
+// ══════════════════════════════════════════════
+// RFC de Mudanzas TML confirmado contra su Constancia de Situación Fiscal
+// (agosto 2026) — el receptor del CFDI de proveedor debe ser este RFC.
+const TML_RFC='MTM171214PI4';
+const hoy=()=>new Date().toISOString().slice(0,10);
+function sumarDiasHabiles(fechaISO,n){
+  var d=new Date((fechaISO||hoy())+'T12:00:00');
+  var agregados=0;
+  while(agregados<n){
+    d.setDate(d.getDate()+1);
+    var dow=d.getDay();
+    if(dow!==0&&dow!==6)agregados++;
+  }
+  return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+}
+function yaVencioLimite(fechaLimiteISO){
+  return !!fechaLimiteISO&&new Date(fechaLimiteISO).getTime()<Date.now();
+}
+
+let _facXmlTexto=null,_facParsed=null,_facCandados=[],_facProveedorMatch=null,_facProrrateo=[];
+let FACTURAS=[];
+
+function _facNorm(s){return(s||'').toString().trim().toUpperCase();}
+
+// parseCfdiProveedor(text): mismo enfoque que parseXML en ing.html
+// (DOMParser + querySelector sin namespace, sin librería externa) — pero
+// aquí se espera que el RECEPTOR sea Mudanzas TML (es una factura que TML
+// RECIBE de un proveedor), al revés que en Ingresos (donde TML es el
+// emisor).
+function parseCfdiProveedor(text){
+  var doc=new DOMParser().parseFromString(text,'text/xml');
+  var comp=doc.querySelector('Comprobante');
+  if(!comp)return{ok:false,error:'No es un CFDI válido (no se encontró el nodo Comprobante).'};
+  var receptor=doc.querySelector('Receptor');
+  var emisor=doc.querySelector('Emisor');
+  var tfd=doc.querySelector('TimbreFiscalDigital');
+  if(!emisor||!receptor||!tfd)return{ok:false,error:'El XML no trae Emisor, Receptor o Timbre Fiscal Digital — no es un CFDI timbrado válido.'};
+  var subtotal=parseFloat(comp.getAttribute('SubTotal')||0);
+  var total=parseFloat(comp.getAttribute('Total')||0);
+  // Igual que en ing.html: los Traslados/Retenciones aparecen una vez por
+  // Concepto (desglose) y otra vez a nivel Comprobante (resumen) — solo se
+  // suma el resumen (hijo directo de Comprobante) para no duplicar el IVA.
+  var impGlobal=doc.querySelector('Comprobante>Impuestos');
+  var traslados=0,retenciones=0;
+  (impGlobal?impGlobal.querySelectorAll('Traslado'):[]).forEach(function(t){traslados+=parseFloat(t.getAttribute('Importe')||0);});
+  (impGlobal?impGlobal.querySelectorAll('Retencion'):[]).forEach(function(r){retenciones+=parseFloat(r.getAttribute('Importe')||0);});
+  return{ok:true,data:{
+    uuid:_facNorm(tfd.getAttribute('UUID')),
+    serie:comp.getAttribute('Serie')||'',folio:comp.getAttribute('Folio')||'',
+    tipoComprobante:comp.getAttribute('TipoDeComprobante')||'',
+    metodoPago:comp.getAttribute('MetodoPago')||'',formaPago:comp.getAttribute('FormaPago')||'',
+    fechaEmision:(comp.getAttribute('Fecha')||'').slice(0,10),
+    subtotal:subtotal,traslados:traslados,retenciones:retenciones,total:total,
+    rfcEmisor:_facNorm(emisor.getAttribute('Rfc')),nombreEmisor:emisor.getAttribute('Nombre')||'',
+    rfcReceptor:_facNorm(receptor.getAttribute('Rfc'))
+  }};
+}
+
+// Candados de Fase 1 — ver plan: UUID único, tipo I/E, receptor=TML,
+// aritmética, proveedor existente y activo. Los "duro" bloquean guardar;
+// el de proveedor es blando porque se puede resolver dando de alta rápido
+// sin perder lo ya leído del XML.
+function evaluarCandados(data){
+  var candados=[];
+  var yaExiste=FACTURAS.some(function(f){return f.id===data.uuid;});
+  candados.push({label:'UUID único (no registrada antes)',ok:!yaExiste,duro:true});
+  candados.push({label:'Tipo de comprobante Ingreso o Egreso (I/E)',ok:data.tipoComprobante==='I'||data.tipoComprobante==='E',duro:true});
+  candados.push({label:'Receptor = Mudanzas TML ('+TML_RFC+')',ok:data.rfcReceptor===TML_RFC,duro:true});
+  var aritmetica=Math.abs((data.subtotal+data.traslados-data.retenciones)-data.total)<0.02;
+  candados.push({label:'Aritmética del CFDI cuadra (Subtotal + Impuestos = Total)',ok:aritmetica,duro:true});
+  return candados;
+}
+
+async function handleFacXmlArchivo(ev){
+  var file=(ev.target.files||[])[0];
+  if(!file)return;
+  $('facFormWrap').style.display='none';
+  $('facCandadosWrap').innerHTML='<div class="alert alert-info">⏳ Leyendo el XML...</div>';
+  try{
+    var text=await file.text();
+    _facXmlTexto=text;
+    var r=parseCfdiProveedor(text);
+    if(!r.ok){
+      $('facCandadosWrap').innerHTML='<div class="alert alert-err">⚠️ '+r.error+'</div>';
+      return;
+    }
+    _facParsed=r.data;
+    _facProveedorMatch=window.buscarProveedorPorRfc(PROVEEDORES,r.data.rfcEmisor);
+    if(_facProveedorMatch&&!_facProveedorMatch.activo)_facProveedorMatch=null;
+    renderFacCandados();
+  }catch(e){
+    console.error('handleFacXmlArchivo:',e);
+    $('facCandadosWrap').innerHTML='<div class="alert alert-err">⚠️ No se pudo leer el archivo: '+e.message+'</div>';
+  }
+}
+
+function renderFacCandados(){
+  var data=_facParsed;
+  _facCandados=evaluarCandados(data);
+  var todosDurosOk=_facCandados.every(function(c){return c.duro?c.ok:true;});
+  var html=_facCandados.map(function(c){
+    return '<div style="font-size:12px;padding:4px 0">'+(c.ok?'✅':(c.duro?'🚫':'⚠️'))+' '+c.label+(c.ok?'':(c.duro?' — bloquea el registro':' — revisa'))+'</div>';
+  }).join('');
+  if(!_facProveedorMatch){
+    html+='<div class="alert alert-warn" style="margin-top:8px">⚠️ No hay un proveedor activo con RFC <strong>'+data.rfcEmisor+'</strong> ("'+data.nombreEmisor+'"). <button class="btn btn-out btn-sm" onclick="altaRapidaProveedorDesdeXML()">+ Dar de alta rápido</button></div>';
+  }
+  $('facCandadosWrap').innerHTML=html;
+  if(!todosDurosOk||!_facProveedorMatch){
+    $('facFormWrap').style.display='none';
+    return;
+  }
+  mostrarFacFormulario();
+}
+
+async function altaRapidaProveedorDesdeXML(){
+  var data=_facParsed;
+  try{
+    await window.guardarProveedor({rfc:data.rfcEmisor,razonSocial:data.nombreEmisor,diasCredito:15});
+    await cargarYRenderProveedores(true);
+    _facProveedorMatch=window.buscarProveedorPorRfc(PROVEEDORES,data.rfcEmisor);
+    renderFacCandados();
+  }catch(e){alert('⚠️ Error al dar de alta: '+e.message);}
+}
+
+function _opsProrrateoOptions(sel){
+  return '<option value="">— Selecciona —</option>'+OPERADORES.map(function(o){
+    return '<option value="'+o.unidad+'"'+(o.unidad===sel?' selected':'')+'>'+o.clave+' · '+o.nombre+'</option>';
+  }).join('');
+}
+function mostrarFacFormulario(){
+  var data=_facParsed;
+  $('facProveedorLabel').value=_facProveedorMatch.razonSocial+' ('+data.rfcEmisor+')';
+  $('facFolio').value=(data.serie?data.serie+'-':'')+data.folio;
+  $('facFecha').value=data.fechaEmision;
+  $('facTotal').value=fmt(data.total);
+  _facProrrateo=[{unidad:'',monto:data.total.toFixed(2)}];
+  renderFacProrrateo();
+  $('facInfo').innerHTML='';
+  $('facFormWrap').style.display='block';
+}
+function renderFacProrrateo(){
+  $('facProrrateoWrap').innerHTML=_facProrrateo.map(function(r,i){
+    return '<div class="row" style="margin-bottom:6px;align-items:center">'
+      +'<select style="min-width:220px" onchange="_facProrrateo['+i+'].unidad=parseInt(this.value||0)">'+_opsProrrateoOptions(r.unidad)+'</select>'
+      +'<input type="number" step="0.01" value="'+r.monto+'" style="width:120px;text-align:right" oninput="_facProrrateo['+i+'].monto=this.value;actualizarProrrateoTotal()">'
+      +(_facProrrateo.length>1?'<button class="btn btn-out btn-sm" onclick="quitarFilaProrrateo('+i+')">✕</button>':'')
+      +'</div>';
+  }).join('');
+  actualizarProrrateoTotal();
+}
+function agregarFilaProrrateo(){_facProrrateo.push({unidad:'',monto:'0.00'});renderFacProrrateo();}
+function quitarFilaProrrateo(i){_facProrrateo.splice(i,1);renderFacProrrateo();}
+function actualizarProrrateoTotal(){
+  var suma=_facProrrateo.reduce(function(s,r){return s+(parseFloat(r.monto)||0);},0);
+  var total=_facParsed?_facParsed.total:0;
+  var cuadra=Math.abs(suma-total)<0.02;
+  $('facProrrateoTotal').innerHTML='Suma: '+fmt(suma)+' de '+fmt(total)+(cuadra?' <span style="color:#0a5233">✅ cuadra</span>':' <span style="color:#9b1c1c">⚠️ no cuadra</span>');
+}
+function cancelarCapturaFactura(){
+  _facXmlTexto=null;_facParsed=null;_facCandados=[];_facProveedorMatch=null;_facProrrateo=[];
+  $('facXmlArchivo').value='';
+  $('facCandadosWrap').innerHTML='';
+  $('facFormWrap').style.display='none';
+}
+
+async function guardarFactura(){
+  var data=_facParsed;
+  if(!data)return;
+  if(_facCandados.some(function(c){return c.duro&&!c.ok;})){alert('Hay candados sin pasar arriba — revísalos antes de guardar.');return;}
+  if(!_facProveedorMatch){alert('Falta el proveedor.');return;}
+  if(_facProrrateo.some(function(r){return !r.unidad;})){alert('Falta seleccionar la unidad en alguna fila del prorrateo.');return;}
+  var suma=_facProrrateo.reduce(function(s,r){return s+(parseFloat(r.monto)||0);},0);
+  if(Math.abs(suma-data.total)>=0.02){alert('⚠️ La suma del prorrateo ('+fmt(suma)+') no cuadra con el total de la factura ('+fmt(data.total)+').');return;}
+  $('btnGuardarFactura').disabled=true;
+  try{
+    var yaExiste=await window.FB.get('cxpFacturas',data.uuid);
+    if(yaExiste){alert('⚠️ Esta factura (UUID '+data.uuid+') ya está registrada.');$('btnGuardarFactura').disabled=false;return;}
+    var diasCredito=_facProveedorMatch.diasCredito||15;
+    var fechaVencimiento=sumarDiasHabiles(data.fechaEmision,diasCredito);
+    // PUE sin pago registrado queda bloqueada (candado #6 del plan) — el
+    // flujo para "Registrar pago" y desbloquearla es la siguiente entrega.
+    var estadoPago=data.metodoPago==='PUE'?'pendiente_pago':'vigente_por_pagar';
+    var u=usuarioSesion();
+    await window.FB.set('cxpFacturas',data.uuid,{
+      proveedorId:_facProveedorMatch.rfc,proveedorNombre:_facProveedorMatch.razonSocial,
+      serie:data.serie,folio:data.folio,tipoComprobante:data.tipoComprobante,
+      metodoPago:data.metodoPago,formaPago:data.formaPago,
+      subtotal:data.subtotal,totalImpuestos:data.traslados-data.retenciones,total:data.total,
+      fechaEmision:data.fechaEmision,diasCredito:diasCredito,fechaVencimiento:fechaVencimiento,
+      estadoPago:estadoPago,
+      prorrateo:_facProrrateo.map(function(r){return{unidad:parseInt(r.unidad),monto:parseFloat(r.monto)||0,aplicado:false,liqNum:null};}),
+      xmlURL:null,capturadoPor:u?(u.nombre||u.usuario):'',fechaAlta:new Date().toISOString()
+    });
+    TMLComprobantes.subirXML('comprobantes/proveedores/'+data.uuid+'.xml',_facXmlTexto).then(function(url){
+      return window.FB.set('cxpFacturas',data.uuid,{xmlURL:url},{merge:true});
+    }).catch(function(e){console.error('subir XML de factura de proveedor:',e);});
+    alert('✅ Factura registrada: '+fmt(data.total)+' — '+_facProveedorMatch.razonSocial+(estadoPago==='pendiente_pago'?'\n\n⚠️ Es PUE: queda BLOQUEADA hasta registrar el pago (esa parte se agrega en la siguiente entrega del módulo).':''));
+    cancelarCapturaFactura();
+    await cargarYRenderFacturas(true);
+  }catch(e){
+    console.error('guardarFactura:',e);
+    $('facInfo').innerHTML='<div class="alert alert-err">⚠️ Error al guardar: '+e.message+'</div>';
+  }finally{
+    $('btnGuardarFactura').disabled=false;
+  }
+}
+
+async function cargarYRenderFacturas(forzar){
+  FACTURAS=await window.FB.getAll('cxpFacturas');
+  renderFacturas();
+}
+function renderFacturas(){
+  $('facCountLabel').textContent=FACTURAS.length?'— '+FACTURAS.length+' factura(s)':'';
+  var wrap=$('facWrap');
+  if(!FACTURAS.length){
+    wrap.innerHTML='<p style="font-size:13px;color:#aaa;padding:10px 0">Todavía no hay facturas de proveedor registradas.</p>';
+    return;
+  }
+  var ordenadas=FACTURAS.slice().sort(function(a,b){return(b.fechaEmision||'').localeCompare(a.fechaEmision||'');});
+  wrap.innerHTML='<div class="tbl-wrap"><table><thead><tr><th>Proveedor</th><th>Folio</th><th>Fecha</th><th class="r">Total</th><th>Vencimiento</th><th>Estado</th></tr></thead><tbody>'
+    +ordenadas.map(function(f){
+      var vencido=yaVencioLimite(f.fechaVencimiento);
+      var bloqueada=f.estadoPago==='pendiente_pago';
+      return '<tr>'
+        +'<td style="font-size:12px">'+(f.proveedorNombre||f.proveedorId||'')+'</td>'
+        +'<td class="num">'+(f.serie?f.serie+'-':'')+f.folio+'</td>'
+        +'<td>'+f.fechaEmision+'</td>'
+        +'<td class="num r">'+fmt(f.total)+'</td>'
+        +'<td>'+(vencido&&!bloqueada?'<span class="badge bg-red">⚠ Vencida '+f.fechaVencimiento+'</span>':'<span class="badge bg-green">'+f.fechaVencimiento+'</span>')+'</td>'
+        +'<td>'+(bloqueada?'<span class="badge bg-red">🚫 PUE sin pago</span>':'<span class="badge bg-green">'+(f.metodoPago||'')+'</span>')+'</td>'
+        +'</tr>';
+    }).join('')+'</tbody></table></div>';
+}
+
 window.onFBReady(async function(){
+  OPERADORES=await window.cargarOperadores();
   fbReady=true;
   $('fbStatus').textContent='✅ Conectado';
   $('fbStatus').className='fb-status fb-ok';
