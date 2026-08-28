@@ -66,6 +66,12 @@
       "public": "dist/precarga",
       "ignore": ["firebase.json", "**/.*"],
       "rewrites": [{ "source": "**", "destination": "/index.html" }]
+    },
+    {
+      "target": "proveedores",
+      "public": "dist/proveedores",
+      "ignore": ["firebase.json", "**/.*"],
+      "rewrites": [{ "source": "**", "destination": "/index.html" }]
     }
   ]
 }
