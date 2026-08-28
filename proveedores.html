@@ -792,6 +792,15 @@ async function guardarFactura(){
   }
 }
 
+async function eliminarFacturaUI(uuid){
+  var f=FACTURAS.find(function(x){return x.id===uuid;});
+  if(!confirm('¿Eliminar la factura '+(f?(f.serie?f.serie+'-':'')+f.folio+' de '+(f.proveedorNombre||''):uuid)+'? Esto NO se puede deshacer — si ya se aplicó a alguna liquidación, revisa eso primero.'))return;
+  try{
+    await window.FB.del('cxpFacturas',uuid);
+    await cargarYRenderFacturas(true);
+  }catch(e){alert('⚠️ Error al eliminar: '+e.message);}
+}
+
 async function cargarYRenderFacturas(forzar){
   FACTURAS=await window.FB.getAll('cxpFacturas');
   renderFacturas();
@@ -804,7 +813,7 @@ function renderFacturas(){
     return;
   }
   var ordenadas=FACTURAS.slice().sort(function(a,b){return(b.fechaEmision||'').localeCompare(a.fechaEmision||'');});
-  wrap.innerHTML='<div class="tbl-wrap"><table><thead><tr><th>Proveedor</th><th>Folio</th><th>Fecha</th><th class="r">Total</th><th>Vencimiento</th><th>Estado</th></tr></thead><tbody>'
+  wrap.innerHTML='<div class="tbl-wrap"><table><thead><tr><th>Proveedor</th><th>Folio</th><th>Fecha</th><th class="r">Total</th><th>Vencimiento</th><th>Estado</th><th></th></tr></thead><tbody>'
     +ordenadas.map(function(f){
       var vencido=yaVencioLimite(f.fechaVencimiento);
       var bloqueada=f.estadoPago==='pendiente_pago';
@@ -815,6 +824,7 @@ function renderFacturas(){
         +'<td class="num r">'+fmt(f.total)+'</td>'
         +'<td>'+(vencido&&!bloqueada?'<span class="badge bg-red">⚠ Vencida '+f.fechaVencimiento+'</span>':'<span class="badge bg-green">'+f.fechaVencimiento+'</span>')+'</td>'
         +'<td>'+(bloqueada?'<span class="badge bg-red">🚫 PUE sin pago</span>':'<span class="badge bg-green">'+(f.metodoPago||'')+'</span>')+'</td>'
+        +'<td><button class="btn btn-out btn-sm" onclick="eliminarFacturaUI(\''+f.id+'\')">🗑️ Eliminar</button></td>'
         +'</tr>';
     }).join('')+'</tbody></table></div>';
 }
