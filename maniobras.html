@@ -192,9 +192,9 @@ tr:hover td{background:#fafafa}
       <button class="btn btn-out btn-sm" onclick="$('filtPendOp').value='';$('filtPendUnidad').value='';renderPendientes()">Limpiar</button>
     </div>
     <div class="tbl-wrap"><table>
-      <thead><tr><th>Operador</th><th>Fecha</th><th>Cliente</th><th class="r">Autorizado (subtotal)</th><th>Pedido/ID</th><th>Responsable</th><th>Plazo</th><th></th></tr></thead>
+      <thead><tr><th>Fecha</th><th>Operador</th><th>Destino</th><th class="r">Autorizado (subtotal)</th><th>Cliente</th><th>Pedido/ID</th><th>Responsable</th><th>Plazo</th><th></th></tr></thead>
       <tbody id="tbPendientes"></tbody>
-      <tfoot><tr><td colspan="3" style="text-align:right;font-weight:700">Total pendiente de facturar (subtotal):</td><td class="r" id="tdTotalPendientes" style="font-weight:700"></td><td colspan="4"></td></tr></tfoot>
+      <tfoot><tr><td colspan="3" style="text-align:right;font-weight:700">Total pendiente de facturar (subtotal):</td><td class="r" id="tdTotalPendientes" style="font-weight:700"></td><td colspan="5"></td></tr></tfoot>
     </table></div>
   </div>
 
@@ -416,9 +416,12 @@ function renderPendientes(){
     if(filtUnidad&&(!opPorUnidadPend||v.unidad!==opPorUnidadPend.operadorId))return false;
     return true;
   });
-  pendientes.sort(function(a,b){return(a.fechaLimiteJustificacion||'').localeCompare(b.fechaLimiteJustificacion||'');});
+  // Más recientes primero (por fecha de la maniobra, no por vencimiento) —
+  // así arriba se ve qué se autorizó hoy/ayer, que es lo que probablemente
+  // ya haya que depositarle al operador.
+  pendientes.sort(function(a,b){return(b.fecha||'').localeCompare(a.fecha||'');});
   if(!pendientes.length){
-    tb.innerHTML='<tr><td colspan="8" style="text-align:center;color:#aaa;padding:16px">Sin autorizaciones pendientes de facturar.</td></tr>';
+    tb.innerHTML='<tr><td colspan="9" style="text-align:center;color:#aaa;padding:16px">Sin autorizaciones pendientes de facturar.</td></tr>';
     if($('tdTotalPendientes'))$('tdTotalPendientes').textContent=fmt(0);
     return;
   }
@@ -432,11 +435,19 @@ function renderPendientes(){
   tb.innerHTML=pendientes.map(function(v){
     var vencido=yaVencioLimite(v.fechaLimiteJustificacion);
     var responsable=(v.capturadoPor&&v.capturadoPor.usuario)||'';
+    var destino=(v.ruta&&v.ruta[0]&&v.ruta[0].destino)||'';
+    // "Reciente" = de hoy o de ayer (≈24h) — para saber de un vistazo a
+    // quién probablemente ya haya que depositarle. Pasando de ahí, se
+    // asume que ya se descargó y se le pagó, así que ya no se resalta.
+    var diasDesde=Math.floor((new Date(hoy()+'T00:00:00')-new Date((v.fecha||hoy())+'T00:00:00'))/86400000);
+    var esReciente=diasDesde>=0&&diasDesde<=1;
+    var negrita=esReciente?'font-weight:700':'';
     return '<tr>'
-      +'<td style="font-size:12px">'+(nombreOp(v.unidad)||v.unidad)+'</td>'
-      +'<td>'+v.fecha+'</td>'
+      +'<td style="'+negrita+'">'+v.fecha+'</td>'
+      +'<td style="font-size:12px;'+negrita+'">'+(nombreOp(v.unidad)||v.unidad)+'</td>'
+      +'<td style="font-size:12px;'+negrita+'">'+destino+'</td>'
+      +'<td class="num r" style="'+negrita+'">'+(v.montoPendiente?'<span class="badge bg-yellow">⏳ Pendiente</span>':fmt(v.subtotal))+'</td>'
       +'<td style="font-size:12px">'+(v.cliente||'')+'</td>'
-      +'<td class="num r">'+(v.montoPendiente?'<span class="badge bg-yellow">⏳ Pendiente</span>':fmt(v.subtotal))+'</td>'
       +'<td style="font-size:11px">'+(v.observaciones||'')+'</td>'
       +'<td style="font-size:11px">'+responsable+'</td>'
       +'<td>'+(vencido?'<span class="badge bg-red">⚠ Vencido</span>':'<span class="badge bg-yellow">⏳ '+(v.fechaLimiteJustificacion||'').slice(0,10)+'</span>')+'</td>'
