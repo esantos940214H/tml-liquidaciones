@@ -272,6 +272,231 @@ async function _procesarMensajeImap(rawBuffer, apiKey) {
   };
 }
 
+// ══════════════════════════════════════════════════════════════════════════
+// Registro automático de renglones "limpios" del buzón — versión en el
+// servidor de la misma lógica que ya usa maniobras.html (filtro SILVIA/
+// NO_PAGA, emparejar operador por económico/nombre, detectar folios
+// repetidos como posible corrección, y las mismas reglas de duplicado/
+// choque de _crearAutorizacionEnMemoria). Un renglón solo se registra SOLO
+// si no trae ninguna señal de alerta — si algo no cuadra, se deja pendiente
+// para revisión manual en Maniobras, exactamente como antes.
+// ══════════════════════════════════════════════════════════════════════════
+function _normTxtServer(s) { return (s || '').toString().trim().toUpperCase().replace(/\s+/g, ' '); }
+
+async function _cargarOperadoresServer() {
+  const snap = await db.collection('operadores').where('activo', '==', true).get();
+  const lista = [];
+  snap.forEach(function (d) {
+    const o = d.data();
+    if (o.unidadActual == null) return;
+    lista.push({ unidad: o.unidadActual, operadorId: parseInt(d.id), nombre: o.nombre || '' });
+  });
+  return lista;
+}
+
+// Mismo criterio que _matchOperadorPorNombre en maniobras.html: el económico
+// solo se usa si el nombre concuerda con él (o no vino nombre), y también se
+// intenta con un "4" antepuesto (521 -> 4521) si el número tal cual no
+// coincide con nadie.
+function _matchOperadorServer(operadores, nombre, eco) {
+  const norm = function (s) { return (s || '').toString().toUpperCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^A-Z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim(); };
+  const palabras = norm(nombre).split(' ').filter(function (w) { return w.length > 2; });
+  function scoreDe(op) {
+    const opPalabras = norm(op.nombre).split(' ').filter(function (w) { return w.length > 2; });
+    const coincidencias = palabras.filter(function (w) { return opPalabras.indexOf(w) !== -1; }).length;
+    return coincidencias / Math.max(palabras.length, opPalabras.length, 1);
+  }
+  let porEco = null;
+  if (eco) {
+    const ecoNum = parseInt(String(eco).replace(/[^0-9]/g, '') || 0);
+    if (ecoNum) porEco = operadores.find(function (o) { return o.unidad === ecoNum; }) || null;
+    if (!porEco && ecoNum && ecoNum < 1000) {
+      const ecoConPrefijo = parseInt('4' + ecoNum);
+      porEco = operadores.find(function (o) { return o.unidad === ecoConPrefijo; }) || null;
+    }
+  }
+  if (porEco && (!palabras.length || scoreDe(porEco) >= 0.3)) return porEco;
+  if (!palabras.length) return null;
+  let mejor = null, mejorScore = 0;
+  operadores.forEach(function (op) {
+    const score = scoreDe(op);
+    if (score > mejorScore) { mejorScore = score; mejor = op; }
+  });
+  return mejorScore >= 0.4 ? mejor : null;
+}
+
+function _sumarDiasHabilesServer(fechaISO, n) {
+  const d = new Date((fechaISO || new Date().toISOString().slice(0, 10)) + 'T12:00:00');
+  let agregados = 0;
+  while (agregados < n) {
+    d.setDate(d.getDate() + 1);
+    const dow = d.getDay();
+    if (dow !== 0 && dow !== 6) agregados++;
+  }
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+}
+
+function _buscarDuplicadoServer(ingresosDB, datos) {
+  const unidad = parseInt(datos.unidad || 0);
+  const monto = parseFloat(datos.monto || 0);
+  const fecha = datos.fecha || '';
+  const ids = [datos.folio, datos.pedido, datos.tu1, datos.tu2].map(_normTxtServer).filter(function (s) { return s; });
+  if (!ids.length) return null;
+  return ingresosDB.find(function (v) {
+    if (!v.esAutorizacionCliente) return false;
+    if (v.unidad !== unidad) return false;
+    if (Math.abs((v.subtotal || 0) - monto) >= 0.01) return false;
+    if ((v.fecha || '') !== fecha) return false;
+    const vIds = _normTxtServer(v.observaciones);
+    return ids.some(function (id) { return vIds.indexOf(id) !== -1; });
+  });
+}
+
+// Mismo núcleo que _crearAutorizacionEnMemoria en maniobras.html (candados
+// de duplicado/choque/corrección/pendiente-actualizado idénticos) — muta
+// ingresosDB en memoria y regresa {ok:true} o {ok:false,error}.
+function _crearAutorizacionServer(ingresosDB, datos) {
+  const unidad = parseInt(datos.unidad || 0);
+  if (!unidad) return { ok: false, error: 'Falta el operador.' };
+  const pendiente = !!datos.montoPendiente;
+  const monto = parseFloat(datos.monto || 0);
+  if (!pendiente && !monto) return { ok: false, error: 'Falta el monto.' };
+  const folio = (datos.folio || '').trim();
+  const pedido = (datos.pedido || '').trim();
+  const tu1 = (datos.tu1 || '').trim();
+  const tu2 = (datos.tu2 || '').trim();
+  if (!folio && !pedido && !tu1 && !tu2) return { ok: false, error: 'Falta al menos un identificador (folio, pedido o T.U.\'s).' };
+  const idsNuevos = [folio, pedido, tu1, tu2].map(_normTxtServer).filter(function (s) { return s; });
+
+  if (!pendiente && monto) {
+    const existentePendiente = ingresosDB.find(function (v) {
+      if (!v.esAutorizacionCliente || !v.montoPendiente || v.sustituidoPorXML) return false;
+      if (v.unidad !== unidad) return false;
+      const vIds = _normTxtServer(v.observaciones);
+      return idsNuevos.some(function (id) { return vIds.indexOf(id) !== -1; });
+    });
+    if (existentePendiente) {
+      const ivaExist = Math.round(monto * 0.16 * 100) / 100;
+      existentePendiente.subtotal = monto; existentePendiente.subtManiobras = monto;
+      existentePendiente.iva = ivaExist; existentePendiente.total = monto + ivaExist;
+      existentePendiente.montoPendiente = false;
+      return { ok: true, actualizado: true };
+    }
+  }
+
+  const idsCorreccion = [folio, pedido].map(_normTxtServer).filter(function (s) { return s; });
+  const existenteCorregible = (!pendiente && monto && idsCorreccion.length) ? ingresosDB.find(function (v) {
+    if (!v.esAutorizacionCliente || v.montoPendiente || v.sustituidoPorXML) return false;
+    if (v.unidad !== unidad) return false;
+    const vIds = _normTxtServer(v.observaciones);
+    if (!idsCorreccion.some(function (id) { return vIds.indexOf(id) !== -1; })) return false;
+    return Math.abs((v.subtotal || 0) - monto) >= 0.01;
+  }) : null;
+  if (existenteCorregible) {
+    const ivaCorr = Math.round(monto * 0.16 * 100) / 100;
+    existenteCorregible.subtotal = monto; existenteCorregible.subtManiobras = monto;
+    existenteCorregible.iva = ivaCorr; existenteCorregible.total = monto + ivaCorr;
+    return { ok: true, corregido: true };
+  }
+
+  const dup = _buscarDuplicadoServer(ingresosDB, datos);
+  if (dup) return { ok: false, error: 'Ya existe una autorización igual (mismo operador, monto, fecha e identificador).' };
+
+  const idsChoque = [folio, pedido].map(_normTxtServer).filter(function (s) { return s; });
+  const choqueId = idsChoque.length ? ingresosDB.find(function (v) {
+    if (!v.sinFacturaJustificar || v.sustituidoPorXML) return false;
+    const vIds = _normTxtServer(v.observaciones);
+    return idsChoque.some(function (id) { return vIds.indexOf(id) !== -1; });
+  }) : null;
+  if (choqueId) return { ok: false, error: 'Alguno de esos identificadores ya está en uso por otro ingreso sin factura pendiente.' };
+
+  const tuIds = [tu1, tu2].map(_normTxtServer).filter(function (s) { return s; });
+  if (tuIds.length) {
+    const yaConEsteTU = ingresosDB.filter(function (v) {
+      if (!v.esAutorizacionCliente) return false;
+      const vIds = _normTxtServer(v.observaciones);
+      return tuIds.some(function (id) { return vIds.indexOf(id) !== -1; });
+    });
+    if (yaConEsteTU.length >= 2) return { ok: false, error: 'Este T.U. ya tiene 2 autorizaciones registradas.' };
+  }
+
+  const idParts = [];
+  if (folio) idParts.push('FOLIO:' + folio);
+  if (pedido) idParts.push('PED:' + pedido);
+  if (tu1) idParts.push('TU1:' + tu1);
+  if (tu2) idParts.push('TU2:' + tu2);
+  const idCombinado = idParts.join(' | ');
+  const fecha = datos.fecha || new Date().toISOString().slice(0, 10);
+  const cliente = (datos.cliente || '').trim() || 'GRUPO COMERCIAL DSW';
+  const destino = (datos.destino || '').trim();
+  const tienda = (datos.tienda || '').trim();
+  const fechaLimite = _sumarDiasHabilesServer(fecha, 15) + 'T23:59:59';
+  const montoGuardar = pendiente ? 0 : monto;
+  const ivaGuardar = pendiente ? 0 : Math.round(monto * 0.16 * 100) / 100;
+  ingresosDB.push({
+    id: 'buz-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8),
+    unidad: unidad, folio: 'MANIOBRAS', fecha: fecha, cliente: cliente, tipo: 'maniobra',
+    subtotal: montoGuardar, subtFlete: 0, subtManiobras: montoGuardar, subtOtros: 0,
+    iva: ivaGuardar, ret: 0, total: montoGuardar + ivaGuardar, estado: 'sin_liquidar', liqNum: null,
+    origen: 'autorizacion_cliente', ruta: destino ? [{ origen: '', destino: destino, kms: '' }] : [],
+    tienda: tienda, observaciones: idCombinado, sinFacturaJustificar: true,
+    fechaLimiteJustificacion: fechaLimite, montoPendiente: pendiente,
+    capturadoPor: { usuario: 'buzón automático', nombre: 'Buzón automático' },
+    sustituidoPorXML: false, pdfURL: null, esAutorizacionCliente: true
+  });
+  return { ok: true };
+}
+
+// Filtra SILVIA/NO_PAGA (igual que _procesarRenglonesExtraidos), detecta
+// posible corrección (folio repetido con monto real distinto DENTRO del
+// mismo correo), y por cada renglón que quede: si el operador se encontró
+// con seguridad y no hay corrección ambigua, intenta registrarlo directo
+// (ingresosDB en memoria); si algo bloquea el registro o hay cualquier
+// señal de alerta, ese renglón CRUDO se regresa para la lista de pendientes
+// — nunca se inventa ni se fuerza nada, solo se salta el paso manual cuando
+// de verdad no hace falta revisión.
+function _clasificarYRegistrar(renglonesCrudos, ingresosDB, operadores) {
+  const normLinea = function (s) { return (s || '').toString().trim().toUpperCase().normalize('NFD').replace(/[̀-ͯ]/g, ''); };
+  const silvia = renglonesCrudos.filter(function (x) {
+    const linea = normLinea(x.lineaTransporte);
+    return !linea || linea === 'SILVIA';
+  });
+  const utiles = silvia.filter(function (x) {
+    const m = (x.monto == null) ? '' : String(x.monto).trim().toUpperCase();
+    return m !== 'NO_PAGA' && m !== 'NO PAGA' && m !== '-';
+  });
+  // Folios repetidos con monto real distinto (mismo criterio que
+  // maniobras.html: se ignoran las filas PENDIENTE en esta comparación).
+  const porFolio = {};
+  utiles.forEach(function (x) {
+    if (!x.folio) return;
+    (porFolio[x.folio] = porFolio[x.folio] || []).push(x);
+  });
+  const folioConCorreccion = {};
+  Object.keys(porFolio).forEach(function (folio) {
+    const grupo = porFolio[folio].filter(function (x) { return String(x.monto || '').trim().toUpperCase() !== 'PENDIENTE'; });
+    const montos = Array.from(new Set(grupo.map(function (x) { return String(x.monto || '').trim(); })));
+    if (grupo.length > 1 && montos.length > 1) folioConCorreccion[folio] = true;
+  });
+
+  let registrados = 0;
+  const pendientes = [];
+  utiles.forEach(function (x) {
+    if (x.folio && folioConCorreccion[x.folio]) { pendientes.push(x); return; }
+    const match = _matchOperadorServer(operadores, x.operador, x.eco);
+    if (!match) { pendientes.push(x); return; }
+    const mRaw = (x.monto == null) ? '' : String(x.monto).trim().toUpperCase();
+    const montoPendiente = (mRaw === 'PENDIENTE');
+    const r = _crearAutorizacionServer(ingresosDB, {
+      unidad: match.operadorId, monto: montoPendiente ? '' : (x.monto || ''), montoPendiente: montoPendiente,
+      fecha: x.fecha, folio: x.folio, pedido: x.pedido, tu1: x.tu1, tu2: x.tu2,
+      tienda: x.tienda, destino: x.destino
+    });
+    if (r.ok) registrados++; else pendientes.push(x);
+  });
+  return { pendientes: pendientes, registrados: registrados };
+}
+
 // node-imap (librería distinta a imapflow — más antigua y probada; imapflow
 // se quedaba pegada al conectar en este entorno de Cloud Functions aunque el
 // login IMAP crudo, sin librería, respondía en menos de 1 segundo — ver
@@ -345,19 +570,51 @@ function _revisarBuzonCore(apiKey, user, pass) {
     imap.connect();
   }).then(async function (encontrados) {
     if (encontrados.length) {
-    // Nunca sobrescribir: leer lo que ya había pendiente de revisar y
-    // agregar los nuevos correos al final (mismo principio que
-    // ingresosDB/anticiposDB — fusionar, no reemplazar en bloque).
       try {
-        console.log('revisarBuzonManiobras: guardando ' + encontrados.length + ' correo(s) en Firestore...');
-        const ref = db.collection('estado').doc('correosManiobrasPendientes');
-        const snap = await ref.get();
-        const previos = (snap.exists && snap.data().data) ? JSON.parse(snap.data().data) : [];
-        await ref.set({ data: JSON.stringify(previos.concat(encontrados)) });
-        console.log('revisarBuzonManiobras: guardado en Firestore exitoso.');
+        // Clasifica y registra directo lo "limpio" (sin ninguna señal de
+        // alerta) — lo demás se queda para revisión manual, igual que
+        // antes. Se lee ingresosDB UNA vez aquí (justo antes de mutarlo en
+        // memoria) y se escribe UNA vez al final, mismo criterio de
+        // "releer justo antes de escribir" que ya usa el resto del sistema.
+        const operadores = await _cargarOperadoresServer();
+        const refIngresos = db.collection('estado').doc('ingresosDB');
+        const snapIngresos = await refIngresos.get();
+        const ingresosDB = (snapIngresos.exists && snapIngresos.data().data) ? JSON.parse(snapIngresos.data().data) : [];
+        let totalRegistrados = 0;
+        encontrados.forEach(function (c) {
+          if (c.error || !c.renglones || !c.renglones.length) return;
+          const r = _clasificarYRegistrar(c.renglones, ingresosDB, operadores);
+          totalRegistrados += r.registrados;
+          c.renglones = r.pendientes;
+        });
+        if (totalRegistrados) {
+          console.log('revisarBuzonManiobras: ' + totalRegistrados + ' renglón(es) registrado(s) automático (sin alertas).');
+          await refIngresos.set({ data: JSON.stringify(ingresosDB) });
+        }
+        encontrados._totalRegistrados = totalRegistrados;
       } catch (e) {
-        console.error('revisarBuzonManiobras: error guardando en Firestore:', e);
-        throw e;
+        console.error('revisarBuzonManiobras: error clasificando/registrando renglones limpios (se deja todo pendiente de revisión manual):', e);
+      }
+      // Solo se guardan como pendientes los correos que SÍ traen algo por
+      // revisar (con error de lectura, o con renglones que no se pudieron
+      // registrar solos) — un correo que quedó 100% registrado ya no
+      // aparece en la lista de pendientes.
+      const conAlgoPendiente = encontrados.filter(function (c) { return c.error || (c.renglones && c.renglones.length); });
+      if (conAlgoPendiente.length) {
+        // Nunca sobrescribir: leer lo que ya había pendiente de revisar y
+        // agregar los nuevos correos al final (mismo principio que
+        // ingresosDB/anticiposDB — fusionar, no reemplazar en bloque).
+        try {
+          console.log('revisarBuzonManiobras: guardando ' + conAlgoPendiente.length + ' correo(s) pendiente(s) de revisión en Firestore...');
+          const ref = db.collection('estado').doc('correosManiobrasPendientes');
+          const snap = await ref.get();
+          const previos = (snap.exists && snap.data().data) ? JSON.parse(snap.data().data) : [];
+          await ref.set({ data: JSON.stringify(previos.concat(conAlgoPendiente)) });
+          console.log('revisarBuzonManiobras: guardado en Firestore exitoso.');
+        } catch (e) {
+          console.error('revisarBuzonManiobras: error guardando en Firestore:', e);
+          throw e;
+        }
       }
     }
     return encontrados;
@@ -428,7 +685,7 @@ exports.revisarBuzonManiobras = onRequest(
   async (req, res) => {
     try {
       const encontrados = await _revisarBuzonCore(ANTHROPIC_API_KEY.value(), MANIOBRAS_EMAIL_USER.value(), MANIOBRAS_EMAIL_PASS.value());
-      res.json({ ok: true, correosNuevos: encontrados.length });
+      res.json({ ok: true, correosNuevos: encontrados.length, renglonesRegistrados: encontrados._totalRegistrados || 0 });
     } catch (e) {
       console.error('revisarBuzonManiobras:', e);
       res.status(500).json({ error: e.message || 'Error interno del servidor.' });
@@ -449,7 +706,7 @@ exports.revisarBuzonManiobrasProgramado = onSchedule(
     try {
       const encontrados = await _revisarBuzonCore(ANTHROPIC_API_KEY.value(), MANIOBRAS_EMAIL_USER.value(), MANIOBRAS_EMAIL_PASS.value());
       await db.collection('estado').doc('buzonManiobrasEstado').set({
-        ultimaEjecucion: inicio, ok: true, correosNuevos: encontrados.length, error: null
+        ultimaEjecucion: inicio, ok: true, correosNuevos: encontrados.length, renglonesRegistrados: encontrados._totalRegistrados || 0, error: null
       });
     } catch (e) {
       console.error('revisarBuzonManiobrasProgramado:', e);

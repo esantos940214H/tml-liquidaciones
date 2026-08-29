@@ -769,7 +769,7 @@ async function revisarBuzonAhora(){
     var r=await fetch(FUNCTION_URL_REVISAR_BUZON,{method:'POST'});
     var data=await r.json();
     if(data.error)throw new Error(data.error);
-    $('buzonInfo').innerHTML='<div class="alert alert-ok">✅ '+data.correosNuevos+' correo(s) nuevo(s) encontrado(s).</div>';
+    $('buzonInfo').innerHTML='<div class="alert alert-ok">✅ '+data.correosNuevos+' correo(s) nuevo(s) encontrado(s)'+(data.renglonesRegistrados?' — '+data.renglonesRegistrados+' renglón(es) sin ninguna alerta se registraron solos, el resto quedó abajo para revisar':'')+'.</div>';
     await cargarCorreosPendientesBuzon();
   }catch(e){
     $('buzonInfo').innerHTML='<div class="alert alert-warn">⚠️ '+e.message+'</div>';
