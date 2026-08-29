@@ -436,13 +436,31 @@ exports.revisarBuzonManiobras = onRequest(
   }
 );
 
-// Corre solo cada 30 minutos — así aunque nadie entre a la página, los
-// correos nuevos se van juntando en estado/correosManiobrasPendientes para
-// cuando Raúl entre a revisarlos.
+// Corre cada 8 horas — así aunque nadie entre a la página, los correos
+// nuevos se van juntando en estado/correosManiobrasPendientes para cuando
+// alguien entre a revisarlos. Guarda SIEMPRE (éxito o error) un registro en
+// estado/buzonManiobrasEstado — antes, si algo fallaba aquí, el único rastro
+// quedaba en los logs de Cloud Functions (solo visibles desde Cloud Shell);
+// ahora se puede consultar directo desde Firestore.
 exports.revisarBuzonManiobrasProgramado = onSchedule(
   { schedule: 'every 8 hours', secrets: [ANTHROPIC_API_KEY, MANIOBRAS_EMAIL_USER, MANIOBRAS_EMAIL_PASS], region: 'us-central1', timeoutSeconds: 300 },
   async () => {
-    await _revisarBuzonCore(ANTHROPIC_API_KEY.value(), MANIOBRAS_EMAIL_USER.value(), MANIOBRAS_EMAIL_PASS.value());
+    const inicio = new Date().toISOString();
+    try {
+      const encontrados = await _revisarBuzonCore(ANTHROPIC_API_KEY.value(), MANIOBRAS_EMAIL_USER.value(), MANIOBRAS_EMAIL_PASS.value());
+      await db.collection('estado').doc('buzonManiobrasEstado').set({
+        ultimaEjecucion: inicio, ok: true, correosNuevos: encontrados.length, error: null
+      });
+    } catch (e) {
+      console.error('revisarBuzonManiobrasProgramado:', e);
+      try {
+        await db.collection('estado').doc('buzonManiobrasEstado').set({
+          ultimaEjecucion: inicio, ok: false, correosNuevos: 0, error: e.message || String(e)
+        });
+      } catch (e2) {
+        console.error('revisarBuzonManiobrasProgramado: no se pudo guardar el estado del error:', e2);
+      }
+    }
   }
 );
 
