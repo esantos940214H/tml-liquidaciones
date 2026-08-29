@@ -442,11 +442,11 @@ function renderPendientes(){
     var diasDesde=Math.floor((new Date(hoy()+'T00:00:00')-new Date((v.fecha||hoy())+'T00:00:00'))/86400000);
     var esReciente=diasDesde>=0&&diasDesde<=1;
     var negrita=esReciente?'font-weight:700':'';
-    return '<tr>'
-      +'<td style="'+negrita+'">'+v.fecha+'</td>'
+    return '<tr'+(esReciente?' style="background:#fff8e1"':'')+'>'
+      +'<td style="'+negrita+'">'+(esReciente?'💰 ':'')+v.fecha+'</td>'
       +'<td style="font-size:12px;'+negrita+'">'+(nombreOp(v.unidad)||v.unidad)+'</td>'
       +'<td style="font-size:12px;'+negrita+'">'+destino+'</td>'
-      +'<td class="num r" style="'+negrita+'">'+(v.montoPendiente?'<span class="badge bg-yellow">⏳ Pendiente</span>':fmt(v.subtotal))+'</td>'
+      +'<td class="num r" style="'+negrita+'">'+(v.montoPendiente?'<span class="badge bg-yellow">⏳ Pendiente</span>':fmt(v.subtotal))+(esReciente?' <span class="badge" style="background:#ffca28;color:#4a3300">Depositar hoy</span>':'')+'</td>'
       +'<td style="font-size:12px">'+(v.cliente||'')+'</td>'
       +'<td style="font-size:11px">'+(v.observaciones||'')+'</td>'
       +'<td style="font-size:11px">'+responsable+'</td>'
