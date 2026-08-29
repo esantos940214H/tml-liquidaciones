@@ -440,7 +440,7 @@ exports.revisarBuzonManiobras = onRequest(
 // correos nuevos se van juntando en estado/correosManiobrasPendientes para
 // cuando Raúl entre a revisarlos.
 exports.revisarBuzonManiobrasProgramado = onSchedule(
-  { schedule: 'every 30 minutes', secrets: [ANTHROPIC_API_KEY, MANIOBRAS_EMAIL_USER, MANIOBRAS_EMAIL_PASS], region: 'us-central1', timeoutSeconds: 300 },
+  { schedule: 'every 8 hours', secrets: [ANTHROPIC_API_KEY, MANIOBRAS_EMAIL_USER, MANIOBRAS_EMAIL_PASS], region: 'us-central1', timeoutSeconds: 300 },
   async () => {
     await _revisarBuzonCore(ANTHROPIC_API_KEY.value(), MANIOBRAS_EMAIL_USER.value(), MANIOBRAS_EMAIL_PASS.value());
   }
