@@ -46,8 +46,8 @@ const MANIOBRAS_EMAIL_USER = defineSecret('MANIOBRAS_EMAIL_USER');
 const MANIOBRAS_EMAIL_PASS = defineSecret('MANIOBRAS_EMAIL_PASS');
 const COMPRAS_EMAIL_USER = defineSecret('COMPRAS_EMAIL_USER');
 const COMPRAS_EMAIL_PASS = defineSecret('COMPRAS_EMAIL_PASS');
-const PEDIDOS_EMAIL_USER = defineSecret('PEDIDOS_EMAIL_USER');
-const PEDIDOS_EMAIL_PASS = defineSecret('PEDIDOS_EMAIL_PASS');
+const FLETES_EMAIL_USER = defineSecret('FLETES_EMAIL_USER');
+const FLETES_EMAIL_PASS = defineSecret('FLETES_EMAIL_PASS');
 // RFC de Mudanzas TML confirmado contra su Constancia de Situación Fiscal
 // (agosto 2026) — el receptor del CFDI de proveedor debe ser este RFC.
 const TML_RFC = 'MTM171214PI4';
@@ -79,6 +79,20 @@ function _calcularFechaLimiteRepServer(fechaPagoISO) {
   let anio = d.getFullYear();
   if (mes > 12) { mes -= 12; anio++; }
   return anio + '-' + String(mes).padStart(2, '0') + '-08';
+}
+// _enviarCorreoFacturaRecibida: usado tanto por el Buzón de Compras (registro
+// automático) como por el registro manual (exports.enviarConfirmacionFacturaRecibida,
+// ver abajo) para no duplicar el texto del correo en dos lugares.
+async function _enviarCorreoFacturaRecibida(user, pass, proveedor, data, diasCredito, fechaVencimiento) {
+  if (!proveedor || !proveedor.email) return false;
+  await _enviarCorreoCompras(user, pass, proveedor.email,
+    'Factura ' + (data.serie ? data.serie + '-' : '') + data.folio + ' recibida',
+    '<p>Hola ' + (proveedor.razonSocial || '') + ',</p>' +
+    '<p>Recibimos y registramos tu factura ' + (data.serie ? data.serie + '-' : '') + data.folio + ' por ' + _fmtMonedaServer(data.total) + '.</p>' +
+    '<p>Fecha estimada de pago: <strong>' + fechaVencimiento + '</strong>' + (diasCredito === 0 ? ' (mismo día, sin días de crédito).' : '.') + '</p>' +
+    '<p>Gracias.</p>'
+  );
+  return true;
 }
 
 const PROMPT_INSTRUCCIONES =
@@ -1195,17 +1209,9 @@ function _revisarBuzonComprasCore(user, pass, apiKey) {
           const url = await _subirXMLStorage('comprobantes/proveedores/' + data.uuid + '.xml', c.xmlTexto);
           await db.collection('cxpFacturas').doc(data.uuid).set({ xmlURL: url }, { merge: true });
         } catch (e) { console.error('revisarBuzonCompras: no se pudo subir el XML a Storage:', e); }
-        if (ev.proveedor.email) {
-          try {
-            await _enviarCorreoCompras(user, pass, ev.proveedor.email,
-              'Factura ' + (data.serie ? data.serie + '-' : '') + data.folio + ' recibida',
-              '<p>Hola ' + (ev.proveedor.razonSocial || '') + ',</p>' +
-              '<p>Recibimos y registramos tu factura ' + (data.serie ? data.serie + '-' : '') + data.folio + ' por ' + _fmtMonedaServer(data.total) + '.</p>' +
-              '<p>Fecha estimada de pago: <strong>' + fechaVencimiento + '</strong>' + (diasCredito === 0 ? ' (mismo día, sin días de crédito).' : '.') + '</p>' +
-              '<p>Gracias.</p>'
-            );
-          } catch (e) { console.error('revisarBuzonCompras: no se pudo enviar el correo de factura recibida:', e); }
-        }
+        try {
+          await _enviarCorreoFacturaRecibida(user, pass, ev.proveedor, data, diasCredito, fechaVencimiento);
+        } catch (e) { console.error('revisarBuzonCompras: no se pudo enviar el correo de factura recibida:', e); }
         totalRegistradas++;
       } catch (e) {
         console.error('revisarBuzonCompras: error evaluando/registrando factura:', e);
@@ -1321,6 +1327,10 @@ exports.enviarSolicitudComplementoPago = onRequest(
       const facSnap = await db.collection('cxpFacturas').doc(uuid).get();
       if (!facSnap.exists) { res.status(404).json({ error: 'No se encontró esa factura.' }); return; }
       const fac = facSnap.data();
+      // El complemento de pago (REP) solo aplica a facturas PPD (pago en
+      // parcialidades/diferido, con crédito) — en PUE el proceso termina en
+      // el pago mismo, no hay nada más que solicitar ni dar seguimiento.
+      if (fac.metodoPago !== 'PPD') { res.json({ ok: true, aplica: false, correoEnviado: false }); return; }
       const fechaLimiteRep = _calcularFechaLimiteRepServer(fechaPago);
       await db.collection('cxpFacturas').doc(uuid).set(
         { fechaPago: fechaPago, repFechaLimite: fechaLimiteRep, repRecibido: false }, { merge: true }
@@ -1338,9 +1348,39 @@ exports.enviarSolicitudComplementoPago = onRequest(
         );
         correoEnviado = true;
       }
-      res.json({ ok: true, fechaLimiteRep: fechaLimiteRep, correoEnviado: correoEnviado });
+      res.json({ ok: true, aplica: true, fechaLimiteRep: fechaLimiteRep, correoEnviado: correoEnviado });
     } catch (e) {
       console.error('enviarSolicitudComplementoPago:', e);
+      res.status(500).json({ error: e.message || 'Error interno del servidor.' });
+    }
+  }
+);
+
+// ══════════════════════════════════════════════════════════════════════════
+// enviarConfirmacionFacturaRecibida — mismo correo de "factura recibida, fecha
+// estimada de pago" que ya manda el Buzón de Compras cuando registra una
+// factura solo, pero para cuando la factura se registra a MANO (subiendo el
+// XML tú misma en Proveedores) — antes solo se mandaba si llegaba por el
+// buzón automático.
+// ══════════════════════════════════════════════════════════════════════════
+exports.enviarConfirmacionFacturaRecibida = onRequest(
+  { secrets: [COMPRAS_EMAIL_USER, COMPRAS_EMAIL_PASS], cors: true, region: 'us-central1' },
+  async (req, res) => {
+    if (req.method !== 'POST') { res.status(405).json({ error: 'Método no permitido, usa POST.' }); return; }
+    const uuid = ((req.body && req.body.uuid) || '').toString().trim().toUpperCase();
+    if (!uuid) { res.status(400).json({ error: 'Falta el UUID de la factura.' }); return; }
+    try {
+      const facSnap = await db.collection('cxpFacturas').doc(uuid).get();
+      if (!facSnap.exists) { res.status(404).json({ error: 'No se encontró esa factura.' }); return; }
+      const fac = facSnap.data();
+      const provSnap = fac.proveedorId ? await db.collection('proveedores').doc(fac.proveedorId).get() : null;
+      const proveedor = provSnap && provSnap.exists ? provSnap.data() : null;
+      const correoEnviado = await _enviarCorreoFacturaRecibida(
+        COMPRAS_EMAIL_USER.value(), COMPRAS_EMAIL_PASS.value(), proveedor, fac, fac.diasCredito, fac.fechaVencimiento
+      );
+      res.json({ ok: true, correoEnviado: correoEnviado });
+    } catch (e) {
+      console.error('enviarConfirmacionFacturaRecibida:', e);
       res.status(500).json({ error: e.message || 'Error interno del servidor.' });
     }
   }
@@ -1509,7 +1549,7 @@ exports.extraerComprobantePagoCxP = onRequest(
 );
 
 // ══════════════════════════════════════════════════════════════════════════
-// BUZÓN DE PEDIDOS DE FLETE (pedidos@mudandote.mx) — el cliente manda el
+// BUZÓN DE PEDIDOS DE FLETE (fletes@mudandote.mx) — el cliente manda el
 // pedido de un embarque (orden de embarque, pedido de flete, tienda/destino,
 // fecha) ANTES de que exista la factura. Se registra en la colección real
 // fletesDB (ver shared/fletes.js) en estado 'pendiente_factura'; cuando
@@ -1613,7 +1653,7 @@ function _revisarBuzonPedidosCore(user, pass, apiKey) {
             ordenEmbarque: ordenNorm, pedidoFlete: r.pedidoFlete || null,
             destino: r.destino || '', tienda: r.tienda || '', fecha: r.fecha || c.fecha || new Date().toISOString().slice(0, 10),
             estado: 'pendiente_factura', facturaUUID: null, facturaFolio: null, montoFactura: null,
-            capturadoPor: 'Buzón automático (pedidos@mudandote.mx)', fechaAlta: new Date().toISOString()
+            capturadoPor: 'Buzón automático (fletes@mudandote.mx)', fechaAlta: new Date().toISOString()
           });
           totalRegistrados++;
         } catch (e) {
@@ -1636,10 +1676,10 @@ function _revisarBuzonPedidosCore(user, pass, apiKey) {
 }
 
 exports.revisarBuzonPedidos = onRequest(
-  { secrets: [PEDIDOS_EMAIL_USER, PEDIDOS_EMAIL_PASS, ANTHROPIC_API_KEY], cors: true, region: 'us-central1', timeoutSeconds: 300 },
+  { secrets: [FLETES_EMAIL_USER, FLETES_EMAIL_PASS, ANTHROPIC_API_KEY], cors: true, region: 'us-central1', timeoutSeconds: 300 },
   async (req, res) => {
     try {
-      const encontrados = await _revisarBuzonPedidosCore(PEDIDOS_EMAIL_USER.value(), PEDIDOS_EMAIL_PASS.value(), ANTHROPIC_API_KEY.value());
+      const encontrados = await _revisarBuzonPedidosCore(FLETES_EMAIL_USER.value(), FLETES_EMAIL_PASS.value(), ANTHROPIC_API_KEY.value());
       res.json({ ok: true, correosNuevos: encontrados.length, pedidosRegistrados: encontrados._totalRegistrados || 0, pendientesRevision: encontrados._totalPendientes || 0 });
     } catch (e) {
       console.error('revisarBuzonPedidos:', e);
@@ -1649,11 +1689,11 @@ exports.revisarBuzonPedidos = onRequest(
 );
 
 exports.revisarBuzonPedidosProgramado = onSchedule(
-  { schedule: '0 7,14,22 * * *', timeZone: 'America/Mexico_City', secrets: [PEDIDOS_EMAIL_USER, PEDIDOS_EMAIL_PASS, ANTHROPIC_API_KEY], region: 'us-central1', timeoutSeconds: 300 },
+  { schedule: '0 7,14,22 * * *', timeZone: 'America/Mexico_City', secrets: [FLETES_EMAIL_USER, FLETES_EMAIL_PASS, ANTHROPIC_API_KEY], region: 'us-central1', timeoutSeconds: 300 },
   async () => {
     const inicio = new Date().toISOString();
     try {
-      const encontrados = await _revisarBuzonPedidosCore(PEDIDOS_EMAIL_USER.value(), PEDIDOS_EMAIL_PASS.value(), ANTHROPIC_API_KEY.value());
+      const encontrados = await _revisarBuzonPedidosCore(FLETES_EMAIL_USER.value(), FLETES_EMAIL_PASS.value(), ANTHROPIC_API_KEY.value());
       await db.collection('estado').doc('buzonPedidosEstado').set({
         ultimaEjecucion: inicio, ok: true, correosNuevos: encontrados.length,
         pedidosRegistrados: encontrados._totalRegistrados || 0, pendientesRevision: encontrados._totalPendientes || 0, error: null
