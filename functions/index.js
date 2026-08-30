@@ -944,6 +944,14 @@ async function _procesarMensajeCompras(rawBuffer, apiKey) {
   const xmlText = xmlAdjunto.content.toString('utf8');
   const r = _parseCfdiProveedorServer(xmlText);
   if (!r.ok) return Object.assign({ error: r.error }, base);
+  // Si el correo trae varios PDF (ej. la representación impresa de la
+  // factura Y el desglose de monitoreo), NO se juntan los renglones de
+  // todos — eso mezclaría/duplicaría datos si el PDF de la factura también
+  // llegara a mencionar alguna unidad en sus conceptos. En vez de eso, cada
+  // PDF se lee por separado y se usa SOLO el que trajo más renglones con una
+  // unidad reconocible (la representación impresa normalmente no trae un
+  // desglose renglón-por-renglón como el reporte de monitoreo, así que en la
+  // práctica solo "gana" el PDF que de verdad es el desglose).
   const pdfsAdjuntos = (parsed.attachments || []).filter(function (a) {
     return (a.filename || '').toLowerCase().endsWith('.pdf') || (a.contentType || '').toLowerCase().indexOf('pdf') !== -1;
   });
@@ -954,8 +962,8 @@ async function _procesarMensajeCompras(rawBuffer, apiKey) {
         { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: pdf.content.toString('base64') } },
         { type: 'text', text: PROMPT_JUSTIFICACION_CXP }
       ];
-      const renglones = await extraerRenglonesConIA(content, apiKey);
-      renglonesJustificacion = renglonesJustificacion.concat(renglones);
+      const renglones = (await extraerRenglonesConIA(content, apiKey)).filter(function (r2) { return (r2.unidad || '').toString().trim(); });
+      if (renglones.length > renglonesJustificacion.length) renglonesJustificacion = renglones;
     } catch (e) { console.error('_procesarMensajeCompras: no se pudo leer un PDF de desglose:', e); }
   }
   return Object.assign({ error: null, cfdi: r.data, xmlTexto: xmlText, renglonesJustificacion: renglonesJustificacion }, base);
