@@ -1238,7 +1238,35 @@ function parseXML(text,fname,unidad,unidadFisica){
     placaDetectada:placaAutoDetectada,unidadAlCapturar:unidadFisica||null});
   guardar();renderIngresos();
   subirXMLIngresoEnSegundoPlano(uuid,fname,text);
+  intentarSustituirFletePorXML(doc,uuid,folioCompleto,parseFloat(comp.getAttribute('Total')||0));
   alert('✅ '+fname+' registrado'+(placaAutoDetectada?' — operador identificado automáticamente por la placa '+placaAutoDetectada+' ('+(nombreOp(unidad)||unidad)+')':'')+'.'+(ruta.length?' Ruta: '+ruta.length+' tramos.':''));
+}
+// Cuando Raúl sube el XML normal del flete (uno por embarque, lo hace a
+// diario), el CFDI trae en algún lado de los conceptos el número de pedido
+// de flete y/o la orden de embarque — se busca por coincidencia de texto
+// (mismo criterio "contiene" que el resto del sistema) contra los pedidos de
+// flete todavía pendientes de factura, y si aparece, se marca "facturado".
+// No bloquea el registro del XML si falla (ej. sin conexión momentánea) —
+// es un extra sobre el registro normal, nunca un requisito para guardarlo.
+async function intentarSustituirFletePorXML(doc,uuid,folioCompleto,total){
+  try{
+    var pendientes=(await window.cargarFletes(true)).filter(function(f){return f.estado==='pendiente_factura';});
+    if(!pendientes.length)return;
+    var textoConceptos=Array.from(doc.querySelectorAll('Concepto')).map(function(c){
+      return(c.getAttribute('Descripcion')||c.getAttribute('Descripción')||'');
+    }).join(' ');
+    var textoNorm=_normTxtFactManiobras(textoConceptos);
+    if(!textoNorm)return;
+    var encontrados=pendientes.filter(function(f){
+      var idNorm=_normTxtFactManiobras(f.ordenEmbarque);
+      var pedNorm=f.pedidoFlete?_normTxtFactManiobras(f.pedidoFlete):'';
+      return(idNorm&&textoNorm.indexOf(idNorm)!==-1)||(pedNorm&&textoNorm.indexOf(pedNorm)!==-1);
+    });
+    for(var i=0;i<encontrados.length;i++){
+      await window.marcarFleteFacturado(encontrados[i].ordenEmbarque,{uuid:uuid,folio:folioCompleto,monto:total});
+    }
+    if(encontrados.length)cargarYRenderFletesPendientes();
+  }catch(e){console.error('intentarSustituirFletePorXML:',e);}
 }
 
 // Ingresos = CFDIs que Mudanzas TML EMITE a sus clientes. Un XML donde TML
