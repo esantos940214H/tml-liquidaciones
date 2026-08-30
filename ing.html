@@ -212,6 +212,14 @@ tr:hover td{background:#fafafa}
     <div id="facturaManiobrasInfo" style="margin-top:12px"></div>
   </div>
 
+  <!-- ARCHIVO MAESTRO DE FLETES (cruce pedidos de flete ↔ autorizaciones de maniobra) -->
+  <div class="card">
+    <div class="card-title">🗂️ Archivo maestro de fletes <span class="info-tip">?<span class="info-tip-box">Cruza cada pedido de flete (fletesDB) contra las autorizaciones de maniobra capturadas en Maniobras, para armar en un solo lugar: fecha, destino, operador, orden de embarque, pedido de flete, monto autorizado de maniobra y estado de facturación. Primero intenta emparejar por T.U./orden de embarque; si no coincide, usa fecha + destino/tienda como respaldo — solo si hay UN solo candidato posible ese día para ese destino (nunca adivina entre varios).</span></span>
+      <button class="btn btn-out btn-sm" onclick="renderArchivoMaestroFletes()">🔄 Generar archivo maestro</button>
+    </div>
+    <div id="archivoMaestroFletesWrap"><p style="font-size:13px;color:#aaa;padding:10px 0">Dale "Generar archivo maestro" para verlo.</p></div>
+  </div>
+
   <!-- REGISTRAR SIN FACTURA CON IA (solo admin) — Estimado de Transportación -->
   <div class="card" id="cardEstimadoIA" style="display:none">
     <div class="card-title">🤖 Registrar sin factura (Estimado de Transportación) <span class="info-tip">?<span class="info-tip-box">Solo administrador. Sube el archivo del Estimado de Transportación (PDF, Excel o Word) o pega el texto — la IA extrae folio, fecha, cliente, origen/destino y separa Flete/Maniobras/Otros. El estimado NO trae operador ni económico, así que selecciónalo tú abajo.</span></span></div>
@@ -1744,6 +1752,79 @@ async function revisarBuzonPedidosAhora(){
   }finally{
     $('btnRevisarBuzonPedidos').disabled=false;
   }
+}
+
+// ══════════════════════════════════════════════
+// ARCHIVO MAESTRO DE FLETES — cruza cada pedido de flete (fletesDB) contra
+// las autorizaciones de maniobra (ingresosDB, esAutorizacionCliente) para
+// saber qué operador/monto autorizado corresponde a cada embarque.
+// ══════════════════════════════════════════════
+// matchFleteConAutorizacion: primero intenta por T.U./orden de embarque (o
+// pedido de flete) contra las observaciones de la autorización — mismo
+// criterio "contiene" que ya usa procesarFacturaManiobrasExcel. Si no
+// coincide ningún T.U., cae al respaldo por fecha+destino/tienda: es
+// prácticamente imposible que el mismo operador cargue el mismo día para el
+// mismo destino dos veces, así que si hay UN SOLO candidato con esa fecha y
+// destino/tienda, se usa — si hay más de uno, no se adivina (queda sin
+// emparejar para revisión manual).
+function matchFleteConAutorizacion(flete,autorizaciones){
+  var idNorm=_normTxtFactManiobras(flete.ordenEmbarque);
+  var pedNorm=flete.pedidoFlete?_normTxtFactManiobras(flete.pedidoFlete):'';
+  var directo=autorizaciones.find(function(v){
+    var vIds=_normTxtFactManiobras(v.observaciones);
+    return(idNorm&&vIds.indexOf(idNorm)!==-1)||(pedNorm&&vIds.indexOf(pedNorm)!==-1);
+  });
+  if(directo)return{autorizacion:directo,metodo:'T.U./orden de embarque'};
+  var destinoNorm=_normTxtFactManiobras(flete.destino);
+  var tiendaNorm=_normTxtFactManiobras(flete.tienda);
+  if(!destinoNorm&&!tiendaNorm)return null;
+  var candidatos=autorizaciones.filter(function(v){
+    if((v.fecha||'')!==(flete.fecha||''))return false;
+    var vDestino=_normTxtFactManiobras((v.ruta&&v.ruta[0]&&v.ruta[0].destino)||'');
+    var vTienda=_normTxtFactManiobras(v.tienda||'');
+    var matchDestino=destinoNorm&&vDestino&&(vDestino.indexOf(destinoNorm)!==-1||destinoNorm.indexOf(vDestino)!==-1);
+    var matchTienda=tiendaNorm&&vTienda&&vTienda===tiendaNorm;
+    return matchDestino||matchTienda;
+  });
+  if(candidatos.length===1)return{autorizacion:candidatos[0],metodo:'fecha+destino/tienda'};
+  return null;
+}
+function construirArchivoMaestroFletes(){
+  var autorizaciones=ingresosDB.filter(function(v){return v.esAutorizacionCliente;});
+  return FLETES.map(function(f){
+    var m=matchFleteConAutorizacion(f,autorizaciones);
+    return{
+      fecha:f.fecha,destino:f.destino,tienda:f.tienda,
+      ordenEmbarque:f.ordenEmbarque,pedidoFlete:f.pedidoFlete,
+      operador:m?(nombreOp(m.autorizacion.unidad)||('Unidad '+m.autorizacion.unidad)):null,
+      unidad:m?m.autorizacion.unidad:null,
+      montoAutorizadoManiobra:m?m.autorizacion.subtotal:null,
+      metodoMatch:m?m.metodo:null,
+      estadoFactura:f.estado,facturaFolio:f.facturaFolio,montoFactura:f.montoFactura
+    };
+  });
+}
+function renderArchivoMaestroFletes(){
+  var wrap=$('archivoMaestroFletesWrap');
+  var filas=construirArchivoMaestroFletes();
+  if(!filas.length){wrap.innerHTML='<p style="font-size:13px;color:#aaa;padding:10px 0">Todavía no hay pedidos de flete registrados.</p>';return;}
+  filas.sort(function(a,b){return(b.fecha||'').localeCompare(a.fecha||'');});
+  var sinMatch=filas.filter(function(f){return!f.operador;}).length;
+  wrap.innerHTML=(sinMatch?'<div class="alert alert-warn">⚠️ '+sinMatch+' pedido(s) de flete no se pudieron emparejar con ninguna autorización de maniobra — revísalos a mano (resaltados abajo).</div>':'<div class="alert alert-ok">✅ Todos los pedidos de flete se emparejaron con su autorización.</div>')
+    +'<div class="tbl-wrap"><table><thead><tr><th>Fecha</th><th>Destino</th><th>Operador</th><th>Orden de embarque</th><th>Pedido de flete</th><th class="r">Autorizado maniobra</th><th>Cómo emparejó</th><th>Factura</th></tr></thead><tbody>'
+    +filas.map(function(f){
+      var sinMatch=!f.operador;
+      return '<tr'+(sinMatch?' style="background:#fffbeb"':'')+'>'
+        +'<td>'+f.fecha+'</td>'
+        +'<td style="font-size:12px">'+(f.destino||f.tienda||'')+'</td>'
+        +'<td style="font-size:12px">'+(f.operador||'<span style="color:#c1121f">⚠️ Sin emparejar</span>')+'</td>'
+        +'<td class="num">'+f.ordenEmbarque+'</td>'
+        +'<td class="num">'+(f.pedidoFlete||'—')+'</td>'
+        +'<td class="num r">'+(f.montoAutorizadoManiobra!=null?fmt(f.montoAutorizadoManiobra):'—')+'</td>'
+        +'<td style="font-size:11px;color:#888">'+(f.metodoMatch||'')+'</td>'
+        +'<td>'+(f.estadoFactura==='facturado'?'<span class="badge bg-green">✅ '+(f.facturaFolio||'')+'</span>':'<span class="badge bg-yellow">⏳ Pendiente</span>')+'</td>'
+        +'</tr>';
+    }).join('')+'</tbody></table></div>';
 }
 
 // ══════════════════════════════════════════════
