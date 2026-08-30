@@ -46,6 +46,8 @@ const MANIOBRAS_EMAIL_USER = defineSecret('MANIOBRAS_EMAIL_USER');
 const MANIOBRAS_EMAIL_PASS = defineSecret('MANIOBRAS_EMAIL_PASS');
 const COMPRAS_EMAIL_USER = defineSecret('COMPRAS_EMAIL_USER');
 const COMPRAS_EMAIL_PASS = defineSecret('COMPRAS_EMAIL_PASS');
+const PEDIDOS_EMAIL_USER = defineSecret('PEDIDOS_EMAIL_USER');
+const PEDIDOS_EMAIL_PASS = defineSecret('PEDIDOS_EMAIL_PASS');
 // RFC de Mudanzas TML confirmado contra su Constancia de Situación Fiscal
 // (agosto 2026) — el receptor del CFDI de proveedor debe ser este RFC.
 const TML_RFC = 'MTM171214PI4';
@@ -1502,6 +1504,165 @@ exports.extraerComprobantePagoCxP = onRequest(
     } catch (e) {
       console.error('extraerComprobantePagoCxP:', e);
       res.status(500).json({ error: e.message || 'Error interno del servidor.' });
+    }
+  }
+);
+
+// ══════════════════════════════════════════════════════════════════════════
+// BUZÓN DE PEDIDOS DE FLETE (pedidos@mudandote.mx) — el cliente manda el
+// pedido de un embarque (orden de embarque, pedido de flete, tienda/destino,
+// fecha) ANTES de que exista la factura. Se registra en la colección real
+// fletesDB (ver shared/fletes.js) en estado 'pendiente_factura'; cuando
+// Raúl sube su XML+Excel de factura consolidada de maniobras (ing.html →
+// procesarFacturaManiobrasExcel), cada renglón que coincida por orden de
+// embarque se marca 'facturado' — mismo espíritu que los otros dos buzones:
+// solo se auto-registra lo que trae una orden de embarque reconocible; si no
+// se puede identificar, se deja pendiente de revisión manual.
+// ══════════════════════════════════════════════════════════════════════════
+const PROMPT_PEDIDO_FLETE =
+  'Eres un asistente que extrae datos de un correo donde un cliente (empresa que contrata servicios de mudanza/transportación) ' +
+  'manda un PEDIDO DE FLETE u orden de embarque, antes de que exista la factura. El correo puede venir como tabla o como texto ' +
+  'libre, y normalmente trae, para cada embarque/viaje: la ORDEN DE EMBARQUE (folio único del embarque — puede aparecer como ' +
+  '"orden de embarque", "OE", "T.U.", "traffic unit" o similar), el PEDIDO DE FLETE o número de compra/PO asociado (puede no ' +
+  'venir), la TIENDA o sucursal, el DESTINO (ciudad/estado/dirección), y la FECHA. Extrae UN renglón por cada embarque/viaje ' +
+  'que encuentres, con estas llaves exactas: {"ordenEmbarque":"el folio de la orden de embarque tal cual aparece, o null si no ' +
+  'se puede determinar","pedidoFlete":"el número de pedido/PO del flete, o null","tienda":"la tienda o sucursal, o null",' +
+  '"destino":"el destino del embarque, o null","fecha":"YYYY-MM-DD si se puede convertir desde el formato que traiga, o ' +
+  'null"}. No inventes datos que no estén en el correo. Responde SOLO un arreglo JSON (sin texto explicativo, sin backticks, ' +
+  'sin markdown) con un objeto por cada renglón que encuentres. Si no hay ningún renglón reconocible, responde [].';
+
+function _normalizarOrdenEmbarqueServer(valor) {
+  return (valor == null ? '' : String(valor)).trim().toUpperCase().replace(/\s+/g, '').replace(/^0+(?=\d)/, '');
+}
+
+async function _procesarMensajePedidos(rawBuffer, apiKey) {
+  const { simpleParser } = require('mailparser');
+  const parsed = await simpleParser(rawBuffer);
+  const pdfAdjunto = (parsed.attachments || []).find(function (a) {
+    return (a.contentType || '').toLowerCase().indexOf('pdf') !== -1 || (a.filename || '').toLowerCase().endsWith('.pdf');
+  });
+  const content = pdfAdjunto
+    ? [
+        { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: pdfAdjunto.content.toString('base64') } },
+        { type: 'text', text: PROMPT_PEDIDO_FLETE }
+      ]
+    : PROMPT_PEDIDO_FLETE + '\n\n--- CORREO ---\n' + (parsed.text || parsed.html || '').slice(0, 20000);
+  return {
+    renglones: await extraerRenglonesConIA(content, apiKey),
+    asunto: parsed.subject || '(sin asunto)',
+    de: (parsed.from && parsed.from.value && parsed.from.value[0] && parsed.from.value[0].address) || '',
+    fecha: parsed.date ? parsed.date.toISOString().slice(0, 10) : ''
+  };
+}
+
+function _revisarBuzonPedidosCore(user, pass, apiKey) {
+  const Imap = require('imap');
+  return new Promise(function (resolveTodo, rejectTodo) {
+    const imap = new Imap({ user: user, password: pass, host: 'imap.ionos.mx', port: 993, tls: true, connTimeout: 20000, authTimeout: 20000 });
+    const encontrados = [];
+    let resuelto = false;
+    function terminar(v) { if (resuelto) return; resuelto = true; resolveTodo(v); }
+    imap.once('error', function (err) { console.error('revisarBuzonPedidos: imap error:', err); rejectTodo(err); });
+    imap.once('ready', function () {
+      imap.openBox('INBOX', false, function (err) {
+        if (err) { console.error('revisarBuzonPedidos: error abriendo INBOX:', err); imap.end(); rejectTodo(err); return; }
+        imap.search(['UNSEEN'], function (err, uids) {
+          if (err) { console.error('revisarBuzonPedidos: error en search:', err); imap.end(); rejectTodo(err); return; }
+          if (!uids || !uids.length) { imap.end(); terminar(encontrados); return; }
+          const f = imap.fetch(uids, { bodies: '', markSeen: true });
+          const pendientes = [];
+          f.on('message', function (msg, seqno) {
+            const partes = [];
+            msg.on('body', function (stream) { stream.on('data', function (chunk) { partes.push(chunk); }); });
+            msg.once('end', function () {
+              const raw = Buffer.concat(partes);
+              pendientes.push(
+                _procesarMensajePedidos(raw, apiKey)
+                  .then(function (r) { encontrados.push(Object.assign({ error: null, revisadoEn: new Date().toISOString() }, r)); })
+                  .catch(function (e) {
+                    console.error('revisarBuzonPedidos: error procesando mensaje #' + seqno + ':', e);
+                    encontrados.push({ error: e.message || String(e), renglones: [], asunto: '(error al procesar)', de: '', fecha: '', revisadoEn: new Date().toISOString() });
+                  })
+              );
+            });
+          });
+          f.once('error', function (err) { console.error('revisarBuzonPedidos: error en fetch:', err); imap.end(); rejectTodo(err); });
+          f.once('end', function () {
+            Promise.all(pendientes).then(function () { imap.end(); terminar(encontrados); })
+              .catch(function (e) { console.error('revisarBuzonPedidos: error inesperado esperando pendientes:', e); imap.end(); rejectTodo(e); });
+          });
+        });
+      });
+    });
+    imap.once('end', function () { terminar(encontrados); });
+    imap.connect();
+  }).then(async function (encontrados) {
+    const conAlgoPendiente = [];
+    let totalRegistrados = 0;
+    for (const c of encontrados) {
+      if (c.error) { conAlgoPendiente.push(c); continue; }
+      const renglonesSinOrden = [];
+      for (const r of (c.renglones || [])) {
+        const ordenNorm = _normalizarOrdenEmbarqueServer(r.ordenEmbarque);
+        if (!ordenNorm) { renglonesSinOrden.push(r); continue; }
+        try {
+          const ref = db.collection('fletesDB').doc(ordenNorm);
+          const yaExiste = (await ref.get()).exists;
+          if (yaExiste) continue; // ya registrado antes (correo repetido/reenviado) — no es un error, se ignora
+          await ref.set({
+            ordenEmbarque: ordenNorm, pedidoFlete: r.pedidoFlete || null,
+            destino: r.destino || '', tienda: r.tienda || '', fecha: r.fecha || c.fecha || new Date().toISOString().slice(0, 10),
+            estado: 'pendiente_factura', facturaUUID: null, facturaFolio: null, montoFactura: null,
+            capturadoPor: 'Buzón automático (pedidos@mudandote.mx)', fechaAlta: new Date().toISOString()
+          });
+          totalRegistrados++;
+        } catch (e) {
+          console.error('revisarBuzonPedidos: error registrando renglón:', e);
+          renglonesSinOrden.push(r);
+        }
+      }
+      if (renglonesSinOrden.length) conAlgoPendiente.push(Object.assign({}, c, { renglones: renglonesSinOrden }));
+    }
+    if (conAlgoPendiente.length) {
+      const ref = db.collection('estado').doc('correosPedidosPendientes');
+      const snap = await ref.get();
+      const previos = (snap.exists && snap.data().data) ? JSON.parse(snap.data().data) : [];
+      await ref.set({ data: JSON.stringify(previos.concat(conAlgoPendiente)) });
+    }
+    encontrados._totalRegistrados = totalRegistrados;
+    encontrados._totalPendientes = conAlgoPendiente.length;
+    return encontrados;
+  });
+}
+
+exports.revisarBuzonPedidos = onRequest(
+  { secrets: [PEDIDOS_EMAIL_USER, PEDIDOS_EMAIL_PASS, ANTHROPIC_API_KEY], cors: true, region: 'us-central1', timeoutSeconds: 300 },
+  async (req, res) => {
+    try {
+      const encontrados = await _revisarBuzonPedidosCore(PEDIDOS_EMAIL_USER.value(), PEDIDOS_EMAIL_PASS.value(), ANTHROPIC_API_KEY.value());
+      res.json({ ok: true, correosNuevos: encontrados.length, pedidosRegistrados: encontrados._totalRegistrados || 0, pendientesRevision: encontrados._totalPendientes || 0 });
+    } catch (e) {
+      console.error('revisarBuzonPedidos:', e);
+      res.status(500).json({ error: e.message || 'Error interno del servidor.' });
+    }
+  }
+);
+
+exports.revisarBuzonPedidosProgramado = onSchedule(
+  { schedule: '0 7,14,22 * * *', timeZone: 'America/Mexico_City', secrets: [PEDIDOS_EMAIL_USER, PEDIDOS_EMAIL_PASS, ANTHROPIC_API_KEY], region: 'us-central1', timeoutSeconds: 300 },
+  async () => {
+    const inicio = new Date().toISOString();
+    try {
+      const encontrados = await _revisarBuzonPedidosCore(PEDIDOS_EMAIL_USER.value(), PEDIDOS_EMAIL_PASS.value(), ANTHROPIC_API_KEY.value());
+      await db.collection('estado').doc('buzonPedidosEstado').set({
+        ultimaEjecucion: inicio, ok: true, correosNuevos: encontrados.length,
+        pedidosRegistrados: encontrados._totalRegistrados || 0, pendientesRevision: encontrados._totalPendientes || 0, error: null
+      });
+    } catch (e) {
+      console.error('revisarBuzonPedidosProgramado:', e);
+      try {
+        await db.collection('estado').doc('buzonPedidosEstado').set({ ultimaEjecucion: inicio, ok: false, error: e.message || String(e) });
+      } catch (e2) { console.error('revisarBuzonPedidosProgramado: no se pudo guardar el estado del error:', e2); }
     }
   }
 );

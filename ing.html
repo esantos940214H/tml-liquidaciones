@@ -180,9 +180,30 @@ tr:hover td{background:#fafafa}
     </div>
   </div>
 
+  <!-- BUZÓN DE PEDIDOS DE FLETE -->
+  <div class="card">
+    <div class="card-title">📦 Buzón de pedidos de flete (pedidos@mudandote.mx) <span class="info-tip">?<span class="info-tip-box">El cliente manda el pedido de un embarque (orden de embarque, pedido de flete, tienda/destino, fecha) ANTES de que exista la factura. El sistema revisa este buzón 3 veces al día (7:00, 14:00 y 22:00 hrs) y registra solo lo que trae una orden de embarque reconocible — cuando subas aquí abajo tu XML+Excel de factura consolidada, cada renglón que coincida se marca "facturado" solo.</span></span>
+      <button class="btn btn-out btn-sm" onclick="revisarBuzonPedidosAhora()" id="btnRevisarBuzonPedidos">🔄 Revisar buzón ahora</button>
+    </div>
+    <div id="buzonPedidosInfo" style="margin-top:8px"></div>
+    <div id="buzonPedidosWrap"></div>
+    <div class="card-title" style="margin-top:16px">📦 Pedidos de flete pendientes de factura <span id="fletesCountLabel" style="font-weight:400;color:#888;text-transform:none;letter-spacing:normal"></span></div>
+    <div id="fletesPendientesWrap"><div style="text-align:center;padding:20px;color:#aaa">Cargando...</div></div>
+    <div style="margin-top:12px">
+      <div class="grid2">
+        <div class="field"><label>Orden de embarque</label><input type="text" id="fleteOrdenEmbarque" placeholder="Si el buzón no lo capturó"></div>
+        <div class="field"><label>Pedido de flete <span style="font-weight:400;font-size:11px;color:#aaa">(opcional)</span></label><input type="text" id="fletePedido"></div>
+        <div class="field"><label>Tienda</label><input type="text" id="fleteTienda"></div>
+        <div class="field"><label>Destino</label><input type="text" id="fleteDestino"></div>
+        <div class="field"><label>Fecha</label><input type="date" id="fleteFecha"></div>
+      </div>
+      <button class="btn btn-out btn-sm" style="margin-top:8px" onclick="registrarFleteManual()">+ Registrar pedido de flete a mano</button>
+    </div>
+  </div>
+
   <!-- SUSTITUIR CON FACTURA DE MANIOBRAS CONSOLIDADA (XML + Excel de desglose) -->
   <div class="card">
-    <div class="card-title">📊 Sustituir con factura de maniobras (Excel) <span class="info-tip">?<span class="info-tip-box">Para cuando UNA factura junta varias semanas de maniobras ya autorizadas (normal con GRUPO COMERCIAL DSW — el cliente autoriza una vez por semana y se factura en lote, ver Maniobras). Sube el XML de esa factura + tu Excel de desglose (mismo formato de columnas VIAJE/TIENDA/DESTINO/ORDEN DE EMBARQUE/TOTAL) — el sistema empareja cada renglón por T.U.'s contra las autorizaciones pendientes y las sustituye automáticamente si el monto coincide (tolerancia $50).</span></span></div>
+    <div class="card-title">📊 Sustituir con factura de maniobras (Excel) <span class="info-tip">?<span class="info-tip-box">Para cuando UNA factura junta varias semanas de maniobras ya autorizadas (normal con GRUPO COMERCIAL DSW — el cliente autoriza una vez por semana y se factura en lote, ver Maniobras). Sube el XML de esa factura + tu Excel de desglose (mismo formato de columnas VIAJE/TIENDA/DESTINO/ORDEN DE EMBARQUE/TOTAL) — el sistema empareja cada renglón por T.U.'s contra las autorizaciones pendientes y las sustituye automáticamente si el monto coincide (tolerancia $50), y de paso marca "facturado" cualquier pedido de flete pendiente que coincida por orden de embarque.</span></span></div>
     <div class="grid2">
       <div class="field"><label>XML de la factura</label><input type="file" id="fFacturaManiobrasXML" accept=".xml"></div>
       <div class="field"><label>Excel de desglose</label><input type="file" id="fFacturaManiobrasXLSX" accept=".xlsx,.xls"></div>
@@ -337,6 +358,7 @@ tr:hover td{background:#fafafa}
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
 <script src="shared/sesion.js"></script>
 <script src="shared/operadores.js"></script>
+<script src="shared/fletes.js"></script>
 <script src="shared/autoActualizar.js"></script>
 <!-- Guardar XML/PDF de comprobantes (ver shared/comprobantes.js). jsPDF y
      Chart.js YA NO se cargan aquí de entrada — son ~2 solicitudes más a un
@@ -1015,6 +1037,8 @@ window.onFBReady(async function(){
   window.FB.listen('estado','ingresosDB',data=>{
     if(data&&data.data){ingresosDB=JSON.parse(data.data);renderIngresos();}
   });
+  cargarYRenderFletesPendientes();
+  cargarCorreosPendientesPedidos();
 });
 setTimeout(()=>{if(!fbReady){$('fbStatus').textContent='❌ Sin conexión';$('fbStatus').className='fb-status fb-err';}},6000);
 
@@ -1618,6 +1642,111 @@ function lockRequest(desc, callback){
 }
 
 // ══════════════════════════════════════════════
+// PEDIDOS DE FLETE (buzón pedidos@mudandote.mx) — ver shared/fletes.js y
+// functions/index.js → revisarBuzonPedidos. Se registran ANTES de que
+// exista la factura; procesarFacturaManiobrasExcel() (abajo) los marca
+// "facturado" cuando Raúl sube su XML+Excel.
+// ══════════════════════════════════════════════
+const FUNCTION_URL_REVISAR_BUZON_PEDIDOS='https://us-central1-tml-liquidaciones.cloudfunctions.net/revisarBuzonPedidos';
+let FLETES=[];
+let _correosPedidos=[];
+
+async function cargarYRenderFletesPendientes(){
+  FLETES=await window.cargarFletes(true);
+  renderFletesPendientes();
+}
+function renderFletesPendientes(){
+  var pendientes=FLETES.filter(function(f){return f.estado==='pendiente_factura';});
+  $('fletesCountLabel').textContent=pendientes.length?'— '+pendientes.length+' pendiente(s)':'';
+  var wrap=$('fletesPendientesWrap');
+  if(!pendientes.length){wrap.innerHTML='<p style="font-size:12px;color:#aaa;padding:8px 0">Sin pedidos de flete pendientes de factura.</p>';return;}
+  pendientes.sort(function(a,b){return(b.fechaAlta||'').localeCompare(a.fechaAlta||'');});
+  wrap.innerHTML='<div class="tbl-wrap"><table><thead><tr><th>Orden de embarque</th><th>Pedido de flete</th><th>Tienda</th><th>Destino</th><th>Fecha</th><th></th></tr></thead><tbody>'
+    +pendientes.map(function(f){
+      return '<tr><td class="num">'+f.ordenEmbarque+'</td><td class="num">'+(f.pedidoFlete||'—')+'</td>'
+        +'<td style="font-size:12px">'+(f.tienda||'')+'</td><td style="font-size:12px">'+(f.destino||'')+'</td><td>'+(f.fecha||'')+'</td>'
+        +'<td><button class="btn-sm" style="background:none;border:none;cursor:pointer;color:#c1121f" onclick="eliminarFleteUI(\''+f.ordenEmbarque+'\')">✕</button></td></tr>';
+    }).join('')+'</tbody></table></div>';
+}
+async function registrarFleteManual(){
+  var ordenEmbarque=$('fleteOrdenEmbarque').value;
+  if(!ordenEmbarque.trim()){alert('Falta la orden de embarque.');return;}
+  try{
+    await window.registrarFlete({
+      ordenEmbarque:ordenEmbarque,pedidoFlete:$('fletePedido').value,tienda:$('fleteTienda').value,
+      destino:$('fleteDestino').value,fecha:$('fleteFecha').value,capturadoPor:(usuarioSesion()||{}).usuario||''
+    });
+    $('fleteOrdenEmbarque').value='';$('fletePedido').value='';$('fleteTienda').value='';$('fleteDestino').value='';$('fleteFecha').value='';
+    await cargarYRenderFletesPendientes();
+  }catch(e){alert('⚠️ '+e.message);}
+}
+async function eliminarFleteUI(ordenEmbarque){
+  if(!confirm('¿Eliminar el pedido de flete '+ordenEmbarque+'? Solo hazlo si se capturó por error.'))return;
+  try{ await window.eliminarFlete(ordenEmbarque); await cargarYRenderFletesPendientes(); }
+  catch(e){ alert('⚠️ Error: '+e.message); }
+}
+
+async function cargarCorreosPendientesPedidos(){
+  var data=await window.FB.get('estado','correosPedidosPendientes');
+  _correosPedidos=(data&&data.data)?JSON.parse(data.data):[];
+  if(!Array.isArray(_correosPedidos))_correosPedidos=[];
+  renderBuzonPedidos();
+}
+function renderBuzonPedidos(){
+  var wrap=$('buzonPedidosWrap');
+  if(!_correosPedidos.length){wrap.innerHTML='<p style="font-size:12px;color:#aaa;padding:8px 0">Sin correos pendientes de revisar.</p>';return;}
+  wrap.innerHTML='<div class="tbl-wrap"><table><thead><tr><th>Asunto</th><th>De</th><th>Fecha</th><th>Renglones sin orden de embarque</th><th></th></tr></thead><tbody>'
+    +_correosPedidos.map(function(c,i){
+      var motivo=c.error?('⚠️ '+c.error):(c.renglones||[]).length+' renglón(es) sin orden de embarque reconocible';
+      return '<tr'+(c.error?' style="background:#fffbeb"':'')+'>'
+        +'<td style="font-size:12px">'+(c.asunto||'')+'</td>'
+        +'<td style="font-size:11px;color:#888">'+(c.de||'')+'</td>'
+        +'<td style="font-size:12px">'+(c.fecha||'')+'</td>'
+        +'<td style="font-size:11px;color:#9b1c1c">'+motivo+'</td>'
+        +'<td><button class="btn btn-red btn-sm" onclick="cargarRenglonesDeCorreoPedidos('+i+')" '+(c.error?'disabled':'')+'>Cargar arriba</button> '
+        +'<button class="btn btn-out btn-sm" onclick="descartarCorreoPedidos('+i+')">Descartar</button></td>'
+        +'</tr>';
+    }).join('')+'</tbody></table></div>';
+}
+async function _guardarCorreosPedidos(){
+  await window.FB.set('estado','correosPedidosPendientes',{data:JSON.stringify(_correosPedidos)});
+}
+// Precarga el formulario manual con el primer renglón del correo (tienda/
+// destino/fecha/pedido) — la orden de embarque queda vacía a propósito, para
+// que la escriba a mano viendo el correo original.
+function cargarRenglonesDeCorreoPedidos(i){
+  var c=_correosPedidos[i];
+  if(!c||!c.renglones||!c.renglones.length)return;
+  var r=c.renglones[0];
+  $('fletePedido').value=r.pedidoFlete||'';$('fleteTienda').value=r.tienda||'';
+  $('fleteDestino').value=r.destino||'';$('fleteFecha').value=r.fecha||'';
+  $('fleteOrdenEmbarque').focus();
+  window.scrollTo({top:0,behavior:'smooth'});
+}
+function descartarCorreoPedidos(i){
+  if(!confirm('¿Descartar este correo sin registrar nada?'))return;
+  _correosPedidos.splice(i,1);
+  _guardarCorreosPedidos();
+  renderBuzonPedidos();
+}
+async function revisarBuzonPedidosAhora(){
+  $('btnRevisarBuzonPedidos').disabled=true;
+  $('buzonPedidosInfo').innerHTML='<div class="alert alert-info">⏳ Revisando el buzón...</div>';
+  try{
+    var r=await fetch(FUNCTION_URL_REVISAR_BUZON_PEDIDOS,{method:'POST'});
+    var data=await r.json();
+    if(data.error)throw new Error(data.error);
+    $('buzonPedidosInfo').innerHTML='<div class="alert alert-ok">✅ '+data.correosNuevos+' correo(s) nuevo(s)'+(data.pedidosRegistrados?' — '+data.pedidosRegistrados+' pedido(s) se registraron solos':'')+(data.pendientesRevision?' — '+data.pendientesRevision+' quedaron pendientes de revisar':'')+'.</div>';
+    await cargarCorreosPendientesPedidos();
+    await cargarYRenderFletesPendientes();
+  }catch(e){
+    $('buzonPedidosInfo').innerHTML='<div class="alert alert-warn">⚠️ '+e.message+'</div>';
+  }finally{
+    $('btnRevisarBuzonPedidos').disabled=false;
+  }
+}
+
+// ══════════════════════════════════════════════
 // SUSTITUIR CON FACTURA CONSOLIDADA DE MANIOBRAS (XML + Excel de desglose)
 // — para el cliente GRUPO COMERCIAL DSW: autoriza una vez por semana (ver
 // Maniobras), pero se factura 20-30 viajes juntos en UNA sola factura.
@@ -1813,6 +1942,23 @@ async function procesarFacturaManiobrasExcel(){
       });
       sustituidos=resueltos;
       guardar();renderIngresos();
+      // De paso, marca "facturado" cualquier pedido de flete pendiente que
+      // coincida por orden de embarque (mismas T.U.'s del renglón) — no
+      // bloquea el guardado si alguno falla, es un extra sobre lo ya
+      // sustituido arriba.
+      var fletesPendientes=(await window.cargarFletes(true)).filter(function(f){return f.estado==='pendiente_factura';});
+      for(var iRes=0;iRes<sustituidos.length;iRes++){
+        var rgRes=sustituidos[iRes].rg;
+        for(var iTu=0;iTu<rgRes.tus.length;iTu++){
+          var fleteMatch=window.buscarFletePendientePorOrden(fletesPendientes,rgRes.tus[iTu]);
+          if(fleteMatch){
+            try{await window.marcarFleteFacturado(fleteMatch.ordenEmbarque,{uuid:uuid,folio:folioCompleto,monto:rgRes.total});}
+            catch(e){console.error('marcarFleteFacturado:',e);}
+            break;
+          }
+        }
+      }
+      cargarYRenderFletesPendientes();
     }
 
     var huboProblema=diferencias.length||sinMatch.length;
