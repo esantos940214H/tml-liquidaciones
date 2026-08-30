@@ -924,7 +924,12 @@ async function _evaluarCandadosCxPServer(data) {
   return { candados: candados, proveedor: proveedor, todosOk: candados.every(function (c) { return c.ok; }) };
 }
 
-async function _procesarMensajeCompras(rawBuffer) {
+// Además del XML, algunos proveedores mandan en el MISMO correo un PDF con
+// el desglose por unidad (ej. reporte de monitoreo GPS, listado de viajes)
+// que justifica el total cobrado — se lee con la misma IA/prompt que ya usa
+// extraerJustificacionCxP (ver PROMPT_JUSTIFICACION_CXP) para poder armar la
+// sugerencia de prorrateo sin que Esa tenga que volver a subir el PDF a mano.
+async function _procesarMensajeCompras(rawBuffer, apiKey) {
   const { simpleParser } = require('mailparser');
   const parsed = await simpleParser(rawBuffer);
   const xmlAdjunto = (parsed.attachments || []).find(function (a) {
@@ -939,10 +944,59 @@ async function _procesarMensajeCompras(rawBuffer) {
   const xmlText = xmlAdjunto.content.toString('utf8');
   const r = _parseCfdiProveedorServer(xmlText);
   if (!r.ok) return Object.assign({ error: r.error }, base);
-  return Object.assign({ error: null, cfdi: r.data, xmlTexto: xmlText }, base);
+  const pdfsAdjuntos = (parsed.attachments || []).filter(function (a) {
+    return (a.filename || '').toLowerCase().endsWith('.pdf') || (a.contentType || '').toLowerCase().indexOf('pdf') !== -1;
+  });
+  let renglonesJustificacion = [];
+  for (const pdf of pdfsAdjuntos) {
+    try {
+      const content = [
+        { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: pdf.content.toString('base64') } },
+        { type: 'text', text: PROMPT_JUSTIFICACION_CXP }
+      ];
+      const renglones = await extraerRenglonesConIA(content, apiKey);
+      renglonesJustificacion = renglonesJustificacion.concat(renglones);
+    } catch (e) { console.error('_procesarMensajeCompras: no se pudo leer un PDF de desglose:', e); }
+  }
+  return Object.assign({ error: null, cfdi: r.data, xmlTexto: xmlText, renglonesJustificacion: renglonesJustificacion }, base);
 }
 
-function _revisarBuzonComprasCore(user, pass) {
+// Mismo criterio que aplicarSugerenciaProrrateo en proveedores.html: agrupa
+// los renglones por unidad (contando cuántas veces aparece cada una) y
+// reparte el total de la factura proporcional a ese conteo (ej. 50 de 100
+// monitoreos → 50% del total), ajustando el redondeo en la primera fila para
+// que la suma cuadre exacto. Solo se considera "ok" (para prorratear SOLO,
+// sin que Esa lo revise) si TODAS las unidades se identificaron con un
+// operador real y la suma final cuadra con el total de la factura — si el
+// proveedor justifica mal (no cuadra) o alguna unidad no se reconoce, se dejan
+// las filas calculadas de todos modos (como sugerencia) pero ok:false, para
+// que la factura quede pendiente de revisar a mano en vez de prorratearse
+// sola con un dato que no cuadra.
+function _calcularProrrateoDesdeRenglonesServer(renglones, total, operadores) {
+  const conteos = {};
+  (renglones || []).forEach(function (r) {
+    const u = (r.unidad || '').toString().trim();
+    if (!u) return;
+    conteos[u] = (conteos[u] || 0) + 1;
+  });
+  const claves = Object.keys(conteos);
+  if (!claves.length) return { ok: false, filas: [] };
+  const totalConteo = claves.reduce(function (s, k) { return s + conteos[k]; }, 0);
+  let algunoSinMatch = false;
+  const filas = claves.map(function (k) {
+    const op = _matchOperadorServer(operadores, '', k);
+    if (!op) algunoSinMatch = true;
+    const monto = Math.round(total * conteos[k] / totalConteo * 100) / 100;
+    return { unidad: op ? op.unidad : null, monto: monto };
+  });
+  const sumaFilas = filas.reduce(function (s, f) { return s + f.monto; }, 0);
+  const diff = Math.round((total - sumaFilas) * 100) / 100;
+  if (filas.length && Math.abs(diff) >= 0.01) filas[0].monto = Math.round((filas[0].monto + diff) * 100) / 100;
+  const cuadra = Math.abs(filas.reduce(function (s, f) { return s + f.monto; }, 0) - total) < 0.02;
+  return { ok: !algunoSinMatch && cuadra, filas: filas };
+}
+
+function _revisarBuzonComprasCore(user, pass, apiKey) {
   const Imap = require('imap');
   return new Promise(function (resolveTodo, rejectTodo) {
     const imap = new Imap({ user: user, password: pass, host: 'imap.ionos.mx', port: 993, tls: true, connTimeout: 20000, authTimeout: 20000 });
@@ -965,7 +1019,7 @@ function _revisarBuzonComprasCore(user, pass) {
             msg.once('end', function () {
               const raw = Buffer.concat(partes);
               pendientes.push(
-                _procesarMensajeCompras(raw)
+                _procesarMensajeCompras(raw, apiKey)
                   .then(function (r) { encontrados.push(Object.assign({ revisadoEn: new Date().toISOString() }, r)); })
                   .catch(function (e) {
                     console.error('revisarBuzonCompras: error procesando mensaje #' + seqno + ':', e);
@@ -987,6 +1041,7 @@ function _revisarBuzonComprasCore(user, pass) {
   }).then(async function (encontrados) {
     const conAlgoPendiente = [];
     let totalRegistradas = 0;
+    let operadoresCache = null;
     for (const c of encontrados) {
       if (c.error || !c.cfdi) { conAlgoPendiente.push(c); continue; }
       try {
@@ -999,13 +1054,32 @@ function _revisarBuzonComprasCore(user, pass) {
         const diasCredito = ev.proveedor.diasCredito != null ? ev.proveedor.diasCredito : 15;
         const fechaVencimiento = _sumarDiasHabilesServer(data.fechaEmision, diasCredito);
         const estadoPago = data.metodoPago === 'PUE' ? 'pendiente_pago' : 'vigente_por_pagar';
+        // Si el correo trajo un PDF de desglose (ver _procesarMensajeCompras),
+        // se intenta prorratear solo — pero SOLO si todas las unidades se
+        // reconocen y la suma cuadra exacto con el total; si no, la factura
+        // se registra igual (ya pasó los candados fiscales) y la sugerencia
+        // calculada se guarda para que Esa la revise desde "⚖️ Prorratear".
+        let estadoProrrateo = 'pendiente_prorrateo';
+        let prorrateoFinal = [];
+        let justificacionSugerida = null;
+        if (c.renglonesJustificacion && c.renglonesJustificacion.length) {
+          if (!operadoresCache) operadoresCache = await _cargarOperadoresServer();
+          const calc = _calcularProrrateoDesdeRenglonesServer(c.renglonesJustificacion, data.total, operadoresCache);
+          if (calc.ok) {
+            estadoProrrateo = 'completo';
+            prorrateoFinal = calc.filas.map(function (f) { return { unidad: f.unidad, monto: f.monto, aplicado: false, liqNum: null }; });
+          } else {
+            justificacionSugerida = c.renglonesJustificacion;
+          }
+        }
         await db.collection('cxpFacturas').doc(data.uuid).set({
           proveedorId: ev.proveedor.rfc, proveedorNombre: ev.proveedor.razonSocial || ev.proveedor.rfc,
           serie: data.serie, folio: data.folio, tipoComprobante: data.tipoComprobante,
           metodoPago: data.metodoPago, formaPago: data.formaPago,
           subtotal: data.subtotal, totalImpuestos: data.traslados - data.retenciones, total: data.total,
           fechaEmision: data.fechaEmision, diasCredito: diasCredito, fechaVencimiento: fechaVencimiento,
-          estadoPago: estadoPago, estadoProrrateo: 'pendiente_prorrateo', prorrateo: [],
+          estadoPago: estadoPago, estadoProrrateo: estadoProrrateo, prorrateo: prorrateoFinal,
+          justificacionSugerida: justificacionSugerida,
           xmlURL: null, capturadoPor: 'Buzón automático (compras@mudandote.mx)', fechaAlta: new Date().toISOString()
         });
         try {
@@ -1042,10 +1116,10 @@ async function _subirXMLStorage(path, text) {
 }
 
 exports.revisarBuzonCompras = onRequest(
-  { secrets: [COMPRAS_EMAIL_USER, COMPRAS_EMAIL_PASS], cors: true, region: 'us-central1', timeoutSeconds: 300 },
+  { secrets: [COMPRAS_EMAIL_USER, COMPRAS_EMAIL_PASS, ANTHROPIC_API_KEY], cors: true, region: 'us-central1', timeoutSeconds: 300 },
   async (req, res) => {
     try {
-      const encontrados = await _revisarBuzonComprasCore(COMPRAS_EMAIL_USER.value(), COMPRAS_EMAIL_PASS.value());
+      const encontrados = await _revisarBuzonComprasCore(COMPRAS_EMAIL_USER.value(), COMPRAS_EMAIL_PASS.value(), ANTHROPIC_API_KEY.value());
       res.json({ ok: true, correosNuevos: encontrados.length, facturasRegistradas: encontrados._totalRegistradas || 0, pendientesRevision: encontrados._totalPendientes || 0 });
     } catch (e) {
       console.error('revisarBuzonCompras:', e);
@@ -1055,11 +1129,11 @@ exports.revisarBuzonCompras = onRequest(
 );
 
 exports.revisarBuzonComprasProgramado = onSchedule(
-  { schedule: 'every 8 hours', secrets: [COMPRAS_EMAIL_USER, COMPRAS_EMAIL_PASS], region: 'us-central1', timeoutSeconds: 300 },
+  { schedule: 'every 8 hours', secrets: [COMPRAS_EMAIL_USER, COMPRAS_EMAIL_PASS, ANTHROPIC_API_KEY], region: 'us-central1', timeoutSeconds: 300 },
   async () => {
     const inicio = new Date().toISOString();
     try {
-      const encontrados = await _revisarBuzonComprasCore(COMPRAS_EMAIL_USER.value(), COMPRAS_EMAIL_PASS.value());
+      const encontrados = await _revisarBuzonComprasCore(COMPRAS_EMAIL_USER.value(), COMPRAS_EMAIL_PASS.value(), ANTHROPIC_API_KEY.value());
       await db.collection('estado').doc('buzonComprasEstado').set({
         ultimaEjecucion: inicio, ok: true, correosNuevos: encontrados.length,
         facturasRegistradas: encontrados._totalRegistradas || 0, pendientesRevision: encontrados._totalPendientes || 0, error: null
