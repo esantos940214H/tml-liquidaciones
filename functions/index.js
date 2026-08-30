@@ -61,11 +61,27 @@ const TML_RFC = 'MTM171214PI4';
 function _fmtMonedaServer(n) {
   return '$' + Number(n || 0).toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
+// Como el correo se manda directo por SMTP (sin pasar por ningún cliente de
+// correo tipo Outlook/webmail), IONOS nunca guarda una copia en "Enviados"
+// de compras@ — eso lo hacen los clientes de correo al mandarlo, no el
+// protocolo SMTP por sí solo. Para poder confirmar que sí se mandó (o ver
+// por qué falló) sin depender de revisar logs de Cloud Functions, cada
+// intento queda registrado en la colección real correosEnviadosCxP.
 async function _enviarCorreoCompras(user, pass, to, subject, html) {
   if (!to) return;
-  const nodemailer = require('nodemailer');
-  const transport = nodemailer.createTransport({ host: 'smtp.ionos.mx', port: 587, secure: false, auth: { user: user, pass: pass } });
-  await transport.sendMail({ from: user, to: to, subject: subject, html: html });
+  let ok = true, error = null;
+  try {
+    const nodemailer = require('nodemailer');
+    const transport = nodemailer.createTransport({ host: 'smtp.ionos.mx', port: 587, secure: false, auth: { user: user, pass: pass } });
+    await transport.sendMail({ from: user, to: to, subject: subject, html: html });
+  } catch (e) {
+    ok = false; error = e.message || String(e);
+    throw e;
+  } finally {
+    try {
+      await db.collection('correosEnviadosCxP').add({ to: to, subject: subject, ok: ok, error: error, fechaEnvio: new Date().toISOString() });
+    } catch (e2) { console.error('_enviarCorreoCompras: no se pudo registrar el log del correo:', e2); }
+  }
 }
 // calcularFechaLimiteRepServer(fechaPagoISO): por ley, el complemento de pago
 // (REP) de un CFDI PPD se debe emitir a más tardar el día 8 del mes

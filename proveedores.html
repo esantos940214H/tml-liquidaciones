@@ -170,6 +170,13 @@ tr:hover td{background:#fafafa}
     <div id="provWrap"><div style="text-align:center;padding:30px;color:#aaa">Cargando...</div></div>
   </div>
 
+  <div class="card">
+    <div class="card-title">📧 Correos enviados recientes <span class="info-tip">?<span class="info-tip-box">Como el sistema manda estos correos directo por SMTP (no desde un cliente de correo), nunca se guarda copia en la bandeja de "Enviados" de compras@ — este listado es la forma de confirmar que sí se mandaron (o ver el motivo si falló).</span></span>
+      <button class="btn btn-out btn-sm" onclick="cargarYRenderCorreosEnviados()">🔄 Recargar</button>
+    </div>
+    <div id="correosEnviadosWrap"><div style="text-align:center;padding:20px;color:#aaa">Cargando...</div></div>
+  </div>
+
   </div>
   <!-- ══════ /TAB: PROVEEDORES ══════ -->
 
@@ -430,6 +437,7 @@ function verificarSesionModulo(){
   cargarYRenderProveedores();
   cargarYRenderFacturas();
   cargarCorreosPendientesCompras();
+  cargarYRenderCorreosEnviados();
 }
 
 // ══════════════════════════════════════════════
@@ -544,6 +552,30 @@ async function desbloquearProveedorUI(rfc){
     await window.desbloquearProveedorPorRep(rfc);
     await cargarYRenderProveedores(true);
   }catch(e){alert('⚠️ Error: '+e.message);}
+}
+
+// Log de cada correo que el sistema le manda a un proveedor (factura
+// recibida, solicitud/recordatorio de complemento de pago, bloqueo) — ver
+// _enviarCorreoCompras en functions/index.js. No usa window.FB.getAll()
+// porque esa función ordena por el campo "num" (no aplica aquí).
+async function cargarYRenderCorreosEnviados(){
+  var wrap=$('correosEnviadosWrap');
+  wrap.innerHTML='<div style="text-align:center;padding:20px;color:#aaa">Cargando...</div>';
+  try{
+    var snap=await firebase.firestore().collection('correosEnviadosCxP').orderBy('fechaEnvio','desc').limit(30).get();
+    if(snap.empty){wrap.innerHTML='<p style="font-size:13px;color:#aaa;padding:10px 0">Todavía no se ha mandado ningún correo.</p>';return;}
+    wrap.innerHTML='<div class="tbl-wrap"><table><thead><tr><th>Fecha</th><th>Para</th><th>Asunto</th><th>Resultado</th></tr></thead><tbody>'
+      +snap.docs.map(function(d){
+        var c=d.data();
+        return '<tr><td style="font-size:11px">'+(c.fechaEnvio||'').replace('T',' ').slice(0,19)+'</td>'
+          +'<td style="font-size:11px">'+(c.to||'')+'</td>'
+          +'<td style="font-size:12px">'+(c.subject||'')+'</td>'
+          +'<td>'+(c.ok?'<span class="badge bg-green">✅ Enviado</span>':'<span class="badge bg-red" title="'+(c.error||'')+'">⚠️ Falló</span>')+'</td></tr>';
+      }).join('')+'</tbody></table></div>';
+  }catch(e){
+    console.error('cargarYRenderCorreosEnviados:',e);
+    wrap.innerHTML='<div class="alert alert-warn">⚠️ '+e.message+'</div>';
+  }
 }
 
 // ══════════════════════════════════════════════
