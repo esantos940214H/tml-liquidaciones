@@ -133,13 +133,13 @@ tr:hover td{background:#fafafa}
 <div class="container">
 
   <div class="tabs">
-    <button class="tab active" id="tabBtnProveedores" onclick="cambiarTab('proveedores')">👥 Proveedores</button>
+    <button class="tab active" id="tabBtnPagos" onclick="cambiarTab('pagos')">🧾 Facturas y pagos</button>
     <button class="tab" id="tabBtnFacturas" onclick="cambiarTab('facturas')">📥 Buzón y registro de facturas</button>
-    <button class="tab" id="tabBtnPagos" onclick="cambiarTab('pagos')">🧾 Facturas y pagos</button>
+    <button class="tab" id="tabBtnProveedores" onclick="cambiarTab('proveedores')">👥 Proveedores</button>
   </div>
 
   <!-- ══════ TAB: PROVEEDORES (alta y catálogo) ══════ -->
-  <div class="tabpanel active" id="panelProveedores">
+  <div class="tabpanel" id="panelProveedores">
 
   <div class="card">
     <div class="card-title">➕ <span id="tituloForm">Dar de alta un proveedor</span></div>
@@ -225,7 +225,7 @@ tr:hover td{background:#fafafa}
   <!-- ══════ /TAB: BUZÓN Y REGISTRO DE FACTURAS ══════ -->
 
   <!-- ══════ TAB: FACTURAS Y PAGOS ══════ -->
-  <div class="tabpanel" id="panelPagos">
+  <div class="tabpanel active" id="panelPagos">
 
   <div class="card">
     <div class="card-title">
