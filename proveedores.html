@@ -779,8 +779,8 @@ async function handlePagoArchivo(ev,uuid){
 function renderPagoExtraido(uuid,file,base64,mimeType,c){
   var f=FACTURAS.find(function(x){return x.id===uuid;});
   if(!f)return;
-  var folioIA=(c.folioFactura!=null?String(c.folioFactura).replace(/[^0-9]/g,''):'');
-  var folioFactura=String(f.folio||'').replace(/[^0-9]/g,'');
+  var folioIA=(c.folioFactura!=null?parseInt(String(c.folioFactura).replace(/[^0-9]/g,'')||0):0);
+  var folioFactura=parseInt(String(f.folio||'').replace(/[^0-9]/g,'')||0);
   var coincideFolio=!!(folioIA&&folioFactura&&folioIA===folioFactura);
   var ecoNum=c.economico?parseInt(String(c.economico).replace(/[^0-9]/g,'')||0):0;
   var op=ecoNum?OPERADORES.find(function(o){return o.unidad===ecoNum;}):null;
@@ -1073,7 +1073,7 @@ function renderFacturas(){
         +'<td class="num">'+(f.serie?f.serie+'-':'')+f.folio+'</td>'
         +'<td>'+f.fechaEmision+'</td>'
         +'<td class="num r">'+fmt(f.total)+'</td>'
-        +'<td>'+(vencido&&!bloqueada?'<span class="badge bg-red">⚠ Vencida '+f.fechaVencimiento+'</span>':'<span class="badge bg-green">'+f.fechaVencimiento+'</span>')+'</td>'
+        +'<td>'+(vencido&&!bloqueada&&!pagada?'<span class="badge bg-red">⚠ Vencida '+f.fechaVencimiento+'</span>':'<span class="badge bg-green">'+f.fechaVencimiento+'</span>')+'</td>'
         +'<td>'+(bloqueada?'<span class="badge bg-red">🚫 PUE sin pago</span>':(pagada?'<span class="badge bg-green">✅ Pagada</span>':'<span class="badge bg-green">'+(f.metodoPago||'')+'</span>'))+'</td>'
         +'<td>'+(pagada?'<button class="btn btn-out btn-sm" onclick="window.open(\''+(f.comprobanteURL||'')+'\',\'_blank\')">👁️ Ver</button>':'<button class="btn btn-out btn-sm" onclick="togglePagoForm(\''+f.id+'\')">➕ Pago</button>')+'</td>'
         +'<td>'+(f.estadoProrrateo==='n_aplica'?'<span style="color:#888;font-size:11px">— gasto general</span>':(f.estadoProrrateo==='pendiente_prorrateo'?'<button class="btn btn-red btn-sm" onclick="iniciarProrrateoDeFactura(\''+f.id+'\')">⚖️ Prorratear</button>':(tieneProrrateo?'<button class="btn btn-out btn-sm" onclick="toggleProrrateoDetalle(\''+f.id+'\')">👁️ '+f.prorrateo.length+' unidad(es)</button>':'<span style="color:#c1121f;font-size:11px">sin prorrateo</span>')))+'</td>'
