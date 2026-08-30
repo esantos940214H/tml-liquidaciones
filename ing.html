@@ -196,6 +196,8 @@ tr:hover td{background:#fafafa}
         <div class="field"><label>Tienda</label><input type="text" id="fleteTienda"></div>
         <div class="field"><label>Destino</label><input type="text" id="fleteDestino"></div>
         <div class="field"><label>Fecha</label><input type="date" id="fleteFecha"></div>
+        <div class="field"><label>Económico <span style="font-weight:400;font-size:11px;color:#aaa">(si lo trae el correo)</span></label><input type="text" id="fleteEconomico" placeholder="Ej: 4522"></div>
+        <div class="field"><label>Monto del flete <span style="font-weight:400;font-size:11px;color:#aaa">(opcional)</span></label><input type="number" id="fleteMonto" step="0.01" placeholder="0.00"></div>
       </div>
       <button class="btn btn-out btn-sm" style="margin-top:8px" onclick="registrarFleteManual()">+ Registrar pedido de flete a mano</button>
     </div>
@@ -1669,10 +1671,11 @@ function renderFletesPendientes(){
   var wrap=$('fletesPendientesWrap');
   if(!pendientes.length){wrap.innerHTML='<p style="font-size:12px;color:#aaa;padding:8px 0">Sin pedidos de flete pendientes de factura.</p>';return;}
   pendientes.sort(function(a,b){return(b.fechaAlta||'').localeCompare(a.fechaAlta||'');});
-  wrap.innerHTML='<div class="tbl-wrap"><table><thead><tr><th>Orden de embarque</th><th>Pedido de flete</th><th>Tienda</th><th>Destino</th><th>Fecha</th><th></th></tr></thead><tbody>'
+  wrap.innerHTML='<div class="tbl-wrap"><table><thead><tr><th>Orden de embarque</th><th>Pedido de flete</th><th>Tienda</th><th>Destino</th><th>Fecha</th><th>Económico</th><th class="r">Monto flete</th><th></th></tr></thead><tbody>'
     +pendientes.map(function(f){
       return '<tr><td class="num">'+f.ordenEmbarque+'</td><td class="num">'+(f.pedidoFlete||'—')+'</td>'
         +'<td style="font-size:12px">'+(f.tienda||'')+'</td><td style="font-size:12px">'+(f.destino||'')+'</td><td>'+(f.fecha||'')+'</td>'
+        +'<td class="num">'+(f.economico||'—')+'</td><td class="num r">'+(f.montoFlete!=null?fmt(f.montoFlete):'—')+'</td>'
         +'<td><button class="btn-sm" style="background:none;border:none;cursor:pointer;color:#c1121f" onclick="eliminarFleteUI(\''+f.ordenEmbarque+'\')">✕</button></td></tr>';
     }).join('')+'</tbody></table></div>';
 }
@@ -1682,9 +1685,12 @@ async function registrarFleteManual(){
   try{
     await window.registrarFlete({
       ordenEmbarque:ordenEmbarque,pedidoFlete:$('fletePedido').value,tienda:$('fleteTienda').value,
-      destino:$('fleteDestino').value,fecha:$('fleteFecha').value,capturadoPor:(usuarioSesion()||{}).usuario||''
+      destino:$('fleteDestino').value,fecha:$('fleteFecha').value,
+      economico:$('fleteEconomico').value,montoFlete:$('fleteMonto').value,
+      capturadoPor:(usuarioSesion()||{}).usuario||''
     });
     $('fleteOrdenEmbarque').value='';$('fletePedido').value='';$('fleteTienda').value='';$('fleteDestino').value='';$('fleteFecha').value='';
+    $('fleteEconomico').value='';$('fleteMonto').value='';
     await cargarYRenderFletesPendientes();
   }catch(e){alert('⚠️ '+e.message);}
 }
@@ -1728,6 +1734,7 @@ function cargarRenglonesDeCorreoPedidos(i){
   var r=c.renglones[0];
   $('fletePedido').value=r.pedidoFlete||'';$('fleteTienda').value=r.tienda||'';
   $('fleteDestino').value=r.destino||'';$('fleteFecha').value=r.fecha||'';
+  $('fleteEconomico').value=r.economico||'';$('fleteMonto').value=r.monto!=null?r.monto:'';
   $('fleteOrdenEmbarque').focus();
   window.scrollTo({top:0,behavior:'smooth'});
 }
@@ -1775,6 +1782,17 @@ function matchFleteConAutorizacion(flete,autorizaciones){
     return(idNorm&&vIds.indexOf(idNorm)!==-1)||(pedNorm&&vIds.indexOf(pedNorm)!==-1);
   });
   if(directo)return{autorizacion:directo,metodo:'T.U./orden de embarque'};
+  // Respaldo 1: si el correo del pedido de flete sí trae el económico, se usa
+  // junto con la fecha — el mismo operador no debería tener dos
+  // autorizaciones el mismo día, así que si hay un único candidato con esa
+  // unidad+fecha, se usa directo (más confiable que fecha+destino/tienda,
+  // porque el económico ya identifica al operador sin ambigüedad).
+  if(flete.economico){
+    var porEconomico=autorizaciones.filter(function(v){
+      return v.unidad===parseInt(flete.economico)&&(v.fecha||'')===(flete.fecha||'');
+    });
+    if(porEconomico.length===1)return{autorizacion:porEconomico[0],metodo:'económico+fecha'};
+  }
   var destinoNorm=_normTxtFactManiobras(flete.destino);
   var tiendaNorm=_normTxtFactManiobras(flete.tienda);
   if(!destinoNorm&&!tiendaNorm)return null;
@@ -1793,11 +1811,16 @@ function construirArchivoMaestroFletes(){
   var autorizaciones=ingresosDB.filter(function(v){return v.esAutorizacionCliente;});
   return FLETES.map(function(f){
     var m=matchFleteConAutorizacion(f,autorizaciones);
+    // El económico/operador viene, en orden de confianza: de la autorización
+    // ya emparejada; si no hubo match pero el correo del pedido de flete SÍ
+    // traía el económico, se usa ese (sin operador confirmado todavía).
+    var unidad=m?m.autorizacion.unidad:(f.economico||null);
     return{
       fecha:f.fecha,destino:f.destino,tienda:f.tienda,
       ordenEmbarque:f.ordenEmbarque,pedidoFlete:f.pedidoFlete,
-      operador:m?(nombreOp(m.autorizacion.unidad)||('Unidad '+m.autorizacion.unidad)):null,
-      unidad:m?m.autorizacion.unidad:null,
+      operador:unidad?(nombreOp(unidad)||('Unidad '+unidad)):null,
+      unidad:unidad,operadorConfirmado:!!m,
+      montoFlete:f.montoFlete,
       montoAutorizadoManiobra:m?m.autorizacion.subtotal:null,
       metodoMatch:m?m.metodo:null,
       estadoFactura:f.estado,facturaFolio:f.facturaFolio,montoFactura:f.montoFactura
@@ -1809,17 +1832,18 @@ function renderArchivoMaestroFletes(){
   var filas=construirArchivoMaestroFletes();
   if(!filas.length){wrap.innerHTML='<p style="font-size:13px;color:#aaa;padding:10px 0">Todavía no hay pedidos de flete registrados.</p>';return;}
   filas.sort(function(a,b){return(b.fecha||'').localeCompare(a.fecha||'');});
-  var sinMatch=filas.filter(function(f){return!f.operador;}).length;
+  var sinMatch=filas.filter(function(f){return!f.operadorConfirmado;}).length;
   wrap.innerHTML=(sinMatch?'<div class="alert alert-warn">⚠️ '+sinMatch+' pedido(s) de flete no se pudieron emparejar con ninguna autorización de maniobra — revísalos a mano (resaltados abajo).</div>':'<div class="alert alert-ok">✅ Todos los pedidos de flete se emparejaron con su autorización.</div>')
-    +'<div class="tbl-wrap"><table><thead><tr><th>Fecha</th><th>Destino</th><th>Operador</th><th>Orden de embarque</th><th>Pedido de flete</th><th class="r">Autorizado maniobra</th><th>Cómo emparejó</th><th>Factura</th></tr></thead><tbody>'
+    +'<div class="tbl-wrap"><table><thead><tr><th>Fecha</th><th>Destino</th><th>Operador</th><th>Orden de embarque</th><th>Pedido de flete</th><th class="r">Monto flete</th><th class="r">Autorizado maniobra</th><th>Cómo emparejó</th><th>Factura</th></tr></thead><tbody>'
     +filas.map(function(f){
-      var sinMatch=!f.operador;
+      var sinMatch=!f.operadorConfirmado;
       return '<tr'+(sinMatch?' style="background:#fffbeb"':'')+'>'
         +'<td>'+f.fecha+'</td>'
         +'<td style="font-size:12px">'+(f.destino||f.tienda||'')+'</td>'
-        +'<td style="font-size:12px">'+(f.operador||'<span style="color:#c1121f">⚠️ Sin emparejar</span>')+'</td>'
+        +'<td style="font-size:12px">'+(f.operador||'<span style="color:#c1121f">⚠️ Sin emparejar</span>')+(f.operador&&!f.operadorConfirmado?' <span style="color:#856404" title="Viene del económico del correo, pero no se confirmó contra ninguna autorización de maniobra">(sin confirmar)</span>':'')+'</td>'
         +'<td class="num">'+f.ordenEmbarque+'</td>'
         +'<td class="num">'+(f.pedidoFlete||'—')+'</td>'
+        +'<td class="num r">'+(f.montoFlete!=null?fmt(f.montoFlete):'—')+'</td>'
         +'<td class="num r">'+(f.montoAutorizadoManiobra!=null?fmt(f.montoAutorizadoManiobra):'—')+'</td>'
         +'<td style="font-size:11px;color:#888">'+(f.metodoMatch||'')+'</td>'
         +'<td>'+(f.estadoFactura==='facturado'?'<span class="badge bg-green">✅ '+(f.facturaFolio||'')+'</span>':'<span class="badge bg-yellow">⏳ Pendiente</span>')+'</td>'
