@@ -155,6 +155,15 @@ tr:hover td{background:#fafafa}
     <div id="provWrap"><div style="text-align:center;padding:30px;color:#aaa">Cargando...</div></div>
   </div>
 
+  <!-- BUZÓN AUTOMÁTICO DE COMPRAS -->
+  <div class="card">
+    <div class="card-title">📥 Buzón automático (compras@mudandote.mx) <span class="info-tip">?<span class="info-tip-box">El sistema revisa este buzón cada 8 horas — si el proveedor ya está dado de alta y activo, y el CFDI pasa los candados (RFC receptor, aritmética, UUID único), la factura se registra sola (sin prorratear todavía). Si algo no cuadra, se deja aquí para que la revises y decidas.</span></span>
+      <button class="btn btn-out btn-sm" onclick="revisarBuzonComprasAhora()" id="btnRevisarBuzonCompras">🔄 Revisar buzón ahora</button>
+    </div>
+    <div id="buzonComprasInfo" style="margin-top:8px"></div>
+    <div id="buzonComprasWrap"></div>
+  </div>
+
   <!-- FACTURAS DE PROVEEDOR -->
   <div class="card">
     <div class="card-title">📄 Registrar factura de proveedor (CFDI)</div>
@@ -376,6 +385,7 @@ function verificarSesionModulo(){
   mostrarSesionEnHeader();
   cargarYRenderProveedores();
   cargarYRenderFacturas();
+  cargarCorreosPendientesCompras();
 }
 
 // ══════════════════════════════════════════════
@@ -566,20 +576,26 @@ async function handleFacXmlArchivo(ev){
   $('facCandadosWrap').innerHTML='<div class="alert alert-info">⏳ Leyendo el XML...</div>';
   try{
     var text=await file.text();
-    _facXmlTexto=text;
-    var r=parseCfdiProveedor(text);
-    if(!r.ok){
-      $('facCandadosWrap').innerHTML='<div class="alert alert-err">⚠️ '+r.error+'</div>';
-      return;
-    }
-    _facParsed=r.data;
-    _facProveedorMatch=window.buscarProveedorPorRfc(PROVEEDORES,r.data.rfcEmisor);
-    if(_facProveedorMatch&&!_facProveedorMatch.activo)_facProveedorMatch=null;
-    renderFacCandados();
+    procesarTextoXmlFactura(text);
   }catch(e){
     console.error('handleFacXmlArchivo:',e);
     $('facCandadosWrap').innerHTML='<div class="alert alert-err">⚠️ No se pudo leer el archivo: '+e.message+'</div>';
   }
+}
+// Compartido entre subir el XML a mano (handleFacXmlArchivo) y cargar uno
+// desde el buzón automático de compras (cargarFacturaDeCorreoCompras) — la
+// MISMA revisión de candados aplica sin importar de dónde vino el XML.
+function procesarTextoXmlFactura(text){
+  _facXmlTexto=text;
+  var r=parseCfdiProveedor(text);
+  if(!r.ok){
+    $('facCandadosWrap').innerHTML='<div class="alert alert-err">⚠️ '+r.error+'</div>';
+    return;
+  }
+  _facParsed=r.data;
+  _facProveedorMatch=window.buscarProveedorPorRfc(PROVEEDORES,r.data.rfcEmisor);
+  if(_facProveedorMatch&&!_facProveedorMatch.activo)_facProveedorMatch=null;
+  renderFacCandados();
 }
 
 function renderFacCandados(){
@@ -635,6 +651,74 @@ function mostrarFacFormulario(){
 function toggleFacSinUnidad(){
   var sinUnidad=$('facSinUnidad').checked;
   $('facProrrateoBloque').style.display=sinUnidad?'none':'block';
+}
+
+// ══════════════════════════════════════════════
+// BUZÓN AUTOMÁTICO DE COMPRAS (compras@mudandote.mx) — ver
+// functions/index.js → revisarBuzonCompras/revisarBuzonComprasProgramado.
+// Lo que llega aquí ya intentó registrarse solo y NO se pudo (proveedor no
+// encontrado/inactivo, RFC receptor distinto, aritmética no cuadra,
+// duplicado) — se revisa igual que subir el XML a mano, con los mismos
+// candados.
+// ══════════════════════════════════════════════
+const FUNCTION_URL_REVISAR_BUZON_COMPRAS='https://us-central1-tml-liquidaciones.cloudfunctions.net/revisarBuzonCompras';
+let _correosCompras=[];
+
+async function cargarCorreosPendientesCompras(){
+  var data=await window.FB.get('estado','correosComprasPendientes');
+  _correosCompras=(data&&data.data)?JSON.parse(data.data):[];
+  if(!Array.isArray(_correosCompras))_correosCompras=[];
+  renderBuzonCompras();
+}
+function renderBuzonCompras(){
+  var wrap=$('buzonComprasWrap');
+  if(!_correosCompras.length){wrap.innerHTML='<p style="font-size:12px;color:#aaa;padding:8px 0">Sin correos pendientes de revisar.</p>';return;}
+  wrap.innerHTML='<div class="tbl-wrap"><table><thead><tr><th>Asunto</th><th>De</th><th>Fecha</th><th>Motivo</th><th></th></tr></thead><tbody>'
+    +_correosCompras.map(function(c,i){
+      var motivo=c.error?('⚠️ '+c.error):(c.candados||[]).filter(function(x){return!x.ok;}).map(function(x){return x.label;}).join(', ');
+      return '<tr'+(c.error?' style="background:#fffbeb"':'')+'>'
+        +'<td style="font-size:12px">'+(c.asunto||'')+'</td>'
+        +'<td style="font-size:11px;color:#888">'+(c.de||'')+'</td>'
+        +'<td style="font-size:12px">'+(c.fecha||'')+'</td>'
+        +'<td style="font-size:11px;color:#9b1c1c">'+motivo+'</td>'
+        +'<td><button class="btn btn-red btn-sm" onclick="cargarFacturaDeCorreoCompras('+i+')" '+(c.error||!c.cfdi?'disabled':'')+'>Cargar arriba</button> '
+        +'<button class="btn btn-out btn-sm" onclick="descartarCorreoCompras('+i+')">Descartar</button></td>'
+        +'</tr>';
+    }).join('')+'</tbody></table></div>';
+}
+async function _guardarCorreosCompras(){
+  await window.FB.set('estado','correosComprasPendientes',{data:JSON.stringify(_correosCompras)});
+}
+function cargarFacturaDeCorreoCompras(i){
+  var c=_correosCompras[i];
+  if(!c||!c.xmlTexto)return;
+  window.scrollTo({top:0,behavior:'smooth'});
+  procesarTextoXmlFactura(c.xmlTexto);
+  _correosCompras.splice(i,1);
+  _guardarCorreosCompras();
+  renderBuzonCompras();
+}
+function descartarCorreoCompras(i){
+  if(!confirm('¿Descartar este correo sin registrar nada?'))return;
+  _correosCompras.splice(i,1);
+  _guardarCorreosCompras();
+  renderBuzonCompras();
+}
+async function revisarBuzonComprasAhora(){
+  $('btnRevisarBuzonCompras').disabled=true;
+  $('buzonComprasInfo').innerHTML='<div class="alert alert-info">⏳ Revisando el buzón...</div>';
+  try{
+    var r=await fetch(FUNCTION_URL_REVISAR_BUZON_COMPRAS,{method:'POST'});
+    var data=await r.json();
+    if(data.error)throw new Error(data.error);
+    $('buzonComprasInfo').innerHTML='<div class="alert alert-ok">✅ '+data.correosNuevos+' correo(s) nuevo(s)'+(data.facturasRegistradas?' — '+data.facturasRegistradas+' factura(s) se registraron solas':'')+(data.pendientesRevision?' — '+data.pendientesRevision+' quedaron pendientes de revisar':'')+'.</div>';
+    await cargarCorreosPendientesCompras();
+    await cargarYRenderFacturas(true);
+  }catch(e){
+    $('buzonComprasInfo').innerHTML='<div class="alert alert-warn">⚠️ '+e.message+'</div>';
+  }finally{
+    $('btnRevisarBuzonCompras').disabled=false;
+  }
 }
 
 // ══════════════════════════════════════════════
@@ -755,10 +839,11 @@ function cancelarCapturaFactura(){
   $('facFormWrap').style.display='none';
 }
 
+let _facModoProrratearExistente=false;
 async function guardarFactura(){
   var data=_facParsed;
   if(!data)return;
-  if(_facCandados.some(function(c){return c.duro&&!c.ok;})){alert('Hay candados sin pasar arriba — revísalos antes de guardar.');return;}
+  if(!_facModoProrratearExistente&&_facCandados.some(function(c){return c.duro&&!c.ok;})){alert('Hay candados sin pasar arriba — revísalos antes de guardar.');return;}
   if(!_facProveedorMatch){alert('Falta el proveedor.');return;}
   var sinUnidad=$('facSinUnidad').checked;
   if(!sinUnidad){
@@ -768,6 +853,17 @@ async function guardarFactura(){
   }
   $('btnGuardarFactura').disabled=true;
   try{
+    var prorrateoGuardar=sinUnidad?[]:_facProrrateo.map(function(r){return{unidad:parseInt(r.unidad),monto:parseFloat(r.monto)||0,aplicado:false,liqNum:null};});
+    // Modo "prorratear una factura que el buzón ya registró sola" — solo se
+    // actualiza el prorrateo, la factura en sí ya existe (no se vuelve a
+    // validar candados ni a subir XML).
+    if(_facModoProrratearExistente){
+      await window.FB.set('cxpFacturas',data.uuid,{estadoProrrateo:sinUnidad?'n_aplica':'completo',prorrateo:prorrateoGuardar},{merge:true});
+      alert('✅ Prorrateo guardado para la factura '+(data.serie?data.serie+'-':'')+data.folio+'.');
+      cancelarCapturaFactura();
+      await cargarYRenderFacturas(true);
+      return;
+    }
     var yaExiste=await window.FB.get('cxpFacturas',data.uuid);
     if(yaExiste){alert('⚠️ Esta factura (UUID '+data.uuid+') ya está registrada.');$('btnGuardarFactura').disabled=false;return;}
     var diasCredito=_facProveedorMatch.diasCredito||15;
@@ -784,7 +880,7 @@ async function guardarFactura(){
       fechaEmision:data.fechaEmision,diasCredito:diasCredito,fechaVencimiento:fechaVencimiento,
       estadoPago:estadoPago,
       estadoProrrateo:sinUnidad?'n_aplica':'completo',
-      prorrateo:sinUnidad?[]:_facProrrateo.map(function(r){return{unidad:parseInt(r.unidad),monto:parseFloat(r.monto)||0,aplicado:false,liqNum:null};}),
+      prorrateo:prorrateoGuardar,
       xmlURL:null,capturadoPor:u?(u.nombre||u.usuario):'',fechaAlta:new Date().toISOString()
     });
     TMLComprobantes.subirXML('comprobantes/proveedores/'+data.uuid+'.xml',_facXmlTexto).then(function(url){
@@ -799,6 +895,29 @@ async function guardarFactura(){
   }finally{
     $('btnGuardarFactura').disabled=false;
   }
+}
+// Para las facturas que el buzón automático registró solas (sin
+// prorratear) — abre el mismo formulario de prorrateo, pero editando la
+// factura ya existente en vez de crear una nueva.
+function iniciarProrrateoDeFactura(uuid){
+  var f=FACTURAS.find(function(x){return x.id===uuid;});
+  if(!f)return;
+  _facModoProrratearExistente=true;
+  _facParsed={uuid:f.id,serie:f.serie,folio:f.folio,fechaEmision:f.fechaEmision,total:f.total};
+  _facProveedorMatch={rfc:f.proveedorId,razonSocial:f.proveedorNombre,diasCredito:f.diasCredito};
+  $('facCandadosWrap').innerHTML='<div class="alert alert-ok">✅ Esta factura ya está registrada (llegó por el buzón automático) — solo falta prorratearla.</div>';
+  $('facProveedorLabel').value=f.proveedorNombre+' ('+f.proveedorId+')';
+  $('facFolio').value=(f.serie?f.serie+'-':'')+f.folio;
+  $('facFecha').value=f.fechaEmision;
+  $('facTotal').value=fmt(f.total);
+  $('facSinUnidad').checked=false;
+  $('facProrrateoBloque').style.display='block';
+  _facProrrateo=[{unidad:'',monto:f.total.toFixed(2)}];
+  renderFacProrrateo();
+  $('facInfo').innerHTML='';
+  $('facJustifArchivo').value='';$('facJustifTexto').value='';$('facJustifInfo').innerHTML='';
+  $('facFormWrap').style.display='block';
+  window.scrollTo({top:0,behavior:'smooth'});
 }
 
 async function eliminarFacturaUI(uuid){
@@ -842,7 +961,7 @@ function renderFacturas(){
         +'<td class="num r">'+fmt(f.total)+'</td>'
         +'<td>'+(vencido&&!bloqueada?'<span class="badge bg-red">⚠ Vencida '+f.fechaVencimiento+'</span>':'<span class="badge bg-green">'+f.fechaVencimiento+'</span>')+'</td>'
         +'<td>'+(bloqueada?'<span class="badge bg-red">🚫 PUE sin pago</span>':'<span class="badge bg-green">'+(f.metodoPago||'')+'</span>')+'</td>'
-        +'<td>'+(f.estadoProrrateo==='n_aplica'?'<span style="color:#888;font-size:11px">— gasto general</span>':(tieneProrrateo?'<button class="btn btn-out btn-sm" onclick="toggleProrrateoDetalle(\''+f.id+'\')">👁️ '+f.prorrateo.length+' unidad(es)</button>':'<span style="color:#c1121f;font-size:11px">sin prorrateo</span>'))+'</td>'
+        +'<td>'+(f.estadoProrrateo==='n_aplica'?'<span style="color:#888;font-size:11px">— gasto general</span>':(f.estadoProrrateo==='pendiente_prorrateo'?'<button class="btn btn-red btn-sm" onclick="iniciarProrrateoDeFactura(\''+f.id+'\')">⚖️ Prorratear</button>':(tieneProrrateo?'<button class="btn btn-out btn-sm" onclick="toggleProrrateoDetalle(\''+f.id+'\')">👁️ '+f.prorrateo.length+' unidad(es)</button>':'<span style="color:#c1121f;font-size:11px">sin prorrateo</span>')))+'</td>'
         +'<td><button class="btn btn-out btn-sm" onclick="eliminarFacturaUI(\''+f.id+'\')">🗑️ Eliminar</button></td>'
         +'</tr>';
       if(tieneProrrateo){
