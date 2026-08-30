@@ -811,15 +811,21 @@ exports.extraerManiobras = onRequest(
 const PROMPT_JUSTIFICACION_CXP =
   'Eres un asistente que extrae datos de un documento de JUSTIFICACIÓN que un proveedor envía junto con su factura, ' +
   'detallando los servicios que prestó por unidad/camión (ej. un reporte de monitoreo GPS, un desglose de viajes, un ' +
-  'listado de servicios por unidad/económico). El documento puede venir como tabla o como texto libre, y normalmente ' +
-  'trae, para cada servicio/viaje/registro: el número económico o identificador de la unidad, una fecha, y a veces una ' +
-  'descripción breve. Extrae UN renglón por cada servicio/viaje/registro que encuentres, con estas llaves exactas: ' +
-  '{"unidad":"el número económico o identificador de la unidad tal cual aparece en ese renglón, o null si no se puede ' +
-  'determinar","fecha":"YYYY-MM-DD si se puede convertir desde el formato que traiga, o null","descripcion":"una ' +
-  'descripción breve de ese renglón (tipo de servicio, ruta, concepto), o null"}. ' +
+  'listado de servicios por unidad/económico). El documento puede venir como tabla o como texto libre. ' +
+  'IMPORTANTE — revisa primero si el documento trae, en algún lado (normalmente al principio, al final, o en una página ' +
+  'aparte), un RESUMEN o CONCENTRADO ya agrupado por unidad/económico (ej. una tabla con columnas como "Unidad" y ' +
+  '"Cantidad de viajes/servicios", o un renglón tipo "Unidad 4522: 50 viajes"). Ese resumen es la fuente de verdad — si ' +
+  'existe, úsalo en vez de contar tú mismo las filas de un listado detallado línea por línea (reportes de monitoreo GPS ' +
+  'largos con muchas filas por unidad son fáciles de contar mal a mano; el resumen ya viene calculado por el proveedor y ' +
+  'es más confiable). Si el resumen indica, por ejemplo, "Unidad 4522: 50 viajes", regresa 50 renglones con ' +
+  '"unidad":"4522" (uno por cada viaje que indique el resumen), no solo uno. Si el documento NO trae ningún resumen así ' +
+  'y solo viene el listado detallado, entonces sí cuenta cada línea reconocible del listado como un renglón (como antes). ' +
+  'En cualquiera de los dos casos, cada renglón lleva estas llaves exactas: ' +
+  '{"unidad":"el número económico o identificador de la unidad tal cual aparece, o null si no se puede determinar",' +
+  '"fecha":"YYYY-MM-DD si se puede convertir desde el formato que traiga, o null","descripcion":"una descripción breve ' +
+  '(tipo de servicio, ruta, concepto), o null"}. ' +
   'No inventes datos que no estén en el documento. Responde SOLO un arreglo JSON (sin texto explicativo, sin ' +
-  'backticks, sin markdown) con un objeto por cada renglón que encuentres. Si no hay ningún renglón reconocible, ' +
-  'responde [].';
+  'backticks, sin markdown) con un objeto por cada renglón. Si no hay ningún renglón reconocible, responde [].';
 
 exports.extraerJustificacionCxP = onRequest(
   { secrets: [ANTHROPIC_API_KEY], cors: true, region: 'us-central1' },
