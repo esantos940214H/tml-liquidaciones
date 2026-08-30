@@ -1028,11 +1028,20 @@ function iniciarProrrateoDeFactura(uuid){
   $('facTotal').value=fmt(f.total);
   $('facSinUnidad').checked=false;
   $('facProrrateoBloque').style.display='block';
-  _facProrrateo=[{unidad:'',monto:f.total.toFixed(2)}];
-  renderFacProrrateo();
   $('facInfo').innerHTML='';
   $('facJustifArchivo').value='';$('facJustifTexto').value='';$('facJustifInfo').innerHTML='';
   $('facFormWrap').style.display='block';
+  // Si el buzón automático ya encontró un PDF de desglose en el correo pero
+  // no cuadró exacto (o no reconoció alguna unidad) para prorratear solo, la
+  // sugerencia calculada queda guardada — se precarga aquí para no obligar a
+  // volver a subir el mismo PDF, pero de todos modos hay que revisarla/
+  // confirmarla antes de guardar.
+  if(f.justificacionSugerida&&f.justificacionSugerida.length){
+    aplicarSugerenciaProrrateo(f.justificacionSugerida);
+  }else{
+    _facProrrateo=[{unidad:'',monto:f.total.toFixed(2)}];
+    renderFacProrrateo();
+  }
   window.scrollTo({top:0,behavior:'smooth'});
 }
 
