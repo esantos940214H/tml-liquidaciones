@@ -63,7 +63,12 @@
             banco: p.banco || '', clabe: p.clabe || '', cuenta: p.cuenta || '',
             moneda: p.moneda || 'MXN', activo: p.activo !== false,
             fechaAlta: p.fechaAlta || '', fechaBaja: p.fechaBaja || null,
-            notas: p.notas || ''
+            notas: p.notas || '', email: p.email || '',
+            // bloqueadoPorRep: true si no mandó su complemento de pago (REP) a
+            // tiempo (ver revisarComplementosPagoProgramado en functions) — el
+            // Buzón de Compras deja sus facturas nuevas pendientes de revisión
+            // manual en vez de registrarlas solas hasta que se resuelva.
+            bloqueadoPorRep: !!p.bloqueadoPorRep
           });
         });
       } catch (e) { console.error('shared/proveedores.js: no se pudo cargar proveedores:', e); }
@@ -94,6 +99,7 @@
     var campos = {};
     if (datos.razonSocial != null) campos.razonSocial = datos.razonSocial;
     if (datos.nombreComercial != null) campos.nombreComercial = datos.nombreComercial;
+    if (datos.email != null) campos.email = datos.email;
     if (datos.regimenFiscal != null) campos.regimenFiscal = datos.regimenFiscal;
     if (datos.diasCredito != null) campos.diasCredito = parseInt(datos.diasCredito) || 15;
     if (datos.banco != null) campos.banco = datos.banco;
@@ -126,6 +132,18 @@
     if (!_db) return Promise.reject(new Error('Sin conexión a Firestore.'));
     return _db.collection('proveedores').doc(normRfc(rfc)).set(
       { activo: true, fechaBaja: null }, { merge: true }
+    );
+  };
+
+  // desbloquearProveedorPorRep(rfc): quita a mano el bloqueo por complemento
+  // de pago pendiente (ver revisarComplementosPagoProgramado en functions) —
+  // para cuando el proveedor ya mandó su REP por otro medio (no por correo)
+  // y no hay que esperar a que el sistema lo detecte solo.
+  window.desbloquearProveedorPorRep = function (rfc) {
+    var _db = db();
+    if (!_db) return Promise.reject(new Error('Sin conexión a Firestore.'));
+    return _db.collection('proveedores').doc(normRfc(rfc)).set(
+      { bloqueadoPorRep: false }, { merge: true }
     );
   };
 })();

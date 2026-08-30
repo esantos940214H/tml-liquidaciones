@@ -50,6 +50,35 @@ const COMPRAS_EMAIL_PASS = defineSecret('COMPRAS_EMAIL_PASS');
 // (agosto 2026) — el receptor del CFDI de proveedor debe ser este RFC.
 const TML_RFC = 'MTM171214PI4';
 
+// ══════════════════════════════════════════════════════════════════════════
+// Envío de correos a proveedores (Cuentas por Pagar) — se manda desde la
+// misma cuenta/contraseña que ya se usa para LEER el buzón de compras por
+// IMAP (COMPRAS_EMAIL_USER/PASS), vía SMTP de IONOS. No hace falta ningún
+// secret nuevo para esto.
+// ══════════════════════════════════════════════════════════════════════════
+function _fmtMonedaServer(n) {
+  return '$' + Number(n || 0).toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+async function _enviarCorreoCompras(user, pass, to, subject, html) {
+  if (!to) return;
+  const nodemailer = require('nodemailer');
+  const transport = nodemailer.createTransport({ host: 'smtp.ionos.mx', port: 587, secure: false, auth: { user: user, pass: pass } });
+  await transport.sendMail({ from: user, to: to, subject: subject, html: html });
+}
+// calcularFechaLimiteRepServer(fechaPagoISO): por ley, el complemento de pago
+// (REP) de un CFDI PPD se debe emitir a más tardar el día 8 del mes
+// SIGUIENTE al del pago — sin importar el día exacto dentro del mes en que
+// se pagó (ej. pagado el 30 de agosto o el 1 de septiembre, si ambos caen en
+// agosto/septiembre respectivamente, el límite cae en el mes siguiente a
+// cada uno).
+function _calcularFechaLimiteRepServer(fechaPagoISO) {
+  const d = new Date((fechaPagoISO || new Date().toISOString().slice(0, 10)) + 'T12:00:00');
+  let mes = d.getMonth() + 2; // getMonth() es 0-indexado; +2 = mes siguiente, 1-indexado
+  let anio = d.getFullYear();
+  if (mes > 12) { mes -= 12; anio++; }
+  return anio + '-' + String(mes).padStart(2, '0') + '-08';
+}
+
 const PROMPT_INSTRUCCIONES =
   'Eres un asistente que extrae datos de correos de autorización de maniobras de una empresa de mudanzas (cliente fiscal: ' +
   'GRUPO COMERCIAL DSW, área operativa "Centros de Distribución"). El correo trae una o varias TABLAS (a veces varias tablas ' +
@@ -930,6 +959,11 @@ async function _evaluarCandadosCxPServer(data) {
   const proveedor = provSnap.exists ? Object.assign({ rfc: data.rfcEmisor }, provSnap.data()) : null;
   const proveedorOk = !!proveedor && proveedor.activo !== false;
   candados.push({ label: 'Proveedor registrado y activo', ok: proveedorOk });
+  // Si el proveedor no mandó a tiempo el complemento de pago (REP) de una
+  // factura ya pagada, se bloquea (ver revisarComplementosPagoProgramado) —
+  // sus facturas nuevas quedan pendientes de revisión manual en vez de
+  // registrarse solas hasta que se resuelva.
+  candados.push({ label: 'Proveedor no bloqueado por complemento de pago pendiente', ok: !(proveedor && proveedor.bloqueadoPorRep) });
   return { candados: candados, proveedor: proveedor, todosOk: candados.every(function (c) { return c.ok; }) };
 }
 
@@ -938,6 +972,35 @@ async function _evaluarCandadosCxPServer(data) {
 // que justifica el total cobrado — se lee con la misma IA/prompt que ya usa
 // extraerJustificacionCxP (ver PROMPT_JUSTIFICACION_CXP) para poder armar la
 // sugerencia de prorrateo sin que Esa tenga que volver a subir el PDF a mano.
+// parseComplementoPagoServer(xmlText): el proveedor contesta al correo de
+// "solicitud de complemento de pago" (ver enviarSolicitudComplementoPago)
+// con el XML del REP (Pagos20) — aquí solo se extrae el UUID del propio
+// complemento y, de cada <Pago><DoctoRelacionado>, el UUID de la factura que
+// relaciona y el monto que le aplica. El emparejamiento real con la factura
+// en cxpFacturas se hace en _revisarBuzonComprasCore.
+function _parseComplementoPagoServer(xmlText) {
+  const { XMLParser } = require('fast-xml-parser');
+  const parser = new XMLParser({ ignoreAttributes: false, attributeNamePrefix: '@_', removeNSPrefix: true });
+  let obj;
+  try { obj = parser.parse(xmlText); } catch (e) { return { ok: false, error: 'No se pudo leer el XML: ' + e.message }; }
+  const comp = obj && obj.Comprobante;
+  if (!comp) return { ok: false, error: 'No es un CFDI válido (no se encontró el nodo Comprobante).' };
+  const tfd = comp.Complemento && comp.Complemento.TimbreFiscalDigital;
+  const pagosNodo = comp.Complemento && comp.Complemento.Pagos;
+  if (!tfd || !pagosNodo) return { ok: false, error: 'El XML no trae Timbre Fiscal Digital o el complemento de Pagos (Pagos20) — ¿seguro que es un complemento de pago (REP)?' };
+  let pagos = pagosNodo.Pago || [];
+  if (!Array.isArray(pagos)) pagos = [pagos];
+  const doctos = [];
+  pagos.forEach(function (pago) {
+    let rel = pago.DoctoRelacionado || [];
+    if (!Array.isArray(rel)) rel = [rel];
+    rel.forEach(function (d) {
+      doctos.push({ uuid: (d['@_IdDocumento'] || '').toUpperCase(), impPagado: parseFloat(d['@_ImpPagado'] || 0) });
+    });
+  });
+  return { ok: true, data: { uuid: (tfd['@_UUID'] || '').toUpperCase(), doctos: doctos } };
+}
+
 async function _procesarMensajeCompras(rawBuffer, apiKey) {
   const { simpleParser } = require('mailparser');
   const parsed = await simpleParser(rawBuffer);
@@ -951,6 +1014,20 @@ async function _procesarMensajeCompras(rawBuffer, apiKey) {
   };
   if (!xmlAdjunto) return Object.assign({ error: 'El correo no trae ningún XML adjunto.' }, base);
   const xmlText = xmlAdjunto.content.toString('utf8');
+  // El proveedor puede mandar una factura nueva (Tipo I/E) o la respuesta con
+  // el complemento de pago de una factura ya pagada (Tipo P) — se revisa el
+  // TipoDeComprobante del propio XML antes de decidir qué camino seguir.
+  let tipoDetectado = '';
+  try {
+    const { XMLParser } = require('fast-xml-parser');
+    const objTipo = new XMLParser({ ignoreAttributes: false, attributeNamePrefix: '@_', removeNSPrefix: true }).parse(xmlText);
+    tipoDetectado = (objTipo && objTipo.Comprobante && objTipo.Comprobante['@_TipoDeComprobante']) || '';
+  } catch (e) { /* se deja vacío — el parseo específico de abajo dará su propio error si el XML está mal formado */ }
+  if (tipoDetectado === 'P') {
+    const rp = _parseComplementoPagoServer(xmlText);
+    if (!rp.ok) return Object.assign({ error: rp.error }, base);
+    return Object.assign({ error: null, complementoPago: rp.data, xmlTexto: xmlText }, base);
+  }
   const r = _parseCfdiProveedorServer(xmlText);
   if (!r.ok) return Object.assign({ error: r.error }, base);
   // Si el correo trae varios PDF (ej. la representación impresa de la
@@ -1058,9 +1135,22 @@ function _revisarBuzonComprasCore(user, pass, apiKey) {
   }).then(async function (encontrados) {
     const conAlgoPendiente = [];
     let totalRegistradas = 0;
+    let totalReps = 0;
     let operadoresCache = null;
     for (const c of encontrados) {
-      if (c.error || !c.cfdi) { conAlgoPendiente.push(c); continue; }
+      if (c.error) { conAlgoPendiente.push(c); continue; }
+      if (c.complementoPago) {
+        try {
+          const resultado = await _procesarComplementoPagoEncontrado(c);
+          if (resultado.ok) totalReps++;
+          else conAlgoPendiente.push(Object.assign({}, c, { errorRelacion: resultado.error }));
+        } catch (e) {
+          console.error('revisarBuzonCompras: error relacionando complemento de pago:', e);
+          conAlgoPendiente.push(c);
+        }
+        continue;
+      }
+      if (!c.cfdi) { conAlgoPendiente.push(c); continue; }
       try {
         const ev = await _evaluarCandadosCxPServer(c.cfdi);
         if (!ev.todosOk) {
@@ -1103,6 +1193,17 @@ function _revisarBuzonComprasCore(user, pass, apiKey) {
           const url = await _subirXMLStorage('comprobantes/proveedores/' + data.uuid + '.xml', c.xmlTexto);
           await db.collection('cxpFacturas').doc(data.uuid).set({ xmlURL: url }, { merge: true });
         } catch (e) { console.error('revisarBuzonCompras: no se pudo subir el XML a Storage:', e); }
+        if (ev.proveedor.email) {
+          try {
+            await _enviarCorreoCompras(user, pass, ev.proveedor.email,
+              'Factura ' + (data.serie ? data.serie + '-' : '') + data.folio + ' recibida',
+              '<p>Hola ' + (ev.proveedor.razonSocial || '') + ',</p>' +
+              '<p>Recibimos y registramos tu factura ' + (data.serie ? data.serie + '-' : '') + data.folio + ' por ' + _fmtMonedaServer(data.total) + '.</p>' +
+              '<p>Fecha estimada de pago: <strong>' + fechaVencimiento + '</strong>' + (diasCredito === 0 ? ' (mismo día, sin días de crédito).' : '.') + '</p>' +
+              '<p>Gracias.</p>'
+            );
+          } catch (e) { console.error('revisarBuzonCompras: no se pudo enviar el correo de factura recibida:', e); }
+        }
         totalRegistradas++;
       } catch (e) {
         console.error('revisarBuzonCompras: error evaluando/registrando factura:', e);
@@ -1117,8 +1218,42 @@ function _revisarBuzonComprasCore(user, pass, apiKey) {
     }
     encontrados._totalRegistradas = totalRegistradas;
     encontrados._totalPendientes = conAlgoPendiente.length;
+    encontrados._totalReps = totalReps;
     return encontrados;
   });
+}
+
+// Relaciona un complemento de pago (REP) encontrado en el buzón con la(s)
+// factura(s) que trae en sus DoctoRelacionado — si la factura existe y
+// todavía no tenía REP, se marca repRecibido y se sube el XML a Storage. Si
+// el proveedor estaba bloqueado por REP pendiente y ya no le queda ninguna
+// otra factura pagada sin complemento, se desbloquea solo.
+async function _procesarComplementoPagoEncontrado(c) {
+  const doctos = (c.complementoPago && c.complementoPago.doctos) || [];
+  if (!doctos.length) return { ok: false, error: 'El complemento no trae ningún DoctoRelacionado.' };
+  let algunoRelacionado = false;
+  for (const docto of doctos) {
+    const facSnap = await db.collection('cxpFacturas').doc(docto.uuid).get();
+    if (!facSnap.exists) continue;
+    const fac = facSnap.data();
+    if (fac.repRecibido) continue;
+    let repUrl = null;
+    try { repUrl = await _subirXMLStorage('comprobantes/proveedores/pagos/rep-' + c.complementoPago.uuid + '.xml', c.xmlTexto); }
+    catch (e) { console.error('_procesarComplementoPagoEncontrado: no se pudo subir el XML del REP:', e); }
+    await db.collection('cxpFacturas').doc(docto.uuid).set(
+      { repRecibido: true, repXmlURL: repUrl, repRecibidoEn: new Date().toISOString() }, { merge: true }
+    );
+    algunoRelacionado = true;
+    if (fac.proveedorId) {
+      const provSnap = await db.collection('proveedores').doc(fac.proveedorId).get();
+      if (provSnap.exists && provSnap.data().bloqueadoPorRep) {
+        const otras = await db.collection('cxpFacturas').where('proveedorId', '==', fac.proveedorId).where('estadoPago', '==', 'pagada').get();
+        const siguenPendientes = otras.docs.some(function (d) { return d.id !== docto.uuid && !d.data().repRecibido; });
+        if (!siguenPendientes) await db.collection('proveedores').doc(fac.proveedorId).set({ bloqueadoPorRep: false }, { merge: true });
+      }
+    }
+  }
+  return algunoRelacionado ? { ok: true } : { ok: false, error: 'No se encontró ninguna factura registrada que coincida con los UUID del complemento (o ya estaban relacionadas).' };
 }
 
 // Sube el XML tal cual a Firebase Storage (mismo patrón que
@@ -1137,7 +1272,7 @@ exports.revisarBuzonCompras = onRequest(
   async (req, res) => {
     try {
       const encontrados = await _revisarBuzonComprasCore(COMPRAS_EMAIL_USER.value(), COMPRAS_EMAIL_PASS.value(), ANTHROPIC_API_KEY.value());
-      res.json({ ok: true, correosNuevos: encontrados.length, facturasRegistradas: encontrados._totalRegistradas || 0, pendientesRevision: encontrados._totalPendientes || 0 });
+      res.json({ ok: true, correosNuevos: encontrados.length, facturasRegistradas: encontrados._totalRegistradas || 0, pendientesRevision: encontrados._totalPendientes || 0, complementosRelacionados: encontrados._totalReps || 0 });
     } catch (e) {
       console.error('revisarBuzonCompras:', e);
       res.status(500).json({ error: e.message || 'Error interno del servidor.' });
@@ -1153,13 +1288,130 @@ exports.revisarBuzonComprasProgramado = onSchedule(
       const encontrados = await _revisarBuzonComprasCore(COMPRAS_EMAIL_USER.value(), COMPRAS_EMAIL_PASS.value(), ANTHROPIC_API_KEY.value());
       await db.collection('estado').doc('buzonComprasEstado').set({
         ultimaEjecucion: inicio, ok: true, correosNuevos: encontrados.length,
-        facturasRegistradas: encontrados._totalRegistradas || 0, pendientesRevision: encontrados._totalPendientes || 0, error: null
+        facturasRegistradas: encontrados._totalRegistradas || 0, pendientesRevision: encontrados._totalPendientes || 0,
+        complementosRelacionados: encontrados._totalReps || 0, error: null
       });
     } catch (e) {
       console.error('revisarBuzonComprasProgramado:', e);
       try {
         await db.collection('estado').doc('buzonComprasEstado').set({ ultimaEjecucion: inicio, ok: false, error: e.message || String(e) });
       } catch (e2) { console.error('revisarBuzonComprasProgramado: no se pudo guardar el estado del error:', e2); }
+    }
+  }
+);
+
+// ══════════════════════════════════════════════════════════════════════════
+// enviarSolicitudComplementoPago — se llama desde proveedores.html justo
+// después de marcar una factura como pagada (botón "➕ Pago"): le manda un
+// correo al proveedor pidiéndole el complemento de pago (REP) y guarda en la
+// factura la fecha de pago y la fecha límite legal para recibirlo (día 8 del
+// mes siguiente al pago), para que revisarComplementosPagoProgramado pueda
+// avisar/bloquear si no llega a tiempo.
+// ══════════════════════════════════════════════════════════════════════════
+exports.enviarSolicitudComplementoPago = onRequest(
+  { secrets: [COMPRAS_EMAIL_USER, COMPRAS_EMAIL_PASS], cors: true, region: 'us-central1' },
+  async (req, res) => {
+    if (req.method !== 'POST') { res.status(405).json({ error: 'Método no permitido, usa POST.' }); return; }
+    const uuid = ((req.body && req.body.uuid) || '').toString().trim().toUpperCase();
+    const fechaPago = ((req.body && req.body.fechaPago) || '').toString().trim() || new Date().toISOString().slice(0, 10);
+    if (!uuid) { res.status(400).json({ error: 'Falta el UUID de la factura.' }); return; }
+    try {
+      const facSnap = await db.collection('cxpFacturas').doc(uuid).get();
+      if (!facSnap.exists) { res.status(404).json({ error: 'No se encontró esa factura.' }); return; }
+      const fac = facSnap.data();
+      const fechaLimiteRep = _calcularFechaLimiteRepServer(fechaPago);
+      await db.collection('cxpFacturas').doc(uuid).set(
+        { fechaPago: fechaPago, repFechaLimite: fechaLimiteRep, repRecibido: false }, { merge: true }
+      );
+      const provSnap = fac.proveedorId ? await db.collection('proveedores').doc(fac.proveedorId).get() : null;
+      const proveedor = provSnap && provSnap.exists ? provSnap.data() : null;
+      let correoEnviado = false;
+      if (proveedor && proveedor.email) {
+        await _enviarCorreoCompras(COMPRAS_EMAIL_USER.value(), COMPRAS_EMAIL_PASS.value(), proveedor.email,
+          'Solicitud de complemento de pago — factura ' + (fac.serie ? fac.serie + '-' : '') + fac.folio,
+          '<p>Hola ' + (proveedor.razonSocial || fac.proveedorNombre || '') + ',</p>' +
+          '<p>Te confirmamos que ya se realizó el pago de tu factura ' + (fac.serie ? fac.serie + '-' : '') + fac.folio + ' por ' + _fmtMonedaServer(fac.total) + ', con fecha ' + fechaPago + '.</p>' +
+          '<p>Por favor envíanos el <strong>complemento de pago (REP)</strong> correspondiente antes del <strong>' + fechaLimiteRep + '</strong> (límite legal: día 8 del mes siguiente al pago).</p>' +
+          '<p>Gracias.</p>'
+        );
+        correoEnviado = true;
+      }
+      res.json({ ok: true, fechaLimiteRep: fechaLimiteRep, correoEnviado: correoEnviado });
+    } catch (e) {
+      console.error('enviarSolicitudComplementoPago:', e);
+      res.status(500).json({ error: e.message || 'Error interno del servidor.' });
+    }
+  }
+);
+
+// ══════════════════════════════════════════════════════════════════════════
+// revisarComplementosPagoProgramado — corre los días 1, 3 y 5 de cada mes
+// (9:00 hrs CDMX): busca facturas pagadas sin complemento de pago (REP) y les
+// manda a su proveedor un recordatorio (días 1 y 3) o, si para el día 5
+// sigue sin llegar, un aviso de que su RFC queda bloqueado para el registro
+// automático de facturas nuevas hasta que lo envíe (ver el candado nuevo en
+// _evaluarCandadosCxPServer). El bloqueo se quita solo en cuanto se relaciona
+// el REP correspondiente (ver _procesarComplementoPagoEncontrado), o a mano
+// desde Proveedores.
+// ══════════════════════════════════════════════════════════════════════════
+async function _revisarComplementosPagoCore(user, pass) {
+  const diaHoy = parseInt(new Intl.DateTimeFormat('en-US', { timeZone: 'America/Mexico_City', day: 'numeric' }).format(new Date()));
+  const snap = await db.collection('cxpFacturas').where('estadoPago', '==', 'pagada').get();
+  const porProveedor = {};
+  snap.forEach(function (d) {
+    const f = d.data();
+    if (f.repRecibido || !f.repFechaLimite || !f.proveedorId) return;
+    (porProveedor[f.proveedorId] = porProveedor[f.proveedorId] || []).push(Object.assign({ id: d.id }, f));
+  });
+  let avisosMandados = 0, bloqueados = 0;
+  for (const rfc of Object.keys(porProveedor)) {
+    const facturas = porProveedor[rfc];
+    const provSnap = await db.collection('proveedores').doc(rfc).get();
+    if (!provSnap.exists) continue;
+    const proveedor = provSnap.data();
+    if (!proveedor.email) continue;
+    const listaHtml = facturas.map(function (f) {
+      return '<li>' + (f.serie ? f.serie + '-' : '') + f.folio + ' — pagada el ' + f.fechaPago + ', límite ' + f.repFechaLimite + '</li>';
+    }).join('');
+    if (diaHoy === 1 || diaHoy === 3) {
+      await _enviarCorreoCompras(user, pass, proveedor.email,
+        'Recordatorio: complemento de pago pendiente',
+        '<p>Hola ' + (proveedor.razonSocial || '') + ',</p>' +
+        '<p>Nos falta recibir el complemento de pago (REP) de las siguientes facturas ya pagadas:</p>' +
+        '<ul>' + listaHtml + '</ul>' +
+        '<p>Por favor envíalo antes de la fecha límite indicada.</p>'
+      );
+      avisosMandados++;
+    } else if (diaHoy === 5) {
+      await _enviarCorreoCompras(user, pass, proveedor.email,
+        'Tu RFC ha sido bloqueado — complemento de pago pendiente',
+        '<p>Hola ' + (proveedor.razonSocial || '') + ',</p>' +
+        '<p>No hemos recibido el complemento de pago (REP) de las siguientes facturas ya pagadas:</p>' +
+        '<ul>' + listaHtml + '</ul>' +
+        '<p>Por ley, el límite para emitirlo es el día 8 del mes siguiente al del pago. Mientras no lo recibamos, tu RFC queda ' +
+        'bloqueado para el registro automático de facturas nuevas. Envíalo lo antes posible para reactivarlo.</p>'
+      );
+      await db.collection('proveedores').doc(rfc).set({ bloqueadoPorRep: true }, { merge: true });
+      bloqueados++;
+    }
+  }
+  return { avisosMandados: avisosMandados, bloqueados: bloqueados };
+}
+
+exports.revisarComplementosPagoProgramado = onSchedule(
+  { schedule: '0 9 1,3,5 * *', timeZone: 'America/Mexico_City', secrets: [COMPRAS_EMAIL_USER, COMPRAS_EMAIL_PASS], region: 'us-central1', timeoutSeconds: 300 },
+  async () => {
+    const inicio = new Date().toISOString();
+    try {
+      const resultado = await _revisarComplementosPagoCore(COMPRAS_EMAIL_USER.value(), COMPRAS_EMAIL_PASS.value());
+      await db.collection('estado').doc('complementosPagoEstado').set({
+        ultimaEjecucion: inicio, ok: true, avisosMandados: resultado.avisosMandados, bloqueados: resultado.bloqueados, error: null
+      });
+    } catch (e) {
+      console.error('revisarComplementosPagoProgramado:', e);
+      try {
+        await db.collection('estado').doc('complementosPagoEstado').set({ ultimaEjecucion: inicio, ok: false, error: e.message || String(e) });
+      } catch (e2) { console.error('revisarComplementosPagoProgramado: no se pudo guardar el estado del error:', e2); }
     }
   }
 );

@@ -148,6 +148,7 @@ tr:hover td{background:#fafafa}
       <div class="field"><label>Razón social</label><input type="text" id="provRazonSocial" placeholder="Como aparece en el CFDI"></div>
       <div class="field"><label>Nombre comercial <span style="font-weight:400;color:#aaa">(opcional)</span></label><input type="text" id="provNombreComercial"></div>
       <div class="field"><label>Días de crédito</label><input type="number" id="provDiasCredito" value="15" min="0" step="1"></div>
+      <div class="field"><label>Correo <span style="font-weight:400;color:#aaa">(para avisos de pago/complemento)</span></label><input type="email" id="provEmail" placeholder="contacto@proveedor.com"></div>
     </div>
     <div class="grid2" style="margin-bottom:10px">
       <div class="field"><label>Banco <span style="font-weight:400;color:#aaa">(opcional)</span></label><input type="text" id="provBanco"></div>
@@ -450,19 +451,22 @@ function renderProveedores(){
     wrap.innerHTML='<p style="font-size:13px;color:#aaa;padding:10px 0">'+(PROVEEDORES.length?'Sin proveedores activos (marca "ver inactivos" para verlos).':'Todavía no hay proveedores registrados.')+'</p>';
     return;
   }
-  wrap.innerHTML='<div class="tbl-wrap"><table><thead><tr><th>RFC</th><th>Razón social</th><th class="r">Días de crédito</th><th>Banco / CLABE</th><th>Estado</th><th></th></tr></thead><tbody>'
+  wrap.innerHTML='<div class="tbl-wrap"><table><thead><tr><th>RFC</th><th>Razón social</th><th>Correo</th><th class="r">Días de crédito</th><th>Banco / CLABE</th><th>Estado</th><th></th></tr></thead><tbody>'
     +lista.map(function(p){
       return '<tr>'
         +'<td class="num">'+p.rfc+'</td>'
         +'<td style="font-size:12px">'+(p.razonSocial||'')+(p.nombreComercial?' <span style="color:#888">('+p.nombreComercial+')</span>':'')+'</td>'
+        +'<td style="font-size:11px">'+(p.email||'<span style="color:#c1121f">— falta</span>')+'</td>'
         +'<td class="num r">'+p.diasCredito+'</td>'
         +'<td style="font-size:11px">'+(p.banco||'—')+(p.clabe?' · '+p.clabe:'')+'</td>'
-        +'<td>'+(p.activo?'<span class="badge bg-green">Activo</span>':'<span class="badge bg-red">Inactivo</span>')+'</td>'
+        +'<td>'+(p.activo?'<span class="badge bg-green">Activo</span>':'<span class="badge bg-red">Inactivo</span>')
+          +(p.bloqueadoPorRep?' <span class="badge bg-red" title="No mandó su complemento de pago a tiempo — el buzón deja pendientes sus facturas nuevas">🚫 Bloqueado por REP</span>':'')+'</td>'
         +'<td>'
         +'<button class="btn btn-out btn-sm" onclick="editarProveedor(\''+p.rfc+'\')">✏️ Editar</button> '
         +(p.activo
           ?'<button class="btn btn-out btn-sm" onclick="darDeBajaProveedorUI(\''+p.rfc+'\')">Dar de baja</button>'
           :'<button class="btn btn-green btn-sm" onclick="reactivarProveedorUI(\''+p.rfc+'\')">Reactivar</button>')
+        +(p.bloqueadoPorRep?' <button class="btn btn-green btn-sm" onclick="desbloquearProveedorUI(\''+p.rfc+'\')">Desbloquear</button>':'')
         +'</td>'
         +'</tr>';
     }).join('')+'</tbody></table></div>';
@@ -470,7 +474,7 @@ function renderProveedores(){
 
 function limpiarFormProveedor(){
   $('provRfc').value='';$('provRazonSocial').value='';$('provNombreComercial').value='';
-  $('provDiasCredito').value='15';$('provBanco').value='';$('provClabe').value='';
+  $('provDiasCredito').value='15';$('provEmail').value='';$('provBanco').value='';$('provClabe').value='';
   $('provCuenta').value='';$('provMoneda').value='MXN';$('provNotas').value='';
   $('provRfc').disabled=false;
   _editandoRfc=null;
@@ -485,7 +489,7 @@ function editarProveedor(rfc){
   _editandoRfc=rfc;
   $('provRfc').value=p.rfc;$('provRfc').disabled=true;
   $('provRazonSocial').value=p.razonSocial;$('provNombreComercial').value=p.nombreComercial;
-  $('provDiasCredito').value=p.diasCredito;$('provBanco').value=p.banco;$('provClabe').value=p.clabe;
+  $('provDiasCredito').value=p.diasCredito;$('provEmail').value=p.email||'';$('provBanco').value=p.banco;$('provClabe').value=p.clabe;
   $('provCuenta').value=p.cuenta;$('provMoneda').value=p.moneda||'MXN';$('provNotas').value=p.notas;
   $('tituloForm').textContent='Editando: '+p.razonSocial+' ('+p.rfc+')';
   $('btnCancelarEdicion').style.display='inline-block';
@@ -506,7 +510,7 @@ async function guardarProveedorForm(){
   try{
     await window.guardarProveedor({
       rfc:rfc,razonSocial:razonSocial,nombreComercial:$('provNombreComercial').value,
-      diasCredito:$('provDiasCredito').value,banco:$('provBanco').value,clabe:$('provClabe').value,
+      diasCredito:$('provDiasCredito').value,email:$('provEmail').value,banco:$('provBanco').value,clabe:$('provClabe').value,
       cuenta:$('provCuenta').value,moneda:$('provMoneda').value,notas:$('provNotas').value
     });
     await cargarYRenderProveedores(true);
@@ -530,6 +534,14 @@ async function darDeBajaProveedorUI(rfc){
 async function reactivarProveedorUI(rfc){
   try{
     await window.reactivarProveedor(rfc);
+    await cargarYRenderProveedores(true);
+  }catch(e){alert('⚠️ Error: '+e.message);}
+}
+async function desbloquearProveedorUI(rfc){
+  var p=window.buscarProveedorPorRfc(PROVEEDORES,rfc);
+  if(!confirm('¿Quitar el bloqueo por complemento de pago pendiente de '+(p?p.razonSocial:rfc)+'? Hazlo solo si ya confirmaste que sí mandó su REP (por otro medio, no por correo).'))return;
+  try{
+    await window.desbloquearProveedorPorRep(rfc);
     await cargarYRenderProveedores(true);
   }catch(e){alert('⚠️ Error: '+e.message);}
 }
@@ -784,6 +796,7 @@ const FUNCTION_URL_EXTRAER_JUSTIFICACION_CXP='https://us-central1-tml-liquidacio
 // confirmar antes de guardar.
 // ══════════════════════════════════════════════════════════════════════════
 const FUNCTION_URL_EXTRAER_COMPROBANTE_PAGO_CXP='https://us-central1-tml-liquidaciones.cloudfunctions.net/extraerComprobantePagoCxP';
+const FUNCTION_URL_ENVIAR_SOLICITUD_REP='https://us-central1-tml-liquidaciones.cloudfunctions.net/enviarSolicitudComplementoPago';
 let _pagoExtraido={};
 
 function togglePagoForm(uuid){
@@ -879,7 +892,19 @@ async function guardarPagoFactura(uuid){
       updateFactura.prorrateo=[{unidad:ex.op.unidad,monto:f.total,aplicado:false,liqNum:null}];
     }
     await window.FB.set('cxpFacturas',uuid,updateFactura,{merge:true});
-    alert('✅ Pago registrado'+(asignarUnidad?' y factura asignada a la unidad '+ex.op.unidad+'.':'.'));
+    // Le pide al proveedor su complemento de pago (REP) por correo, y guarda
+    // en la factura la fecha límite legal (día 8 del mes siguiente al pago)
+    // para que el recordatorio automático (días 1/3/5 del mes) lo detecte —
+    // no bloquea el guardado si falla (ej. el proveedor no tiene correo).
+    var fechaPagoFactura=ex.c.fechaPago||new Date().toISOString().slice(0,10);
+    var avisoRep='';
+    try{
+      var respRep=await fetch(FUNCTION_URL_ENVIAR_SOLICITUD_REP,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({uuid:uuid,fechaPago:fechaPagoFactura})});
+      var dataRep=await respRep.json();
+      if(dataRep.correoEnviado)avisoRep=' Se le pidió al proveedor su complemento de pago (límite: '+dataRep.fechaLimiteRep+').';
+      else if(dataRep.fechaLimiteRep)avisoRep=' ⚠️ No se le pudo avisar por correo (falta su email en el catálogo) — la fecha límite de su complemento es '+dataRep.fechaLimiteRep+'.';
+    }catch(e){console.error('enviarSolicitudComplementoPago:',e);}
+    alert('✅ Pago registrado'+(asignarUnidad?' y factura asignada a la unidad '+ex.op.unidad+'.':'.')+avisoRep);
     delete _pagoExtraido[uuid];
     await cargarYRenderFacturas(true);
   }catch(e){
@@ -1138,7 +1163,8 @@ function renderFacturas(){
         +'<td class="num r">'+fmt(f.total)+'</td>'
         +'<td>'+(vencido&&!bloqueada&&!pagada?'<span class="badge bg-red">⚠ Vencida '+f.fechaVencimiento+'</span>':'<span class="badge bg-green">'+f.fechaVencimiento+'</span>')+'</td>'
         +'<td>'+(bloqueada?'<span class="badge bg-red">🚫 PUE sin pago</span>':(pagada?'<span class="badge bg-green">✅ Pagada</span>':'<span class="badge bg-green">'+(f.metodoPago||'')+'</span>'))+'</td>'
-        +'<td>'+(pagada?'<button class="btn btn-out btn-sm" onclick="window.open(\''+(f.comprobanteURL||'')+'\',\'_blank\')">👁️ Ver</button>':'<button class="btn btn-out btn-sm" onclick="togglePagoForm(\''+f.id+'\')">➕ Pago</button>')+'</td>'
+        +'<td>'+(pagada?'<button class="btn btn-out btn-sm" onclick="window.open(\''+(f.comprobanteURL||'')+'\',\'_blank\')">👁️ Ver</button>'+(f.repRecibido?' <span class="badge bg-green" title="Complemento de pago recibido">✅ REP</span>':(f.repFechaLimite?' <span class="badge bg-yellow" title="Límite para recibir el complemento de pago">🔔 REP al '+f.repFechaLimite+'</span>':''))
+          :'<button class="btn btn-out btn-sm" onclick="togglePagoForm(\''+f.id+'\')">➕ Pago</button>')+'</td>'
         +'<td>'+(f.estadoProrrateo==='n_aplica'?'<span style="color:#888;font-size:11px">— gasto general</span>':(f.estadoProrrateo==='pendiente_prorrateo'?'<button class="btn btn-red btn-sm" onclick="iniciarProrrateoDeFactura(\''+f.id+'\')">⚖️ Prorratear</button>':(tieneProrrateo?'<button class="btn btn-out btn-sm" onclick="toggleProrrateoDetalle(\''+f.id+'\')">👁️ '+f.prorrateo.length+' unidad(es)</button>':'<span style="color:#c1121f;font-size:11px">sin prorrateo</span>')))+'</td>'
         +'<td><button class="btn btn-out btn-sm" onclick="eliminarFacturaUI(\''+f.id+'\')">🗑️ Eliminar</button></td>'
         +'</tr>';
