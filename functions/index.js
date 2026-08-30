@@ -1072,3 +1072,93 @@ exports.revisarBuzonComprasProgramado = onSchedule(
     }
   }
 );
+
+// ══════════════════════════════════════════════════════════════════════════
+// extraerComprobantePagoCxP — Cuentas por Pagar (proveedores.html), botón "+"
+// en cada renglón de factura: cuando se sube el comprobante de pago (foto o
+// PDF de una transferencia/depósito), esta función SOLO EXTRAE lo que trae
+// anotado el comprobante (folio de factura, número económico si el gasto es
+// de un camión, fecha y monto) — el emparejamiento con la factura real, la
+// decisión de marcarla pagada, y el prorrateo a la unidad se hacen en el
+// navegador y SIEMPRE se le muestran al administrador antes de guardar
+// (mismo criterio que el resto del sistema: la IA sugiere, nunca aplica sola).
+// ══════════════════════════════════════════════════════════════════════════
+const PROMPT_COMPROBANTE_PAGO_CXP =
+  'Eres un asistente que lee un COMPROBANTE DE PAGO (ficha de depósito, comprobante de transferencia bancaria, captura de ' +
+  'banca en línea) que una empresa de mudanzas genera al pagarle a un proveedor. En el concepto, referencia o descripción ' +
+  'del comprobante normalmente se anota el número de factura que se está pagando y, cuando el gasto corresponde al ' +
+  'camión/unidad de un operador, también el número económico de esa unidad. Extrae un solo objeto JSON con estas llaves ' +
+  'exactas: {"folioFactura":"el número de folio de factura mencionado, SOLO el número sin la serie ni prefijos (ej. de ' +
+  '\\"F-2575\\" o \\"factura 2575\\" extrae \\"2575\\"), o null si no se menciona ningún folio","economico":"el número ' +
+  'económico o identificador de la unidad/camión mencionado en el concepto, o null si no se menciona ninguno",' +
+  '"fechaPago":"YYYY-MM-DD si se puede determinar la fecha del comprobante (convierte desde el formato que traiga), o ' +
+  'null","monto":"el monto pagado que muestra el comprobante, como número, o 0 si no se puede determinar"}. No inventes ' +
+  'datos que no estén en el comprobante. Responde SOLO el objeto JSON (sin texto explicativo, sin backticks, sin markdown).';
+
+exports.extraerComprobantePagoCxP = onRequest(
+  { secrets: [ANTHROPIC_API_KEY], cors: true, region: 'us-central1' },
+  async (req, res) => {
+    if (req.method !== 'POST') {
+      res.status(405).json({ error: 'Método no permitido, usa POST.' });
+      return;
+    }
+    const archivoBase64 = ((req.body && req.body.archivoBase64) || '').toString().trim();
+    const mimeType = ((req.body && req.body.mimeType) || '').toString().trim();
+    if (!archivoBase64) {
+      res.status(400).json({ error: 'Falta el archivo del comprobante (campo "archivoBase64").' });
+      return;
+    }
+    if (archivoBase64.length > 15000000) {
+      res.status(400).json({ error: 'El archivo es demasiado grande (máximo ~10 MB).' });
+      return;
+    }
+    const esPdf = mimeType === 'application/pdf';
+    const esImagen = /^image\/(jpeg|jpg|png|webp|gif)$/.test(mimeType);
+    if (!esPdf && !esImagen) {
+      res.status(400).json({ error: 'El comprobante debe ser una imagen (JPG/PNG/WEBP) o un PDF.' });
+      return;
+    }
+    try {
+      const content = [
+        esPdf
+          ? { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: archivoBase64 } }
+          : { type: 'image', source: { type: 'base64', media_type: mimeType, data: archivoBase64 } },
+        { type: 'text', text: PROMPT_COMPROBANTE_PAGO_CXP }
+      ];
+      const respuesta = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': ANTHROPIC_API_KEY.value(),
+          'anthropic-version': '2023-06-01'
+        },
+        body: JSON.stringify({
+          model: 'claude-sonnet-4-5',
+          max_tokens: 1000,
+          messages: [{ role: 'user', content: content }]
+        })
+      });
+      const datos = await respuesta.json();
+      if (datos.error) {
+        res.status(502).json({ error: 'Error de la API de Anthropic: ' + (datos.error.message || JSON.stringify(datos.error)) });
+        return;
+      }
+      const textoRespuesta = (datos.content || [])
+        .filter(function (b) { return b.type === 'text'; })
+        .map(function (b) { return b.text; })
+        .join('');
+      const limpio = textoRespuesta.replace(/```json|```/g, '').trim();
+      let resultado;
+      try {
+        resultado = JSON.parse(limpio);
+      } catch (e) {
+        res.status(502).json({ error: 'La IA no regresó un JSON válido. Respuesta cruda: ' + textoRespuesta.slice(0, 500) });
+        return;
+      }
+      res.json({ comprobante: resultado });
+    } catch (e) {
+      console.error('extraerComprobantePagoCxP:', e);
+      res.status(500).json({ error: e.message || 'Error interno del servidor.' });
+    }
+  }
+);

@@ -732,6 +732,119 @@ async function revisarBuzonComprasAhora(){
 // para "extraerJustificacionCxP" (ver instrucciones en functions/index.js).
 const FUNCTION_URL_EXTRAER_JUSTIFICACION_CXP='https://us-central1-tml-liquidaciones.cloudfunctions.net/extraerJustificacionCxP';
 
+// ══════════════════════════════════════════════════════════════════════════
+// REGISTRAR PAGO de una factura ya existente, con el comprobante leído por IA
+// (ver functions/index.js → extraerComprobantePagoCxP). La IA solo EXTRAE lo
+// que trae anotado el comprobante (folio de factura, económico, fecha, monto)
+// — el emparejamiento con la factura, la decisión de marcarla pagada y el
+// prorrateo a la unidad se hacen aquí y SIEMPRE se muestran para revisar/
+// confirmar antes de guardar.
+// ══════════════════════════════════════════════════════════════════════════
+const FUNCTION_URL_EXTRAER_COMPROBANTE_PAGO_CXP='https://us-central1-tml-liquidaciones.cloudfunctions.net/extraerComprobantePagoCxP';
+let _pagoExtraido={};
+
+function togglePagoForm(uuid){
+  var el=document.getElementById('pagoForm_'+uuid);
+  if(!el)return;
+  el.style.display=(el.style.display==='none'?'table-row':'none');
+}
+
+async function handlePagoArchivo(ev,uuid){
+  var file=(ev.target.files||[])[0];
+  if(!file)return;
+  var info=document.getElementById('pagoInfo_'+uuid);
+  info.innerHTML='<div class="alert alert-info">⏳ Leyendo el comprobante con IA...</div>';
+  try{
+    var dataUrl=await new Promise(function(resolve,reject){
+      var r=new FileReader();
+      r.onload=function(e){resolve(e.target.result);};
+      r.onerror=reject;
+      r.readAsDataURL(file);
+    });
+    var base64=dataUrl.split(',')[1]||'';
+    var mimeType=file.type||'';
+    var resp=await fetch(FUNCTION_URL_EXTRAER_COMPROBANTE_PAGO_CXP,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({archivoBase64:base64,mimeType:mimeType})});
+    var data=await resp.json();
+    if(data.error)throw new Error(data.error);
+    renderPagoExtraido(uuid,file,base64,mimeType,data.comprobante||{});
+  }catch(e){
+    console.error('handlePagoArchivo:',e);
+    info.innerHTML='<div class="alert alert-warn">⚠️ '+e.message+'</div>';
+  }
+}
+
+// Muestra lo que la IA leyó del comprobante y las sugerencias derivadas
+// (¿coincide con esta factura? ¿trae una unidad para asignar el prorrateo?)
+// — nada se guarda todavía, solo hasta darle "Guardar pago".
+function renderPagoExtraido(uuid,file,base64,mimeType,c){
+  var f=FACTURAS.find(function(x){return x.id===uuid;});
+  if(!f)return;
+  var folioIA=(c.folioFactura!=null?String(c.folioFactura).replace(/[^0-9]/g,''):'');
+  var folioFactura=String(f.folio||'').replace(/[^0-9]/g,'');
+  var coincideFolio=!!(folioIA&&folioFactura&&folioIA===folioFactura);
+  var ecoNum=c.economico?parseInt(String(c.economico).replace(/[^0-9]/g,'')||0):0;
+  var op=ecoNum?OPERADORES.find(function(o){return o.unidad===ecoNum;}):null;
+  // Mismo criterio de "4" antepuesto usado en el resto del módulo (ver
+  // aplicarSugerenciaProrrateo) — algunas unidades viven como 4521 pero se
+  // anotan como 521.
+  if(!op&&ecoNum&&ecoNum<1000){
+    var ecoConPrefijo=parseInt('4'+ecoNum);
+    op=OPERADORES.find(function(o){return o.unidad===ecoConPrefijo;});
+  }
+  var yaProrrateada=f.estadoProrrateo==='completo';
+  _pagoExtraido[uuid]={file:file,base64:base64,mimeType:mimeType,c:c,coincideFolio:coincideFolio,op:op,yaProrrateada:yaProrrateada};
+  var html='';
+  html+=coincideFolio
+    ?'<div class="alert alert-ok">✅ El comprobante menciona la factura '+c.folioFactura+', coincide con esta factura ('+f.folio+').</div>'
+    :'<div class="alert alert-warn">⚠️ '+(folioIA?'El comprobante menciona la factura '+c.folioFactura+', que NO coincide con esta factura ('+f.folio+').':'No se pudo leer a qué factura corresponde este comprobante.')+' <label style="display:block;margin-top:6px"><input type="checkbox" id="pagoConfirmar_'+uuid+'"> Confirmo que este comprobante SÍ corresponde a la factura '+f.folio+'</label></div>';
+  if(ecoNum){
+    if(yaProrrateada){
+      html+='<div class="alert alert-info">ℹ️ Se detectó la unidad '+ecoNum+' en el comprobante, pero esta factura ya tiene un prorrateo asignado — no se modifica.</div>';
+    }else if(op){
+      html+='<div class="alert alert-info">🚚 Se detectó la unidad '+ecoNum+' ('+op.nombre+') — <label><input type="checkbox" id="pagoAsignarUnidad_'+uuid+'" checked> asignar el 100% de esta factura ('+fmt(f.total)+') a esa unidad</label></div>';
+    }else{
+      html+='<div class="alert alert-warn">⚠️ El comprobante menciona la unidad '+ecoNum+', pero no se encontró ningún operador con ese económico — el prorrateo no se modifica, revísalo a mano si aplica.</div>';
+    }
+  }
+  html+='<button class="btn btn-red btn-sm" style="margin-top:8px" onclick="guardarPagoFactura(\''+uuid+'\')">💾 Guardar pago</button>';
+  document.getElementById('pagoInfo_'+uuid).innerHTML=html;
+}
+
+async function guardarPagoFactura(uuid){
+  var ex=_pagoExtraido[uuid];
+  var f=FACTURAS.find(function(x){return x.id===uuid;});
+  if(!ex||!f)return;
+  if(!ex.coincideFolio){
+    var chk=document.getElementById('pagoConfirmar_'+uuid);
+    if(!chk||!chk.checked){alert('Confirma con el checkbox que este comprobante corresponde a esta factura antes de guardar.');return;}
+  }
+  var chkUnidad=document.getElementById('pagoAsignarUnidad_'+uuid);
+  var asignarUnidad=!!(ex.op&&!ex.yaProrrateada&&chkUnidad&&chkUnidad.checked);
+  try{
+    var ext=(ex.mimeType==='application/pdf')?'pdf':((ex.file.name.split('.').pop())||'jpg');
+    var url=await TMLComprobantes.subirArchivo('comprobantes/proveedores/pagos/'+uuid+'.'+ext,ex.file);
+    var u=usuarioSesion();
+    await window.FB.set('cxpPagos',uuid,{
+      facturaId:uuid,proveedorId:f.proveedorId,monto:ex.c.monto||f.total,
+      fechaPago:ex.c.fechaPago||new Date().toISOString().slice(0,10),
+      comprobanteURL:url,extraidoIA:{folioFactura:ex.c.folioFactura||null,economico:ex.c.economico||null},
+      coincideFolio:ex.coincideFolio,capturadoPor:u?(u.nombre||u.usuario):'',fechaAlta:new Date().toISOString()
+    });
+    var updateFactura={estadoPago:'pagada',comprobanteURL:url};
+    if(asignarUnidad){
+      updateFactura.estadoProrrateo='completo';
+      updateFactura.prorrateo=[{unidad:ex.op.unidad,monto:f.total,aplicado:false,liqNum:null}];
+    }
+    await window.FB.set('cxpFacturas',uuid,updateFactura,{merge:true});
+    alert('✅ Pago registrado'+(asignarUnidad?' y factura asignada a la unidad '+ex.op.unidad+'.':'.'));
+    delete _pagoExtraido[uuid];
+    await cargarYRenderFacturas(true);
+  }catch(e){
+    console.error('guardarPagoFactura:',e);
+    alert('⚠️ Error al guardar el pago: '+e.message);
+  }
+}
+
 async function extraerJustificacionIA(){
   if(!_facParsed){alert('Primero sube el XML de la factura.');return;}
   var archivo=($('facJustifArchivo').files||[])[0];
@@ -949,10 +1062,11 @@ function renderFacturas(){
   });
   $('facResumenProrrateo').innerHTML='<strong>Prorrateo pendiente de liquidar:</strong> '+fmt(pendiente)+' &nbsp;·&nbsp; <span style="color:#888">ya aplicado a alguna liquidación: '+fmt(aplicado)+'</span>';
   var ordenadas=FACTURAS.slice().sort(function(a,b){return(b.fechaEmision||'').localeCompare(a.fechaEmision||'');});
-  wrap.innerHTML='<div class="tbl-wrap"><table><thead><tr><th>Proveedor</th><th>Folio</th><th>Fecha</th><th class="r">Total</th><th>Vencimiento</th><th>Estado</th><th>Prorrateo</th><th></th></tr></thead><tbody>'
+  wrap.innerHTML='<div class="tbl-wrap"><table><thead><tr><th>Proveedor</th><th>Folio</th><th>Fecha</th><th class="r">Total</th><th>Vencimiento</th><th>Estado</th><th>Pago</th><th>Prorrateo</th><th></th></tr></thead><tbody>'
     +ordenadas.map(function(f){
       var vencido=yaVencioLimite(f.fechaVencimiento);
       var bloqueada=f.estadoPago==='pendiente_pago';
+      var pagada=f.estadoPago==='pagada';
       var tieneProrrateo=f.prorrateo&&f.prorrateo.length;
       var fila='<tr>'
         +'<td style="font-size:12px">'+(f.proveedorNombre||f.proveedorId||'')+(f.estadoProrrateo==='n_aplica'?'<div style="font-size:10px;color:#888">gasto general (sin unidad)</div>':'')+'</td>'
@@ -960,12 +1074,20 @@ function renderFacturas(){
         +'<td>'+f.fechaEmision+'</td>'
         +'<td class="num r">'+fmt(f.total)+'</td>'
         +'<td>'+(vencido&&!bloqueada?'<span class="badge bg-red">⚠ Vencida '+f.fechaVencimiento+'</span>':'<span class="badge bg-green">'+f.fechaVencimiento+'</span>')+'</td>'
-        +'<td>'+(bloqueada?'<span class="badge bg-red">🚫 PUE sin pago</span>':'<span class="badge bg-green">'+(f.metodoPago||'')+'</span>')+'</td>'
+        +'<td>'+(bloqueada?'<span class="badge bg-red">🚫 PUE sin pago</span>':(pagada?'<span class="badge bg-green">✅ Pagada</span>':'<span class="badge bg-green">'+(f.metodoPago||'')+'</span>'))+'</td>'
+        +'<td>'+(pagada?'<button class="btn btn-out btn-sm" onclick="window.open(\''+(f.comprobanteURL||'')+'\',\'_blank\')">👁️ Ver</button>':'<button class="btn btn-out btn-sm" onclick="togglePagoForm(\''+f.id+'\')">➕ Pago</button>')+'</td>'
         +'<td>'+(f.estadoProrrateo==='n_aplica'?'<span style="color:#888;font-size:11px">— gasto general</span>':(f.estadoProrrateo==='pendiente_prorrateo'?'<button class="btn btn-red btn-sm" onclick="iniciarProrrateoDeFactura(\''+f.id+'\')">⚖️ Prorratear</button>':(tieneProrrateo?'<button class="btn btn-out btn-sm" onclick="toggleProrrateoDetalle(\''+f.id+'\')">👁️ '+f.prorrateo.length+' unidad(es)</button>':'<span style="color:#c1121f;font-size:11px">sin prorrateo</span>')))+'</td>'
         +'<td><button class="btn btn-out btn-sm" onclick="eliminarFacturaUI(\''+f.id+'\')">🗑️ Eliminar</button></td>'
         +'</tr>';
+      if(!pagada){
+        fila+='<tr id="pagoForm_'+f.id+'" style="display:none;background:#fff8f0"><td colspan="9" style="padding:10px 20px">'
+          +'<div style="font-weight:700;margin-bottom:6px">💳 Registrar pago — sube el comprobante (foto o PDF de la transferencia/depósito)</div>'
+          +'<input type="file" accept="image/*,.pdf" onchange="handlePagoArchivo(event,\''+f.id+'\')">'
+          +'<div id="pagoInfo_'+f.id+'" style="margin-top:8px"></div>'
+          +'</td></tr>';
+      }
       if(tieneProrrateo){
-        fila+='<tr id="prorrateoDetalle_'+f.id+'" style="display:none;background:#fafafa"><td colspan="8" style="padding:10px 20px">'
+        fila+='<tr id="prorrateoDetalle_'+f.id+'" style="display:none;background:#fafafa"><td colspan="9" style="padding:10px 20px">'
           +'<table style="width:100%;font-size:11px"><thead><tr><th>Unidad</th><th class="r">Monto</th><th>¿Ya se liquidó?</th></tr></thead><tbody>'
           +f.prorrateo.map(function(p){
             return '<tr><td>'+nombreOperadorPorUnidad(p.unidad)+'</td><td class="num r">'+fmt(p.monto)+'</td><td>'+(p.aplicado?'<span class="badge bg-green">✅ Sí — Liq #'+p.liqNum+'</span>':'<span class="badge bg-red">⏳ Pendiente de liquidar</span>')+'</td></tr>';
