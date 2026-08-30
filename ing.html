@@ -50,6 +50,11 @@ td{padding:7px 10px;border-bottom:1px solid #f0f0f0;vertical-align:middle}
 tr:last-child td{border-bottom:none}
 tr:hover td{background:#fafafa}
 .r{text-align:right}.num{font-family:monospace;font-weight:600}
+.tabs{display:flex;gap:6px;margin-bottom:16px;flex-wrap:wrap}
+.tab{padding:9px 16px;border-radius:7px;border:1.5px solid #dde;background:#fff;font-size:12px;font-weight:700;cursor:pointer;color:#666}
+.tab.active{background:#1a1a2e;color:#fff;border-color:#1a1a2e}
+.tabpanel{display:none}
+.tabpanel.active{display:block}
 .badge{display:inline-block;border-radius:4px;padding:2px 8px;font-size:10px;font-weight:700;white-space:nowrap}
 .bg-green{background:#d1e7dd;color:#0a5233;border:1px solid #a3cfbb}
 .bg-yellow{background:#fff3cd;color:#856404;border:1px solid #ffc107}
@@ -168,106 +173,14 @@ tr:hover td{background:#fafafa}
 
 <div class="container">
 
-  <!-- REGISTRO -->
-  <div class="card">
-    <div class="card-title">📄 Registrar viaje / ingreso</div>
-    <div class="row" style="margin-bottom:14px">
-      <div class="upload-zone" style="flex:1;min-width:160px;padding:14px" id="dzXML" onclick="document.getElementById('fXML').click()">
-        <div class="icon">📄</div><p><strong>XML Carta Porte / factura</strong><br><span style="font-size:10px;color:#aaa">Extrae todo automático — operador por placa, o pide operador/unidad si no trae</span></p>
-      </div>
-      <input type="file" id="fXML" accept=".xml" multiple style="display:none">
-      <input type="file" id="fSustituirXML" accept=".xml" style="display:none" onchange="handleSustituirXMLFile(event)">
-    </div>
+  <div class="tabs">
+    <button class="tab active" id="tabBtnViajes" onclick="cambiarTab('viajes')">📋 Viajes registrados</button>
+    <button class="tab" id="tabBtnRegistro" onclick="cambiarTab('registro')">📄 Registrar</button>
+    <button class="tab" id="tabBtnFletes" onclick="cambiarTab('fletes')">📦 Buzón de pedidos y archivo maestro</button>
   </div>
 
-  <!-- BUZÓN DE PEDIDOS DE FLETE -->
-  <div class="card">
-    <div class="card-title">📦 Buzón de pedidos de flete (fletes@mudandote.mx) <span class="info-tip">?<span class="info-tip-box">El cliente manda el pedido de un embarque (orden de embarque, pedido de flete, tienda/destino, fecha) ANTES de que exista la factura. El sistema revisa este buzón 3 veces al día (7:00, 14:00 y 22:00 hrs) y registra solo lo que trae una orden de embarque reconocible — cuando subas aquí abajo tu XML+Excel de factura consolidada, cada renglón que coincida se marca "facturado" solo.</span></span>
-      <button class="btn btn-out btn-sm" onclick="revisarBuzonPedidosAhora()" id="btnRevisarBuzonPedidos">🔄 Revisar buzón ahora</button>
-    </div>
-    <div id="buzonPedidosInfo" style="margin-top:8px"></div>
-    <div id="buzonPedidosWrap"></div>
-    <div class="card-title" style="margin-top:16px">📦 Pedidos de flete pendientes de factura <span id="fletesCountLabel" style="font-weight:400;color:#888;text-transform:none;letter-spacing:normal"></span></div>
-    <div id="fletesPendientesWrap"><div style="text-align:center;padding:20px;color:#aaa">Cargando...</div></div>
-    <div style="margin-top:12px">
-      <div class="grid2">
-        <div class="field"><label>Orden de embarque</label><input type="text" id="fleteOrdenEmbarque" placeholder="Si el buzón no lo capturó"></div>
-        <div class="field"><label>Pedido de flete <span style="font-weight:400;font-size:11px;color:#aaa">(opcional)</span></label><input type="text" id="fletePedido"></div>
-        <div class="field"><label>Tienda</label><input type="text" id="fleteTienda"></div>
-        <div class="field"><label>Destino</label><input type="text" id="fleteDestino"></div>
-        <div class="field"><label>Fecha</label><input type="date" id="fleteFecha"></div>
-        <div class="field"><label>Económico <span style="font-weight:400;font-size:11px;color:#aaa">(si lo trae el correo)</span></label><input type="text" id="fleteEconomico" placeholder="Ej: 4522"></div>
-        <div class="field"><label>Monto del flete <span style="font-weight:400;font-size:11px;color:#aaa">(opcional)</span></label><input type="number" id="fleteMonto" step="0.01" placeholder="0.00"></div>
-      </div>
-      <button class="btn btn-out btn-sm" style="margin-top:8px" onclick="registrarFleteManual()">+ Registrar pedido de flete a mano</button>
-    </div>
-  </div>
-
-  <!-- SUSTITUIR CON FACTURA DE MANIOBRAS CONSOLIDADA (XML + Excel de desglose) -->
-  <div class="card">
-    <div class="card-title">📊 Sustituir con factura de maniobras (Excel) <span class="info-tip">?<span class="info-tip-box">Para cuando UNA factura junta varias semanas de maniobras ya autorizadas (normal con GRUPO COMERCIAL DSW — el cliente autoriza una vez por semana y se factura en lote, ver Maniobras). Sube el XML de esa factura + tu Excel de desglose (mismo formato de columnas VIAJE/TIENDA/DESTINO/ORDEN DE EMBARQUE/TOTAL) — el sistema empareja cada renglón por T.U.'s contra las autorizaciones pendientes y las sustituye automáticamente si el monto coincide (tolerancia $50), y de paso marca "facturado" cualquier pedido de flete pendiente que coincida por orden de embarque.</span></span></div>
-    <div class="grid2">
-      <div class="field"><label>XML de la factura</label><input type="file" id="fFacturaManiobrasXML" accept=".xml"></div>
-      <div class="field"><label>Excel de desglose</label><input type="file" id="fFacturaManiobrasXLSX" accept=".xlsx,.xls"></div>
-    </div>
-    <button class="btn btn-red" style="margin-top:10px" onclick="procesarFacturaManiobrasExcel()">Procesar y sustituir</button>
-    <div id="facturaManiobrasInfo" style="margin-top:12px"></div>
-  </div>
-
-  <!-- ARCHIVO MAESTRO DE FLETES (cruce pedidos de flete ↔ autorizaciones de maniobra) -->
-  <div class="card">
-    <div class="card-title">🗂️ Archivo maestro de fletes <span class="info-tip">?<span class="info-tip-box">Cruza cada pedido de flete (fletesDB) contra las autorizaciones de maniobra capturadas en Maniobras, para armar en un solo lugar: fecha, destino, operador, orden de embarque, pedido de flete, monto autorizado de maniobra y estado de facturación. Primero intenta emparejar por T.U./orden de embarque; si no coincide, usa fecha + destino/tienda como respaldo — solo si hay UN solo candidato posible ese día para ese destino (nunca adivina entre varios).</span></span>
-      <button class="btn btn-out btn-sm" onclick="renderArchivoMaestroFletes()">🔄 Generar archivo maestro</button>
-    </div>
-    <div id="archivoMaestroFletesWrap"><p style="font-size:13px;color:#aaa;padding:10px 0">Dale "Generar archivo maestro" para verlo.</p></div>
-  </div>
-
-  <!-- REGISTRAR SIN FACTURA CON IA (solo admin) — Estimado de Transportación -->
-  <div class="card" id="cardEstimadoIA" style="display:none">
-    <div class="card-title">🤖 Registrar sin factura (Estimado de Transportación) <span class="info-tip">?<span class="info-tip-box">Solo administrador. Sube el archivo del Estimado de Transportación (PDF, Excel o Word) o pega el texto — la IA extrae folio, fecha, cliente, origen/destino y separa Flete/Maniobras/Otros. El estimado NO trae operador ni económico, así que selecciónalo tú abajo.</span></span></div>
-    <div class="field"><label>Operador</label><select id="estOp"><option value="">— Selecciona —</option></select></div>
-    <div class="field" style="margin-top:8px"><label>Archivo del estimado (PDF, Excel o Word — opcional si vas a pegar el texto)</label><input type="file" id="estArchivo" accept=".pdf,.xlsx,.xls,.docx,.doc" onchange="handleEstArchivo(event)"></div>
-    <div class="field" style="margin-top:8px"><label>Texto del estimado</label><textarea id="estTexto" rows="6" placeholder="...o pega aquí el texto del Estimado de Transportación" oninput="_estPdfBase64=null"></textarea></div>
-    <button class="btn btn-red" id="btnExtraerEstimado" style="margin-top:10px" onclick="extraerEstimadoConIA()">🤖 Extraer con IA</button>
-    <div id="estimadoInfo" style="margin-top:10px"></div>
-    <div id="wrapEstimadoRevision" style="display:none;margin-top:12px;background:#f5f5f8;border-radius:8px;padding:14px">
-      <div class="grid4">
-        <div class="field"><label>Folio</label><input type="text" id="estFolio"></div>
-        <div class="field"><label>Fecha</label><input type="date" id="estFecha"></div>
-        <div class="field" style="grid-column:span 2"><label>Cliente</label><input type="text" id="estCliente"></div>
-      </div>
-      <div class="grid4" style="margin-top:8px">
-        <div class="field"><label>Flete</label><input type="number" id="estFlete" step="0.01" oninput="calcTotalesEstimado()"></div>
-        <div class="field"><label>Maniobras</label><input type="number" id="estManiobras" step="0.01" oninput="calcTotalesEstimado()"></div>
-        <div class="field"><label>Otros</label><input type="number" id="estOtros" step="0.01" oninput="calcTotalesEstimado()"></div>
-        <div class="field"><label>Subtotal</label><input type="number" id="estSubtotal" step="0.01" readonly style="background:#fff"></div>
-      </div>
-      <div class="grid4" style="margin-top:8px">
-        <div class="field"><label>IVA</label><input type="number" id="estIva" step="0.01" oninput="calcTotalesEstimado()"></div>
-        <div class="field"><label>Ret. IVA</label><input type="number" id="estRet" step="0.01" oninput="calcTotalesEstimado()"></div>
-        <div class="field"><label>Total</label><input type="number" id="estTotal" step="0.01" readonly style="background:#fff"></div>
-      </div>
-      <div class="grid2" style="margin-top:8px">
-        <div class="field"><label>Origen</label><input type="text" id="estOrigen"></div>
-        <div class="field"><label>Destino</label><input type="text" id="estDestino"></div>
-      </div>
-      <label style="display:flex;align-items:center;gap:8px;font-size:12px;font-weight:700;margin-top:10px;cursor:pointer">
-        <input type="checkbox" id="chkEstSustituir" style="width:auto" checked>
-        ¿Este ingreso se va a sustituir después con la factura real? (déjalo marcado si sí — queda como "sin factura" con el folio del estimado como ID, para usar el botón 🔄 XML cuando llegue; desmárcalo si este monto ya es definitivo y no habrá otra factura)
-      </label>
-      <div style="margin-top:10px;display:flex;gap:8px">
-        <button class="btn btn-red" onclick="registrarEstimado()">+ Registrar</button>
-        <button class="btn btn-out btn-sm" onclick="cancelarEstimado()">Cancelar</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- CONFLICTOS XML VS. MANUAL (solo admin) -->
-  <div class="card" id="cardConflictosXML" style="display:none">
-    <div class="card-title">⚠️ Discrepancias XML vs. manual pendientes de revisión (ADMIN)</div>
-    <p style="font-size:12px;color:#888;margin-bottom:10px">El monto real de estos XML no coincidió con lo que se había capturado a mano. No se sustituyeron solos porque podrían cambiar el saldo del operador — decide aquí cómo resolverlos.</p>
-    <div id="conflictosXMLWrap"></div>
-  </div>
+  <!-- ══════ TAB: VIAJES REGISTRADOS / FILTROS ══════ -->
+  <div class="tabpanel active" id="panelViajes">
 
   <!-- FILTROS -->
   <div class="card">
@@ -357,6 +270,122 @@ tr:hover td{background:#fafafa}
       </div>
     </div>
   </div>
+
+  </div>
+  <!-- ══════ /TAB: VIAJES ══════ -->
+
+  <!-- ══════ TAB: REGISTRAR ══════ -->
+  <div class="tabpanel" id="panelRegistro">
+
+  <!-- REGISTRO -->
+  <div class="card">
+    <div class="card-title">📄 Registrar viaje / ingreso</div>
+    <div class="row" style="margin-bottom:14px">
+      <div class="upload-zone" style="flex:1;min-width:160px;padding:14px" id="dzXML" onclick="document.getElementById('fXML').click()">
+        <div class="icon">📄</div><p><strong>XML Carta Porte / factura</strong><br><span style="font-size:10px;color:#aaa">Extrae todo automático — operador por placa, o pide operador/unidad si no trae</span></p>
+      </div>
+      <input type="file" id="fXML" accept=".xml" multiple style="display:none">
+      <input type="file" id="fSustituirXML" accept=".xml" style="display:none" onchange="handleSustituirXMLFile(event)">
+    </div>
+  </div>
+
+  <!-- SUSTITUIR CON FACTURA DE MANIOBRAS CONSOLIDADA (XML + Excel de desglose) -->
+  <div class="card">
+    <div class="card-title">📊 Sustituir con factura de maniobras (Excel) <span class="info-tip">?<span class="info-tip-box">Para cuando UNA factura junta varias semanas de maniobras ya autorizadas (normal con GRUPO COMERCIAL DSW — el cliente autoriza una vez por semana y se factura en lote, ver Maniobras). Sube el XML de esa factura + tu Excel de desglose (mismo formato de columnas VIAJE/TIENDA/DESTINO/ORDEN DE EMBARQUE/TOTAL) — el sistema empareja cada renglón por T.U.'s contra las autorizaciones pendientes y las sustituye automáticamente si el monto coincide (tolerancia $50), y de paso marca "facturado" cualquier pedido de flete pendiente que coincida por orden de embarque.</span></span></div>
+    <div class="grid2">
+      <div class="field"><label>XML de la factura</label><input type="file" id="fFacturaManiobrasXML" accept=".xml"></div>
+      <div class="field"><label>Excel de desglose</label><input type="file" id="fFacturaManiobrasXLSX" accept=".xlsx,.xls"></div>
+    </div>
+    <button class="btn btn-red" style="margin-top:10px" onclick="procesarFacturaManiobrasExcel()">Procesar y sustituir</button>
+    <div id="facturaManiobrasInfo" style="margin-top:12px"></div>
+  </div>
+
+  <!-- REGISTRAR SIN FACTURA CON IA (solo admin) — Estimado de Transportación -->
+  <div class="card" id="cardEstimadoIA" style="display:none">
+    <div class="card-title">🤖 Registrar sin factura (Estimado de Transportación) <span class="info-tip">?<span class="info-tip-box">Solo administrador. Sube el archivo del Estimado de Transportación (PDF, Excel o Word) o pega el texto — la IA extrae folio, fecha, cliente, origen/destino y separa Flete/Maniobras/Otros. El estimado NO trae operador ni económico, así que selecciónalo tú abajo.</span></span></div>
+    <div class="field"><label>Operador</label><select id="estOp"><option value="">— Selecciona —</option></select></div>
+    <div class="field" style="margin-top:8px"><label>Archivo del estimado (PDF, Excel o Word — opcional si vas a pegar el texto)</label><input type="file" id="estArchivo" accept=".pdf,.xlsx,.xls,.docx,.doc" onchange="handleEstArchivo(event)"></div>
+    <div class="field" style="margin-top:8px"><label>Texto del estimado</label><textarea id="estTexto" rows="6" placeholder="...o pega aquí el texto del Estimado de Transportación" oninput="_estPdfBase64=null"></textarea></div>
+    <button class="btn btn-red" id="btnExtraerEstimado" style="margin-top:10px" onclick="extraerEstimadoConIA()">🤖 Extraer con IA</button>
+    <div id="estimadoInfo" style="margin-top:10px"></div>
+    <div id="wrapEstimadoRevision" style="display:none;margin-top:12px;background:#f5f5f8;border-radius:8px;padding:14px">
+      <div class="grid4">
+        <div class="field"><label>Folio</label><input type="text" id="estFolio"></div>
+        <div class="field"><label>Fecha</label><input type="date" id="estFecha"></div>
+        <div class="field" style="grid-column:span 2"><label>Cliente</label><input type="text" id="estCliente"></div>
+      </div>
+      <div class="grid4" style="margin-top:8px">
+        <div class="field"><label>Flete</label><input type="number" id="estFlete" step="0.01" oninput="calcTotalesEstimado()"></div>
+        <div class="field"><label>Maniobras</label><input type="number" id="estManiobras" step="0.01" oninput="calcTotalesEstimado()"></div>
+        <div class="field"><label>Otros</label><input type="number" id="estOtros" step="0.01" oninput="calcTotalesEstimado()"></div>
+        <div class="field"><label>Subtotal</label><input type="number" id="estSubtotal" step="0.01" readonly style="background:#fff"></div>
+      </div>
+      <div class="grid4" style="margin-top:8px">
+        <div class="field"><label>IVA</label><input type="number" id="estIva" step="0.01" oninput="calcTotalesEstimado()"></div>
+        <div class="field"><label>Ret. IVA</label><input type="number" id="estRet" step="0.01" oninput="calcTotalesEstimado()"></div>
+        <div class="field"><label>Total</label><input type="number" id="estTotal" step="0.01" readonly style="background:#fff"></div>
+      </div>
+      <div class="grid2" style="margin-top:8px">
+        <div class="field"><label>Origen</label><input type="text" id="estOrigen"></div>
+        <div class="field"><label>Destino</label><input type="text" id="estDestino"></div>
+      </div>
+      <label style="display:flex;align-items:center;gap:8px;font-size:12px;font-weight:700;margin-top:10px;cursor:pointer">
+        <input type="checkbox" id="chkEstSustituir" style="width:auto" checked>
+        ¿Este ingreso se va a sustituir después con la factura real? (déjalo marcado si sí — queda como "sin factura" con el folio del estimado como ID, para usar el botón 🔄 XML cuando llegue; desmárcalo si este monto ya es definitivo y no habrá otra factura)
+      </label>
+      <div style="margin-top:10px;display:flex;gap:8px">
+        <button class="btn btn-red" onclick="registrarEstimado()">+ Registrar</button>
+        <button class="btn btn-out btn-sm" onclick="cancelarEstimado()">Cancelar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- CONFLICTOS XML VS. MANUAL (solo admin) -->
+  <div class="card" id="cardConflictosXML" style="display:none">
+    <div class="card-title">⚠️ Discrepancias XML vs. manual pendientes de revisión (ADMIN)</div>
+    <p style="font-size:12px;color:#888;margin-bottom:10px">El monto real de estos XML no coincidió con lo que se había capturado a mano. No se sustituyeron solos porque podrían cambiar el saldo del operador — decide aquí cómo resolverlos.</p>
+    <div id="conflictosXMLWrap"></div>
+  </div>
+
+  </div>
+  <!-- ══════ /TAB: REGISTRAR ══════ -->
+
+  <!-- ══════ TAB: BUZÓN DE PEDIDOS Y ARCHIVO MAESTRO ══════ -->
+  <div class="tabpanel" id="panelFletes">
+
+  <!-- BUZÓN DE PEDIDOS DE FLETE -->
+  <div class="card">
+    <div class="card-title">📦 Buzón de pedidos de flete (fletes@mudandote.mx) <span class="info-tip">?<span class="info-tip-box">El cliente manda el pedido de un embarque (orden de embarque, pedido de flete, tienda/destino, fecha) ANTES de que exista la factura. El sistema revisa este buzón 3 veces al día (7:00, 14:00 y 22:00 hrs) y registra solo lo que trae una orden de embarque reconocible — cuando subas aquí abajo tu XML+Excel de factura consolidada, cada renglón que coincida se marca "facturado" solo.</span></span>
+      <button class="btn btn-out btn-sm" onclick="revisarBuzonPedidosAhora()" id="btnRevisarBuzonPedidos">🔄 Revisar buzón ahora</button>
+    </div>
+    <div id="buzonPedidosInfo" style="margin-top:8px"></div>
+    <div id="buzonPedidosWrap"></div>
+    <div class="card-title" style="margin-top:16px">📦 Pedidos de flete pendientes de factura <span id="fletesCountLabel" style="font-weight:400;color:#888;text-transform:none;letter-spacing:normal"></span></div>
+    <div id="fletesPendientesWrap"><div style="text-align:center;padding:20px;color:#aaa">Cargando...</div></div>
+    <div style="margin-top:12px">
+      <div class="grid2">
+        <div class="field"><label>Orden de embarque</label><input type="text" id="fleteOrdenEmbarque" placeholder="Si el buzón no lo capturó"></div>
+        <div class="field"><label>Pedido de flete <span style="font-weight:400;font-size:11px;color:#aaa">(opcional)</span></label><input type="text" id="fletePedido"></div>
+        <div class="field"><label>Tienda</label><input type="text" id="fleteTienda"></div>
+        <div class="field"><label>Destino</label><input type="text" id="fleteDestino"></div>
+        <div class="field"><label>Fecha</label><input type="date" id="fleteFecha"></div>
+        <div class="field"><label>Económico <span style="font-weight:400;font-size:11px;color:#aaa">(si lo trae el correo)</span></label><input type="text" id="fleteEconomico" placeholder="Ej: 4522"></div>
+        <div class="field"><label>Monto del flete <span style="font-weight:400;font-size:11px;color:#aaa">(opcional)</span></label><input type="number" id="fleteMonto" step="0.01" placeholder="0.00"></div>
+      </div>
+      <button class="btn btn-out btn-sm" style="margin-top:8px" onclick="registrarFleteManual()">+ Registrar pedido de flete a mano</button>
+    </div>
+  </div>
+
+  <!-- ARCHIVO MAESTRO DE FLETES (cruce pedidos de flete ↔ autorizaciones de maniobra) -->
+  <div class="card">
+    <div class="card-title">🗂️ Archivo maestro de fletes <span class="info-tip">?<span class="info-tip-box">Cruza cada pedido de flete (fletesDB) contra las autorizaciones de maniobra capturadas en Maniobras, para armar en un solo lugar: fecha, destino, operador, orden de embarque, pedido de flete, monto autorizado de maniobra y estado de facturación. Primero intenta emparejar por T.U./orden de embarque; si no coincide, usa fecha + destino/tienda como respaldo — solo si hay UN solo candidato posible ese día para ese destino (nunca adivina entre varios).</span></span>
+      <button class="btn btn-out btn-sm" onclick="renderArchivoMaestroFletes()">🔄 Generar archivo maestro</button>
+    </div>
+    <div id="archivoMaestroFletesWrap"><p style="font-size:13px;color:#aaa;padding:10px 0">Dale "Generar archivo maestro" para verlo.</p></div>
+  </div>
+
+  </div>
+  <!-- ══════ /TAB: FLETES ══════ -->
 
 </div>
 
@@ -489,6 +518,17 @@ function confirmarOpUnidadModal(){
 const $=id=>document.getElementById(id);
 const fmt=(n,d=2)=>'$'+parseFloat(n||0).toLocaleString('es-MX',{minimumFractionDigits:d,maximumFractionDigits:d});
 const hoy=()=>new Date().toISOString().slice(0,10);
+
+// ══════════════════════════════════════════════
+// PESTAÑAS (mismo patrón que flota.html/proveedores.html/maniobras.html)
+// ══════════════════════════════════════════════
+function cambiarTab(nombre){
+  ['viajes','registro','fletes'].forEach(function(t){
+    var cap=t.charAt(0).toUpperCase()+t.slice(1);
+    $('panel'+cap).classList.toggle('active',t===nombre);
+    $('tabBtn'+cap).classList.toggle('active',t===nombre);
+  });
+}
 
 // ══════════════════════════════════════════════
 // INGRESOS SIN FACTURA — plazo histórico de 10 días hábiles usado por
