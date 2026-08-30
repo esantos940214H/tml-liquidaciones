@@ -1580,12 +1580,17 @@ const PROMPT_PEDIDO_FLETE =
   'manda un PEDIDO DE FLETE u orden de embarque, antes de que exista la factura. El correo puede venir como tabla o como texto ' +
   'libre, y normalmente trae, para cada embarque/viaje: la ORDEN DE EMBARQUE (folio único del embarque — puede aparecer como ' +
   '"orden de embarque", "OE", "T.U.", "traffic unit" o similar), el PEDIDO DE FLETE o número de compra/PO asociado (puede no ' +
-  'venir), la TIENDA o sucursal, el DESTINO (ciudad/estado/dirección), y la FECHA. Extrae UN renglón por cada embarque/viaje ' +
-  'que encuentres, con estas llaves exactas: {"ordenEmbarque":"el folio de la orden de embarque tal cual aparece, o null si no ' +
-  'se puede determinar","pedidoFlete":"el número de pedido/PO del flete, o null","tienda":"la tienda o sucursal, o null",' +
-  '"destino":"el destino del embarque, o null","fecha":"YYYY-MM-DD si se puede convertir desde el formato que traiga, o ' +
-  'null"}. No inventes datos que no estén en el correo. Responde SOLO un arreglo JSON (sin texto explicativo, sin backticks, ' +
-  'sin markdown) con un objeto por cada renglón que encuentres. Si no hay ningún renglón reconocible, responde [].';
+  'venir), la TIENDA o sucursal, el DESTINO (ciudad/estado/dirección), la FECHA, el NÚMERO ECONÓMICO o identificador de la ' +
+  'unidad/camión/operador asignado (puede aparecer como "económico", "unidad", "camión", "eco", o similar), y el IMPORTE o ' +
+  'MONTO DEL FLETE (el costo del flete/transportación de ese embarque, no confundir con el monto de la maniobra — puede venir ' +
+  'como "importe", "monto", "flete", "tarifa" o similar). Extrae UN renglón por cada embarque/viaje que encuentres, con estas ' +
+  'llaves exactas: {"ordenEmbarque":"el folio de la orden de embarque tal cual aparece, o null si no se puede determinar",' +
+  '"pedidoFlete":"el número de pedido/PO del flete, o null","tienda":"la tienda o sucursal, o null","destino":"el destino del ' +
+  'embarque, o null","fecha":"YYYY-MM-DD si se puede convertir desde el formato que traiga, o null","economico":"el número ' +
+  'económico o identificador de la unidad/operador tal cual aparece, o null si no se menciona","monto":"el importe/monto del ' +
+  'flete, como número (sin signos de moneda ni comas), o null si no se menciona"}. No inventes datos que no estén en el ' +
+  'correo. Responde SOLO un arreglo JSON (sin texto explicativo, sin backticks, sin markdown) con un objeto por cada renglón ' +
+  'que encuentres. Si no hay ningún renglón reconocible, responde [].';
 
 function _normalizarOrdenEmbarqueServer(valor) {
   return (valor == null ? '' : String(valor)).trim().toUpperCase().replace(/\s+/g, '').replace(/^0+(?=\d)/, '');
@@ -1668,6 +1673,8 @@ function _revisarBuzonPedidosCore(user, pass, apiKey) {
           await ref.set({
             ordenEmbarque: ordenNorm, pedidoFlete: r.pedidoFlete || null,
             destino: r.destino || '', tienda: r.tienda || '', fecha: r.fecha || c.fecha || new Date().toISOString().slice(0, 10),
+            economico: r.economico ? parseInt(String(r.economico).replace(/[^0-9]/g, '') || 0) || null : null,
+            montoFlete: r.monto != null ? parseFloat(r.monto) || null : null,
             estado: 'pendiente_factura', facturaUUID: null, facturaFolio: null, montoFactura: null,
             capturadoPor: 'Buzón automático (fletes@mudandote.mx)', fechaAlta: new Date().toISOString()
           });

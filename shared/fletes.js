@@ -81,6 +81,8 @@
       ordenEmbarque: ordenNorm, pedidoFlete: (datos.pedidoFlete || '').trim() || null,
       destino: (datos.destino || '').trim(), tienda: (datos.tienda || '').trim(),
       fecha: datos.fecha || new Date().toISOString().slice(0, 10),
+      economico: datos.economico ? parseInt(String(datos.economico).replace(/[^0-9]/g, '') || 0) || null : null,
+      montoFlete: datos.montoFlete != null && datos.montoFlete !== '' ? parseFloat(datos.montoFlete) || null : null,
       estado: 'pendiente_factura', facturaUUID: null, facturaFolio: null, montoFactura: null,
       capturadoPor: datos.capturadoPor || '', fechaAlta: new Date().toISOString()
     });
