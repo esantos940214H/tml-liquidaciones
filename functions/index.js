@@ -44,6 +44,11 @@ const db = admin.firestore();
 const ANTHROPIC_API_KEY = defineSecret('ANTHROPIC_API_KEY');
 const MANIOBRAS_EMAIL_USER = defineSecret('MANIOBRAS_EMAIL_USER');
 const MANIOBRAS_EMAIL_PASS = defineSecret('MANIOBRAS_EMAIL_PASS');
+const COMPRAS_EMAIL_USER = defineSecret('COMPRAS_EMAIL_USER');
+const COMPRAS_EMAIL_PASS = defineSecret('COMPRAS_EMAIL_PASS');
+// RFC de Mudanzas TML confirmado contra su Constancia de Situación Fiscal
+// (agosto 2026) — el receptor del CFDI de proveedor debe ser este RFC.
+const TML_RFC = 'MTM171214PI4';
 
 const PROMPT_INSTRUCCIONES =
   'Eres un asistente que extrae datos de correos de autorización de maniobras de una empresa de mudanzas (cliente fiscal: ' +
@@ -846,6 +851,224 @@ exports.extraerJustificacionCxP = onRequest(
     } catch (e) {
       console.error('extraerJustificacionCxP:', e);
       res.status(500).json({ error: e.message || 'Error interno del servidor.' });
+    }
+  }
+);
+
+// ══════════════════════════════════════════════════════════════════════════
+// BUZÓN DE COMPRAS (compras@mudandote.mx) — Cuentas por Pagar, Fase 2.
+// Igual que el buzón de Maniobras: lee por IMAP los correos no leídos donde
+// los proveedores mandan su CFDI de factura por pagar. Si el proveedor ya
+// está dado de alta y activo en Proveedores, y el CFDI pasa los mismos
+// candados de Fase 1 (UUID único, tipo I/E, receptor=Mudanzas TML,
+// aritmética), la factura se registra SOLA — pero SIN prorratear todavía
+// (eso sigue siendo decisión humana: a qué unidad/operador corresponde el
+// gasto), queda con estadoProrrateo:'pendiente_prorrateo' para que se
+// prorratee después desde Proveedores. Si algo no cuadra (proveedor no
+// encontrado/inactivo, RFC receptor distinto, aritmética no cuadra,
+// duplicado), el correo se deja pendiente de revisión manual — nunca se
+// fuerza nada.
+// ══════════════════════════════════════════════════════════════════════════
+
+// parseCfdiProveedorServer(xmlText): mismo criterio que parseCfdiProveedor en
+// proveedores.html, pero con una librería real de XML (fast-xml-parser) en
+// vez de DOMParser (que no existe en Node) — removeNSPrefix hace que
+// cfdi:Comprobante/tfd:TimbreFiscalDigital/etc. lleguen sin el prefijo, y al
+// venir como árbol de objetos (no texto plano) "Comprobante.Impuestos" NUNCA
+// se puede confundir con el Impuestos de dentro de un Concepto (child
+// distinto en el árbol), a diferencia de un parseo por regex.
+function _parseCfdiProveedorServer(xmlText) {
+  const { XMLParser } = require('fast-xml-parser');
+  const parser = new XMLParser({ ignoreAttributes: false, attributeNamePrefix: '@_', removeNSPrefix: true });
+  let obj;
+  try { obj = parser.parse(xmlText); } catch (e) { return { ok: false, error: 'No se pudo leer el XML: ' + e.message }; }
+  const comp = obj && obj.Comprobante;
+  if (!comp) return { ok: false, error: 'No es un CFDI válido (no se encontró el nodo Comprobante).' };
+  const emisor = comp.Emisor;
+  const receptor = comp.Receptor;
+  const tfd = comp.Complemento && comp.Complemento.TimbreFiscalDigital;
+  if (!emisor || !receptor || !tfd) return { ok: false, error: 'El XML no trae Emisor, Receptor o Timbre Fiscal Digital — no es un CFDI timbrado válido.' };
+  const subtotal = parseFloat(comp['@_SubTotal'] || 0);
+  const total = parseFloat(comp['@_Total'] || 0);
+  const impResumen = comp.Impuestos || {};
+  const traslados = parseFloat(impResumen['@_TotalImpuestosTrasladados'] || 0);
+  const retenciones = parseFloat(impResumen['@_TotalImpuestosRetenidos'] || 0);
+  return {
+    ok: true,
+    data: {
+      uuid: (tfd['@_UUID'] || '').toUpperCase(),
+      serie: comp['@_Serie'] || '', folio: comp['@_Folio'] || '',
+      tipoComprobante: comp['@_TipoDeComprobante'] || '',
+      metodoPago: comp['@_MetodoPago'] || '', formaPago: comp['@_FormaPago'] || '',
+      fechaEmision: (comp['@_Fecha'] || '').slice(0, 10),
+      subtotal: subtotal, traslados: traslados, retenciones: retenciones, total: total,
+      rfcEmisor: (emisor['@_Rfc'] || '').toUpperCase(), nombreEmisor: emisor['@_Nombre'] || '',
+      rfcReceptor: (receptor['@_Rfc'] || '').toUpperCase()
+    }
+  };
+}
+
+// Mismos candados de Fase 1 que evaluarCandados() en proveedores.html.
+async function _evaluarCandadosCxPServer(data) {
+  const candados = [];
+  const yaExiste = (await db.collection('cxpFacturas').doc(data.uuid).get()).exists;
+  candados.push({ label: 'UUID único', ok: !yaExiste });
+  candados.push({ label: 'Tipo de comprobante I/E', ok: data.tipoComprobante === 'I' || data.tipoComprobante === 'E' });
+  candados.push({ label: 'Receptor = Mudanzas TML', ok: data.rfcReceptor === TML_RFC });
+  const aritmetica = Math.abs((data.subtotal + data.traslados - data.retenciones) - data.total) < 0.02;
+  candados.push({ label: 'Aritmética del CFDI', ok: aritmetica });
+  const provSnap = await db.collection('proveedores').doc(data.rfcEmisor).get();
+  const proveedor = provSnap.exists ? Object.assign({ rfc: data.rfcEmisor }, provSnap.data()) : null;
+  const proveedorOk = !!proveedor && proveedor.activo !== false;
+  candados.push({ label: 'Proveedor registrado y activo', ok: proveedorOk });
+  return { candados: candados, proveedor: proveedor, todosOk: candados.every(function (c) { return c.ok; }) };
+}
+
+async function _procesarMensajeCompras(rawBuffer) {
+  const { simpleParser } = require('mailparser');
+  const parsed = await simpleParser(rawBuffer);
+  const xmlAdjunto = (parsed.attachments || []).find(function (a) {
+    return (a.filename || '').toLowerCase().endsWith('.xml') || (a.contentType || '').toLowerCase().indexOf('xml') !== -1;
+  });
+  const base = {
+    asunto: parsed.subject || '(sin asunto)',
+    de: (parsed.from && parsed.from.value && parsed.from.value[0] && parsed.from.value[0].address) || '',
+    fecha: parsed.date ? parsed.date.toISOString().slice(0, 10) : ''
+  };
+  if (!xmlAdjunto) return Object.assign({ error: 'El correo no trae ningún XML adjunto.' }, base);
+  const xmlText = xmlAdjunto.content.toString('utf8');
+  const r = _parseCfdiProveedorServer(xmlText);
+  if (!r.ok) return Object.assign({ error: r.error }, base);
+  return Object.assign({ error: null, cfdi: r.data, xmlTexto: xmlText }, base);
+}
+
+function _revisarBuzonComprasCore(user, pass) {
+  const Imap = require('imap');
+  return new Promise(function (resolveTodo, rejectTodo) {
+    const imap = new Imap({ user: user, password: pass, host: 'imap.ionos.mx', port: 993, tls: true, connTimeout: 20000, authTimeout: 20000 });
+    const encontrados = [];
+    let resuelto = false;
+    function terminar(v) { if (resuelto) return; resuelto = true; resolveTodo(v); }
+    imap.once('error', function (err) { console.error('revisarBuzonCompras: imap error:', err); rejectTodo(err); });
+    imap.once('ready', function () {
+      imap.openBox('INBOX', false, function (err) {
+        if (err) { console.error('revisarBuzonCompras: error abriendo INBOX:', err); imap.end(); rejectTodo(err); return; }
+        imap.search(['UNSEEN'], function (err, uids) {
+          if (err) { console.error('revisarBuzonCompras: error en search:', err); imap.end(); rejectTodo(err); return; }
+          console.log('revisarBuzonCompras: search encontró', uids ? uids.length : 0, 'correo(s).');
+          if (!uids || !uids.length) { imap.end(); terminar(encontrados); return; }
+          const f = imap.fetch(uids, { bodies: '', markSeen: true });
+          const pendientes = [];
+          f.on('message', function (msg, seqno) {
+            const partes = [];
+            msg.on('body', function (stream) { stream.on('data', function (chunk) { partes.push(chunk); }); });
+            msg.once('end', function () {
+              const raw = Buffer.concat(partes);
+              pendientes.push(
+                _procesarMensajeCompras(raw)
+                  .then(function (r) { encontrados.push(Object.assign({ revisadoEn: new Date().toISOString() }, r)); })
+                  .catch(function (e) {
+                    console.error('revisarBuzonCompras: error procesando mensaje #' + seqno + ':', e);
+                    encontrados.push({ error: e.message || String(e), asunto: '(error al procesar)', de: '', fecha: '', revisadoEn: new Date().toISOString() });
+                  })
+              );
+            });
+          });
+          f.once('error', function (err) { console.error('revisarBuzonCompras: error en fetch:', err); imap.end(); rejectTodo(err); });
+          f.once('end', function () {
+            Promise.all(pendientes).then(function () { imap.end(); terminar(encontrados); })
+              .catch(function (e) { console.error('revisarBuzonCompras: error inesperado esperando pendientes:', e); imap.end(); rejectTodo(e); });
+          });
+        });
+      });
+    });
+    imap.once('end', function () { terminar(encontrados); });
+    imap.connect();
+  }).then(async function (encontrados) {
+    const conAlgoPendiente = [];
+    let totalRegistradas = 0;
+    for (const c of encontrados) {
+      if (c.error || !c.cfdi) { conAlgoPendiente.push(c); continue; }
+      try {
+        const ev = await _evaluarCandadosCxPServer(c.cfdi);
+        if (!ev.todosOk) {
+          conAlgoPendiente.push(Object.assign({}, c, { candados: ev.candados }));
+          continue;
+        }
+        const data = c.cfdi;
+        const diasCredito = ev.proveedor.diasCredito != null ? ev.proveedor.diasCredito : 15;
+        const fechaVencimiento = _sumarDiasHabilesServer(data.fechaEmision, diasCredito);
+        const estadoPago = data.metodoPago === 'PUE' ? 'pendiente_pago' : 'vigente_por_pagar';
+        await db.collection('cxpFacturas').doc(data.uuid).set({
+          proveedorId: ev.proveedor.rfc, proveedorNombre: ev.proveedor.razonSocial || ev.proveedor.rfc,
+          serie: data.serie, folio: data.folio, tipoComprobante: data.tipoComprobante,
+          metodoPago: data.metodoPago, formaPago: data.formaPago,
+          subtotal: data.subtotal, totalImpuestos: data.traslados - data.retenciones, total: data.total,
+          fechaEmision: data.fechaEmision, diasCredito: diasCredito, fechaVencimiento: fechaVencimiento,
+          estadoPago: estadoPago, estadoProrrateo: 'pendiente_prorrateo', prorrateo: [],
+          xmlURL: null, capturadoPor: 'Buzón automático (compras@mudandote.mx)', fechaAlta: new Date().toISOString()
+        });
+        try {
+          const url = await _subirXMLStorage('comprobantes/proveedores/' + data.uuid + '.xml', c.xmlTexto);
+          await db.collection('cxpFacturas').doc(data.uuid).set({ xmlURL: url }, { merge: true });
+        } catch (e) { console.error('revisarBuzonCompras: no se pudo subir el XML a Storage:', e); }
+        totalRegistradas++;
+      } catch (e) {
+        console.error('revisarBuzonCompras: error evaluando/registrando factura:', e);
+        conAlgoPendiente.push(c);
+      }
+    }
+    if (conAlgoPendiente.length) {
+      const ref = db.collection('estado').doc('correosComprasPendientes');
+      const snap = await ref.get();
+      const previos = (snap.exists && snap.data().data) ? JSON.parse(snap.data().data) : [];
+      await ref.set({ data: JSON.stringify(previos.concat(conAlgoPendiente)) });
+    }
+    encontrados._totalRegistradas = totalRegistradas;
+    encontrados._totalPendientes = conAlgoPendiente.length;
+    return encontrados;
+  });
+}
+
+// Sube el XML tal cual a Firebase Storage (mismo patrón que
+// shared/comprobantes.js del lado del navegador) — se usa aquí porque el
+// buzón corre en el servidor, sin acceso a ese archivo compartido.
+async function _subirXMLStorage(path, text) {
+  const bucket = admin.storage().bucket('tml-liquidaciones.firebasestorage.app');
+  const file = bucket.file(path);
+  await file.save(Buffer.from(text, 'utf8'), { contentType: 'application/xml' });
+  await file.makePublic();
+  return 'https://storage.googleapis.com/' + bucket.name + '/' + path;
+}
+
+exports.revisarBuzonCompras = onRequest(
+  { secrets: [COMPRAS_EMAIL_USER, COMPRAS_EMAIL_PASS], cors: true, region: 'us-central1', timeoutSeconds: 300 },
+  async (req, res) => {
+    try {
+      const encontrados = await _revisarBuzonComprasCore(COMPRAS_EMAIL_USER.value(), COMPRAS_EMAIL_PASS.value());
+      res.json({ ok: true, correosNuevos: encontrados.length, facturasRegistradas: encontrados._totalRegistradas || 0, pendientesRevision: encontrados._totalPendientes || 0 });
+    } catch (e) {
+      console.error('revisarBuzonCompras:', e);
+      res.status(500).json({ error: e.message || 'Error interno del servidor.' });
+    }
+  }
+);
+
+exports.revisarBuzonComprasProgramado = onSchedule(
+  { schedule: 'every 8 hours', secrets: [COMPRAS_EMAIL_USER, COMPRAS_EMAIL_PASS], region: 'us-central1', timeoutSeconds: 300 },
+  async () => {
+    const inicio = new Date().toISOString();
+    try {
+      const encontrados = await _revisarBuzonComprasCore(COMPRAS_EMAIL_USER.value(), COMPRAS_EMAIL_PASS.value());
+      await db.collection('estado').doc('buzonComprasEstado').set({
+        ultimaEjecucion: inicio, ok: true, correosNuevos: encontrados.length,
+        facturasRegistradas: encontrados._totalRegistradas || 0, pendientesRevision: encontrados._totalPendientes || 0, error: null
+      });
+    } catch (e) {
+      console.error('revisarBuzonComprasProgramado:', e);
+      try {
+        await db.collection('estado').doc('buzonComprasEstado').set({ ultimaEjecucion: inicio, ok: false, error: e.message || String(e) });
+      } catch (e2) { console.error('revisarBuzonComprasProgramado: no se pudo guardar el estado del error:', e2); }
     }
   }
 );
