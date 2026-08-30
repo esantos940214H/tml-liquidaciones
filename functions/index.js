@@ -79,7 +79,7 @@ async function _enviarCorreoCompras(user, pass, to, subject, html) {
     throw e;
   } finally {
     try {
-      await db.collection('correosEnviadosCxP').add({ to: to, subject: subject, ok: ok, error: error, fechaEnvio: new Date().toISOString() });
+      await db.collection('correosEnviadosCxP').add({ to: to, subject: subject, html: html, ok: ok, error: error, fechaEnvio: new Date().toISOString() });
     } catch (e2) { console.error('_enviarCorreoCompras: no se pudo registrar el log del correo:', e2); }
   }
 }

@@ -558,24 +558,48 @@ async function desbloquearProveedorUI(rfc){
 // recibida, solicitud/recordatorio de complemento de pago, bloqueo) — ver
 // _enviarCorreoCompras en functions/index.js. No usa window.FB.getAll()
 // porque esa función ordena por el campo "num" (no aplica aquí).
+let _correosEnviados=[];
 async function cargarYRenderCorreosEnviados(){
   var wrap=$('correosEnviadosWrap');
   wrap.innerHTML='<div style="text-align:center;padding:20px;color:#aaa">Cargando...</div>';
   try{
     var snap=await firebase.firestore().collection('correosEnviadosCxP').orderBy('fechaEnvio','desc').limit(30).get();
-    if(snap.empty){wrap.innerHTML='<p style="font-size:13px;color:#aaa;padding:10px 0">Todavía no se ha mandado ningún correo.</p>';return;}
-    wrap.innerHTML='<div class="tbl-wrap"><table><thead><tr><th>Fecha</th><th>Para</th><th>Asunto</th><th>Resultado</th></tr></thead><tbody>'
-      +snap.docs.map(function(d){
-        var c=d.data();
+    _correosEnviados=snap.docs.map(function(d){return d.data();});
+    if(!_correosEnviados.length){wrap.innerHTML='<p style="font-size:13px;color:#aaa;padding:10px 0">Todavía no se ha mandado ningún correo.</p>';return;}
+    wrap.innerHTML='<div class="tbl-wrap"><table><thead><tr><th>Fecha</th><th>Para</th><th>Asunto</th><th>Resultado</th><th></th></tr></thead><tbody>'
+      +_correosEnviados.map(function(c,i){
         return '<tr><td style="font-size:11px">'+(c.fechaEnvio||'').replace('T',' ').slice(0,19)+'</td>'
           +'<td style="font-size:11px">'+(c.to||'')+'</td>'
           +'<td style="font-size:12px">'+(c.subject||'')+'</td>'
-          +'<td>'+(c.ok?'<span class="badge bg-green">✅ Enviado</span>':'<span class="badge bg-red" title="'+(c.error||'')+'">⚠️ Falló</span>')+'</td></tr>';
+          +'<td>'+(c.ok?'<span class="badge bg-green">✅ Enviado</span>':'<span class="badge bg-red" title="'+(c.error||'')+'">⚠️ Falló</span>')+'</td>'
+          +'<td>'+(c.html?'<button class="btn btn-out btn-sm" onclick="verCorreoEnviado('+i+')">👁️ Ver diseño</button>':'')+'</td></tr>';
       }).join('')+'</tbody></table></div>';
   }catch(e){
     console.error('cargarYRenderCorreosEnviados:',e);
     wrap.innerHTML='<div class="alert alert-warn">⚠️ '+e.message+'</div>';
   }
+}
+// Vista previa del correo tal cual se mandó — en un <iframe srcdoc> aislado
+// (no inserta el HTML directo en la página) para que se vea con su propio
+// diseño sin pelearse con los estilos del módulo.
+function verCorreoEnviado(i){
+  var c=_correosEnviados[i];
+  if(!c||!c.html)return;
+  if(!$('correoPreviewOverlay')){
+    var overlay=document.createElement('div');
+    overlay.id='correoPreviewOverlay';
+    overlay.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:999999;display:flex;align-items:center;justify-content:center;padding:20px';
+    overlay.innerHTML='<div style="background:#fff;border-radius:10px;width:100%;max-width:640px;height:80vh;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,.4);overflow:hidden">'
+      +'<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 16px;background:#1a1a2e;color:#fff;font-size:13px;font-weight:700">'
+      +'<span id="correoPreviewAsunto">📧 Vista previa</span>'
+      +'<button onclick="document.getElementById(\'correoPreviewOverlay\').style.display=\'none\'" style="background:none;border:1px solid #555;color:#fff;border-radius:6px;padding:5px 12px;font-size:12px;cursor:pointer">✕ Cerrar</button></div>'
+      +'<iframe id="correoPreviewFrame" style="flex:1;border:none;width:100%;background:#fff"></iframe></div>';
+    overlay.addEventListener('click',function(e){if(e.target===overlay)overlay.style.display='none';});
+    document.body.appendChild(overlay);
+  }
+  $('correoPreviewAsunto').textContent='📧 '+(c.subject||'Vista previa')+' — para: '+(c.to||'');
+  $('correoPreviewFrame').srcdoc=c.html;
+  $('correoPreviewOverlay').style.display='flex';
 }
 
 // ══════════════════════════════════════════════
