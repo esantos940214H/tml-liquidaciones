@@ -207,6 +207,9 @@ tr:hover td{background:#fafafa}
       <button class="btn btn-out btn-sm" onclick="cargarYRenderFacturas(true)">🔄 Recargar</button>
     </div>
     <div id="facResumenProrrateo" style="font-size:12px;margin-bottom:10px"></div>
+    <div style="margin-bottom:10px">
+      <input type="text" id="facFiltroUnidad" placeholder="🔍 Filtrar por unidad/económico (ej. 4522)" style="max-width:280px" oninput="renderFacturas()">
+    </div>
     <div id="facWrap"><div style="text-align:center;padding:30px;color:#aaa">Cargando...</div></div>
   </div>
 
@@ -1061,7 +1064,17 @@ function renderFacturas(){
     });
   });
   $('facResumenProrrateo').innerHTML='<strong>Prorrateo pendiente de liquidar:</strong> '+fmt(pendiente)+' &nbsp;·&nbsp; <span style="color:#888">ya aplicado a alguna liquidación: '+fmt(aplicado)+'</span>';
+  var filtroUnidad=($('facFiltroUnidad')?$('facFiltroUnidad').value:'').replace(/[^0-9]/g,'');
   var ordenadas=FACTURAS.slice().sort(function(a,b){return(b.fechaEmision||'').localeCompare(a.fechaEmision||'');});
+  if(filtroUnidad){
+    ordenadas=ordenadas.filter(function(f){
+      return(f.prorrateo||[]).some(function(p){return String(p.unidad||'').indexOf(filtroUnidad)!==-1;});
+    });
+  }
+  if(!ordenadas.length){
+    wrap.innerHTML='<p style="font-size:13px;color:#aaa;padding:10px 0">Ninguna factura tiene prorrateo asignado a la unidad "'+filtroUnidad+'".</p>';
+    return;
+  }
   wrap.innerHTML='<div class="tbl-wrap"><table><thead><tr><th>Proveedor</th><th>Folio</th><th>Fecha</th><th class="r">Total</th><th>Vencimiento</th><th>Estado</th><th>Pago</th><th>Prorrateo</th><th></th></tr></thead><tbody>'
     +ordenadas.map(function(f){
       var vencido=yaVencioLimite(f.fechaVencimiento);
@@ -1099,7 +1112,7 @@ function renderFacturas(){
 }
 function nombreOperadorPorUnidad(unidad){
   var op=OPERADORES.find(function(o){return o.unidad===parseInt(unidad);});
-  return op?op.clave+' · '+op.nombre:('Unidad '+unidad);
+  return op?unidad+' · '+op.nombre:('Unidad '+unidad);
 }
 function toggleProrrateoDetalle(id){
   var el=document.getElementById('prorrateoDetalle_'+id);
