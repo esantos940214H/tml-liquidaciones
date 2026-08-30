@@ -1288,6 +1288,14 @@ function parseXML(text,fname,unidad,unidadFisica){
 // flete todavía pendientes de factura, y si aparece, se marca "facturado".
 // No bloquea el registro del XML si falla (ej. sin conexión momentánea) —
 // es un extra sobre el registro normal, nunca un requisito para guardarlo.
+// _fleteTusNorm(f): todos los T.U.'s de un pedido de flete, normalizados —
+// un pedido puede traer varios juntos (ej. "6500360289/6500360290" para el
+// mismo embarque), guardados en el campo "tus"; "ordenEmbarque" es respaldo
+// para registros viejos sin ese campo.
+function _fleteTusNorm(f){
+  if(Array.isArray(f.tus)&&f.tus.length)return f.tus.map(_normTxtFactManiobras);
+  return f.ordenEmbarque?[_normTxtFactManiobras(f.ordenEmbarque)]:[];
+}
 async function intentarSustituirFletePorXML(doc,uuid,folioCompleto,total){
   try{
     var pendientes=(await window.cargarFletes(true)).filter(function(f){return f.estado==='pendiente_factura';});
@@ -1298,9 +1306,8 @@ async function intentarSustituirFletePorXML(doc,uuid,folioCompleto,total){
     var textoNorm=_normTxtFactManiobras(textoConceptos);
     if(!textoNorm)return;
     var encontrados=pendientes.filter(function(f){
-      var idNorm=_normTxtFactManiobras(f.ordenEmbarque);
       var pedNorm=f.pedidoFlete?_normTxtFactManiobras(f.pedidoFlete):'';
-      return(idNorm&&textoNorm.indexOf(idNorm)!==-1)||(pedNorm&&textoNorm.indexOf(pedNorm)!==-1);
+      return _fleteTusNorm(f).some(function(id){return id&&textoNorm.indexOf(id)!==-1;})||(pedNorm&&textoNorm.indexOf(pedNorm)!==-1);
     });
     for(var i=0;i<encontrados.length;i++){
       await window.marcarFleteFacturado(encontrados[i].ordenEmbarque,{uuid:uuid,folio:folioCompleto,monto:total});
@@ -1741,7 +1748,8 @@ function renderFletesPendientes(){
   pendientes.sort(function(a,b){return(b.fechaAlta||'').localeCompare(a.fechaAlta||'');});
   wrap.innerHTML='<div class="tbl-wrap"><table><thead><tr><th>Orden de embarque</th><th>Pedido de flete</th><th>Tienda</th><th>Destino</th><th>Fecha</th><th>Económico</th><th class="r">Monto flete</th><th></th></tr></thead><tbody>'
     +pendientes.map(function(f){
-      return '<tr><td class="num">'+f.ordenEmbarque+'</td><td class="num">'+(f.pedidoFlete||'—')+'</td>'
+      var tusTexto=(Array.isArray(f.tus)&&f.tus.length?f.tus:[f.ordenEmbarque]).join(' / ');
+      return '<tr><td class="num">'+tusTexto+'</td><td class="num">'+(f.pedidoFlete||'—')+'</td>'
         +'<td style="font-size:12px">'+(f.tienda||'')+'</td><td style="font-size:12px">'+(f.destino||'')+'</td><td>'+(f.fecha||'')+'</td>'
         +'<td class="num">'+(f.economico||'—')+'</td><td class="num r">'+(f.montoFlete!=null?fmt(f.montoFlete):'—')+'</td>'
         +'<td><button class="btn-sm" style="background:none;border:none;cursor:pointer;color:#c1121f" onclick="eliminarFleteUI(\''+f.ordenEmbarque+'\')">✕</button></td></tr>';
@@ -1843,11 +1851,11 @@ async function revisarBuzonPedidosAhora(){
 // destino/tienda, se usa — si hay más de uno, no se adivina (queda sin
 // emparejar para revisión manual).
 function matchFleteConAutorizacion(flete,autorizaciones){
-  var idNorm=_normTxtFactManiobras(flete.ordenEmbarque);
+  var tusNorm=_fleteTusNorm(flete);
   var pedNorm=flete.pedidoFlete?_normTxtFactManiobras(flete.pedidoFlete):'';
   var directo=autorizaciones.find(function(v){
     var vIds=_normTxtFactManiobras(v.observaciones);
-    return(idNorm&&vIds.indexOf(idNorm)!==-1)||(pedNorm&&vIds.indexOf(pedNorm)!==-1);
+    return tusNorm.some(function(id){return id&&vIds.indexOf(id)!==-1;})||(pedNorm&&vIds.indexOf(pedNorm)!==-1);
   });
   if(directo)return{autorizacion:directo,metodo:'T.U./orden de embarque'};
   // Respaldo 1: si el correo del pedido de flete sí trae el económico, se usa
@@ -1885,7 +1893,7 @@ function construirArchivoMaestroFletes(){
     var unidad=m?m.autorizacion.unidad:(f.economico||null);
     return{
       fecha:f.fecha,destino:f.destino,tienda:f.tienda,
-      ordenEmbarque:f.ordenEmbarque,pedidoFlete:f.pedidoFlete,
+      ordenEmbarque:(Array.isArray(f.tus)&&f.tus.length?f.tus:[f.ordenEmbarque]).join(' / '),pedidoFlete:f.pedidoFlete,
       operador:unidad?(nombreOp(unidad)||('Unidad '+unidad)):null,
       unidad:unidad,operadorConfirmado:!!m,
       montoFlete:f.montoFlete,

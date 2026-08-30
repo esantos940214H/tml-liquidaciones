@@ -1577,18 +1577,20 @@ exports.extraerComprobantePagoCxP = onRequest(
 // ══════════════════════════════════════════════════════════════════════════
 const PROMPT_PEDIDO_FLETE =
   'Eres un asistente que extrae datos de un correo donde un cliente (empresa que contrata servicios de mudanza/transportación) ' +
-  'manda un PEDIDO DE FLETE u orden de embarque, antes de que exista la factura. El correo puede venir como tabla o como texto ' +
-  'libre, y normalmente trae, para cada embarque/viaje: la ORDEN DE EMBARQUE (folio único del embarque — puede aparecer como ' +
-  '"orden de embarque", "OE", "T.U.", "traffic unit" o similar), el PEDIDO DE FLETE o número de compra/PO asociado (puede no ' +
-  'venir), la TIENDA o sucursal, el DESTINO (ciudad/estado/dirección), la FECHA, el NÚMERO ECONÓMICO o identificador de la ' +
-  'unidad/camión/operador asignado (puede aparecer como "económico", "unidad", "camión", "eco", o similar), y el IMPORTE o ' +
-  'MONTO DEL FLETE (el costo del flete/transportación de ese embarque, no confundir con el monto de la maniobra — puede venir ' +
-  'como "importe", "monto", "flete", "tarifa" o similar). Extrae UN renglón por cada embarque/viaje que encuentres, con estas ' +
-  'llaves exactas: {"ordenEmbarque":"el folio de la orden de embarque tal cual aparece, o null si no se puede determinar",' +
-  '"pedidoFlete":"el número de pedido/PO del flete, o null","tienda":"la tienda o sucursal, o null","destino":"el destino del ' +
-  'embarque, o null","fecha":"YYYY-MM-DD si se puede convertir desde el formato que traiga, o null","economico":"el número ' +
-  'económico o identificador de la unidad/operador tal cual aparece, o null si no se menciona","monto":"el importe/monto del ' +
-  'flete, como número (sin signos de moneda ni comas), o null si no se menciona"}. No inventes datos que no estén en el ' +
+  'manda un PEDIDO DE FLETE u orden de embarque, antes de que exista la factura. El correo suele venir en una TABLA con ' +
+  'columnas como FECHA, PEDIDO, TU (o "T.U.", "orden de embarque", "traffic unit"), ECO. (el número económico/unidad), ' +
+  'TIENDA o TIENDA PREVIAS, DESTINO y FLETE (el importe). IMPORTANTE — la columna TU/orden de embarque puede traer DOS (o ' +
+  'más) números juntos separados por "/", por ejemplo "6500360289/6500360290": eso es UN SOLO renglón/embarque con dos T.U.\'s ' +
+  'asociados, NO dos renglones distintos — extráelo TAL CUAL viene, con la "/" incluida, en un solo objeto (no dupliques el ' +
+  'renglón por cada T.U.). También ten cuidado de no confundir la columna ECO. (el número económico de la unidad/camión, un ' +
+  'número corto tipo "532") con otras columnas cercanas que sean texto (como un nombre de persona o un tipo de unidad/flota) — ' +
+  'el económico es específicamente ese número. Extrae UN renglón por cada embarque/viaje (fila de la tabla) que encuentres, ' +
+  'con estas llaves exactas: {"ordenEmbarque":"el folio de la orden de embarque/TU tal cual aparece (con la \\"/\\" si trae ' +
+  'más de uno), o null si no se puede determinar","pedidoFlete":"el número de pedido/PO del flete, o null","tienda":"la ' +
+  'tienda o sucursal, o null","destino":"el destino del embarque, o null","fecha":"YYYY-MM-DD si se puede convertir desde el ' +
+  'formato que traiga, o null","economico":"el número económico de la unidad/camión (columna ECO. o similar) tal cual ' +
+  'aparece, o null si no se menciona","monto":"el importe/monto del flete, como número (sin signos de moneda ni comas), o ' +
+  'null si no se menciona"}. No inventes datos que no estén en el ' +
   'correo. Responde SOLO un arreglo JSON (sin texto explicativo, sin backticks, sin markdown) con un objeto por cada renglón ' +
   'que encuentres. Si no hay ningún renglón reconocible, responde [].';
 
@@ -1664,14 +1666,24 @@ function _revisarBuzonPedidosCore(user, pass, apiKey) {
       if (c.error) { conAlgoPendiente.push(c); continue; }
       const renglonesSinOrden = [];
       for (const r of (c.renglones || [])) {
-        const ordenNorm = _normalizarOrdenEmbarqueServer(r.ordenEmbarque);
-        if (!ordenNorm) { renglonesSinOrden.push(r); continue; }
+        // La columna TU/orden de embarque puede traer varios números juntos
+        // separados por "/" (un solo embarque con dos T.U.'s asociados, ej.
+        // "6500360289/6500360290") — se separan aquí (nunca deberían llegar
+        // ya divididos en renglones distintos, pero por si acaso, esto es lo
+        // que evita registrar el mismo pedido dos veces como si fueran dos).
+        // El primero se usa como id/orden de embarque principal; todos se
+        // guardan en "tus" para que el emparejamiento pueda usar cualquiera.
+        const partes = String(r.ordenEmbarque || '').split(/[\/,;]+/)
+          .map(function (p) { return _normalizarOrdenEmbarqueServer(p); })
+          .filter(function (p) { return p; });
+        if (!partes.length) { renglonesSinOrden.push(r); continue; }
+        const ordenNorm = partes[0];
         try {
           const ref = db.collection('fletesDB').doc(ordenNorm);
           const yaExiste = (await ref.get()).exists;
           if (yaExiste) continue; // ya registrado antes (correo repetido/reenviado) — no es un error, se ignora
           await ref.set({
-            ordenEmbarque: ordenNorm, pedidoFlete: r.pedidoFlete || null,
+            ordenEmbarque: ordenNorm, tus: partes, pedidoFlete: r.pedidoFlete || null,
             destino: r.destino || '', tienda: r.tienda || '', fecha: r.fecha || c.fecha || new Date().toISOString().slice(0, 10),
             economico: r.economico ? parseInt(String(r.economico).replace(/[^0-9]/g, '') || 0) || null : null,
             montoFlete: r.monto != null ? parseFloat(r.monto) || null : null,
