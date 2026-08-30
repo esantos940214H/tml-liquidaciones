@@ -33,6 +33,11 @@ header{background:#1a1a2e;color:#fff;padding:14px 24px;display:flex;align-items:
 .alert-ok{background:#d1e7dd;color:#0a5233;border:1px solid #a3cfbb}
 .alert-warn{background:#fffbeb;color:#92400e;border:1px solid #fde68a}
 .alert-err{background:#fde8e8;color:#9b1c1c;border:1px solid #f9a8a8}
+.tabs{display:flex;gap:6px;margin-bottom:16px;flex-wrap:wrap}
+.tab{padding:9px 16px;border-radius:7px;border:1.5px solid #dde;background:#fff;font-size:12px;font-weight:700;cursor:pointer;color:#666}
+.tab.active{background:#1a1a2e;color:#fff;border-color:#1a1a2e}
+.tabpanel{display:none}
+.tabpanel.active{display:block}
 .tbl-wrap{overflow-x:auto}
 table{width:100%;border-collapse:collapse;font-size:13px;min-width:500px}
 th{background:#1a1a2e;color:#fff;padding:8px 10px;font-size:11px;text-transform:uppercase;letter-spacing:.7px;text-align:left;font-weight:600}
@@ -127,6 +132,15 @@ tr:hover td{background:#fafafa}
 
 <div class="container">
 
+  <div class="tabs">
+    <button class="tab active" id="tabBtnProveedores" onclick="cambiarTab('proveedores')">👥 Proveedores</button>
+    <button class="tab" id="tabBtnFacturas" onclick="cambiarTab('facturas')">📥 Buzón y registro de facturas</button>
+    <button class="tab" id="tabBtnPagos" onclick="cambiarTab('pagos')">🧾 Facturas y pagos</button>
+  </div>
+
+  <!-- ══════ TAB: PROVEEDORES (alta y catálogo) ══════ -->
+  <div class="tabpanel active" id="panelProveedores">
+
   <div class="card">
     <div class="card-title">➕ <span id="tituloForm">Dar de alta un proveedor</span></div>
     <div class="grid2" style="margin-bottom:10px">
@@ -154,6 +168,12 @@ tr:hover td{background:#fafafa}
     </div>
     <div id="provWrap"><div style="text-align:center;padding:30px;color:#aaa">Cargando...</div></div>
   </div>
+
+  </div>
+  <!-- ══════ /TAB: PROVEEDORES ══════ -->
+
+  <!-- ══════ TAB: BUZÓN Y REGISTRO DE FACTURAS ══════ -->
+  <div class="tabpanel" id="panelFacturas">
 
   <!-- BUZÓN AUTOMÁTICO DE COMPRAS -->
   <div class="card">
@@ -201,6 +221,12 @@ tr:hover td{background:#fafafa}
     </div>
   </div>
 
+  </div>
+  <!-- ══════ /TAB: BUZÓN Y REGISTRO DE FACTURAS ══════ -->
+
+  <!-- ══════ TAB: FACTURAS Y PAGOS ══════ -->
+  <div class="tabpanel" id="panelPagos">
+
   <div class="card">
     <div class="card-title">
       <span>🧾 Facturas de proveedor registradas <span id="facCountLabel" style="font-weight:400;color:#888;text-transform:none;letter-spacing:normal"></span></span>
@@ -212,6 +238,9 @@ tr:hover td{background:#fafafa}
     </div>
     <div id="facWrap"><div style="text-align:center;padding:30px;color:#aaa">Cargando...</div></div>
   </div>
+
+  </div>
+  <!-- ══════ /TAB: FACTURAS Y PAGOS ══════ -->
 
 </div>
 
@@ -261,6 +290,17 @@ const fmt=(n,d=2)=>'$'+parseFloat(n||0).toLocaleString('es-MX',{minimumFractionD
 let fbReady=false;
 let PROVEEDORES=[];
 let OPERADORES=[];
+
+// ══════════════════════════════════════════════
+// PESTAÑAS (mismo patrón que flota.html: cambiarTab + clases .tab/.tabpanel)
+// ══════════════════════════════════════════════
+function cambiarTab(nombre){
+  ['proveedores','facturas','pagos'].forEach(function(t){
+    var cap=t.charAt(0).toUpperCase()+t.slice(1);
+    $('panel'+cap).classList.toggle('active',t===nombre);
+    $('tabBtn'+cap).classList.toggle('active',t===nombre);
+  });
+}
 
 // ══════════════════════════════════════════════
 // SESIÓN (login general con permisos por módulo — mismo patrón que los demás)
@@ -1018,6 +1058,7 @@ async function guardarFactura(){
 function iniciarProrrateoDeFactura(uuid){
   var f=FACTURAS.find(function(x){return x.id===uuid;});
   if(!f)return;
+  cambiarTab('facturas');
   _facModoProrratearExistente=true;
   _facParsed={uuid:f.id,serie:f.serie,folio:f.folio,fechaEmision:f.fechaEmision,total:f.total};
   _facProveedorMatch={rfc:f.proveedorId,razonSocial:f.proveedorNombre,diasCredito:f.diasCredito};
