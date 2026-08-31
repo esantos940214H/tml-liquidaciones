@@ -83,6 +83,32 @@ async function _enviarCorreoCompras(user, pass, to, subject, html) {
     } catch (e2) { console.error('_enviarCorreoCompras: no se pudo registrar el log del correo:', e2); }
   }
 }
+// _plantillaCorreoCxP(titulo, acento, cuerpoHtml): envoltorio visual compartido
+// por todos los correos de Cuentas por Pagar — header con la marca de
+// Mudanzas TML y una franja de color que indica el tipo de aviso (info,
+// recordatorio, bloqueo), para que no se vean como texto plano. `cuerpoHtml`
+// es el contenido específico de cada correo (ya se pasaba así antes, esta
+// función solo lo envuelve).
+function _plantillaCorreoCxP(titulo, acento, cuerpoHtml) {
+  return '<!doctype html><html><body style="margin:0;padding:0;background:#f2f2f7;font-family:Segoe UI,Arial,sans-serif;">' +
+    '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f2f2f7;padding:24px 0;">' +
+    '<tr><td align="center">' +
+    '<table role="presentation" width="560" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:10px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.08);">' +
+    '<tr><td style="background:#1a1a2e;padding:20px 28px;">' +
+    '<span style="color:#ffffff;font-size:18px;font-weight:700;letter-spacing:.3px;">MUDANZAS TML</span>' +
+    '<div style="color:#9fa3c9;font-size:12px;margin-top:2px;">Cuentas por pagar</div>' +
+    '</td></tr>' +
+    '<tr><td style="height:5px;background:' + acento + ';font-size:0;line-height:0;">&nbsp;</td></tr>' +
+    '<tr><td style="padding:28px 28px 8px;">' +
+    '<h2 style="margin:0 0 16px;color:#1a1a2e;font-size:17px;">' + titulo + '</h2>' +
+    '<div style="color:#333;font-size:14px;line-height:1.6;">' + cuerpoHtml + '</div>' +
+    '</td></tr>' +
+    '<tr><td style="padding:20px 28px 24px;">' +
+    '<div style="border-top:1px solid #eee;padding-top:14px;color:#999;font-size:11px;">' +
+    'Mudanzas TML, S.A. de C.V. — Este es un correo automático, por favor no respondas directamente a esta dirección.' +
+    '</div></td></tr>' +
+    '</table></td></tr></table></body></html>';
+}
 // calcularFechaLimiteRepServer(fechaPagoISO): por ley, el complemento de pago
 // (REP) de un CFDI PPD se debe emitir a más tardar el día 8 del mes
 // SIGUIENTE al del pago — sin importar el día exacto dentro del mes en que
@@ -103,10 +129,16 @@ async function _enviarCorreoFacturaRecibida(user, pass, proveedor, data, diasCre
   if (!proveedor || !proveedor.email) return false;
   await _enviarCorreoCompras(user, pass, proveedor.email,
     'Factura ' + (data.serie ? data.serie + '-' : '') + data.folio + ' recibida',
-    '<p>Hola ' + (proveedor.razonSocial || '') + ',</p>' +
-    '<p>Recibimos y registramos tu factura ' + (data.serie ? data.serie + '-' : '') + data.folio + ' por ' + _fmtMonedaServer(data.total) + '.</p>' +
-    '<p>Fecha estimada de pago: <strong>' + fechaVencimiento + '</strong>' + (diasCredito === 0 ? ' (mismo día, sin días de crédito).' : '.') + '</p>' +
-    '<p>Gracias.</p>'
+    _plantillaCorreoCxP(
+      '✅ Factura recibida',
+      '#2a9d8f',
+      '<p>Hola <strong>' + (proveedor.razonSocial || '') + '</strong>,</p>' +
+      '<p>Recibimos y registramos tu factura <strong>' + (data.serie ? data.serie + '-' : '') + data.folio + '</strong> por ' +
+      '<strong style="color:#1a1a2e;">' + _fmtMonedaServer(data.total) + '</strong>.</p>' +
+      '<p style="background:#f2f9f8;border-left:3px solid #2a9d8f;padding:10px 14px;border-radius:4px;">' +
+      'Fecha estimada de pago: <strong>' + fechaVencimiento + '</strong>' + (diasCredito === 0 ? ' (mismo día, sin días de crédito).' : '.') + '</p>' +
+      '<p>Gracias.</p>'
+    )
   );
   return true;
 }
@@ -1357,10 +1389,17 @@ exports.enviarSolicitudComplementoPago = onRequest(
       if (proveedor && proveedor.email) {
         await _enviarCorreoCompras(COMPRAS_EMAIL_USER.value(), COMPRAS_EMAIL_PASS.value(), proveedor.email,
           'Solicitud de complemento de pago — factura ' + (fac.serie ? fac.serie + '-' : '') + fac.folio,
-          '<p>Hola ' + (proveedor.razonSocial || fac.proveedorNombre || '') + ',</p>' +
-          '<p>Te confirmamos que ya se realizó el pago de tu factura ' + (fac.serie ? fac.serie + '-' : '') + fac.folio + ' por ' + _fmtMonedaServer(fac.total) + ', con fecha ' + fechaPago + '.</p>' +
-          '<p>Por favor envíanos el <strong>complemento de pago (REP)</strong> correspondiente antes del <strong>' + fechaLimiteRep + '</strong> (límite legal: día 8 del mes siguiente al pago).</p>' +
-          '<p>Gracias.</p>'
+          _plantillaCorreoCxP(
+            '💳 Pago confirmado — falta tu complemento de pago',
+            '#457b9d',
+            '<p>Hola <strong>' + (proveedor.razonSocial || fac.proveedorNombre || '') + '</strong>,</p>' +
+            '<p>Te confirmamos que ya se realizó el pago de tu factura <strong>' + (fac.serie ? fac.serie + '-' : '') + fac.folio + '</strong> por ' +
+            '<strong style="color:#1a1a2e;">' + _fmtMonedaServer(fac.total) + '</strong>, con fecha ' + fechaPago + '.</p>' +
+            '<p style="background:#eef4f8;border-left:3px solid #457b9d;padding:10px 14px;border-radius:4px;">' +
+            'Por favor envíanos el <strong>complemento de pago (REP)</strong> correspondiente antes del <strong>' + fechaLimiteRep + '</strong> ' +
+            '(límite legal: día 8 del mes siguiente al pago).</p>' +
+            '<p>Gracias.</p>'
+          )
         );
         correoEnviado = true;
       }
@@ -1434,20 +1473,28 @@ async function _revisarComplementosPagoCore(user, pass) {
     if (diaHoy === 1 || diaHoy === 3) {
       await _enviarCorreoCompras(user, pass, proveedor.email,
         'Recordatorio: complemento de pago pendiente',
-        '<p>Hola ' + (proveedor.razonSocial || '') + ',</p>' +
-        '<p>Nos falta recibir el complemento de pago (REP) de las siguientes facturas ya pagadas:</p>' +
-        '<ul>' + listaHtml + '</ul>' +
-        '<p>Por favor envíalo antes de la fecha límite indicada.</p>'
+        _plantillaCorreoCxP(
+          '⏰ Recordatorio — complemento de pago pendiente',
+          '#e9a23b',
+          '<p>Hola <strong>' + (proveedor.razonSocial || '') + '</strong>,</p>' +
+          '<p>Nos falta recibir el complemento de pago (REP) de las siguientes facturas ya pagadas:</p>' +
+          '<ul style="background:#fdf6ea;border-left:3px solid #e9a23b;padding:10px 14px 10px 28px;border-radius:4px;margin:0 0 14px;">' + listaHtml + '</ul>' +
+          '<p>Por favor envíalo antes de la fecha límite indicada.</p>'
+        )
       );
       avisosMandados++;
     } else if (diaHoy === 5) {
       await _enviarCorreoCompras(user, pass, proveedor.email,
         'Tu RFC ha sido bloqueado — complemento de pago pendiente',
-        '<p>Hola ' + (proveedor.razonSocial || '') + ',</p>' +
-        '<p>No hemos recibido el complemento de pago (REP) de las siguientes facturas ya pagadas:</p>' +
-        '<ul>' + listaHtml + '</ul>' +
-        '<p>Por ley, el límite para emitirlo es el día 8 del mes siguiente al del pago. Mientras no lo recibamos, tu RFC queda ' +
-        'bloqueado para el registro automático de facturas nuevas. Envíalo lo antes posible para reactivarlo.</p>'
+        _plantillaCorreoCxP(
+          '🚫 RFC bloqueado — complemento de pago pendiente',
+          '#e63946',
+          '<p>Hola <strong>' + (proveedor.razonSocial || '') + '</strong>,</p>' +
+          '<p>No hemos recibido el complemento de pago (REP) de las siguientes facturas ya pagadas:</p>' +
+          '<ul style="background:#fdeced;border-left:3px solid #e63946;padding:10px 14px 10px 28px;border-radius:4px;margin:0 0 14px;">' + listaHtml + '</ul>' +
+          '<p>Por ley, el límite para emitirlo es el día 8 del mes siguiente al del pago. Mientras no lo recibamos, tu RFC queda ' +
+          '<strong>bloqueado</strong> para el registro automático de facturas nuevas. Envíalo lo antes posible para reactivarlo.</p>'
+        )
       );
       await db.collection('proveedores').doc(rfc).set({ bloqueadoPorRep: true }, { merge: true });
       bloqueados++;
