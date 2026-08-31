@@ -922,6 +922,17 @@ function liberarFacturaUsada(uuid){
   delete facturasUsadas[uuid.toUpperCase()];
   guardarFacturasUsadas();
 }
+// liberarComprobantePrecarga: cuando se elimina de una liquidación un
+// gasto/caseta que se había jalado automático de Precarga (origenPrecarga),
+// hay que regresar su estado a "pendiente" allá (y borrar el liquidacionId
+// que lo marcaba como usado) — si no, se queda huérfano para siempre,
+// marcado "jalado" pero sin pertenecer a ninguna liquidación real.
+async function liberarComprobantePrecarga(uuid){
+  if(!fbReady||!window.FB||!uuid)return;
+  try{
+    await window.FB.set('comprobantesPrecargados',uuid,{estado:'pendiente',liquidacionId:null},{merge:true});
+  }catch(e){console.error('liberarComprobantePrecarga:',e);}
+}
 // Reconstruye el registro a partir del historial (liquidaciones cerradas) y de
 // la liquidación actualmente abierta, por si el registro en Firestore quedó
 // incompleto (ej. liquidaciones cerradas antes de que existiera este mecanismo).
@@ -2674,9 +2685,26 @@ function aplicarDatosDDEC(datos,fname){
 // desde precarga.html — aquí se convierten a pesos (÷100) para encajar con
 // el resto de liq.html, que maneja todo en pesos con decimales.
 async function jalarComprobantesPrecarga(liqObj){
-  if(!fbReady||!window.FB||!window.FB.queryPendientesOperador)return{total:0,rechazados:0};
-  var pendientes=await window.FB.queryPendientesOperador(liqObj.opId);
-  if(!pendientes.length)return{total:0,rechazados:0};
+  if(!fbReady||!window.FB||!window.FB.queryPendientesOperador)return{total:0,rechazados:0,fueraDeRango:0};
+  var todosPendientes=await window.FB.queryPendientesOperador(liqObj.opId);
+  if(!todosPendientes.length)return{total:0,rechazados:0,fueraDeRango:0};
+  // Antes se jalaba TODO lo pendiente de este operador sin importar la
+  // fecha del comprobante — si tenía algo pre-cargado de un periodo
+  // distinto (ej. capturado por adelantado, o de una liquidación futura),
+  // se colaba igual en la que se estuviera creando en ese momento (caso
+  // real: 2 facturas de Rolando que le tocaban a otra liquidación
+  // terminaron en la #3). Ahora solo se jala lo que cae dentro del rango
+  // de fechas de ESTA liquidación; lo demás se queda "pendiente" para la
+  // liquidación que de verdad le corresponda.
+  var dSal=liqObj.salida?new Date(liqObj.salida):null;
+  var dLleg=liqObj.llegada?new Date(liqObj.llegada+'T23:59:59'):null;
+  var pendientes=todosPendientes.filter(function(c){
+    if(!c.fecha||!dSal||!dLleg)return true; // sin fecha o sin rango: no se puede validar, se conserva el criterio anterior
+    var fc=new Date(c.fecha+'T12:00:00');
+    return fc>=dSal&&fc<=dLleg;
+  });
+  var fueraDeRango=todosPendientes.length-pendientes.length;
+  if(!pendientes.length)return{total:0,rechazados:0,fueraDeRango:fueraDeRango};
   var uuids=pendientes.map(function(c){return c.uuid||c.id;});
   var agregados=[]; // [{uuid,bucket}] — para poder revertir si algún jalado se rechaza
   pendientes.forEach(function(c){
@@ -2719,7 +2747,7 @@ async function jalarComprobantesPrecarga(liqObj){
       else liqObj.gastosXML=liqObj.gastosXML.filter(function(g){return g.uuid!==uuidRech;});
     });
   }
-  return{total:resultado.jalados.length,rechazados:resultado.rechazados.length};
+  return{total:resultado.jalados.length,rechazados:resultado.rechazados.length,fueraDeRango:fueraDeRango};
 }
 
 async function iniciarLiquidacion(){
@@ -2810,7 +2838,7 @@ async function iniciarLiquidacion(){
     fechaApertura:hoy(),advertenciasFecha:[],abiertaPor:_abiertaPor,ultimaEdicionPor:_abiertaPor};
   var _precarga=await jalarComprobantesPrecarga(liq);
   $('liqInfo').style.display='block';
-  $('liqInfo').innerHTML='<div class="alert alert-ok">✅ Liquidación <strong>#'+num+'</strong> — <strong>'+op.nombre+'</strong> · Unidad '+unidad+' · '+liq.salida+' al '+liq.llegada+(liq.kms?' · '+liq.kms.toLocaleString('es-MX')+' km':'')+(liq.rendimiento?' · '+liq.rendimiento+' km/L':'')+(_precarga.total?' · 📥 '+_precarga.total+' comprobante(s) pre-cargado(s) jalado(s) automáticamente':'')+'</div>'+(_precarga.rechazados?'<div class="alert alert-warn">⚠️ '+_precarga.rechazados+' comprobante(s) pre-cargado(s) no se pudieron jalar — otra liquidación los tomó primero.</div>':'');
+  $('liqInfo').innerHTML='<div class="alert alert-ok">✅ Liquidación <strong>#'+num+'</strong> — <strong>'+op.nombre+'</strong> · Unidad '+unidad+' · '+liq.salida+' al '+liq.llegada+(liq.kms?' · '+liq.kms.toLocaleString('es-MX')+' km':'')+(liq.rendimiento?' · '+liq.rendimiento+' km/L':'')+(_precarga.total?' · 📥 '+_precarga.total+' comprobante(s) pre-cargado(s) jalado(s) automáticamente':'')+'</div>'+(_precarga.rechazados?'<div class="alert alert-warn">⚠️ '+_precarga.rechazados+' comprobante(s) pre-cargado(s) no se pudieron jalar — otra liquidación los tomó primero.</div>':'')+(_precarga.fueraDeRango?'<div class="alert alert-info">ℹ️ '+_precarga.fueraDeRango+' comprobante(s) pre-cargado(s) de este operador NO se jalaron por tener fecha fuera de este periodo ('+liq.salida+' al '+liq.llegada+') — se quedan pendientes en Pre-carga para la liquidación que les corresponda.</div>':'');
   ['1','2','3','4'].forEach(function(i){$('liqReqMsg'+i).style.display='none';$('panel'+i+'Content').style.display='block';});
   $('dOpNombre').textContent=op.nombre;$('iaveOpNombre').textContent=op.nombre;
   $('headerInfo').textContent='Liq. #'+num+' · '+op.nombre+' · Unidad '+unidad;
@@ -3517,6 +3545,11 @@ function eliminarAutopista(i){
   if(!liq||!liq.autopistas)return;
   var _rem=liq.autopistas[i];
   if(_rem&&_rem.uuid)liberarFacturaUsada(_rem.uuid);
+  // Si venía de Precarga, hay que devolverlo a "pendiente" allá — si no,
+  // el comprobante queda huérfano marcado "jalado" para siempre, invisible
+  // tanto en Precarga (que solo lista pendientes) como en cualquier otra
+  // liquidación futura que sí le correspondiera.
+  if(_rem&&_rem.origenPrecarga&&_rem.uuid)liberarComprobantePrecarga(_rem.uuid);
   liq.autopistas.splice(i,1);
   renderIAVE();
   guardarEstado();
@@ -4171,6 +4204,11 @@ function eliminarGasto(i){
   const todos=liq.gastosXML.concat(liq.gastos);
   const g=todos[i];
   if(g.tipo==='xml'&&g.uuid)liberarFacturaUsada(g.uuid);
+  // Si venía de Precarga, hay que devolverlo a "pendiente" allá — si no,
+  // el comprobante queda huérfano marcado "jalado" para siempre, invisible
+  // tanto en Precarga (que solo lista pendientes) como en cualquier otra
+  // liquidación futura que sí le correspondiera.
+  if(g.origenPrecarga&&g.uuid)liberarComprobantePrecarga(g.uuid);
   if(g.tipo==='xml'){const xi=liq.gastosXML.indexOf(g);if(xi>=0)liq.gastosXML.splice(xi,1);}
   else{const mi=liq.gastos.indexOf(g);if(mi>=0)liq.gastos.splice(mi,1);}
   renderGastos();
