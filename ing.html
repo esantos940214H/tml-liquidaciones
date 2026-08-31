@@ -442,6 +442,11 @@ window.onFBReady=function(cb){if(window._fbInit)cb();else window._fbCallbacks.pu
       messagingSenderId:"268455373953",appId:"1:268455373953:web:ad359c5dbcba9f53557180"};
     if(!firebase.apps.length)firebase.initializeApp(cfg);
     var db=firebase.firestore();
+    // En redes de celular con poca señal, el canal WebChannel que usa
+    // Firestore por default a veces se queda colgado sin avisar (ni resuelve
+    // ni truena la promesa) — auto-detectar y usar long-polling en esos casos
+    // es la corrección oficial de Firebase para ese síntoma exacto.
+    try{db.settings({experimentalAutoDetectLongPolling:true,useFetchStreams:false});}catch(e){}
     window.FB={
       set:function(col,id,data){return db.collection(col).doc(id).set(data);},
       get:async function(col,id){try{var s=await db.collection(col).doc(id).get();return s.exists?s.data():null;}catch(e){console.error('FB.get:',e);return null;}},
@@ -1756,9 +1761,24 @@ const FUNCTION_URL_REVISAR_BUZON_PEDIDOS='https://us-central1-tml-liquidaciones.
 let FLETES=[];
 let _correosPedidos=[];
 
+// _conTimeout: si la promesa de Firestore no resuelve en 15s (típico en
+// celular con poca señal, donde el canal se queda colgado sin avisar), se
+// rechaza sola — sin esto, el panel se queda en "Cargando..." para siempre
+// sin ningún mensaje de error.
+function _conTimeout(promesa,ms){
+  return Promise.race([
+    promesa,
+    new Promise(function(_,rej){setTimeout(function(){rej(new Error('Se tardó demasiado — revisa tu conexión e intenta de nuevo.'));},ms||15000);})
+  ]);
+}
 async function cargarYRenderFletesPendientes(){
-  FLETES=await window.cargarFletes(true);
-  renderFletesPendientes();
+  try{
+    FLETES=await _conTimeout(window.cargarFletes(true),15000);
+    renderFletesPendientes();
+  }catch(e){
+    console.error('cargarYRenderFletesPendientes:',e);
+    $('fletesPendientesWrap').innerHTML='<div class="alert alert-warn">⚠️ '+e.message+' <button class="btn btn-out btn-sm" onclick="cargarYRenderFletesPendientes()">🔄 Reintentar</button></div>';
+  }
 }
 function renderFletesPendientes(){
   var pendientes=FLETES.filter(function(f){return f.estado==='pendiente_factura';});
@@ -1796,10 +1816,15 @@ async function eliminarFleteUI(ordenEmbarque){
 }
 
 async function cargarCorreosPendientesPedidos(){
-  var data=await window.FB.get('estado','correosPedidosPendientes');
-  _correosPedidos=(data&&data.data)?JSON.parse(data.data):[];
-  if(!Array.isArray(_correosPedidos))_correosPedidos=[];
-  renderBuzonPedidos();
+  try{
+    var data=await _conTimeout(window.FB.get('estado','correosPedidosPendientes'),15000);
+    _correosPedidos=(data&&data.data)?JSON.parse(data.data):[];
+    if(!Array.isArray(_correosPedidos))_correosPedidos=[];
+    renderBuzonPedidos();
+  }catch(e){
+    console.error('cargarCorreosPendientesPedidos:',e);
+    $('buzonPedidosWrap').innerHTML='<div class="alert alert-warn">⚠️ '+e.message+' <button class="btn btn-out btn-sm" onclick="cargarCorreosPendientesPedidos()">🔄 Reintentar</button></div>';
+  }
 }
 function renderBuzonPedidos(){
   var wrap=$('buzonPedidosWrap');
