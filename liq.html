@@ -200,6 +200,18 @@ tr:hover td{background:#fafafa}
   </div>
 </div>
 
+<!-- ¿QUIÉN PAGÓ ESTE GASTO? (obligatorio, sin default, al subir un XML de gasto) -->
+<div class="modal-overlay" id="modalPagaOpGasto">
+  <div class="modal">
+    <h3>💳 ¿Quién pagó este gasto?</h3>
+    <p id="modalPagaOpGastoDesc" style="font-size:13px;color:#666;margin-bottom:14px"></p>
+    <div class="modal-actions">
+      <button class="btn btn-out" onclick="_resolverPagaOpGasto(false)">🏢 Empresa</button>
+      <button class="btn btn-red" onclick="_resolverPagaOpGasto(true)">👤 Operador</button>
+    </div>
+  </div>
+</div>
+
 <header>
   <div><div class="logo">MUDANZAS <span>TML</span> <span style="font-size:13px;font-weight:400;color:#aaa;margin-left:8px">· Liquidaciones</span></div></div>
   <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
@@ -3721,6 +3733,22 @@ function subirXMLComprobanteEnSegundoPlano(carpeta,uuid,fname,text,arr,renderFn)
     if(item){item.xmlURL=url;renderFn();guardarEstado();}
   }).catch(function(e){console.error('subirXMLComprobanteEnSegundoPlano:',e);});
 }
+// preguntarPagaOpGasto(descripcion,monto): modal bloqueante (sin default)
+// que pregunta quién pagó un gasto factura recién subido — antes se
+// registraba silenciosamente como "Empresa", lo cual podía dejar pasar sin
+// notarlo un gasto que en realidad pagó el operador.
+let _resolverPagaOpGastoFn=null;
+function preguntarPagaOpGasto(descripcion,monto){
+  return new Promise(function(resolve){
+    _resolverPagaOpGastoFn=resolve;
+    $('modalPagaOpGastoDesc').textContent=(descripcion||'')+' — '+fmt(monto||0);
+    $('modalPagaOpGasto').classList.add('open');
+  });
+}
+function _resolverPagaOpGasto(esOperador){
+  $('modalPagaOpGasto').classList.remove('open');
+  if(_resolverPagaOpGastoFn){_resolverPagaOpGastoFn(esOperador);_resolverPagaOpGastoFn=null;}
+}
 async function parseGastoXML(text,fname){
   if(!liq)return;
   const doc=new DOMParser().parseFromString(text,'text/xml');
@@ -3814,12 +3842,17 @@ async function parseGastoXML(text,fname){
   const conceptoDesc=getConceptoDesc(doc);
   const tfdG=tfdChk;
   const uuidGasto=tfdG?tfdG.getAttribute('UUID')||'':'';
+  var totalGasto=parseFloat(comp.getAttribute('Total')||0);
+  // Antes se registraba pagaOp:false (empresa) por default, en silencio —
+  // fácil de dejar pasar un gasto que en realidad pagó el operador. Ahora
+  // se pregunta siempre, sin default.
+  var pagaOpGasto=await preguntarPagaOpGasto(emisor?emisor.getAttribute('Nombre'):(conceptoDesc||fname),totalGasto);
   liq.gastosXML.push({serie:comp.getAttribute('Serie')||'',folio:comp.getAttribute('Folio')||'',
     fecha:(comp.getAttribute('Fecha')||'').slice(0,10),proveedor:emisor?emisor.getAttribute('Nombre'):'',
     rfc:emisor?emisor.getAttribute('Rfc')||'':'',conceptoDesc:conceptoDesc,
     uuid:uuidGasto,satEstado:null,satCancelado:false,
-    subtotal:subtotal,iva:iva,total:parseFloat(comp.getAttribute('Total')||0),
-    concepto:'GASTO FACTURADO',desc:conceptoDesc||fname,pagaOp:false,tipo:'xml',autorizado:true,
+    subtotal:subtotal,iva:iva,total:totalGasto,
+    concepto:'GASTO FACTURADO',desc:conceptoDesc||fname,pagaOp:pagaOpGasto,tipo:'xml',autorizado:true,
     xmlURL:null});
   registrarFacturaUsada(uuidGasto,liq.num,liq.unidad,'gasto');
   renderGastos();
