@@ -1666,24 +1666,24 @@ function _revisarBuzonPedidosCore(user, pass, apiKey) {
       if (c.error) { conAlgoPendiente.push(c); continue; }
       const renglonesSinOrden = [];
       for (const r of (c.renglones || [])) {
-        // La columna TU/orden de embarque puede traer varios números juntos
+        // La columna TU/orden de embarque puede traer dos números juntos
         // separados por "/" (un solo embarque con dos T.U.'s asociados, ej.
-        // "6500360289/6500360290") — se separan aquí (nunca deberían llegar
-        // ya divididos en renglones distintos, pero por si acaso, esto es lo
+        // "6500360289/6500360290") — se separan aquí en T.U.'s 1 y T.U.'s 2,
+        // mismo criterio que ya usa Maniobras (nunca deberían llegar ya
+        // divididos en renglones distintos, pero por si acaso, esto es lo
         // que evita registrar el mismo pedido dos veces como si fueran dos).
-        // El primero se usa como id/orden de embarque principal; todos se
-        // guardan en "tus" para que el emparejamiento pueda usar cualquiera.
+        // El T.U.'s 1 se usa como id del documento/orden de embarque principal.
         const partes = String(r.ordenEmbarque || '').split(/[\/,;]+/)
           .map(function (p) { return _normalizarOrdenEmbarqueServer(p); })
           .filter(function (p) { return p; });
         if (!partes.length) { renglonesSinOrden.push(r); continue; }
-        const ordenNorm = partes[0];
+        const tu1 = partes[0], tu2 = partes[1] || null;
         try {
-          const ref = db.collection('fletesDB').doc(ordenNorm);
+          const ref = db.collection('fletesDB').doc(tu1);
           const yaExiste = (await ref.get()).exists;
           if (yaExiste) continue; // ya registrado antes (correo repetido/reenviado) — no es un error, se ignora
           await ref.set({
-            ordenEmbarque: ordenNorm, tus: partes, pedidoFlete: r.pedidoFlete || null,
+            ordenEmbarque: tu1, tu2: tu2, pedidoFlete: r.pedidoFlete || null,
             destino: r.destino || '', tienda: r.tienda || '', fecha: r.fecha || c.fecha || new Date().toISOString().slice(0, 10),
             economico: r.economico ? parseInt(String(r.economico).replace(/[^0-9]/g, '') || 0) || null : null,
             montoFlete: r.monto != null ? parseFloat(r.monto) || null : null,

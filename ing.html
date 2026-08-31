@@ -364,7 +364,8 @@ tr:hover td{background:#fafafa}
     <div id="fletesPendientesWrap"><div style="text-align:center;padding:20px;color:#aaa">Cargando...</div></div>
     <div style="margin-top:12px">
       <div class="grid2">
-        <div class="field"><label>Orden de embarque</label><input type="text" id="fleteOrdenEmbarque" placeholder="Si el buzón no lo capturó"></div>
+        <div class="field"><label>Orden de embarque / T.U.'s 1</label><input type="text" id="fleteOrdenEmbarque" placeholder="Si el buzón no lo capturó"></div>
+        <div class="field"><label>T.U.'s 2 <span style="font-weight:400;font-size:11px;color:#aaa">(opcional)</span></label><input type="text" id="fleteTu2" placeholder="Si el correo trae un segundo T.U."></div>
         <div class="field"><label>Pedido de flete <span style="font-weight:400;font-size:11px;color:#aaa">(opcional)</span></label><input type="text" id="fletePedido"></div>
         <div class="field"><label>Tienda</label><input type="text" id="fleteTienda"></div>
         <div class="field"><label>Destino</label><input type="text" id="fleteDestino"></div>
@@ -1293,8 +1294,11 @@ function parseXML(text,fname,unidad,unidadFisica){
 // mismo embarque), guardados en el campo "tus"; "ordenEmbarque" es respaldo
 // para registros viejos sin ese campo.
 function _fleteTusNorm(f){
-  if(Array.isArray(f.tus)&&f.tus.length)return f.tus.map(_normTxtFactManiobras);
-  return f.ordenEmbarque?[_normTxtFactManiobras(f.ordenEmbarque)]:[];
+  var out=[];
+  if(f.ordenEmbarque)out.push(_normTxtFactManiobras(f.ordenEmbarque));
+  if(f.tu2)out.push(_normTxtFactManiobras(f.tu2));
+  if(Array.isArray(f.tus))out=out.concat(f.tus.map(_normTxtFactManiobras)); // respaldo para registros viejos
+  return out;
 }
 async function intentarSustituirFletePorXML(doc,uuid,folioCompleto,total){
   try{
@@ -1748,7 +1752,7 @@ function renderFletesPendientes(){
   pendientes.sort(function(a,b){return(b.fechaAlta||'').localeCompare(a.fechaAlta||'');});
   wrap.innerHTML='<div class="tbl-wrap"><table><thead><tr><th>Orden de embarque</th><th>Pedido de flete</th><th>Tienda</th><th>Destino</th><th>Fecha</th><th>Económico</th><th class="r">Monto flete</th><th></th></tr></thead><tbody>'
     +pendientes.map(function(f){
-      var tusTexto=(Array.isArray(f.tus)&&f.tus.length?f.tus:[f.ordenEmbarque]).join(' / ');
+      var tusTexto=[f.ordenEmbarque,f.tu2].filter(Boolean).join(' / ');
       return '<tr><td class="num">'+tusTexto+'</td><td class="num">'+(f.pedidoFlete||'—')+'</td>'
         +'<td style="font-size:12px">'+(f.tienda||'')+'</td><td style="font-size:12px">'+(f.destino||'')+'</td><td>'+(f.fecha||'')+'</td>'
         +'<td class="num">'+(f.economico||'—')+'</td><td class="num r">'+(f.montoFlete!=null?fmt(f.montoFlete):'—')+'</td>'
@@ -1757,15 +1761,15 @@ function renderFletesPendientes(){
 }
 async function registrarFleteManual(){
   var ordenEmbarque=$('fleteOrdenEmbarque').value;
-  if(!ordenEmbarque.trim()){alert('Falta la orden de embarque.');return;}
+  if(!ordenEmbarque.trim()){alert('Falta la orden de embarque / T.U.\'s 1.');return;}
   try{
     await window.registrarFlete({
-      ordenEmbarque:ordenEmbarque,pedidoFlete:$('fletePedido').value,tienda:$('fleteTienda').value,
+      ordenEmbarque:ordenEmbarque,tu2:$('fleteTu2').value,pedidoFlete:$('fletePedido').value,tienda:$('fleteTienda').value,
       destino:$('fleteDestino').value,fecha:$('fleteFecha').value,
       economico:$('fleteEconomico').value,montoFlete:$('fleteMonto').value,
       capturadoPor:(usuarioSesion()||{}).usuario||''
     });
-    $('fleteOrdenEmbarque').value='';$('fletePedido').value='';$('fleteTienda').value='';$('fleteDestino').value='';$('fleteFecha').value='';
+    $('fleteOrdenEmbarque').value='';$('fleteTu2').value='';$('fletePedido').value='';$('fleteTienda').value='';$('fleteDestino').value='';$('fleteFecha').value='';
     $('fleteEconomico').value='';$('fleteMonto').value='';
     await cargarYRenderFletesPendientes();
   }catch(e){alert('⚠️ '+e.message);}
@@ -1893,7 +1897,7 @@ function construirArchivoMaestroFletes(){
     var unidad=m?m.autorizacion.unidad:(f.economico||null);
     return{
       fecha:f.fecha,destino:f.destino,tienda:f.tienda,
-      ordenEmbarque:(Array.isArray(f.tus)&&f.tus.length?f.tus:[f.ordenEmbarque]).join(' / '),pedidoFlete:f.pedidoFlete,
+      ordenEmbarque:[f.ordenEmbarque,f.tu2].filter(Boolean).join(' / '),pedidoFlete:f.pedidoFlete,
       operador:unidad?(nombreOp(unidad)||('Unidad '+unidad)):null,
       unidad:unidad,operadorConfirmado:!!m,
       montoFlete:f.montoFlete,
