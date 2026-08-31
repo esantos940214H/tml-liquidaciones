@@ -582,6 +582,49 @@ function _crearAutorizacionServer(ingresosDB, datos) {
   return { ok: true };
 }
 
+// _crearProvisionalFleteServer: cuando un pedido de flete llega por correo Y
+// trae el económico, se registra de inmediato como ingreso PROVISIONAL en
+// ingresosDB (mismo criterio que las autorizaciones de maniobra) — así
+// aparece en "Viajes registrados" aunque la factura real de Raúl todavía no
+// exista. Se marca sinFacturaJustificar:true + origenFlete:true, y se
+// sustituye solo cuando llega el XML real (ver parseXML/
+// buscarIngresoFleteProvisional en ing.html). Sin económico no se puede
+// atribuir a ningún operador, así que no se crea nada aquí — el pedido
+// se queda solo en fletesDB hasta que se pueda cruzar.
+function _crearProvisionalFleteServer(ingresosDB, operadores, datos) {
+  const ecoNum = datos.economico ? parseInt(String(datos.economico).replace(/[^0-9]/g, '') || 0) : 0;
+  if (!ecoNum) return { ok: false, error: 'sin económico' };
+  const op = operadores.find(function (o) { return o.unidad === ecoNum; });
+  if (!op) return { ok: false, error: 'económico no encontrado en Flota' };
+  const idParts = [];
+  if (datos.ordenEmbarque) idParts.push('TU1:' + datos.ordenEmbarque);
+  if (datos.tu2) idParts.push('TU2:' + datos.tu2);
+  if (datos.pedidoFlete) idParts.push('PED:' + datos.pedidoFlete);
+  if (!idParts.length) return { ok: false, error: 'sin identificador' };
+  const idCombinado = idParts.join(' | ');
+  const yaExiste = ingresosDB.some(function (v) { return v.origenFlete && v.observaciones === idCombinado; });
+  if (yaExiste) return { ok: false, error: 'ya existe' };
+  const monto = datos.montoFlete != null ? parseFloat(datos.montoFlete) || 0 : 0;
+  const pendiente = !monto;
+  const iva = pendiente ? 0 : Math.round(monto * 0.16 * 100) / 100;
+  const fecha = datos.fecha || new Date().toISOString().slice(0, 10);
+  const destino = (datos.destino || '').trim();
+  ingresosDB.push({
+    id: 'flete-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8),
+    unidad: op.operadorId, folio: 'FLETE', fecha: fecha, cliente: (datos.cliente || '').trim() || 'GRUPO COMERCIAL DSW',
+    tipo: 'flete_for', subtotal: monto, subtFlete: monto, subtManiobras: 0, subtOtros: 0,
+    iva: iva, ret: 0, total: monto + iva, estado: 'sin_liquidar', liqNum: null,
+    origen: 'pedido_flete', origenFlete: true,
+    ruta: destino ? [{ origen: '', destino: destino, kms: '' }] : [],
+    tienda: (datos.tienda || '').trim(), observaciones: idCombinado, sinFacturaJustificar: true,
+    fechaLimiteJustificacion: _sumarDiasHabilesServer(fecha, 15) + 'T23:59:59', montoPendiente: pendiente,
+    capturadoPor: { usuario: 'buzón automático', nombre: 'Buzón automático (fletes@mudandote.mx)' },
+    creadoEn: new Date().toISOString(),
+    sustituidoPorXML: false, pdfURL: null, esAutorizacionCliente: false
+  });
+  return { ok: true };
+}
+
 // Filtra SILVIA/NO_PAGA (igual que _procesarRenglonesExtraidos), detecta
 // posible corrección (folio repetido con monto real distinto DENTRO del
 // mismo correo), y por cada renglón que quede: si el operador se encontró
@@ -1784,6 +1827,15 @@ function _revisarBuzonPedidosCore(user, pass, apiKey) {
   }).then(async function (encontrados) {
     const conAlgoPendiente = [];
     let totalRegistrados = 0;
+    // ingresosDB se lee UNA vez aquí (justo antes de mutarlo en memoria por
+    // cada renglón con económico) y se escribe UNA vez al final — mismo
+    // criterio de "releer justo antes de escribir" que ya usa el resto del
+    // sistema (ver revisarBuzonManiobras).
+    const operadoresProv = await _cargarOperadoresServer();
+    const refIngresosProv = db.collection('estado').doc('ingresosDB');
+    const snapIngresosProv = await refIngresosProv.get();
+    const ingresosDBProv = (snapIngresosProv.exists && snapIngresosProv.data().data) ? JSON.parse(snapIngresosProv.data().data) : [];
+    let provisionalesCreados = 0;
     for (const c of encontrados) {
       if (c.error) { conAlgoPendiente.push(c); continue; }
       const renglonesSinOrden = [];
@@ -1813,12 +1865,20 @@ function _revisarBuzonPedidosCore(user, pass, apiKey) {
             capturadoPor: 'Buzón automático (fletes@mudandote.mx)', fechaAlta: new Date().toISOString()
           });
           totalRegistrados++;
+          const rProv = _crearProvisionalFleteServer(ingresosDBProv, operadoresProv, {
+            ordenEmbarque: tu1, tu2: tu2, pedidoFlete: r.pedidoFlete, destino: r.destino, tienda: r.tienda,
+            fecha: r.fecha || c.fecha, economico: r.economico, montoFlete: r.monto
+          });
+          if (rProv.ok) provisionalesCreados++;
         } catch (e) {
           console.error('revisarBuzonPedidos: error registrando renglón:', e);
           renglonesSinOrden.push(r);
         }
       }
       if (renglonesSinOrden.length) conAlgoPendiente.push(Object.assign({}, c, { renglones: renglonesSinOrden }));
+    }
+    if (provisionalesCreados) {
+      await refIngresosProv.set({ data: JSON.stringify(ingresosDBProv) });
     }
     if (conAlgoPendiente.length) {
       const ref = db.collection('estado').doc('correosPedidosPendientes');
@@ -1828,6 +1888,7 @@ function _revisarBuzonPedidosCore(user, pass, apiKey) {
     }
     encontrados._totalRegistrados = totalRegistrados;
     encontrados._totalPendientes = conAlgoPendiente.length;
+    encontrados._totalProvisionales = provisionalesCreados;
     return encontrados;
   });
 }
@@ -1837,7 +1898,7 @@ exports.revisarBuzonPedidos = onRequest(
   async (req, res) => {
     try {
       const encontrados = await _revisarBuzonPedidosCore(FLETES_EMAIL_USER.value(), FLETES_EMAIL_PASS.value(), ANTHROPIC_API_KEY.value());
-      res.json({ ok: true, correosNuevos: encontrados.length, pedidosRegistrados: encontrados._totalRegistrados || 0, pendientesRevision: encontrados._totalPendientes || 0 });
+      res.json({ ok: true, correosNuevos: encontrados.length, pedidosRegistrados: encontrados._totalRegistrados || 0, pendientesRevision: encontrados._totalPendientes || 0, ingresosProvisionales: encontrados._totalProvisionales || 0 });
     } catch (e) {
       console.error('revisarBuzonPedidos:', e);
       res.status(500).json({ error: e.message || 'Error interno del servidor.' });
