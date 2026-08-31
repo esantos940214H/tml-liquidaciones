@@ -1106,7 +1106,11 @@ async function guardarFactura(){
     var yaExiste=await window.FB.get('cxpFacturas',data.uuid);
     if(yaExiste){alert('⚠️ Esta factura (UUID '+data.uuid+') ya está registrada.');$('btnGuardarFactura').disabled=false;return;}
     var diasCredito=_facProveedorMatch.diasCredito||15;
-    var fechaVencimiento=sumarDiasHabiles(data.fechaEmision,diasCredito);
+    // Los días de crédito corren desde que se REGISTRA la factura (hoy), no
+    // desde la fecha de timbrado del CFDI (el proveedor a veces timbra días
+    // antes de mandarla, y no se puede pagar en una fecha ya pasada).
+    var fechaRegistro=new Date().toISOString().slice(0,10);
+    var fechaVencimiento=sumarDiasHabiles(fechaRegistro,diasCredito);
     // PUE sin pago registrado queda bloqueada (candado #6 del plan) — se
     // desbloquea al registrar el pago con el botón "➕ Pago" (ver Facturas y Pagos).
     var estadoPago=data.metodoPago==='PUE'?'pendiente_pago':'vigente_por_pagar';
