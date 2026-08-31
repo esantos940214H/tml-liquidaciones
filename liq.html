@@ -4902,17 +4902,26 @@ async function generarReporteGeneral(){
 
   if(typeof Chart==='undefined')return; // sin conexión al CDN — se omiten las gráficas sin afectar KPIs/tabla
 
+  // Fletes por operador — barras horizontales ordenadas de mayor a menor
+  // (antes era pastel; con barras se ve de un vistazo quién ha facturado
+  // más, en vez de solo comparar tamaños de rebanada).
   var wrapFletes=$('rgChartFletesWrap');
   var unidadesOp=Object.keys(porOpFletes);
   if(opFiltro||unidadesOp.length<2){
     if(chartRGFletes){chartRGFletes.destroy();chartRGFletes=null;}
     wrapFletes.innerHTML='<p style="text-align:center;color:#aaa;font-size:12px;padding:40px 10px">'+(opFiltro?'Selecciona "Todos" en el filtro de Operador para ver la distribución entre operadores.':'No hay suficientes operadores con liquidaciones cerradas en este filtro.')+'</p>';
   }else{
-    wrapFletes.innerHTML='<canvas id="rgChartFletes" height="240"></canvas>';
-    var labelsOp=unidadesOp.map(function(nombre){return nombre.split(' ').slice(0,2).join(' ');});
-    var dataOp=unidadesOp.map(function(nombre){return porOpFletes[nombre];});
-    chartRGFletes=new Chart($('rgChartFletes'),{type:'pie',data:{labels:labelsOp,datasets:[{data:dataOp,backgroundColor:PALETA_REPORTE_GENERAL}]},
-      options:{plugins:{legend:{position:'bottom',labels:{boxWidth:11,font:{size:10}}},tooltip:{callbacks:{label:function(ctx){return ctx.label+': '+fmt(ctx.parsed);}}}}}});
+    var ordenadoF=unidadesOp.map(function(nombre){
+      return{label:nombre.split(' ').slice(0,2).join(' '),total:porOpFletes[nombre]};
+    }).sort(function(a,b){return b.total-a.total;});
+    wrapFletes.innerHTML='<canvas id="rgChartFletes"></canvas>';
+    $('rgChartFletes').height=Math.max(240,ordenadoF.length*32);
+    if(chartRGFletes)chartRGFletes.destroy();
+    chartRGFletes=new Chart($('rgChartFletes'),{type:'bar',
+      data:{labels:ordenadoF.map(function(o){return o.label;}),datasets:[{data:ordenadoF.map(function(o){return o.total;}),
+        backgroundColor:'#1a4f8a'}]},
+      options:{indexAxis:'y',plugins:{legend:{display:false},tooltip:{callbacks:{label:function(ctx){return fmt(ctx.parsed.x);}}}},
+        scales:{x:{ticks:{callback:function(v){return fmt(v);}}}}}});
   }
 
   if(chartRGGastos)chartRGGastos.destroy();
