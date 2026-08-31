@@ -863,6 +863,7 @@ const FUNCTION_URL_EXTRAER_JUSTIFICACION_CXP='https://us-central1-tml-liquidacio
 const FUNCTION_URL_EXTRAER_COMPROBANTE_PAGO_CXP='https://us-central1-tml-liquidaciones.cloudfunctions.net/extraerComprobantePagoCxP';
 const FUNCTION_URL_ENVIAR_SOLICITUD_REP='https://us-central1-tml-liquidaciones.cloudfunctions.net/enviarSolicitudComplementoPago';
 const FUNCTION_URL_ENVIAR_CONFIRMACION_FACTURA='https://us-central1-tml-liquidaciones.cloudfunctions.net/enviarConfirmacionFacturaRecibida';
+const FUNCTION_URL_ENVIAR_CONFIRMACION_PAGO='https://us-central1-tml-liquidaciones.cloudfunctions.net/enviarConfirmacionPago';
 let _pagoExtraido={};
 
 function togglePagoForm(uuid){
@@ -962,14 +963,22 @@ async function guardarPagoFactura(uuid){
     // en PUE el proceso termina aquí mismo, en el pago, no hay nada más que
     // pedirle al proveedor ni dar seguimiento después.
     var avisoRep='';
+    var fechaPagoFactura=ex.c.fechaPago||new Date().toISOString().slice(0,10);
     if(f.metodoPago==='PPD'){
-      var fechaPagoFactura=ex.c.fechaPago||new Date().toISOString().slice(0,10);
       try{
         var respRep=await fetch(FUNCTION_URL_ENVIAR_SOLICITUD_REP,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({uuid:uuid,fechaPago:fechaPagoFactura})});
         var dataRep=await respRep.json();
         if(dataRep.correoEnviado)avisoRep=' Se le pidió al proveedor su complemento de pago (límite: '+dataRep.fechaLimiteRep+').';
         else if(dataRep.fechaLimiteRep)avisoRep=' ⚠️ No se le pudo avisar por correo (falta su email en el catálogo) — la fecha límite de su complemento es '+dataRep.fechaLimiteRep+'.';
       }catch(e){console.error('enviarSolicitudComplementoPago:',e);}
+    }else{
+      // PUE: no hay complemento de pago que solicitar, pero igual se le
+      // avisa al proveedor que ya se le pagó.
+      try{
+        var respPago=await fetch(FUNCTION_URL_ENVIAR_CONFIRMACION_PAGO,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({uuid:uuid,fechaPago:fechaPagoFactura})});
+        var dataPago=await respPago.json();
+        if(dataPago.correoEnviado)avisoRep=' Se le avisó al proveedor que su factura ya está pagada.';
+      }catch(e){console.error('enviarConfirmacionPago:',e);}
     }
     alert('✅ Pago registrado'+(asignarUnidad?' y factura asignada a la unidad '+ex.op.unidad+'.':'.')+avisoRep);
     delete _pagoExtraido[uuid];
