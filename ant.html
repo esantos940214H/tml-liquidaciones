@@ -677,7 +677,12 @@ function procesarRows(rows,fname){
     // de duplicados en esos casos.
     const existe=anticiposDB[op.operadorId].some(a=>{
       if(a.fecha!==r.fecha||Math.abs(a.importe-r.importe)>=0.01)return false;
-      if(a.referencia&&r.referencia)return a.referencia===r.referencia;
+      // Comparar sin ceros a la izquierda — BBVA a veces trae la misma
+      // referencia con distinto padding entre archivos ("9346852" vs
+      // "009346852"), y compararla como texto exacto dejaba pasar
+      // duplicados reales sin detectarlos (caso real: anticipo de Martín
+      // Flores del 22-jul duplicado por esto exacto).
+      if(a.referencia&&r.referencia)return a.referencia.replace(/^0+/,'')===r.referencia.replace(/^0+/,'');
       return norm(a.concepto)===norm(r.concepto);
     });
     if(existe){duplicados++;return;}
@@ -816,6 +821,7 @@ function renderAnticipos(){
       <td style="width:32px;text-align:center">${a.estado==='pendiente'?`<input type="checkbox" class="chkAnt" data-id="${a.id}" data-unidad="${a.unidad}" onchange="actualizarBarraSelAnt()">`:'—'}</td>
       <td>${a.fecha}</td>
       <td style="max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${a.concepto}${a.enRevisionReapertura?' <span class="badge bg-yellow" title="La liquidación que generó este saldo se reabrió y todavía no se vuelve a cerrar — el monto puede cambiar al recalcularse">⏳ en revisión</span>':''}</td>
+      <td style="font-size:11px;font-family:monospace">${a.referencia||'<span style="color:#c1121f" title="Este anticipo no trae número de referencia del banco — puede ser captura manual, o un archivo de antes de que se capturara esta columna">— sin referencia —</span>'}</td>
       <td class="num r">${fmt(a.importe)}</td>
       <td><span class="badge ${a.estado==='pendiente'?'bg-yellow':'bg-green'}">${a.estado==='pendiente'?'PENDIENTE':'LIQUIDADO'+(a.liqNum?' #'+a.liqNum:'')}</span></td>
       <td><span class="badge ${a.origen==='manual'?'bg-blue':'bg-gray'}">${a.origen==='manual'?'MANUAL':'ARCHIVO'}</span></td>
@@ -823,7 +829,7 @@ function renderAnticipos(){
     </tr>`).join('');
     div.innerHTML=`<div class="op-bar"><span>Unidad ${grp.unidad} · ${grp.nombre}</span><span class="tot">${fmt(totGrp)}</span></div>
     <div class="tbl-wrap"><table>
-      <thead><tr><th style="width:32px"><input type="checkbox" title="Seleccionar todos pendientes" onchange="toggleTodosAnts(this)"></th><th>Fecha</th><th>Concepto</th><th class="r">Importe</th><th>Estatus</th><th>Origen</th><th></th></tr></thead>
+      <thead><tr><th style="width:32px"><input type="checkbox" title="Seleccionar todos pendientes" onchange="toggleTodosAnts(this)"></th><th>Fecha</th><th>Concepto</th><th>Referencia</th><th class="r">Importe</th><th>Estatus</th><th>Origen</th><th></th></tr></thead>
       <tbody>${rows}</tbody>
     </table></div>`;
     cont.appendChild(div);
