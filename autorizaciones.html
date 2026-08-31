@@ -134,6 +134,7 @@ tr:hover td{background:#fafafa}
     <div id="pendientesAcciones" style="margin-top:12px;display:none;gap:8px;flex-wrap:wrap;align-items:center">
       <button class="btn btn-out btn-sm" onclick="toggleTodosPend(this)">Seleccionar todos</button>
       <button class="btn btn-green btn-sm" onclick="autorizarSeleccionados()">🔓 Autorizar seleccionados</button>
+      <button class="btn btn-red btn-sm" onclick="rechazarSeleccionados()">✕ Rechazar seleccionados</button>
     </div>
   </div>
 
@@ -501,6 +502,60 @@ async function autorizarSeleccionados(){
   }catch(e){
     console.error('autorizarSeleccionados:',e);
     alert('⚠️ Error al autorizar: '+e.message);
+  }
+}
+
+// rechazarSeleccionados: a diferencia de autorizar (que solo cambia
+// autorizado a true), rechazar ELIMINA el gasto/caseta de la liquidación —
+// un gasto sin factura pendiente de autorización no cuenta en el total
+// mientras esté así (ver gastosManualAutorizados/casetasNFAplicar en
+// liq.html, que filtran autorizado!==false), así que dejarlo "rechazado"
+// pero guardado no serviría de nada: se quedaría ahí para siempre bloqueando
+// el cierre de la liquidación. Rechazar = el operador no comprueba este
+// gasto, no se le reconoce.
+async function rechazarSeleccionados(){
+  var chks=document.querySelectorAll('.chkPend:checked');
+  if(!chks.length){alert('Selecciona al menos un pendiente.');return;}
+  if(!confirm('¿Rechazar '+chks.length+' gasto(s)/caseta(s) seleccionado(s)? Se eliminan de la liquidación — no se le reconocerán al operador. Esta acción no se puede deshacer.'))return;
+
+  var firmasPorOp={};
+  Array.from(chks).forEach(function(c){
+    var opId=c.dataset.opid;
+    var tipo=c.dataset.tipo;
+    var idx=parseInt(c.dataset.gi);
+    var liqSel=_liqsActivas[opId];
+    if(!liqSel)return;
+    if(!firmasPorOp[opId])firmasPorOp[opId]={gasto:[],caseta:[]};
+    if(tipo==='caseta')firmasPorOp[opId].caseta.push(signatureCaseta(liqSel.casetasNF[idx]));
+    else firmasPorOp[opId].gasto.push(signatureGasto(liqSel.gastos[idx]));
+  });
+
+  try{
+    var totalRechazados=0;
+    for(var opId in firmasPorOp){
+      // Releer fresco justo antes de escribir, mismo criterio que autorizar.
+      var data=await window.FB.get('liqActivas',opId);
+      var liqFresca=(data&&data.data)?JSON.parse(data.data):null;
+      if(!liqFresca){continue;}
+      var firmasG=firmasPorOp[opId].gasto,firmasC=firmasPorOp[opId].caseta;
+      var antesG=(liqFresca.gastos||[]).length,antesC=(liqFresca.casetasNF||[]).length;
+      liqFresca.gastos=(liqFresca.gastos||[]).filter(function(g){
+        return !(g.autorizado===false&&firmasG.indexOf(signatureGasto(g))!==-1);
+      });
+      liqFresca.casetasNF=(liqFresca.casetasNF||[]).filter(function(a){
+        return !(a.autorizado===false&&firmasC.indexOf(signatureCaseta(a))!==-1);
+      });
+      var n=(antesG-liqFresca.gastos.length)+(antesC-liqFresca.casetasNF.length);
+      if(n){
+        await window.FB.set('liqActivas',opId,{data:JSON.stringify(liqFresca)});
+        totalRechazados+=n;
+      }
+    }
+    alert('🚫 '+totalRechazados+' pendiente(s) rechazado(s) y eliminado(s) de su liquidación.');
+    cargarPendientes();
+  }catch(e){
+    console.error('rechazarSeleccionados:',e);
+    alert('⚠️ Error al rechazar: '+e.message);
   }
 }
 
