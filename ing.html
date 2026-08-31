@@ -1272,6 +1272,14 @@ function parseXML(text,fname,unidad,unidadFisica){
     });
   }
   const tipoDerivado=subtManiobras>0&&!subtFlete?'maniobra':subtOtros>0&&!subtFlete&&!subtManiobras?'otro':'flete_for';
+  // Antes de crear un ingreso nuevo, revisa si este XML corresponde a un
+  // pedido de flete que ya se había registrado como PROVISIONAL en cuanto
+  // llegó el correo del cliente (ver crearIngresoProvisionalFlete) — si
+  // coincide, se actualiza ese renglón con los datos reales del XML en vez
+  // de crear uno aparte (si no, se duplicaría el ingreso).
+  const textoConceptosXML=Array.from(doc.querySelectorAll('Concepto')).map(function(c){return(c.getAttribute('Descripcion')||c.getAttribute('Descripción')||'');}).join(' ');
+  const textoNormXML=_normTxtFactManiobras(textoConceptosXML);
+  const provisionalFlete=buscarIngresoFleteProvisional(unidad,textoNormXML);
   // Esta subida "normal" (un XML = un operador) NUNCA revisa si ya existe un
   // ingreso "sin factura" pendiente de este mismo operador — a diferencia
   // del botón "Sustituir con XML" de esa fila, o del desglose multi-operador
@@ -1279,23 +1287,52 @@ function parseXML(text,fname,unidad,unidadFisica){
   // que en realidad correspondía a un pedido ya capturado a mano terminaba
   // duplicado como un registro nuevo y aparte (ver caso FI-677 de Rafael
   // Tapia). Aquí se avisa ANTES de crear el registro si hay pendientes de
-  // este operador, para no duplicar en silencio.
-  const pendientes=ingresosDB.filter(v=>v.unidad===unidad&&v.sinFacturaJustificar&&!v.sustituidoPorXML);
+  // este operador, para no duplicar en silencio — salvo el que se acaba de
+  // emparejar automáticamente arriba, ese no necesita preguntar.
+  const pendientes=ingresosDB.filter(v=>v.unidad===unidad&&v.sinFacturaJustificar&&!v.sustituidoPorXML&&v!==provisionalFlete);
   if(pendientes.length){
     const lista=pendientes.map(function(p){return '- ID "'+(p.observaciones||'')+'": '+fmt(p.total);}).join('\n');
     if(!confirm('⚠️ '+fname+': este operador tiene '+pendientes.length+' ingreso(s) "sin factura" pendiente(s) sin sustituir todavía:\n\n'+lista+'\n\nSi este XML corresponde a alguno de esos pedidos, da clic en Cancelar aquí y ve a esa fila a usar el botón "Sustituir con XML" — si lo registras aquí como nuevo vas a DUPLICAR el ingreso.\n\n¿Registrar de todas formas como un ingreso NUEVO y aparte?')){
       return;
     }
   }
-  ingresosDB.push({id:uid(),unidad,folio:folioCompleto,fecha,cliente,tipo:tipoDerivado,
-    subtotal,subtFlete,subtManiobras,subtOtros,iva,ret,total:parseFloat(comp.getAttribute('Total')||0),
-    estado:'sin_liquidar',liqNum:null,origen:'xml',ruta,
-    uuid,rfcEmisor,rfcReceptor,satEstado:null,satCancelado:false,xmlURL:null,
-    placaDetectada:placaAutoDetectada,unidadAlCapturar:unidadFisica||null});
+  const totalXML=parseFloat(comp.getAttribute('Total')||0);
+  if(provisionalFlete){
+    provisionalFlete.subtotal=subtotal;provisionalFlete.subtFlete=subtFlete;provisionalFlete.subtManiobras=subtManiobras;provisionalFlete.subtOtros=subtOtros;
+    provisionalFlete.iva=iva;provisionalFlete.ret=ret;provisionalFlete.total=totalXML;
+    provisionalFlete.folio=folioCompleto;provisionalFlete.uuid=uuid;provisionalFlete.facturaUUID=uuid;
+    provisionalFlete.rfcEmisor=rfcEmisor;provisionalFlete.rfcReceptor=rfcReceptor;
+    provisionalFlete.fecha=fecha;if(cliente)provisionalFlete.cliente=cliente;
+    if(ruta.length)provisionalFlete.ruta=ruta;
+    provisionalFlete.tipo=tipoDerivado;provisionalFlete.satEstado=null;provisionalFlete.satCancelado=false;provisionalFlete.xmlURL=null;
+    provisionalFlete.placaDetectada=placaAutoDetectada;provisionalFlete.unidadAlCapturar=unidadFisica||provisionalFlete.unidadAlCapturar||null;
+    provisionalFlete.montoPendiente=false;provisionalFlete.sustituidoPorXML=true;
+    provisionalFlete.observaciones=(provisionalFlete.observaciones||'')+' — sustituido por XML '+folioCompleto+' el '+hoy();
+  }else{
+    ingresosDB.push({id:uid(),unidad,folio:folioCompleto,fecha,cliente,tipo:tipoDerivado,
+      subtotal,subtFlete,subtManiobras,subtOtros,iva,ret,total:totalXML,
+      estado:'sin_liquidar',liqNum:null,origen:'xml',ruta,
+      uuid,rfcEmisor,rfcReceptor,satEstado:null,satCancelado:false,xmlURL:null,
+      placaDetectada:placaAutoDetectada,unidadAlCapturar:unidadFisica||null});
+  }
   guardar();renderIngresos();
   subirXMLIngresoEnSegundoPlano(uuid,fname,text);
-  intentarSustituirFletePorXML(doc,uuid,folioCompleto,parseFloat(comp.getAttribute('Total')||0));
-  alert('✅ '+fname+' registrado'+(placaAutoDetectada?' — operador identificado automáticamente por la placa '+placaAutoDetectada+' ('+(nombreOp(unidad)||unidad)+')':'')+'.'+(ruta.length?' Ruta: '+ruta.length+' tramos.':''));
+  intentarSustituirFletePorXML(doc,uuid,folioCompleto,totalXML);
+  alert('✅ '+fname+' registrado'+(placaAutoDetectada?' — operador identificado automáticamente por la placa '+placaAutoDetectada+' ('+(nombreOp(unidad)||unidad)+')':'')+(provisionalFlete?' (se sustituyó el ingreso provisional de este pedido de flete)':'')+'.'+(ruta.length?' Ruta: '+ruta.length+' tramos.':''));
+}
+// buscarIngresoFleteProvisional(unidad, textoNorm): busca, entre los
+// ingresos "sin factura" creados por un pedido de flete (origenFlete:true)
+// de este mismo operador, uno cuyo identificador (T.U.'s/pedido de flete,
+// guardado en observaciones) aparezca en el texto de los Conceptos del
+// CFDI — mismo criterio "contiene" que ya usa intentarSustituirFletePorXML
+// con fletesDB.
+function buscarIngresoFleteProvisional(unidad,textoNorm){
+  if(!textoNorm)return null;
+  return ingresosDB.find(function(v){
+    if(!v.origenFlete||v.sustituidoPorXML||v.unidad!==unidad)return false;
+    var ids=(v.observaciones||'').split('|').map(function(s){return _normTxtFactManiobras(s.replace(/^\s*[A-Z0-9]+:/,''));}).filter(function(s){return s;});
+    return ids.some(function(id){return textoNorm.indexOf(id)!==-1;});
+  })||null;
 }
 // Cuando Raúl sube el XML normal del flete (uno por embarque, lo hace a
 // diario), el CFDI trae en algún lado de los conceptos el número de pedido
@@ -1801,16 +1838,56 @@ function renderFletesPendientes(){
         +'<td><button class="btn-sm" style="background:none;border:none;cursor:pointer;color:#c1121f" onclick="eliminarFleteUI(\''+f.ordenEmbarque+'\')">✕</button></td></tr>';
     }).join('')+'</tbody></table></div>';
 }
+// crearIngresoProvisionalFlete(datos): mismo criterio que
+// _crearProvisionalFleteServer en functions/index.js — si el pedido de
+// flete trae económico, se registra de inmediato como ingreso PROVISIONAL
+// en ingresosDB (aparece en "Viajes registrados" aunque la factura real de
+// Raúl todavía no exista) y se sustituye solo cuando llega el XML real (ver
+// buscarIngresoFleteProvisional/parseXML más abajo). Sin económico no hay
+// forma de atribuirlo a ningún operador, así que no se crea nada aquí.
+function crearIngresoProvisionalFlete(datos){
+  var ecoNum=datos.economico?parseInt(String(datos.economico).replace(/[^0-9]/g,'')||0):0;
+  if(!ecoNum)return{ok:false,error:'sin económico'};
+  var op=OPERADORES.find(function(o){return o.unidad===ecoNum;});
+  if(!op)return{ok:false,error:'económico no encontrado en Flota'};
+  var idParts=[];
+  if(datos.ordenEmbarque)idParts.push('TU1:'+datos.ordenEmbarque);
+  if(datos.tu2)idParts.push('TU2:'+datos.tu2);
+  if(datos.pedidoFlete)idParts.push('PED:'+datos.pedidoFlete);
+  if(!idParts.length)return{ok:false,error:'sin identificador'};
+  var idCombinado=idParts.join(' | ');
+  if(ingresosDB.some(function(v){return v.origenFlete&&v.observaciones===idCombinado;}))return{ok:false,error:'ya existe'};
+  var monto=(datos.montoFlete!=null&&datos.montoFlete!=='')?parseFloat(datos.montoFlete)||0:0;
+  var pendiente=!monto;
+  var iva=pendiente?0:Math.round(monto*0.16*100)/100;
+  var fecha=datos.fecha||hoy();
+  var destino=(datos.destino||'').trim();
+  var u=usuarioSesion();
+  ingresosDB.push({
+    id:uid(),unidad:op.operadorId,folio:'FLETE',fecha:fecha,cliente:(datos.cliente||'').trim()||'GRUPO COMERCIAL DSW',
+    tipo:'flete_for',subtotal:monto,subtFlete:monto,subtManiobras:0,subtOtros:0,
+    iva:iva,ret:0,total:monto+iva,estado:'sin_liquidar',liqNum:null,
+    origen:'pedido_flete',origenFlete:true,
+    ruta:destino?[{origen:'',destino:destino,kms:''}]:[],
+    tienda:(datos.tienda||'').trim(),observaciones:idCombinado,sinFacturaJustificar:true,
+    fechaLimiteJustificacion:sumarDiasHabiles(fecha,15)+'T23:59:59',montoPendiente:pendiente,
+    capturadoPor:u?{usuario:u.usuario,nombre:u.nombre}:{usuario:'',nombre:''},
+    sustituidoPorXML:false,pdfURL:null,esAutorizacionCliente:false
+  });
+  return{ok:true};
+}
 async function registrarFleteManual(){
   var ordenEmbarque=$('fleteOrdenEmbarque').value;
   if(!ordenEmbarque.trim()){alert('Falta la orden de embarque / T.U.\'s 1.');return;}
   try{
-    await window.registrarFlete({
+    var datosFlete={
       ordenEmbarque:ordenEmbarque,tu2:$('fleteTu2').value,pedidoFlete:$('fletePedido').value,tienda:$('fleteTienda').value,
       destino:$('fleteDestino').value,fecha:$('fleteFecha').value,
-      economico:$('fleteEconomico').value,montoFlete:$('fleteMonto').value,
-      capturadoPor:(usuarioSesion()||{}).usuario||''
-    });
+      economico:$('fleteEconomico').value,montoFlete:$('fleteMonto').value
+    };
+    await window.registrarFlete(Object.assign({},datosFlete,{capturadoPor:(usuarioSesion()||{}).usuario||''}));
+    var rProv=crearIngresoProvisionalFlete(datosFlete);
+    if(rProv.ok){guardar();renderIngresos();}
     $('fleteOrdenEmbarque').value='';$('fleteTu2').value='';$('fletePedido').value='';$('fleteTienda').value='';$('fleteDestino').value='';$('fleteFecha').value='';
     $('fleteEconomico').value='';$('fleteMonto').value='';
     await cargarYRenderFletesPendientes();
@@ -1878,7 +1955,7 @@ async function revisarBuzonPedidosAhora(){
     var r=await fetch(FUNCTION_URL_REVISAR_BUZON_PEDIDOS,{method:'POST'});
     var data=await r.json();
     if(data.error)throw new Error(data.error);
-    $('buzonPedidosInfo').innerHTML='<div class="alert alert-ok">✅ '+data.correosNuevos+' correo(s) nuevo(s)'+(data.pedidosRegistrados?' — '+data.pedidosRegistrados+' pedido(s) se registraron solos':'')+(data.pendientesRevision?' — '+data.pendientesRevision+' quedaron pendientes de revisar':'')+'.</div>';
+    $('buzonPedidosInfo').innerHTML='<div class="alert alert-ok">✅ '+data.correosNuevos+' correo(s) nuevo(s)'+(data.pedidosRegistrados?' — '+data.pedidosRegistrados+' pedido(s) se registraron solos':'')+(data.ingresosProvisionales?' — '+data.ingresosProvisionales+' ya aparecen como ingreso provisional':'')+(data.pendientesRevision?' — '+data.pendientesRevision+' quedaron pendientes de revisar':'')+'.</div>';
     await cargarCorreosPendientesPedidos();
     await cargarYRenderFletesPendientes();
   }catch(e){
