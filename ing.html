@@ -298,6 +298,8 @@ tr:hover td{background:#fafafa}
     </div>
     <button class="btn btn-red" style="margin-top:10px" onclick="procesarFacturaManiobrasExcel()">Procesar y sustituir</button>
     <div id="facturaManiobrasInfo" style="margin-top:12px"></div>
+    <div class="card-title" style="margin-top:16px">⚠️ Facturas con renglones sin resolver <span id="fmPendientesCount" style="font-weight:400;color:#888;text-transform:none;letter-spacing:normal"></span> <span class="info-tip">?<span class="info-tip-box">Cuando "Procesar y sustituir" falla (algún renglón no encuentra su autorización), antes esa información solo aparecía en un aviso en pantalla y se perdía en cuanto cambiabas de pestaña — quedaba fácil de olvidar (así se perdió de vista la FI-677). Ahora queda guardado aquí hasta que lo resuelvas (con la tarjeta "🧩 Completar factura de maniobras" de abajo) y lo marques como listo.</span></span></div>
+    <div id="fmPendientesWrap"><p style="font-size:12px;color:#aaa;padding:8px 0">Sin facturas pendientes de resolver.</p></div>
   </div>
 
   <!-- REGISTRAR SIN FACTURA CON IA (solo admin) — Estimado de Transportación -->
@@ -1123,6 +1125,7 @@ window.onFBReady(async function(){
   });
   cargarYRenderFletesPendientes();
   cargarCorreosPendientesPedidos();
+  cargarYRenderFacturasManiobrasPendientes();
 });
 setTimeout(()=>{if(!fbReady){$('fbStatus').textContent='❌ Sin conexión';$('fbStatus').className='fb-status fb-err';}},6000);
 
@@ -2325,6 +2328,20 @@ async function procesarFacturaManiobrasExcel(){
         '</ul></div>';
     }
     $('facturaManiobrasInfo').innerHTML=html;
+    // Antes, si el lote fallaba (huboProblema), ese aviso solo vivía en
+    // pantalla — se perdía en cuanto cambiabas de pestaña o cerrabas el
+    // navegador, fácil de olvidar (así se perdió de vista la FI-677 casi
+    // dos semanas). Ahora queda guardado en una colección real hasta que se
+    // resuelva o se marque manualmente como listo.
+    if(huboProblema){
+      await _guardarFacturaManiobrasPendiente(uuid,{
+        folio:folioCompleto,cliente:cliente,sumaExcel:sumaExcel,subtotalXml:subtotalXml,
+        sinMatch:sinMatch.length,diferencias:diferencias.length,fechaDetectado:hoy()
+      });
+    }else if(uuid){
+      await _limpiarFacturaManiobrasPendiente(uuid);
+    }
+    cargarYRenderFacturasManiobrasPendientes();
   }catch(e){
     $('facturaManiobrasInfo').innerHTML='<div class="alert alert-warn">⚠️ '+e.message+'</div>';
   }
@@ -2468,6 +2485,53 @@ function registrarEstimado(){
 }
 function calcularFechaLimiteJustificacionAdmin(fechaISO){
   return sumarDiasHabiles(fechaISO,DIAS_HABILES_JUSTIFICAR_ADMIN)+'T23:59:59';
+}
+
+// ══════════════════════════════════════════════
+// FACTURAS DE MANIOBRAS CON RENGLONES SIN RESOLVER (persistente)
+// Colección real (un documento por factura, id=UUID) — mismo criterio que
+// operadores/unidades, nunca un blob. Se llena cuando
+// procesarFacturaManiobrasExcel() no logra sustituir todo (todo o nada), y
+// se limpia sola cuando un intento posterior sí logra sustituir toda esa
+// misma factura. Si se resuelve por otra vía (ej. con "🧩 Completar factura
+// de maniobras"), se marca manualmente como resuelta.
+// ══════════════════════════════════════════════
+async function _guardarFacturaManiobrasPendiente(uuid,datos){
+  if(!fbReady||!window.FB||!uuid)return;
+  try{await window.FB.set('facturasManiobrasPendientes',uuid,datos);}
+  catch(e){console.error('_guardarFacturaManiobrasPendiente:',e);}
+}
+async function _limpiarFacturaManiobrasPendiente(uuid){
+  if(!fbReady||!window.FB||!uuid)return;
+  try{await window.FB.del('facturasManiobrasPendientes',uuid);}
+  catch(e){console.error('_limpiarFacturaManiobrasPendiente:',e);}
+}
+async function cargarYRenderFacturasManiobrasPendientes(){
+  if(!fbReady||!window.FB||!window.FB.getAll)return;
+  try{
+    var lista=await window.FB.getAll('facturasManiobrasPendientes');
+    renderFacturasManiobrasPendientes(lista);
+  }catch(e){console.error('cargarYRenderFacturasManiobrasPendientes:',e);}
+}
+function renderFacturasManiobrasPendientes(lista){
+  var wrap=$('fmPendientesWrap');
+  if(!wrap)return;
+  $('fmPendientesCount').textContent=lista.length?'— '+lista.length+' pendiente(s)':'';
+  if(!lista.length){wrap.innerHTML='<p style="font-size:12px;color:#aaa;padding:8px 0">Sin facturas pendientes de resolver.</p>';return;}
+  lista.sort(function(a,b){return(b.fechaDetectado||'').localeCompare(a.fechaDetectado||'');});
+  wrap.innerHTML='<div class="tbl-wrap"><table><thead><tr><th>Folio</th><th>Cliente</th><th class="r">Suma Excel</th><th class="r">Subtotal factura</th><th>Detectado</th><th>Renglones sin resolver</th><th></th></tr></thead><tbody>'
+    +lista.map(function(f){
+      return '<tr style="background:#fffbeb"><td class="num">'+(f.folio||'')+'</td><td style="font-size:12px">'+(f.cliente||'')+'</td>'
+        +'<td class="num r">'+fmt(f.sumaExcel||0)+'</td><td class="num r">'+fmt(f.subtotalXml||0)+'</td>'
+        +'<td style="font-size:11px">'+(f.fechaDetectado||'')+'</td>'
+        +'<td style="font-size:11px">'+(f.sinMatch||0)+' sin autorización · '+(f.diferencias||0)+' con diferencia de monto</td>'
+        +'<td><button class="btn btn-out btn-sm" onclick="marcarFacturaManiobrasResuelta(\''+f.id+'\')">✓ Marcar resuelto</button></td></tr>';
+    }).join('')+'</tbody></table></div>';
+}
+async function marcarFacturaManiobrasResuelta(uuid){
+  if(!confirm('¿Ya completaste (con "🧩 Completar factura de maniobras") o descartaste los renglones faltantes de esta factura? Se quitará de esta lista.'))return;
+  await _limpiarFacturaManiobrasPendiente(uuid);
+  await cargarYRenderFacturasManiobrasPendientes();
 }
 
 // ══════════════════════════════════════════════
