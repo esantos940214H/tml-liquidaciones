@@ -8,7 +8,7 @@
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:'Segoe UI',Arial,sans-serif;background:#f0f2f5;color:#1a1a2e;min-height:100vh}
 html.in-iframe header{display:none!important}
-header{background:#1a1a2e;color:#fff;padding:14px 24px;display:flex;align-items:center;justify-content:space-between;border-bottom:3px solid #e63946}
+header{background:#1a1a2e;color:#fff;padding:14px 24px;display:flex;align-items:center;justify-content:space-between;border-bottom:3px solid #e63946;flex-wrap:wrap;gap:10px}
 .logo{font-size:18px;font-weight:800}.logo span{color:#e63946}
 .nav{display:flex;gap:8px;flex-wrap:wrap}
 .nav a{color:#aaa;text-decoration:none;font-size:12px;padding:6px 12px;border-radius:5px;border:1px solid #333;transition:all .15s}
@@ -675,23 +675,23 @@ function renderNomina(){
     });
   });
   filas.sort(function(a,b){return(b.fecha||'').localeCompare(a.fecha||'');});
-  tb.innerHTML='';
   var totPerc=0,totDed=0;
+  var filasNom=[];
   filas.forEach(function(n){
     totPerc+=n.totalPercepciones||0;totDed+=n.totalDeducciones||0;
     var estadoCell=n.estado==='liquidado'
       ?'<span class="badge bg-green">✓ Liquidado #'+n.liqNum+'</span>'
       :'<span class="badge bg-yellow">Pendiente</span>';
-    tb.innerHTML+='<tr><td style="font-size:12px">'+(nombreOp(n.unidad)||n.unidad)+'</td>'
+    filasNom.push('<tr><td style="font-size:12px">'+(nombreOp(n.unidad)||n.unidad)+'</td>'
       +'<td style="font-size:11px">'+(n.fecha||'—')+'</td>'
       +'<td style="font-size:11px">'+(n.periodoIni||'?')+' al '+(n.periodoFin||'?')+'</td>'
       +'<td style="font-size:11px">'+(n.folio||'—')+(n.xmlURL?' <a href="'+n.xmlURL+'" target="_blank" title="Ver XML original">📄</a>':'')+' <a href="#" onclick="verReciboNomina('+n.unidad+',\''+n.id+'\');return false;" title="Vista previa de cómo queda el recibo impreso (QR/cadena/desglose)">👁️</a></td>'
       +'<td class="num r">'+fmt(n.totalPercepciones||0)+'</td>'
       +'<td class="num r" style="color:#9b1c1c;font-weight:700">'+fmt(n.totalDeducciones||0)+'</td>'
       +'<td>'+estadoCell+'</td>'
-      +'<td>'+(n.estado==='pendiente'?'<button class="btn btn-sm" style="background:#fde8e8;color:#9b1c1c;border:none;cursor:pointer" onclick="eliminarNomina('+n.unidad+',\''+n.id+'\')">✕</button>':'')+'</td></tr>';
+      +'<td>'+(n.estado==='pendiente'?'<button class="btn btn-sm" style="background:#fde8e8;color:#9b1c1c;border:none;cursor:pointer" onclick="eliminarNomina('+n.unidad+',\''+n.id+'\')">✕</button>':'')+'</td></tr>');
   });
-  if(!filas.length)tb.innerHTML='<tr><td colspan="8" style="text-align:center;color:#aaa;padding:20px">Sin recibos de nómina registrados.</td></tr>';
+  tb.innerHTML=filas.length?filasNom.join(''):'<tr><td colspan="8" style="text-align:center;color:#aaa;padding:20px">Sin recibos de nómina registrados.</td></tr>';
   tf.innerHTML='<tr style="background:#f5f5f8;font-weight:700"><td colspan="4">TOTALES</td><td class="num r">'+fmt(totPerc)+'</td><td class="num r" style="color:#9b1c1c">'+fmt(totDed)+'</td><td colspan="2"></td></tr>';
 }
 </script>

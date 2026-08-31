@@ -8,7 +8,7 @@
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:'Segoe UI',Arial,sans-serif;background:#f0f2f5;color:#1a1a2e;min-height:100vh}
 html.in-iframe header{display:none!important}
-header{background:#1a1a2e;color:#fff;padding:14px 24px;display:flex;align-items:center;justify-content:space-between;border-bottom:3px solid #e63946}
+header{background:#1a1a2e;color:#fff;padding:14px 24px;display:flex;align-items:center;justify-content:space-between;border-bottom:3px solid #e63946;flex-wrap:wrap;gap:10px}
 .logo{font-size:18px;font-weight:800}.logo span{color:#e63946}
 .nav{display:flex;gap:8px;flex-wrap:wrap}
 .nav a{color:#aaa;text-decoration:none;font-size:12px;padding:6px 12px;border-radius:5px;border:1px solid #333;transition:all .15s}
@@ -760,6 +760,7 @@ function renderPrecarga(){
   }
   var opts=function(sel){return UNIDADES.map(function(u){return '<option value="'+u+'"'+(u===sel?' selected':'')+'>'+u+'</option>';}).join('');};
   var optsOp=function(sel){return OPERADORES.map(function(o){return '<option value="'+o.operadorId+'"'+(o.operadorId===sel?' selected':'')+'>'+o.clave+' · '+o.nombre.split(' ').slice(0,2).join(' ')+'</option>';}).join('');};
+  var filasPrecarga=[];
   filas.forEach(function(c){
     var esPend=c.estado==='pendiente';
     var tipoLabel=c.tipo==='caseta'?'🛣️ Caseta':(c.tipo==='parquimetro'?'🅿️ Parquímetro':'🧾 Factura');
@@ -768,7 +769,7 @@ function renderPrecarga(){
     // solo como valor de respaldo para no mostrarlos en blanco.
     var pagaOpC=c.pagaOp!=null?c.pagaOp:(c.tipo==='caseta');
     var opUnDesbloq=!!_precargaDesbloqueados[c.id];
-    tb.innerHTML+='<tr>'
+    filasPrecarga.push('<tr>'
       +'<td><span class="badge bg-blue">'+tipoLabel+'</span></td>'
       +'<td style="font-size:11px">'+(c.fecha||'—')+'</td>'
       +'<td style="font-size:11px">'
@@ -790,8 +791,9 @@ function renderPrecarga(){
       +'<td>'+(esPend?'<span class="badge bg-yellow">Pendiente</span>':'<span class="badge bg-green">✓ Jalado'+(c.liquidacionId?' — '+c.liquidacionId:'')+'</span>')+'</td>'
       +'<td style="font-size:11px">'+(c.xmlURL?'<a href="'+c.xmlURL+'" target="_blank" style="margin-right:6px">📄 XML</a>':'<span style="color:#aaa" title="No se guardó el XML de este comprobante">📄 —</span>')+'<button class="btn-sm" style="background:none;border:none;cursor:pointer;font-size:11px" onclick="descargarPDFComprobante(\''+c.id+'\')" title="Ver el comprobante en PDF (generado a partir de los datos del XML)">🧾 Ver PDF</button></td>'
       +'<td>'+(esPend?'<button class="btn-sm" style="background:#fde8e8;color:#9b1c1c;border:none;cursor:pointer;border-radius:4px;padding:3px 8px" onclick="eliminarComprobante(\''+c.id+'\')">✕ Eliminar</button>':'')+'</td>'
-      +'</tr>';
+      +'</tr>');
   });
+  tb.innerHTML=filasPrecarga.join('');
 }
 </script>
 </body>
