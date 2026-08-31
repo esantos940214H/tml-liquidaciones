@@ -340,6 +340,23 @@ tr:hover td{background:#fafafa}
     </div>
   </div>
 
+  <!-- COMPLETAR RENGLÓN FALTANTE DE FACTURA DE MANIOBRAS ENGLOBADA (solo admin) -->
+  <div class="card" id="cardCompletarManiobras" style="display:none">
+    <div class="card-title">🧩 Completar factura de maniobras (renglón faltante) <span class="info-tip">?<span class="info-tip-box">Solo administrador. Para cuando Raúl englobaba varias maniobras en UNA factura y, al sustituirla con su Excel de desglose, algún operador no logró emparejar solo (ej. su autorización no coincidía por tienda/destino). Busca aquí un renglón YA registrado de esa misma factura por su folio, y agrega el que falta — copia automático la fecha/UUID/cliente del renglón encontrado, para no tener que capturarlos a mano ni arriesgar una inconsistencia.</span></span></div>
+    <div class="grid2">
+      <div class="field"><label>Folio de la factura (ej. FI-677)</label><input type="text" id="cmFolio" placeholder="FI-677"></div>
+      <div class="field" style="align-self:flex-end"><button class="btn btn-out btn-sm" onclick="buscarFacturaManiobrasPorFolio()">🔍 Buscar</button></div>
+    </div>
+    <div id="cmInfo" style="margin-top:8px"></div>
+    <div id="cmWrapAgregar" style="display:none;margin-top:12px;background:#f5f5f8;border-radius:8px;padding:14px">
+      <div class="grid2">
+        <div class="field"><label>Operador</label><select id="cmOp"><option value="">— Selecciona —</option></select></div>
+        <div class="field"><label>Monto (subtotal, sin IVA)</label><input type="number" id="cmMonto" step="0.01"></div>
+      </div>
+      <button class="btn btn-red btn-sm" style="margin-top:10px" onclick="agregarRenglonFaltanteManiobra()">+ Agregar renglón</button>
+    </div>
+  </div>
+
   <!-- CONFLICTOS XML VS. MANUAL (solo admin) -->
   <div class="card" id="cardConflictosXML" style="display:none">
     <div class="card-title">⚠️ Discrepancias XML vs. manual pendientes de revisión (ADMIN)</div>
@@ -1065,11 +1082,12 @@ function verificarSesionModulo(){
   // factura, la tarjeta "🤖 Registrar sin factura" (solo administrador).
   var esAdminIng=!!u.esAdmin;
   if($('cardEstimadoIA'))$('cardEstimadoIA').style.display=esAdminIng?'':'none';
+  if($('cardCompletarManiobras'))$('cardCompletarManiobras').style.display=esAdminIng?'':'none';
 }
 window.onFBReady(verificarSesionModulo);
 
 function initSelects(){
-  ['filtOp','estOp'].forEach(id=>{
+  ['filtOp','estOp','cmOp'].forEach(id=>{
     const s=$(id);if(!s)return;
     while(s.options.length>1)s.remove(1);
     // value=operadorId (identidad PERMANENTE), no la unidad actual — así los
@@ -2450,6 +2468,60 @@ function registrarEstimado(){
 }
 function calcularFechaLimiteJustificacionAdmin(fechaISO){
   return sumarDiasHabiles(fechaISO,DIAS_HABILES_JUSTIFICAR_ADMIN)+'T23:59:59';
+}
+
+// ══════════════════════════════════════════════
+// COMPLETAR FACTURA DE MANIOBRAS ENGLOBADA (renglón faltante)
+// Cuando Raúl englobaba varias maniobras en una sola factura, cada operador
+// queda como su propio renglón en ingresosDB (mismo folio/UUID, distinta
+// unidad) — si al sustituir con el Excel de desglose algún renglón no
+// emparejó solo, aquí se busca uno YA registrado de esa factura (por folio)
+// para copiar su fecha/UUID/cliente/RFCs, y se agrega el que falta con esos
+// mismos datos — nunca hay que volver a teclearlos a mano.
+// ══════════════════════════════════════════════
+let _cmReferencia=null;
+function buscarFacturaManiobrasPorFolio(){
+  var folio=($('cmFolio').value||'').trim();
+  if(!folio){alert('Escribe el folio.');return;}
+  var ref=ingresosDB.find(function(v){return v.folio===folio&&v.tipo==='maniobra'&&v.uuid;});
+  _cmReferencia=ref||null;
+  if(!ref){
+    $('cmInfo').innerHTML='<div class="alert alert-warn">⚠️ No se encontró ningún renglón ya registrado con folio "'+folio+'" que tenga UUID (factura real). Verifica el folio.</div>';
+    $('cmWrapAgregar').style.display='none';
+    return;
+  }
+  var yaRegistrados=ingresosDB.filter(function(v){return v.folio===folio&&v.tipo==='maniobra'&&v.uuid===ref.uuid;});
+  var sumaYaRegistrada=yaRegistrados.reduce(function(s,v){return s+(v.subtotal||0);},0);
+  $('cmInfo').innerHTML='<div class="alert alert-ok">✅ Encontrado — fecha '+ref.fecha+', cliente '+(ref.cliente||'')+'. Ya hay '+yaRegistrados.length+' renglón(es) registrado(s) de esta factura, suma actual: '+fmt(sumaYaRegistrada)+' (subtotal). Agrega abajo el que falte.</div>';
+  $('cmWrapAgregar').style.display='block';
+}
+function agregarRenglonFaltanteManiobra(){
+  if(!_cmReferencia){alert('Primero busca el folio.');return;}
+  var unidad=parseInt($('cmOp').value||0);
+  if(!unidad){alert('Selecciona el operador.');return;}
+  var monto=parseFloat($('cmMonto').value||0);
+  if(!monto){alert('Falta el monto.');return;}
+  var ref=_cmReferencia;
+  if(ingresosDB.some(function(v){return v.folio===ref.folio&&v.unidad===unidad;})){
+    alert('⚠️ Ya existe un renglón con este folio para este operador — no se duplicó.');
+    return;
+  }
+  var iva=Math.round(monto*0.16*100)/100;
+  var total=monto+iva;
+  var u=usuarioSesion();
+  ingresosDB.push({
+    id:uid(),unidad:unidad,folio:ref.folio,fecha:ref.fecha,cliente:ref.cliente||'',tipo:'maniobra',
+    subtotal:monto,subtFlete:0,subtManiobras:monto,subtOtros:0,iva:iva,ret:0,total:total,
+    estado:'sin_liquidar',liqNum:null,origen:'xml',ruta:[],
+    uuid:ref.uuid,facturaUUID:ref.facturaUUID||ref.uuid,destino:'',pedido:'',
+    rfcEmisor:ref.rfcEmisor||'',rfcReceptor:ref.rfcReceptor||'',satEstado:null,satCancelado:false,
+    esDesglose:true,xmlURL:ref.xmlURL||null,
+    capturadoPor:u?{usuario:u.usuario,nombre:u.nombre}:{usuario:'',nombre:''}
+  });
+  guardar();renderIngresos();
+  alert('✅ Renglón agregado: '+(nombreOp(unidad)||unidad)+' — '+fmt(total)+' (folio '+ref.folio+').');
+  $('cmMonto').value='';$('cmOp').value='';
+  buscarFacturaManiobrasPorFolio();
 }
 </script>
 
