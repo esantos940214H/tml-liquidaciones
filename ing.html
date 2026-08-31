@@ -362,9 +362,19 @@ tr:hover td{background:#fafafa}
     <div id="buzonPedidosWrap"></div>
     <div class="card-title" style="margin-top:16px">📦 Pedidos de flete pendientes de factura <span id="fletesCountLabel" style="font-weight:400;color:#888;text-transform:none;letter-spacing:normal"></span></div>
     <div id="fletesPendientesWrap"><div style="text-align:center;padding:20px;color:#aaa">Cargando...</div></div>
-    <div style="margin-top:12px">
+  </div>
+
+  <!-- Aparte de la lista de pendientes, para no confundirlo con "editar" uno
+       que ya está registrado — esto es solo para dar de alta uno NUEVO que
+       el buzón no haya capturado. -->
+  <div class="card">
+    <div class="card-title" style="cursor:pointer;user-select:none" onclick="toggleRegistrarFleteManual()">
+      <span>➕ ¿Falta algún pedido de flete? Registrarlo a mano <span id="fleteManualIcon" style="font-weight:400;color:#888;text-transform:none;letter-spacing:normal">▶ expandir</span></span>
+    </div>
+    <div id="fleteManualWrap" style="display:none;margin-top:12px">
+      <p style="font-size:12px;color:#888;margin-bottom:10px">Úsalo solo si un pedido NO aparece en la lista de arriba (el buzón no lo capturó) — para eso hace falta escribir su propia orden de embarque, no sirve para completar o editar uno que ya esté registrado.</p>
       <div class="grid2">
-        <div class="field"><label>Orden de embarque / T.U.'s 1</label><input type="text" id="fleteOrdenEmbarque" placeholder="Si el buzón no lo capturó"></div>
+        <div class="field"><label>Orden de embarque / T.U.'s 1</label><input type="text" id="fleteOrdenEmbarque" placeholder="Obligatorio"></div>
         <div class="field"><label>T.U.'s 2 <span style="font-weight:400;font-size:11px;color:#aaa">(opcional)</span></label><input type="text" id="fleteTu2" placeholder="Si el correo trae un segundo T.U."></div>
         <div class="field"><label>Pedido de flete <span style="font-weight:400;font-size:11px;color:#aaa">(opcional)</span></label><input type="text" id="fletePedido"></div>
         <div class="field"><label>Tienda</label><input type="text" id="fleteTienda"></div>
@@ -1336,6 +1346,12 @@ var _ultimoFiltradosIng=[],_ultimoFiltOpIng=0;
 
 function toggleTablaIngresos(){
   var wrap=$('tablaIngWrap'),icon=$('tablaIngIcon');
+  var oculto=wrap.style.display==='none';
+  wrap.style.display=oculto?'':'none';
+  icon.textContent=oculto?'▼ colapsar':'▶ expandir';
+}
+function toggleRegistrarFleteManual(){
+  var wrap=$('fleteManualWrap'),icon=$('fleteManualIcon');
   var oculto=wrap.style.display==='none';
   wrap.style.display=oculto?'':'none';
   icon.textContent=oculto?'▼ colapsar':'▶ expandir';
