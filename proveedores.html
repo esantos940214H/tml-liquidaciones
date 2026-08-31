@@ -559,6 +559,15 @@ async function desbloquearProveedorUI(rfc){
 // _enviarCorreoCompras en functions/index.js. No usa window.FB.getAll()
 // porque esa función ordena por el campo "num" (no aplica aquí).
 let _correosEnviados=[];
+// fechaEnvio se guarda en UTC (new Date().toISOString() del lado del
+// servidor) — sin esto se mostraba tal cual, 6 horas adelantada respecto a
+// la hora real de CDMX.
+function _fmtFechaEnvioLocal(iso){
+  if(!iso)return'';
+  var d=new Date(iso);
+  if(isNaN(d))return iso.replace('T',' ').slice(0,19);
+  return new Intl.DateTimeFormat('es-MX',{timeZone:'America/Mexico_City',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false}).format(d).replace(',','');
+}
 async function cargarYRenderCorreosEnviados(){
   var wrap=$('correosEnviadosWrap');
   wrap.innerHTML='<div style="text-align:center;padding:20px;color:#aaa">Cargando...</div>';
@@ -568,7 +577,7 @@ async function cargarYRenderCorreosEnviados(){
     if(!_correosEnviados.length){wrap.innerHTML='<p style="font-size:13px;color:#aaa;padding:10px 0">Todavía no se ha mandado ningún correo.</p>';return;}
     wrap.innerHTML='<div class="tbl-wrap"><table><thead><tr><th>Fecha</th><th>Para</th><th>Asunto</th><th>Resultado</th><th></th></tr></thead><tbody>'
       +_correosEnviados.map(function(c,i){
-        return '<tr><td style="font-size:11px">'+(c.fechaEnvio||'').replace('T',' ').slice(0,19)+'</td>'
+        return '<tr><td style="font-size:11px">'+_fmtFechaEnvioLocal(c.fechaEnvio)+'</td>'
           +'<td style="font-size:11px">'+(c.to||'')+'</td>'
           +'<td style="font-size:12px">'+(c.subject||'')+'</td>'
           +'<td>'+(c.ok?'<span class="badge bg-green">✅ Enviado</span>':'<span class="badge bg-red" title="'+(c.error||'')+'">⚠️ Falló</span>')+'</td>'
