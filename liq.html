@@ -3581,11 +3581,22 @@ function renderIAVE(){
   var filasM=[],filasX=[];
   liq.autopistas.forEach(function(a,i){
     if(!a.satCancelado){if(a.pagaOp)totOp+=a.importe;else totEmp+=a.importe;}
+    // Las casetas de IAVE (Excel/CSV del dispositivo de la empresa, sin
+    // factura) NUNCA deben poder marcarse como "paga operador" — el
+    // dispositivo es de la empresa, no hay ningún comprobante que respalde
+    // que el operador desembolsó nada, así que dejar ese selector editable
+    // abría la puerta a mover el gasto a la cuenta del operador sin
+    // justificación real. Las que sí traen factura XML (comprobante real)
+    // siguen editables, porque esas sí pueden pagarse en efectivo.
+    var esXMLRow=esCruceXML(a);
+    var selectCell=esXMLRow
+      ?('<td><select class="input-sm" onchange="liq.autopistas['+i+'].pagaOp=this.value===\'si\';renderIAVE();guardarEstado()">'
+        +'<option value="no"'+(a.pagaOp?'':' selected')+'>Empresa</option><option value="si"'+(a.pagaOp?' selected':'')+'>Operador</option></select></td>')
+      :('<td><span class="badge bg-green" title="Casetas de IAVE (dispositivo de la empresa, sin factura) siempre las paga la empresa — no se puede cambiar">🔒 Empresa</span></td>');
     var filaBase='<tr'+(a.satCancelado?' style="opacity:.55;text-decoration:line-through"':'')+'><td>'+a.fecha+'</td><td>'+a.hora+'</td><td>'+a.caseta+(a.origenPrecarga?' <span class="badge" style="background:#dbeafe;color:#1e40af;border:1px solid #93c5fd" title="Se jaló automáticamente de precarga.mudanzastml.mx">📥 Pre-cargado</span>':'')+(a.satCancelado?' <span class="badge bg-red" style="color:#c1121f" title="Cancelado ante el SAT — excluido del cálculo">⚠ CANCELADO SAT</span>':'')+'</td><td>'+a.carril+'</td><td class="num r">'+fmt(a.importe)+'</td>'
-      +'<td><select class="input-sm" onchange="liq.autopistas['+i+'].pagaOp=this.value===\'si\';renderIAVE();guardarEstado()">'
-      +'<option value="no"'+(a.pagaOp?'':' selected')+'>Empresa</option><option value="si"'+(a.pagaOp?' selected':'')+'>Operador</option></select></td>';
+      +selectCell;
     var deleteCell='<td><button class="btn btn-sm" style="background:#fde8e8;color:#9b1c1c;border:none;cursor:pointer" onclick="eliminarAutopista('+i+')">✕</button></td></tr>';
-    if(esCruceXML(a)){
+    if(esXMLRow){
       var archivoCell='<td>'+(a.xmlURL?'<a href="'+a.xmlURL+'" target="_blank" style="font-size:11px;margin-right:6px">📄 XML</a>':'<span style="font-size:11px;color:#aaa" title="No se guardó el XML de este comprobante">📄 —</span>')+'<button class="btn-sm" style="background:none;border:none;cursor:pointer;font-size:11px" onclick="descargarPDFCaseta('+i+')" title="Ver el comprobante en PDF (generado a partir de los datos del XML)">🧾 Ver PDF</button></td>';
       filasM.push(filaBase+archivoCell+deleteCell);nXml++;
     }else{
