@@ -613,6 +613,22 @@ async function procesarXML(text,fname){
 
 async function registrarComprobante(docData,fname){
   try{
+    // Dedup cruzado: un XML puede haber quedado usado en una liquidación de
+    // DOS formas distintas — (a) jalado aquí desde Precarga (queda en
+    // comprobantesPrecargados), o (b) subido DIRECTO dentro de la propia
+    // liquidación (liq.html tiene su propio uploader de gastos/casetas, que
+    // nunca pasa por esta colección). Antes solo se revisaba (a) — un XML ya
+    // usado por la vía (b) se aceptaba aquí sin ningún aviso, como pasó con
+    // 2 casetas de Rolando que ya estaban en su liquidación #3. facturasUsadas
+    // es el registro compartido que sí llena liq.html para cualquiera de las
+    // dos vías, así que revisar ahí cubre el hueco.
+    var facturasUsadasDoc=await window.FB.get('estado','facturasUsadas');
+    var facturasUsadas=(facturasUsadasDoc&&facturasUsadasDoc.data)?JSON.parse(facturasUsadasDoc.data):{};
+    var yaUsada=facturasUsadas[docData.uuid.toUpperCase()];
+    if(yaUsada){
+      alert('🚫 '+fname+': este comprobante (UUID '+docData.uuid.slice(0,8)+'...) ya está usado en la liquidación #'+yaUsada.liqNum+' (unidad '+yaUsada.unidad+'). No se puede pre-cargar de nuevo.');
+      return;
+    }
     // Dedup por UUID: el ID del documento ES el uuid, así que basta revisar
     // si ya existe antes de escribir — nunca se sobreescribe uno existente.
     var existente=await window.FB.get('comprobantesPrecargados',docData.uuid);
