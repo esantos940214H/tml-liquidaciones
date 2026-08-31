@@ -57,39 +57,41 @@
   };
 
   // buscarFletePendientePorOrden(lista, ordenEmbarqueCruda): busca, entre los
-  // que siguen 'pendiente_factura', uno cuyo T.U./orden de embarque
-  // normalizado coincida — revisa TODOS los T.U.'s del pedido (campo "tus",
-  // ya que un pedido puede traer varios juntos, ej. "6500360289/6500360290"),
-  // no solo el principal. "ordenEmbarque" se deja como respaldo para
-  // registros viejos sin el campo "tus".
+  // que siguen 'pendiente_factura', uno cuyo T.U.'s 1 (ordenEmbarque) o
+  // T.U.'s 2 normalizado coincida — mismo criterio que Maniobras (un pedido
+  // puede traer dos T.U.'s asociados, ej. "6500360289" y "6500360290" para
+  // el mismo embarque).
   window.buscarFletePendientePorOrden = function (lista, ordenEmbarqueCruda) {
     var norm = normalizarOrdenEmbarque(ordenEmbarqueCruda);
     if (!norm || !Array.isArray(lista)) return null;
     return lista.find(function (f) {
       if (f.estado !== 'pendiente_factura') return false;
-      if (Array.isArray(f.tus)) return f.tus.indexOf(norm) !== -1;
-      return f.ordenEmbarque === norm;
+      if (f.ordenEmbarque === norm || f.tu2 === norm) return true;
+      return Array.isArray(f.tus) && f.tus.indexOf(norm) !== -1; // respaldo para registros viejos
     }) || null;
   };
 
   // registrarFlete(datos): alta manual o desde el buzón — dedupe por
   // ordenEmbarque normalizada (id del documento), igual que cxpFacturas usa
   // el UUID: da unicidad gratis y hace inmediato buscarlo después. Si
-  // datos.ordenEmbarque trae varios T.U.'s juntos separados por "/" (mismo
-  // pedido con más de un T.U. asociado, como los manda el cliente), se
-  // guardan todos en "tus" — el primero se usa como id del documento.
+  // datos.ordenEmbarque trae dos T.U.'s juntos separados por "/" (mismo
+  // pedido con dos T.U.'s asociados, como los manda el cliente), se separan
+  // en T.U.'s 1 (ordenEmbarque, id del documento) y T.U.'s 2 — mismo
+  // criterio que ya usa Maniobras.
   window.registrarFlete = async function (datos) {
     var _db = db();
     if (!_db) throw new Error('Sin conexión a Firestore.');
-    var tus = String(datos.ordenEmbarque || '').split(/[\/,;]+/)
+    var partes = String(datos.ordenEmbarque || '').split(/[\/,;]+/)
       .map(normalizarOrdenEmbarque).filter(function (p) { return p; });
-    if (!tus.length) throw new Error('Falta la orden de embarque.');
-    var ordenNorm = tus[0];
+    var tu2Extra = normalizarOrdenEmbarque(datos.tu2 || '');
+    if (tu2Extra && partes.indexOf(tu2Extra) === -1) partes.push(tu2Extra);
+    if (!partes.length) throw new Error('Falta la orden de embarque.');
+    var ordenNorm = partes[0];
     var ref = _db.collection('fletesDB').doc(ordenNorm);
     var existente = await ref.get();
     if (existente.exists) throw new Error('Ya existe un pedido de flete con la orden de embarque ' + ordenNorm + '.');
     await ref.set({
-      ordenEmbarque: ordenNorm, tus: tus, pedidoFlete: (datos.pedidoFlete || '').trim() || null,
+      ordenEmbarque: ordenNorm, tu2: partes[1] || null, pedidoFlete: (datos.pedidoFlete || '').trim() || null,
       destino: (datos.destino || '').trim(), tienda: (datos.tienda || '').trim(),
       fecha: datos.fecha || new Date().toISOString().slice(0, 10),
       economico: datos.economico ? parseInt(String(datos.economico).replace(/[^0-9]/g, '') || 0) || null : null,
