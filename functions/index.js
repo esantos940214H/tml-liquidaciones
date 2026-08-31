@@ -1223,7 +1223,12 @@ function _revisarBuzonComprasCore(user, pass, apiKey) {
         }
         const data = c.cfdi;
         const diasCredito = ev.proveedor.diasCredito != null ? ev.proveedor.diasCredito : 15;
-        const fechaVencimiento = _sumarDiasHabilesServer(data.fechaEmision, diasCredito);
+        // Los días de crédito corren desde que se REGISTRA la factura (hoy),
+        // no desde la fecha de timbrado del CFDI — el proveedor a veces
+        // timbra días antes de mandarla, y no hay forma de "regresar el
+        // tiempo" para pagarla en una fecha ya pasada.
+        const fechaRegistro = new Date().toISOString().slice(0, 10);
+        const fechaVencimiento = _sumarDiasHabilesServer(fechaRegistro, diasCredito);
         const estadoPago = data.metodoPago === 'PUE' ? 'pendiente_pago' : 'vigente_por_pagar';
         // Si el correo trajo un PDF de desglose (ver _procesarMensajeCompras),
         // se intenta prorratear solo — pero SOLO si todas las unidades se
