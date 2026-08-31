@@ -2017,12 +2017,22 @@ function construirArchivoMaestroFletes(){
     var m=matchFleteConAutorizacion(f,autorizaciones);
     // El económico/operador viene, en orden de confianza: de la autorización
     // ya emparejada; si no hubo match pero el correo del pedido de flete SÍ
-    // traía el económico, se usa ese (sin operador confirmado todavía).
-    var unidad=m?m.autorizacion.unidad:(f.economico||null);
+    // traía el económico, se busca el operador que TIENE esa unidad ahora
+    // mismo (sin operador confirmado todavía). OJO: nombreOp() busca por
+    // operadorId, no por número de unidad/camión — antes aquí se le pasaba
+    // el económico directo a nombreOp(), lo cual solo "funcionaba" por
+    // coincidencia en los operadores cuyo operadorId es igual a su unidad
+    // actual (nunca han cambiado de camión); en cuanto alguien rota de
+    // unidad (ej. un operador que se va y el camión pasa a otro, o al
+    // revés) la búsqueda fallaba en silencio y mostraba solo el número.
+    var opConfirmado=m?OPERADORES.find(function(o){return o.operadorId===m.autorizacion.unidad;}):null;
+    var opPorEconomico=(!m&&f.economico)?OPERADORES.find(function(o){return o.unidad===parseInt(f.economico);}):null;
+    var operadorNombre=opConfirmado?opConfirmado.nombre:(opPorEconomico?opPorEconomico.nombre:null);
+    var unidad=m?m.autorizacion.unidad:(opPorEconomico?opPorEconomico.operadorId:(f.economico||null));
     return{
       fecha:f.fecha,destino:f.destino,tienda:f.tienda,
       ordenEmbarque:f.ordenEmbarque,tu2:f.tu2,pedidoFlete:f.pedidoFlete,
-      operador:unidad?(nombreOp(unidad)||('Unidad '+unidad)):null,
+      operador:operadorNombre||(f.economico?('Unidad '+f.economico+' (no encontrada en Flota)'):null),
       unidad:unidad,operadorConfirmado:!!m,
       montoFlete:f.montoFlete,
       montoAutorizadoManiobra:m?m.autorizacion.subtotal:null,
