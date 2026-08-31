@@ -48,6 +48,7 @@ tr:hover td{background:#fafafa}
 .r{text-align:right}.num{font-family:monospace;font-weight:600}
 .badge{display:inline-block;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:700}
 .bg-green{background:#d1e7dd;color:#0a5233}.bg-red{background:#fde8e8;color:#9b1c1c}
+.bg-yellow{background:#fff3cd;color:#856404;border:1px solid #ffc107}
 .fb-status{font-size:11px;color:#aaa}
 .fb-ok{color:#2d6a4f}.fb-err{color:#e63946}
 
@@ -1241,13 +1242,18 @@ function renderFacturas(){
       var bloqueada=f.estadoPago==='pendiente_pago';
       var pagada=f.estadoPago==='pagada';
       var tieneProrrateo=f.prorrateo&&f.prorrateo.length;
-      var fila='<tr>'
-        +'<td style="font-size:12px">'+(f.proveedorNombre||f.proveedorId||'')+(f.estadoProrrateo==='n_aplica'?'<div style="font-size:10px;color:#888">gasto general (sin unidad)</div>':'')+'</td>'
-        +'<td class="num">'+(f.serie?f.serie+'-':'')+f.folio+'</td>'
-        +'<td>'+f.fechaEmision+'</td>'
-        +'<td class="num r">'+fmt(f.total)+'</td>'
+      // Igual que en Maniobras: lo que todavía no está pagado se resalta con
+      // fondo amarillo y negritas en toda la fila, para que salte a la vista
+      // sin tener que leer cada badge.
+      var sinPagar=!pagada&&!bloqueada;
+      var negrita=sinPagar?'font-weight:700':'';
+      var fila='<tr'+(sinPagar?' style="background:#fff8e1"':'')+'>'
+        +'<td style="font-size:12px;'+negrita+'">'+(f.proveedorNombre||f.proveedorId||'')+(f.estadoProrrateo==='n_aplica'?'<div style="font-size:10px;color:#888">gasto general (sin unidad)</div>':'')+'</td>'
+        +'<td class="num" style="'+negrita+'">'+(f.serie?f.serie+'-':'')+f.folio+'</td>'
+        +'<td style="'+negrita+'">'+f.fechaEmision+'</td>'
+        +'<td class="num r" style="'+negrita+'">'+fmt(f.total)+'</td>'
         +'<td>'+(vencido&&!bloqueada&&!pagada?'<span class="badge bg-red">⚠ Vencida '+f.fechaVencimiento+'</span>':'<span class="badge bg-green">'+f.fechaVencimiento+'</span>')+'</td>'
-        +'<td>'+(bloqueada?'<span class="badge bg-red">🚫 PUE sin pago</span>':(pagada?'<span class="badge bg-green">✅ Pagada</span>':'<span class="badge bg-green">'+(f.metodoPago||'')+'</span>'))+'</td>'
+        +'<td>'+(bloqueada?'<span class="badge bg-red">🚫 PUE sin pago</span>':(pagada?'<span class="badge bg-green">✅ Pagada</span>':'<span class="badge bg-yellow">⏳ Pendiente de pago ('+(f.metodoPago||'')+')</span>'))+'</td>'
         +'<td>'+(pagada?'<button class="btn btn-out btn-sm" onclick="window.open(\''+(f.comprobanteURL||'')+'\',\'_blank\')">👁️ Ver</button>'+(f.repRecibido?' <span class="badge bg-green" title="Complemento de pago recibido">✅ REP</span>':(f.repFechaLimite?' <span class="badge bg-yellow" title="Límite para recibir el complemento de pago">🔔 REP al '+f.repFechaLimite+'</span>':''))
           :'<button class="btn btn-out btn-sm" onclick="togglePagoForm(\''+f.id+'\')">➕ Pago</button>')+'</td>'
         +'<td>'+(f.estadoProrrateo==='n_aplica'?'<span style="color:#888;font-size:11px">— gasto general</span>':(f.estadoProrrateo==='pendiente_prorrateo'?'<button class="btn btn-red btn-sm" onclick="iniciarProrrateoDeFactura(\''+f.id+'\')">⚖️ Prorratear</button>':(tieneProrrateo?'<button class="btn btn-out btn-sm" onclick="toggleProrrateoDetalle(\''+f.id+'\')">👁️ '+f.prorrateo.length+' unidad(es)</button>':'<span style="color:#c1121f;font-size:11px">sin prorrateo</span>')))+'</td>'
