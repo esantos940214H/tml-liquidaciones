@@ -712,7 +712,7 @@ tr:hover td{background:#fafafa}
   <div class="card no-print">
     <div class="card-title">📋 Detalle por liquidación cerrada</div>
     <div class="tbl-wrap"><table>
-      <thead><tr><th>Liq. #</th><th>Operador</th><th>Cierre</th><th class="r">Fletes</th><th class="r">Gastos</th><th class="r">Diesel s/comprobar</th><th class="r">Casetas</th><th class="r">Comisión</th><th class="r">Utilidad</th><th class="r">Saldo</th></tr></thead>
+      <thead><tr><th>Liq. #</th><th>Operador</th><th>Cierre</th><th class="r">Fletes</th><th class="r">Gastos</th><th class="r">Diesel comprobado</th><th class="r">Diesel s/comprobar</th><th class="r">Casetas</th><th class="r">Comisión</th><th class="r">Utilidad</th><th class="r">Saldo</th></tr></thead>
       <tbody id="rgTabla"></tbody>
     </table></div>
   </div>
@@ -4850,13 +4850,20 @@ async function generarReporteGeneral(){
     return true;
   }).sort(function(a,b){return(b.fechaCierre||'').localeCompare(a.fechaCierre||'');});
 
-  var totFletes=0,totGastos=0,totDieselNC=0,totCasetas=0,totComision=0,totNomina=0,totIncidentes=0,totSaldo=0,totUtilidad=0;
+  var totFletes=0,totGastos=0,totDieselC=0,totDieselNC=0,totCasetas=0,totComision=0,totNomina=0,totIncidentes=0,totSaldo=0,totUtilidad=0;
   var porOpFletes={},porOpUtilidad={};
   var filas='';
   filtrado.forEach(function(h){
     var s=h.snapshot||{};
     var fletes=s.totIngSubtotal||0;
     var gastos=(s.totGastosOp||0)+(s.totGastosEmp||0);
+    // dieselComprobado es el gasto REAL de combustible (el grueso del
+    // costo) — antes solo se leía dieselNoComprobado (el excedente, casi
+    // siempre chico), así que "Composición de gastos totales" se veía con
+    // Diesel casi invisible y Casetas/Gastos/Comisión inflados en
+    // proporción, aunque la Utilidad SÍ restaba bien ambos (ver
+    // totGastosEmpTotal, que siempre incluyó dieselComprobadoSub).
+    var dieselC=s.dieselComprobado||0;
     var dieselNC=s.dieselNoComprobado||0;
     var casetas=s.totAut||0;
     var comision=s.totComision||0;
@@ -4869,7 +4876,7 @@ async function generarReporteGeneral(){
     // — mismo cálculo que ya se muestra en la pestaña 💰 Reporte de cada
     // liquidación individual, aquí solo se recupera y se suma.
     var utilidad=fletes-(s.totGastosEmpTotal||0);
-    totFletes+=fletes;totGastos+=gastos;totDieselNC+=dieselNC;totCasetas+=casetas;
+    totFletes+=fletes;totGastos+=gastos;totDieselC+=dieselC;totDieselNC+=dieselNC;totCasetas+=casetas;
     totComision+=comision;totNomina+=nomina;totIncidentes+=incidentes;totSaldo+=saldo;totUtilidad+=utilidad;
     // Se agrupa por NOMBRE, no por opId — algunas liquidaciones viejas
     // guardaron opId con criterios distintos (antes de que ese campo
@@ -4881,7 +4888,7 @@ async function generarReporteGeneral(){
     porOpFletes[nombreOp]=(porOpFletes[nombreOp]||0)+fletes;
     porOpUtilidad[nombreOp]=(porOpUtilidad[nombreOp]||0)+utilidad;
     filas+='<tr><td>#'+h.num+'</td><td style="font-size:11px">'+nombreOp+'</td><td style="font-size:11px">'+(h.fechaCierre||'—')+'</td>'
-      +'<td class="num r">'+fmt(fletes)+'</td><td class="num r">'+fmt(gastos)+'</td><td class="num r">'+fmt(dieselNC)+'</td>'
+      +'<td class="num r">'+fmt(fletes)+'</td><td class="num r">'+fmt(gastos)+'</td><td class="num r">'+fmt(dieselC)+'</td><td class="num r">'+fmt(dieselNC)+'</td>'
       +'<td class="num r">'+fmt(casetas)+'</td><td class="num r">'+fmt(comision)+'</td>'
       +'<td class="num r" style="color:'+(utilidad<0?'#c1121f':'#0a5233')+'">'+fmt(utilidad)+'</td>'
       +'<td class="num r" style="color:'+(saldo<0?'#c1121f':'#0a5233')+'">'+fmt(saldo)+'</td></tr>';
@@ -4892,13 +4899,14 @@ async function generarReporteGeneral(){
     '<div class="kpi"><div class="v">'+filtrado.length+'</div><div class="k">Liquidaciones cerradas</div></div>'
     +'<div class="kpi"><div class="v">'+fmt(totFletes)+'</div><div class="k">Fletes liquidados</div></div>'
     +'<div class="kpi"><div class="v">'+fmt(totGastos)+'</div><div class="k">Gastos</div></div>'
+    +'<div class="kpi"><div class="v">'+fmt(totDieselC)+'</div><div class="k">Diesel comprobado</div></div>'
     +'<div class="kpi"><div class="v">'+fmt(totDieselNC)+'</div><div class="k">Exceso de diesel</div></div>'
     +'<div class="kpi"><div class="v">'+fmt(totCasetas)+'</div><div class="k">Casetas</div></div>'
     +'<div class="kpi"><div class="v">'+fmt(totComision)+'</div><div class="k">Comisión</div></div>'
     +'<div class="kpi"><div class="v '+(totUtilidad<0?'red':'green')+'">'+fmt(totUtilidad)+'</div><div class="k">Utilidad bruta ('+margenTotal.toFixed(1)+'% margen)</div></div>'
     +'<div class="kpi"><div class="v '+(totSaldo<0?'red':'green')+'">'+fmt(totSaldo)+'</div><div class="k">Saldo total</div></div>';
 
-  $('rgTabla').innerHTML=filas||'<tr><td colspan="10" style="text-align:center;color:#aaa;padding:20px">Sin liquidaciones cerradas en este filtro.</td></tr>';
+  $('rgTabla').innerHTML=filas||'<tr><td colspan="11" style="text-align:center;color:#aaa;padding:20px">Sin liquidaciones cerradas en este filtro.</td></tr>';
 
   if(typeof Chart==='undefined')return; // sin conexión al CDN — se omiten las gráficas sin afectar KPIs/tabla
 
@@ -4926,8 +4934,8 @@ async function generarReporteGeneral(){
 
   if(chartRGGastos)chartRGGastos.destroy();
   chartRGGastos=new Chart($('rgChartGastos'),{type:'pie',
-    data:{labels:['Gastos','Diesel s/comprobar','Casetas','Comisión','Incidentes','Nómina'],
-      datasets:[{data:[totGastos,totDieselNC,totCasetas,totComision,totIncidentes,totNomina],backgroundColor:['#9b1c1c','#c87f00','#1e40af','#e63946','#6b46c1','#0a5233']}]},
+    data:{labels:['Gastos','Diesel comprobado','Diesel s/comprobar','Casetas','Comisión','Incidentes','Nómina'],
+      datasets:[{data:[totGastos,totDieselC,totDieselNC,totCasetas,totComision,totIncidentes,totNomina],backgroundColor:['#9b1c1c','#e9a23b','#c87f00','#1e40af','#e63946','#6b46c1','#0a5233']}]},
     options:{plugins:{legend:{position:'bottom',labels:{boxWidth:11,font:{size:10}}},tooltip:{callbacks:{label:function(ctx){return ctx.label+': '+fmt(ctx.parsed);}}}}}});
 
   // Utilidad por operador — barras (no pastel: la utilidad puede ser
