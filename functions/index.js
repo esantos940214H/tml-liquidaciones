@@ -67,13 +67,15 @@ function _fmtMonedaServer(n) {
 // protocolo SMTP por sí solo. Para poder confirmar que sí se mandó (o ver
 // por qué falló) sin depender de revisar logs de Cloud Functions, cada
 // intento queda registrado en la colección real correosEnviadosCxP.
-async function _enviarCorreoCompras(user, pass, to, subject, html) {
+async function _enviarCorreoCompras(user, pass, to, subject, html, attachments) {
   if (!to) return;
   let ok = true, error = null;
   try {
     const nodemailer = require('nodemailer');
     const transport = nodemailer.createTransport({ host: 'smtp.ionos.mx', port: 587, secure: false, auth: { user: user, pass: pass } });
-    await transport.sendMail({ from: user, to: to, subject: subject, html: html });
+    const mail = { from: user, to: to, subject: subject, html: html };
+    if (attachments && attachments.length) mail.attachments = attachments;
+    await transport.sendMail(mail);
   } catch (e) {
     ok = false; error = e.message || String(e);
     throw e;
@@ -142,13 +144,23 @@ async function _enviarCorreoFacturaRecibida(user, pass, proveedor, data, diasCre
   );
   return true;
 }
+// _adjuntoComprobante(url): nodemailer acepta una URL http(s) directo como
+// "path" de un adjunto y él mismo la descarga — no hace falta bajarla a mano
+// aquí. Sin extensión reconocible se usa .jpg como respaldo (el comprobante
+// casi siempre es foto o PDF).
+function _adjuntoComprobante(comprobanteURL) {
+  if (!comprobanteURL) return null;
+  const sinQuery = comprobanteURL.split('?')[0];
+  const ext = (sinQuery.split('.').pop() || 'jpg').toLowerCase().slice(0, 4);
+  return [{ filename: 'comprobante-pago.' + ext, path: comprobanteURL }];
+}
 // _enviarCorreoPagoConfirmado: para facturas PUE — ahí el proceso termina en
 // el pago mismo (no hay complemento de pago que solicitar), pero el
 // proveedor de cualquier forma debe enterarse de que ya se le pagó. Antes
 // las PUE no mandaban ningún correo al registrar el pago; las PPD sí lo
 // traen implícito en el correo de solicitud de REP ("ya se realizó el
 // pago..."), así que este solo se manda para PUE.
-async function _enviarCorreoPagoConfirmado(user, pass, proveedor, fac, fechaPago) {
+async function _enviarCorreoPagoConfirmado(user, pass, proveedor, fac, fechaPago, comprobanteURL) {
   if (!proveedor || !proveedor.email) return false;
   await _enviarCorreoCompras(user, pass, proveedor.email,
     'Pago realizado — factura ' + (fac.serie ? fac.serie + '-' : '') + fac.folio,
@@ -158,8 +170,10 @@ async function _enviarCorreoPagoConfirmado(user, pass, proveedor, fac, fechaPago
       '<p>Hola <strong>' + (proveedor.razonSocial || fac.proveedorNombre || '') + '</strong>,</p>' +
       '<p>Te confirmamos que ya se realizó el pago de tu factura <strong>' + (fac.serie ? fac.serie + '-' : '') + fac.folio + '</strong> por ' +
       '<strong style="color:#1a1a2e;">' + _fmtMonedaServer(fac.total) + '</strong>, con fecha <strong>' + fechaPago + '</strong>.</p>' +
+      (comprobanteURL ? '<p>Adjuntamos el comprobante del pago.</p>' : '') +
       '<p>Gracias.</p>'
-    )
+    ),
+    _adjuntoComprobante(comprobanteURL)
   );
   return true;
 }
@@ -1396,6 +1410,7 @@ exports.enviarSolicitudComplementoPago = onRequest(
     if (req.method !== 'POST') { res.status(405).json({ error: 'Método no permitido, usa POST.' }); return; }
     const uuid = ((req.body && req.body.uuid) || '').toString().trim().toUpperCase();
     const fechaPago = ((req.body && req.body.fechaPago) || '').toString().trim() || new Date().toISOString().slice(0, 10);
+    const comprobanteURL = ((req.body && req.body.comprobanteURL) || '').toString().trim();
     if (!uuid) { res.status(400).json({ error: 'Falta el UUID de la factura.' }); return; }
     try {
       const facSnap = await db.collection('cxpFacturas').doc(uuid).get();
@@ -1424,8 +1439,10 @@ exports.enviarSolicitudComplementoPago = onRequest(
             '<p style="background:#eef4f8;border-left:3px solid #457b9d;padding:10px 14px;border-radius:4px;">' +
             'Por favor envíanos el <strong>complemento de pago (REP)</strong> correspondiente antes del <strong>' + fechaLimiteRep + '</strong> ' +
             '(límite legal: día 8 del mes siguiente al pago).</p>' +
+            (comprobanteURL ? '<p>Adjuntamos el comprobante del pago.</p>' : '') +
             '<p>Gracias.</p>'
-          )
+          ),
+          _adjuntoComprobante(comprobanteURL)
         );
         correoEnviado = true;
       }
@@ -1479,6 +1496,7 @@ exports.enviarConfirmacionPago = onRequest(
     if (req.method !== 'POST') { res.status(405).json({ error: 'Método no permitido, usa POST.' }); return; }
     const uuid = ((req.body && req.body.uuid) || '').toString().trim().toUpperCase();
     const fechaPago = ((req.body && req.body.fechaPago) || '').toString().trim() || new Date().toISOString().slice(0, 10);
+    const comprobanteURL = ((req.body && req.body.comprobanteURL) || '').toString().trim();
     if (!uuid) { res.status(400).json({ error: 'Falta el UUID de la factura.' }); return; }
     try {
       const facSnap = await db.collection('cxpFacturas').doc(uuid).get();
@@ -1488,7 +1506,7 @@ exports.enviarConfirmacionPago = onRequest(
       const provSnap = fac.proveedorId ? await db.collection('proveedores').doc(fac.proveedorId).get() : null;
       const proveedor = provSnap && provSnap.exists ? provSnap.data() : null;
       const correoEnviado = await _enviarCorreoPagoConfirmado(
-        COMPRAS_EMAIL_USER.value(), COMPRAS_EMAIL_PASS.value(), proveedor, fac, fechaPago
+        COMPRAS_EMAIL_USER.value(), COMPRAS_EMAIL_PASS.value(), proveedor, fac, fechaPago, comprobanteURL
       );
       res.json({ ok: true, aplica: true, correoEnviado: correoEnviado });
     } catch (e) {
