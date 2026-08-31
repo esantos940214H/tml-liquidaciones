@@ -967,7 +967,7 @@ async function guardarPagoFactura(uuid){
     var fechaPagoFactura=ex.c.fechaPago||new Date().toISOString().slice(0,10);
     if(f.metodoPago==='PPD'){
       try{
-        var respRep=await fetch(FUNCTION_URL_ENVIAR_SOLICITUD_REP,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({uuid:uuid,fechaPago:fechaPagoFactura})});
+        var respRep=await fetch(FUNCTION_URL_ENVIAR_SOLICITUD_REP,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({uuid:uuid,fechaPago:fechaPagoFactura,comprobanteURL:url})});
         var dataRep=await respRep.json();
         if(dataRep.correoEnviado)avisoRep=' Se le pidió al proveedor su complemento de pago (límite: '+dataRep.fechaLimiteRep+').';
         else if(dataRep.fechaLimiteRep)avisoRep=' ⚠️ No se le pudo avisar por correo (falta su email en el catálogo) — la fecha límite de su complemento es '+dataRep.fechaLimiteRep+'.';
@@ -976,7 +976,7 @@ async function guardarPagoFactura(uuid){
       // PUE: no hay complemento de pago que solicitar, pero igual se le
       // avisa al proveedor que ya se le pagó.
       try{
-        var respPago=await fetch(FUNCTION_URL_ENVIAR_CONFIRMACION_PAGO,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({uuid:uuid,fechaPago:fechaPagoFactura})});
+        var respPago=await fetch(FUNCTION_URL_ENVIAR_CONFIRMACION_PAGO,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({uuid:uuid,fechaPago:fechaPagoFactura,comprobanteURL:url})});
         var dataPago=await respPago.json();
         if(dataPago.correoEnviado)avisoRep=' Se le avisó al proveedor que su factura ya está pagada.';
       }catch(e){console.error('enviarConfirmacionPago:',e);}
