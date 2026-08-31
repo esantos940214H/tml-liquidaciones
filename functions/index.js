@@ -142,6 +142,27 @@ async function _enviarCorreoFacturaRecibida(user, pass, proveedor, data, diasCre
   );
   return true;
 }
+// _enviarCorreoPagoConfirmado: para facturas PUE — ahí el proceso termina en
+// el pago mismo (no hay complemento de pago que solicitar), pero el
+// proveedor de cualquier forma debe enterarse de que ya se le pagó. Antes
+// las PUE no mandaban ningún correo al registrar el pago; las PPD sí lo
+// traen implícito en el correo de solicitud de REP ("ya se realizó el
+// pago..."), así que este solo se manda para PUE.
+async function _enviarCorreoPagoConfirmado(user, pass, proveedor, fac, fechaPago) {
+  if (!proveedor || !proveedor.email) return false;
+  await _enviarCorreoCompras(user, pass, proveedor.email,
+    'Pago realizado — factura ' + (fac.serie ? fac.serie + '-' : '') + fac.folio,
+    _plantillaCorreoCxP(
+      '✅ Tu factura ya fue pagada',
+      '#2a9d8f',
+      '<p>Hola <strong>' + (proveedor.razonSocial || fac.proveedorNombre || '') + '</strong>,</p>' +
+      '<p>Te confirmamos que ya se realizó el pago de tu factura <strong>' + (fac.serie ? fac.serie + '-' : '') + fac.folio + '</strong> por ' +
+      '<strong style="color:#1a1a2e;">' + _fmtMonedaServer(fac.total) + '</strong>, con fecha <strong>' + fechaPago + '</strong>.</p>' +
+      '<p>Gracias.</p>'
+    )
+  );
+  return true;
+}
 
 const PROMPT_INSTRUCCIONES =
   'Eres un asistente que extrae datos de correos de autorización de maniobras de una empresa de mudanzas (cliente fiscal: ' +
@@ -1441,6 +1462,37 @@ exports.enviarConfirmacionFacturaRecibida = onRequest(
       res.json({ ok: true, correoEnviado: correoEnviado });
     } catch (e) {
       console.error('enviarConfirmacionFacturaRecibida:', e);
+      res.status(500).json({ error: e.message || 'Error interno del servidor.' });
+    }
+  }
+);
+
+// ══════════════════════════════════════════════════════════════════════════
+// enviarConfirmacionPago — se llama desde proveedores.html justo después de
+// registrar el pago de una factura PUE: le avisa al proveedor que ya se le
+// pagó. Las PPD no usan este endpoint porque ya reciben ese mismo aviso
+// dentro del correo de solicitud de complemento de pago (enviarSolicitudComplementoPago).
+// ══════════════════════════════════════════════════════════════════════════
+exports.enviarConfirmacionPago = onRequest(
+  { secrets: [COMPRAS_EMAIL_USER, COMPRAS_EMAIL_PASS], cors: true, region: 'us-central1' },
+  async (req, res) => {
+    if (req.method !== 'POST') { res.status(405).json({ error: 'Método no permitido, usa POST.' }); return; }
+    const uuid = ((req.body && req.body.uuid) || '').toString().trim().toUpperCase();
+    const fechaPago = ((req.body && req.body.fechaPago) || '').toString().trim() || new Date().toISOString().slice(0, 10);
+    if (!uuid) { res.status(400).json({ error: 'Falta el UUID de la factura.' }); return; }
+    try {
+      const facSnap = await db.collection('cxpFacturas').doc(uuid).get();
+      if (!facSnap.exists) { res.status(404).json({ error: 'No se encontró esa factura.' }); return; }
+      const fac = facSnap.data();
+      if (fac.metodoPago === 'PPD') { res.json({ ok: true, aplica: false, correoEnviado: false }); return; }
+      const provSnap = fac.proveedorId ? await db.collection('proveedores').doc(fac.proveedorId).get() : null;
+      const proveedor = provSnap && provSnap.exists ? provSnap.data() : null;
+      const correoEnviado = await _enviarCorreoPagoConfirmado(
+        COMPRAS_EMAIL_USER.value(), COMPRAS_EMAIL_PASS.value(), proveedor, fac, fechaPago
+      );
+      res.json({ ok: true, aplica: true, correoEnviado: correoEnviado });
+    } catch (e) {
+      console.error('enviarConfirmacionPago:', e);
       res.status(500).json({ error: e.message || 'Error interno del servidor.' });
     }
   }
