@@ -211,9 +211,9 @@ tr:hover td{background:#fafafa}
       <button class="btn btn-out btn-sm" onclick="$('filtPendOp').value='';$('filtPendUnidad').value='';renderPendientes()">Limpiar</button>
     </div>
     <div class="tbl-wrap"><table>
-      <thead><tr><th>Fecha</th><th>Operador</th><th>Destino</th><th class="r">Autorizado (subtotal)</th><th>Cliente</th><th>Pedido/ID</th><th>Responsable</th><th>Plazo</th><th></th></tr></thead>
+      <thead><tr><th>Fecha</th><th>Operador</th><th>Destino</th><th class="r">Autorizado (subtotal)</th><th>Cliente</th><th>Folio/Pedido</th><th>T.U.'s 1</th><th>T.U.'s 2</th><th>Responsable</th><th>Plazo</th><th></th></tr></thead>
       <tbody id="tbPendientes"></tbody>
-      <tfoot><tr><td colspan="3" style="text-align:right;font-weight:700">Total pendiente de facturar (subtotal):</td><td class="r" id="tdTotalPendientes" style="font-weight:700"></td><td colspan="5"></td></tr></tfoot>
+      <tfoot><tr><td colspan="3" style="text-align:right;font-weight:700">Total pendiente de facturar (subtotal):</td><td class="r" id="tdTotalPendientes" style="font-weight:700"></td><td colspan="7"></td></tr></tfoot>
     </table></div>
   </div>
 
@@ -465,6 +465,20 @@ function renderPendientes(){
     if(v.montoPendiente)conMontoPendiente++;else totalConfirmado+=(v.subtotal||0);
   });
   if($('tdTotalPendientes'))$('tdTotalPendientes').textContent=fmt(totalConfirmado)+(conMontoPendiente?' (+'+conMontoPendiente+' con monto aún sin confirmar)':'');
+  // extraerIdsDeObservaciones(obs): "observaciones" ya trae, para el
+  // emparejamiento por "contiene", todos los identificadores juntos en un
+  // string tipo "FOLIO:x | PED:y | TU1:z | TU2:w" — aquí se separan solo
+  // para MOSTRARLOS en columnas propias, sin tocar cómo se guardan (eso
+  // seguiría rompiendo el resto del sistema que ya matchea contra ese
+  // string completo).
+  function extraerIdsDeObservaciones(obs){
+    obs=obs||'';
+    function ext(re){var m=obs.match(re);return m?m[1].trim():'';}
+    return{
+      folioPed:[ext(/FOLIO:([^|]+)/),ext(/PED:([^|]+)/)].filter(Boolean).join(' / '),
+      tu1:ext(/TU1:([^|]+)/),tu2:ext(/TU2:([^|]+)/)
+    };
+  }
   tb.innerHTML=pendientes.map(function(v){
     var vencido=yaVencioLimite(v.fechaLimiteJustificacion);
     var responsable=(v.capturadoPor&&v.capturadoPor.usuario)||'';
@@ -478,13 +492,16 @@ function renderPendientes(){
     var horasDesde=(Date.now()-creadoEnMs)/3600000;
     var esReciente=!v.depositoConfirmado&&horasDesde>=0&&horasDesde<32;
     var negrita=esReciente?'font-weight:700':'';
+    var ids=extraerIdsDeObservaciones(v.observaciones);
     return '<tr'+(esReciente?' style="background:#fff8e1"':'')+'>'
       +'<td style="'+negrita+'">'+(esReciente?'<span style="cursor:pointer" title="¿Ya depositaste esta maniobra?" onclick="confirmarDepositoManiobra(\''+v.id+'\')">💰</span> ':'')+v.fecha+'</td>'
       +'<td style="font-size:12px;'+negrita+'">'+(nombreOp(v.unidad)||v.unidad)+'</td>'
       +'<td style="font-size:12px;'+negrita+'">'+destino+'</td>'
       +'<td class="num r" style="'+negrita+'">'+(v.montoPendiente?'<span class="badge bg-yellow">⏳ Pendiente</span>':fmt(v.subtotal))+(esReciente?' <span class="badge" style="background:#ffca28;color:#4a3300">Depositar hoy</span>':'')+'</td>'
       +'<td style="font-size:12px">'+(v.cliente||'')+'</td>'
-      +'<td style="font-size:11px">'+(v.observaciones||'')+'</td>'
+      +'<td style="font-size:11px">'+(ids.folioPed||'—')+'</td>'
+      +'<td class="num" style="font-size:11px">'+(ids.tu1||'—')+'</td>'
+      +'<td class="num" style="font-size:11px">'+(ids.tu2||'—')+'</td>'
       +'<td style="font-size:11px">'+responsable+'</td>'
       +'<td>'+(vencido?'<span class="badge bg-red">⚠ Vencido</span>':'<span class="badge bg-yellow">⏳ '+(v.fechaLimiteJustificacion||'').slice(0,10)+'</span>')+'</td>'
       +'<td><button class="btn btn-out btn-sm" onclick="eliminarAutorizacion(\''+v.id+'\')">✕</button></td>'
