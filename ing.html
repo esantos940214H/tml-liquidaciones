@@ -1766,10 +1766,9 @@ function renderFletesPendientes(){
   var wrap=$('fletesPendientesWrap');
   if(!pendientes.length){wrap.innerHTML='<p style="font-size:12px;color:#aaa;padding:8px 0">Sin pedidos de flete pendientes de factura.</p>';return;}
   pendientes.sort(function(a,b){return(b.fechaAlta||'').localeCompare(a.fechaAlta||'');});
-  wrap.innerHTML='<div class="tbl-wrap"><table><thead><tr><th>Orden de embarque</th><th>Pedido de flete</th><th>Tienda</th><th>Destino</th><th>Fecha</th><th>Económico</th><th class="r">Monto flete</th><th></th></tr></thead><tbody>'
+  wrap.innerHTML='<div class="tbl-wrap"><table><thead><tr><th>T.U.\'s 1</th><th>T.U.\'s 2</th><th>Pedido de flete</th><th>Tienda</th><th>Destino</th><th>Fecha</th><th>Económico</th><th class="r">Monto flete</th><th></th></tr></thead><tbody>'
     +pendientes.map(function(f){
-      var tusTexto=[f.ordenEmbarque,f.tu2].filter(Boolean).join(' / ');
-      return '<tr><td class="num">'+tusTexto+'</td><td class="num">'+(f.pedidoFlete||'—')+'</td>'
+      return '<tr><td class="num">'+f.ordenEmbarque+'</td><td class="num">'+(f.tu2||'—')+'</td><td class="num">'+(f.pedidoFlete||'—')+'</td>'
         +'<td style="font-size:12px">'+(f.tienda||'')+'</td><td style="font-size:12px">'+(f.destino||'')+'</td><td>'+(f.fecha||'')+'</td>'
         +'<td class="num">'+(f.economico||'—')+'</td><td class="num r">'+(f.montoFlete!=null?fmt(f.montoFlete):'—')+'</td>'
         +'<td><button class="btn-sm" style="background:none;border:none;cursor:pointer;color:#c1121f" onclick="eliminarFleteUI(\''+f.ordenEmbarque+'\')">✕</button></td></tr>';
@@ -1913,7 +1912,7 @@ function construirArchivoMaestroFletes(){
     var unidad=m?m.autorizacion.unidad:(f.economico||null);
     return{
       fecha:f.fecha,destino:f.destino,tienda:f.tienda,
-      ordenEmbarque:[f.ordenEmbarque,f.tu2].filter(Boolean).join(' / '),pedidoFlete:f.pedidoFlete,
+      ordenEmbarque:f.ordenEmbarque,tu2:f.tu2,pedidoFlete:f.pedidoFlete,
       operador:unidad?(nombreOp(unidad)||('Unidad '+unidad)):null,
       unidad:unidad,operadorConfirmado:!!m,
       montoFlete:f.montoFlete,
@@ -1930,7 +1929,7 @@ function renderArchivoMaestroFletes(){
   filas.sort(function(a,b){return(b.fecha||'').localeCompare(a.fecha||'');});
   var sinMatch=filas.filter(function(f){return!f.operadorConfirmado;}).length;
   wrap.innerHTML=(sinMatch?'<div class="alert alert-warn">⚠️ '+sinMatch+' pedido(s) de flete no se pudieron emparejar con ninguna autorización de maniobra — revísalos a mano (resaltados abajo).</div>':'<div class="alert alert-ok">✅ Todos los pedidos de flete se emparejaron con su autorización.</div>')
-    +'<div class="tbl-wrap"><table><thead><tr><th>Fecha</th><th>Destino</th><th>Operador</th><th>Orden de embarque</th><th>Pedido de flete</th><th class="r">Monto flete</th><th class="r">Autorizado maniobra</th><th>Cómo emparejó</th><th>Factura</th></tr></thead><tbody>'
+    +'<div class="tbl-wrap"><table><thead><tr><th>Fecha</th><th>Destino</th><th>Operador</th><th>T.U.\'s 1</th><th>T.U.\'s 2</th><th>Pedido de flete</th><th class="r">Monto flete</th><th class="r">Autorizado maniobra</th><th>Cómo emparejó</th><th>Factura</th></tr></thead><tbody>'
     +filas.map(function(f){
       var sinMatch=!f.operadorConfirmado;
       return '<tr'+(sinMatch?' style="background:#fffbeb"':'')+'>'
@@ -1938,6 +1937,7 @@ function renderArchivoMaestroFletes(){
         +'<td style="font-size:12px">'+(f.destino||f.tienda||'')+'</td>'
         +'<td style="font-size:12px">'+(f.operador||'<span style="color:#c1121f">⚠️ Sin emparejar</span>')+(f.operador&&!f.operadorConfirmado?' <span style="color:#856404" title="Viene del económico del correo, pero no se confirmó contra ninguna autorización de maniobra">(sin confirmar)</span>':'')+'</td>'
         +'<td class="num">'+f.ordenEmbarque+'</td>'
+        +'<td class="num">'+(f.tu2||'—')+'</td>'
         +'<td class="num">'+(f.pedidoFlete||'—')+'</td>'
         +'<td class="num r">'+(f.montoFlete!=null?fmt(f.montoFlete):'—')+'</td>'
         +'<td class="num r">'+(f.montoAutorizadoManiobra!=null?fmt(f.montoAutorizadoManiobra):'—')+'</td>'
