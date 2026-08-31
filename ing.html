@@ -1497,6 +1497,12 @@ function renderIngresos(){
   if(!filtrados.length){tb.innerHTML='<tr><td colspan="16" style="text-align:center;color:#aaa;padding:20px">Sin viajes registrados</td></tr>';return;}
 
   let totSub=0,totFlete=0,totMan=0,totOtros=0,totTot=0;
+  // Antes se hacía tb.innerHTML+=... dentro del forEach — eso obliga al
+  // navegador a releer y reconstruir la tabla ENTERA en cada vuelta (O(n²)),
+  // que con cientos de viajes se nota mucho en celular (bloquea la pantalla
+  // varios segundos). Armar las filas en un arreglo y asignarlas una sola
+  // vez al final es O(n) — mismo resultado, mucho más rápido.
+  const filasHtml=[];
   filtrados.forEach(v=>{
     const nombreOpV=nombreOp(v.unidad);
     // Compatibilidad: si no tiene desglose, inferir del tipo
@@ -1507,7 +1513,7 @@ function renderIngresos(){
     const fCell=sf>0?`<td class="num r">${fmt(sf)}</td>`:`<td class="num r" style="color:#ccc">—</td>`;
     const mCell=sm>0?`<td class="num r">${fmt(sm)}</td>`:`<td class="num r" style="color:#ccc">—</td>`;
     const oCell=so>0?`<td class="num r">${fmt(so)}</td>`:`<td class="num r" style="color:#ccc">—</td>`;
-    tb.innerHTML+=`<tr>
+    filasHtml.push(`<tr>
       <td style="width:32px;text-align:center"><input type="checkbox" class="chkIng" data-id="${v.id}" ${v.estado!=='sin_liquidar'?'disabled title="No se puede eliminar: ya está liquidado"':''} onchange="actualizarBarraSelIng()"></td>
       <td class="num">${v.folio}${v.esDesglose?' <span class="badge bg-purple" title="Parte de una factura consolidada desglosada entre varios operadores (mismo CFDI)">🧩</span>':''}${v.observaciones&&!(v.sinFacturaJustificar&&!v.sustituidoPorXML)?` <span title="${v.observaciones.replace(/"/g,'&quot;')}">📝</span>`:''}${v.sinFacturaJustificar&&!v.sustituidoPorXML?(yaVencioLimite(v.fechaLimiteJustificacion)?' <span class="badge bg-red" style="color:#c1121f" title="Debió sustituirse con XML antes de '+v.fechaLimiteJustificacion+'">⚠ SIN FACTURA VENCIDO</span>':' <span class="badge bg-yellow" title="Debe sustituirse con XML antes de '+v.fechaLimiteJustificacion+'">⏳ Sin factura</span>'):''}${v.esAutorizacionCliente&&!v.sustituidoPorXML?' <span class="badge" style="background:#dbeafe;color:#1e40af" title="Monto autorizado directamente por el cliente antes de la factura — no es una suma ni una captura libre">📧 Autorizado por cliente</span>':''}${v.sustituidoPorXML?' <span class="badge bg-green" title="Ya se sustituyó con el XML real">✓ Sustituido</span>':''}${v.divisionPendiente?' <span class="badge bg-yellow" title="Solicitud de división Flete/Maniobras pendiente de autorización (solicitada por '+(v.divisionPendiente.solicitadoPor||'?')+')">⏳ División pendiente</span>':''}${v.sinFacturaJustificar&&!v.sustituidoPorXML&&v.observaciones?`<div style="font-family:inherit;font-weight:400;font-size:10px;color:#856404;white-space:normal;margin-top:2px" title="ID para ligar el XML real cuando llegue (ver botón 🔄 XML)">🆔 ${v.observaciones.replace(/</g,'&lt;')}</div>`:''}</td><td>${v.fecha}</td>
       <td style="font-size:11px">${nombreOpV?nombreOpV.split(' ').slice(0,2).join(' '):'?'} <span style="cursor:pointer;font-size:10px;opacity:.6" title="Bloqueado — clic para corregir (pide el folio como confirmación)" onclick="abrirCorregirOperador('${v.id}')">🔒</span></td>
@@ -1519,8 +1525,9 @@ function renderIngresos(){
       <td style="font-size:11px;color:#aaa">${v.liqNum?'Liq.#'+v.liqNum:'—'}</td>
       <td style="font-size:11px">${v.xmlURL?`<a href="${v.xmlURL}" target="_blank" style="margin-right:6px">📄 XML</a><button class="btn-sm" style="background:none;border:none;cursor:pointer;font-size:11px" onclick="descargarPDFIngreso('${v.id}')" title="Ver el comprobante en PDF (generado a partir de los datos del XML)">🧾 Ver PDF</button>`:(v.pdfURL?`<a href="${v.pdfURL}" target="_blank">📎 PDF</a>`:'<span style="color:#aaa">—</span>')}</td>
       <td>${v.sinFacturaJustificar&&!v.sustituidoPorXML?`<button style="background:#e8f4fd;color:#0369a1;border:none;cursor:pointer;border-radius:4px;padding:3px 8px;font-size:11px;margin-right:4px" onclick="iniciarSustituirXML('${v.id}')" title="Sustituir este ingreso capturado sin factura por el XML real, cuando ya se tenga (funciona aunque ya esté liquidado)">🔄 XML</button>`:''}${v.estado==='sin_liquidar'?`<button style="background:#eef;color:#1a4f8a;border:none;cursor:pointer;border-radius:4px;padding:3px 8px;font-size:11px;margin-right:4px" onclick="abrirDividir('${v.id}')" title="Dividir manualmente este ingreso entre Flete y Maniobras (clientes que facturan todo como un solo concepto)">✂️</button><button style="background:#fde8e8;color:#9b1c1c;border:none;cursor:pointer;border-radius:4px;padding:3px 8px;font-size:11px" onclick="eliminar('${v.id}')">✕</button>`:(v.sinFacturaJustificar&&!v.sustituidoPorXML?'':'—')}</td>
-    </tr>`;
+    </tr>`);
   });
+  tb.innerHTML=filasHtml.join('');
   const sinLiq=filtrados.filter(v=>v.estado==='sin_liquidar').length;
   $('ingResumen').innerHTML=`<div style="display:flex;gap:16px;flex-wrap:wrap;font-size:12px;color:#555;margin-top:8px">
     <span>${filtrados.length} viajes · Subtotal: <strong>${fmt(totSub)}</strong> · Total: <strong>${fmt(totTot)}</strong></span>
