@@ -9,7 +9,7 @@
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:'Segoe UI',Arial,sans-serif;background:#f0f2f5;color:#1a1a2e;min-height:100vh}
 html.in-iframe header{display:none!important}
-header{background:#1a1a2e;color:#fff;padding:14px 28px;display:flex;align-items:center;justify-content:space-between;border-bottom:3px solid #e63946}
+header{background:#1a1a2e;color:#fff;padding:14px 28px;display:flex;align-items:center;justify-content:space-between;border-bottom:3px solid #e63946;flex-wrap:wrap;gap:10px}
 .logo{font-size:19px;font-weight:800;letter-spacing:1px}.logo span{color:#e63946}
 .sub{font-size:11px;color:#aaa;letter-spacing:2px;text-transform:uppercase;margin-top:2px}
 .header-info{font-size:12px;color:#aaa;text-align:right}
@@ -202,12 +202,12 @@ tr:hover td{background:#fafafa}
 
 <header>
   <div><div class="logo">MUDANZAS <span>TML</span> <span style="font-size:13px;font-weight:400;color:#aaa;margin-left:8px">· Liquidaciones</span></div></div>
-  <div style="display:flex;align-items:center;gap:12px">
+  <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
     <span class="session-user-label" id="sesionUsuarioLabel"></span>
     <button class="session-logout" id="btnCambiarPass" onclick="abrirModalCambiarPass()" style="display:none">🔑 Cambiar contraseña</button>
     <button class="session-logout" id="btnCerrarSesion" onclick="cerrarSesionTML()" style="display:none">Cerrar sesión</button>
     <span style="font-size:12px;color:#aaa" id="headerInfo">Sin liquidación activa</span>
-    <nav style="display:flex;gap:6px">
+    <nav style="display:flex;gap:6px;flex-wrap:wrap">
       <a href="https://anticipos.mudanzastml.mx" style="color:#aaa;text-decoration:none;font-size:11px;padding:5px 10px;border-radius:5px;border:1px solid #333">📋 Anticipos</a>
       <a href="https://cxc.mudanzastml.mx" style="color:#aaa;text-decoration:none;font-size:11px;padding:5px 10px;border-radius:5px;border:1px solid #333">📄 Ingresos</a>
       <a href="https://cxc.mudanzastml.mx/maniobras.html" style="color:#aaa;text-decoration:none;font-size:11px;padding:5px 10px;border-radius:5px;border:1px solid #333">✅ Maniobras</a>
@@ -2145,12 +2145,17 @@ function renderIngresos(){
     return true;
   });
   if(!filtrados.length){tb.innerHTML='<tr><td colspan="13" style="text-align:center;color:#aaa;padding:20px">Sin viajes registrados</td></tr>';return;}
+  // Armar las filas en un arreglo y asignarlas una sola vez (en vez de
+  // tb.innerHTML+=... por cada renglón) — con innerHTML+= el navegador
+  // reconstruye la tabla ENTERA en cada vuelta del forEach (O(n²)), que con
+  // varios cientos de viajes se nota mucho en celular.
+  const filasIng=[];
   filtrados.forEach(function(v){
     const opN=nombreOp(v.unidad);
     var sf=v.subtFlete!=null?v.subtFlete:(v.tipo==='flete_for'||v.tipo==='flete_mx'?v.subtotal:0);
     var sm=v.subtManiobras!=null?v.subtManiobras:(v.tipo==='maniobra'?v.subtotal:0);
     var so=v.subtOtros!=null?v.subtOtros:(v.tipo==='otro'?v.subtotal:0);
-    tb.innerHTML+='<tr>'
+    filasIng.push('<tr>'
       +'<td class="num">'+v.folio+'</td>'
       +'<td>'+v.fecha+'</td>'
       +'<td style="font-size:11px">'+(opN?opN.split(' ').slice(0,2).join(' '):'?')+'</td>'
@@ -2165,8 +2170,9 @@ function renderIngresos(){
       +'<td><span class="badge '+(v.estado==='sin_liquidar'?'bg-yellow':'bg-green')+'">'+( v.estado==='sin_liquidar'?'Sin liquidar':'Liquidado')+'</span></td>'
       +'<td style="font-size:11px;color:#aaa">'+(v.liqNum?'Liq.#'+v.liqNum:'—')+'</td>'
       +'<td>'+(v.estado==='sin_liquidar'?'<button class="btn btn-sm" style="background:#fde8e8;color:#9b1c1c;border:none;cursor:pointer" onclick="eliminarIngreso(\''+v.id+'\')">✕</button>':'')+'</td>'
-      +'</tr>';
+      +'</tr>');
   });
+  tb.innerHTML=filasIng.join('');
   // Resumen
   const totSub=filtrados.reduce(function(s,v){return s+v.subtotal;},0);
   const totTot=filtrados.reduce(function(s,v){return s+v.total;},0);
@@ -3023,20 +3029,22 @@ function renderTablaDiesel(){
   if(!cargasOp.length){$('alertDiesel').innerHTML='<div class="alert alert-warn">No hay cargas para esta unidad en el reporte.</div>';$('cardDiesel').style.display='block';return;}
   $('alertDiesel').innerHTML='';
   const dSal=liq?new Date(liq.salida):null,dLleg=liq?new Date(liq.llegada+'T23:59:59'):null;
+  const filasDiesel=[];
   cargasOp.forEach(function(c,i){
     const fc=parseDateDDMM(c.fecha);
     const fuera=dSal&&dLleg&&fc&&(fc<dSal||fc>dLleg);
     const yaLiq=!!c.yaLiquidada;
     const rowStyle=yaLiq?'opacity:.35;background:#fde8e8':(fuera?'opacity:.5':'');
-    tb.innerHTML+='<tr id="rowD'+i+'"'+(rowStyle?' style="'+rowStyle+'"':'')+'>'
+    filasDiesel.push('<tr id="rowD'+i+'"'+(rowStyle?' style="'+rowStyle+'"':'')+'>'
       +'<td>'+c.fecha
         +(fuera&&!yaLiq?' <span class="badge bg-yellow" style="font-size:9px">fuera rango</span>':'')
         +(yaLiq?' <span class="badge" style="background:#fde8e8;color:#9b1c1c;font-size:9px;border:1px solid #f9a8a8">ya liquidado</span>':'')
       +'</td>'
       +'<td>'+c.hora+'</td><td>'+c.estacion+'</td>'
       +'<td class="num r">'+fmtN(c.litros)+'</td><td class="num r">'+fmt(c.precio)+'</td><td class="num r">'+fmt(c.importe)+'</td>'
-      +'<td class="num r" id="ltsApl'+i+'">—</td><td id="estD'+i+'"></td></tr>';
+      +'<td class="num r" id="ltsApl'+i+'">—</td><td id="estD'+i+'"></td></tr>');
   });
+  tb.innerHTML=filasDiesel.join('');
   $('cardDiesel').style.display='block';
 }
 
@@ -3525,6 +3533,7 @@ function renderIAVE(){
   const tbX=$('tbIAVEXlsx'),tbM=$('tbIAVEXml');
   tbX.innerHTML='';tbM.innerHTML='';
   var totEmp=0,totOp=0,nXlsx=0,nXml=0;
+  var filasM=[],filasX=[];
   liq.autopistas.forEach(function(a,i){
     if(!a.satCancelado){if(a.pagaOp)totOp+=a.importe;else totEmp+=a.importe;}
     var filaBase='<tr'+(a.satCancelado?' style="opacity:.55;text-decoration:line-through"':'')+'><td>'+a.fecha+'</td><td>'+a.hora+'</td><td>'+a.caseta+(a.origenPrecarga?' <span class="badge" style="background:#dbeafe;color:#1e40af;border:1px solid #93c5fd" title="Se jaló automáticamente de precarga.mudanzastml.mx">📥 Pre-cargado</span>':'')+(a.satCancelado?' <span class="badge bg-red" style="color:#c1121f" title="Cancelado ante el SAT — excluido del cálculo">⚠ CANCELADO SAT</span>':'')+'</td><td>'+a.carril+'</td><td class="num r">'+fmt(a.importe)+'</td>'
@@ -3533,11 +3542,12 @@ function renderIAVE(){
     var deleteCell='<td><button class="btn btn-sm" style="background:#fde8e8;color:#9b1c1c;border:none;cursor:pointer" onclick="eliminarAutopista('+i+')">✕</button></td></tr>';
     if(esCruceXML(a)){
       var archivoCell='<td>'+(a.xmlURL?'<a href="'+a.xmlURL+'" target="_blank" style="font-size:11px;margin-right:6px">📄 XML</a>':'<span style="font-size:11px;color:#aaa" title="No se guardó el XML de este comprobante">📄 —</span>')+'<button class="btn-sm" style="background:none;border:none;cursor:pointer;font-size:11px" onclick="descargarPDFCaseta('+i+')" title="Ver el comprobante en PDF (generado a partir de los datos del XML)">🧾 Ver PDF</button></td>';
-      tbM.innerHTML+=filaBase+archivoCell+deleteCell;nXml++;
+      filasM.push(filaBase+archivoCell+deleteCell);nXml++;
     }else{
-      tbX.innerHTML+=filaBase+deleteCell;nXlsx++;
+      filasX.push(filaBase+deleteCell);nXlsx++;
     }
   });
+  tbM.innerHTML=filasM.join('');tbX.innerHTML=filasX.join('');
   $('iaveXlsxCount').textContent='('+nXlsx+')';
   $('iaveXmlCount').textContent='('+nXml+')';
   $('tfIAVEXlsx').innerHTML=nXlsx?'':'<tr><td colspan="7" style="text-align:center;color:#aaa;padding:10px">Sin cruces por Excel/IAVE.</td></tr>';
@@ -4097,6 +4107,7 @@ function renderGastos(){
   const todos=liq.gastosXML.concat(liq.gastos);
   const tb=$('tbGastos');tb.innerHTML='';
   var totOp=0,totEmp=0;
+  var filasGastos=[];
   todos.forEach(function(g,i){
     const imp=g.tipo==='xml'?g.total:g.importe;
     if(!g.satCancelado){if(g.pagaOp)totOp+=imp;else totEmp+=imp;}
@@ -4104,7 +4115,7 @@ function renderGastos(){
     const estadoCell=g.satCancelado
       ?'<span class="badge bg-red" style="color:#c1121f" title="Cancelado ante el SAT — excluido del cálculo">⚠ CANCELADO SAT</span>'
       :(g.autorizado?'<span class="badge bg-green">✓ OK</span>':'<span class="badge bg-yellow">Requiere autorización de un supervisor</span>');
-    tb.innerHTML+='<tr'+(g.satCancelado?' style="opacity:.55;text-decoration:line-through"':'')+'><td style="font-size:11px">'+(g.fecha||'—')+'</td><td>'+g.concepto+(g.origenPrecarga?' <span class="badge" style="background:#dbeafe;color:#1e40af;border:1px solid #93c5fd" title="Se jaló automáticamente de precarga.mudanzastml.mx">📥</span>':'')+'</td><td>'+(g.desc||g.conceptoDesc||'')+'</td>'
+    filasGastos.push('<tr'+(g.satCancelado?' style="opacity:.55;text-decoration:line-through"':'')+'><td style="font-size:11px">'+(g.fecha||'—')+'</td><td>'+g.concepto+(g.origenPrecarga?' <span class="badge" style="background:#dbeafe;color:#1e40af;border:1px solid #93c5fd" title="Se jaló automáticamente de precarga.mudanzastml.mx">📥</span>':'')+'</td><td>'+(g.desc||g.conceptoDesc||'')+'</td>'
       +'<td style="font-size:11px" title="'+(g.rfc||'')+'">'+(g.proveedor||g.emisor||'—')+'</td>'
       +'<td class="num r" title="'+tituloImp+'">'+fmt(imp)+'</td>'
       +'<td><span class="badge '+(g.tipo==='xml'?'bg-blue':'bg-gray')+'">'+(g.tipo==='xml'?'XML':'Manual')+'</span></td>'
@@ -4114,8 +4125,9 @@ function renderGastos(){
       +'</select></td>'
       +'<td>'+estadoCell+'</td>'
       +'<td>'+(g.tipo==='xml'?(''+(g.xmlURL?'<a href="'+g.xmlURL+'" target="_blank" style="font-size:11px;margin-right:6px">📄 XML</a>':'<span style="font-size:11px;color:#aaa" title="No se guardó el XML de este comprobante">📄 —</span>')+'<button class="btn-sm" style="background:none;border:none;cursor:pointer;font-size:11px" onclick="descargarPDFGasto('+i+')" title="Ver el comprobante en PDF (generado a partir de los datos del XML)">🧾 Ver PDF</button>'):'—')+'</td>'
-      +'<td><button class="btn btn-sm" style="background:#fde8e8;color:#9b1c1c;border:none;cursor:pointer" onclick="eliminarGasto('+i+')">✕</button></td></tr>';
+      +'<td><button class="btn btn-sm" style="background:#fde8e8;color:#9b1c1c;border:none;cursor:pointer" onclick="eliminarGasto('+i+')">✕</button></td></tr>');
   });
+  tb.innerHTML=filasGastos.join('');
   $('tfGastos').innerHTML='<tr style="background:#f5f5f8;font-weight:700"><td colspan="4">TOTALES</td><td class="num r">'+fmt(totOp+totEmp)+'</td>'
     +'<td colspan="2"><span style="color:#0a5233">Op: '+fmt(totOp)+'</span> · <span style="color:#9b1c1c">Emp: '+fmt(totEmp)+'</span></td><td colspan="3"></td></tr>';
 }

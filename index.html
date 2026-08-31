@@ -23,7 +23,14 @@ body{font-family:'Segoe UI',Arial,sans-serif;background:#f0f2f5;min-height:100vh
 /* HEADER */
 header{background:#1a1a2e;color:#fff;padding:10px 20px;display:flex;align-items:center;justify-content:space-between;border-bottom:3px solid #e63946;position:fixed;top:0;left:0;right:0;z-index:100}
 .logo{font-size:18px;font-weight:800}.logo span{color:#e63946}
-.nav{display:flex;gap:6px;flex-wrap:wrap}
+/* Este header es position:fixed con una altura fija de la que depende
+   #app{top:51px} — dejar que el nav crezca a varias líneas (flex-wrap)
+   correría el contenido de abajo. En vez de eso, si no cabe en una línea
+   se desliza horizontal (swipe), así el menú nunca se pierde fuera de
+   la pantalla ni cambia la altura del header. */
+.nav{display:flex;gap:6px;flex-wrap:nowrap;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none}
+.nav::-webkit-scrollbar{display:none}
+.nav a{flex:0 0 auto}
 .nav a{color:#aaa;text-decoration:none;font-size:12px;padding:6px 12px;border-radius:5px;border:1px solid #333;transition:all .15s}
 .nav a:hover{color:#fff;border-color:#555}
 .nav a.active{color:#fff;background:#e63946;border-color:#e63946}
