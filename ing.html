@@ -342,23 +342,6 @@ tr:hover td{background:#fafafa}
     </div>
   </div>
 
-  <!-- COMPLETAR RENGLÓN FALTANTE DE FACTURA DE MANIOBRAS ENGLOBADA (solo admin) -->
-  <div class="card" id="cardCompletarManiobras" style="display:none">
-    <div class="card-title">🧩 Completar factura de maniobras (renglón faltante) <span class="info-tip">?<span class="info-tip-box">Solo administrador. Para cuando Raúl englobaba varias maniobras en UNA factura y, al sustituirla con su Excel de desglose, algún operador no logró emparejar solo (ej. su autorización no coincidía por tienda/destino). Busca aquí un renglón YA registrado de esa misma factura por su folio, y agrega el que falta — copia automático la fecha/UUID/cliente del renglón encontrado, para no tener que capturarlos a mano ni arriesgar una inconsistencia.</span></span></div>
-    <div class="grid2">
-      <div class="field"><label>Folio de la factura (ej. FI-677)</label><input type="text" id="cmFolio" placeholder="FI-677"></div>
-      <div class="field" style="align-self:flex-end"><button class="btn btn-out btn-sm" onclick="buscarFacturaManiobrasPorFolio()">🔍 Buscar</button></div>
-    </div>
-    <div id="cmInfo" style="margin-top:8px"></div>
-    <div id="cmWrapAgregar" style="display:none;margin-top:12px;background:#f5f5f8;border-radius:8px;padding:14px">
-      <div class="grid2">
-        <div class="field"><label>Operador</label><select id="cmOp"><option value="">— Selecciona —</option></select></div>
-        <div class="field"><label>Monto (subtotal, sin IVA)</label><input type="number" id="cmMonto" step="0.01"></div>
-      </div>
-      <button class="btn btn-red btn-sm" style="margin-top:10px" onclick="agregarRenglonFaltanteManiobra()">+ Agregar renglón</button>
-    </div>
-  </div>
-
   <!-- CONFLICTOS XML VS. MANUAL (solo admin) -->
   <div class="card" id="cardConflictosXML" style="display:none">
     <div class="card-title">⚠️ Discrepancias XML vs. manual pendientes de revisión (ADMIN)</div>
@@ -1084,12 +1067,11 @@ function verificarSesionModulo(){
   // factura, la tarjeta "🤖 Registrar sin factura" (solo administrador).
   var esAdminIng=!!u.esAdmin;
   if($('cardEstimadoIA'))$('cardEstimadoIA').style.display=esAdminIng?'':'none';
-  if($('cardCompletarManiobras'))$('cardCompletarManiobras').style.display=esAdminIng?'':'none';
 }
 window.onFBReady(verificarSesionModulo);
 
 function initSelects(){
-  ['filtOp','estOp','cmOp'].forEach(id=>{
+  ['filtOp','estOp'].forEach(id=>{
     const s=$(id);if(!s)return;
     while(s.options.length>1)s.remove(1);
     // value=operadorId (identidad PERMANENTE), no la unidad actual — así los
@@ -2103,8 +2085,7 @@ function renderArchivoMaestroFletes(){
       return '<tr'+(sinMatch?' style="background:#fffbeb"':'')+'>'
         +'<td>'+f.fecha+'</td>'
         +'<td style="font-size:12px">'+(f.destino||f.tienda||'')+'</td>'
-        +'<td style="font-size:12px">'+(f.operador||'<span style="color:#c1121f">⚠️ Sin emparejar</span>')+(f.operador&&!f.operadorConfirmado?' <span style="color:#856404" title="Viene del económico del correo, pero no se confirmó contra ninguna autorización de maniobra">(sin confirmar)</span>':'')
-          +(f.economico&&!f.tieneIngresoProvisional?' <button class="btn btn-out btn-sm" style="padding:1px 6px;font-size:10px" title="No aparece en Ingresos — créalo ahora con estos mismos datos" onclick="reintentarProvisionalFlete(\''+f.ordenEmbarque+'\')">➕ Registrar en Ingresos</button>':'')+'</td>'
+        +'<td style="font-size:12px">'+(f.operador||'<span style="color:#c1121f">⚠️ Sin emparejar</span>')+(f.operador&&!f.operadorConfirmado?' <span style="color:#856404" title="Viene del económico del correo, pero no se confirmó contra ninguna autorización de maniobra">(sin confirmar)</span>':'')+'</td>'
         +'<td class="num">'+f.ordenEmbarque+'</td>'
         +'<td class="num">'+(f.tu2||'—')+'</td>'
         +'<td class="num">'+(f.pedidoFlete||'—')+'</td>'
