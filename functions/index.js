@@ -591,8 +591,17 @@ function _crearAutorizacionServer(ingresosDB, datos) {
 // buscarIngresoFleteProvisional en ing.html). Sin económico no se puede
 // atribuir a ningún operador, así que no se crea nada aquí — el pedido
 // se queda solo en fletesDB hasta que se pueda cruzar.
+// Las unidades 45xx a veces llegan del cliente/pedido de flete como "521"
+// (sin el prefijo "4") — mismo mapeo que normUnidad() en liq.html para
+// PASE/IAVE, necesario aquí también para no perder el cruce automático
+// (caso real: unidad 4521 llegó como "521" y no se encontró en Flota).
+const ECO_MAP_45XX = {521:4521,522:4522,523:4523,524:4524,526:4526};
+function _normEconomico(eco) {
+  const n = parseInt(String(eco || '').replace(/[^0-9]/g, '') || 0, 10) || 0;
+  return ECO_MAP_45XX[n] || n;
+}
 function _crearProvisionalFleteServer(ingresosDB, operadores, datos) {
-  const ecoNum = datos.economico ? parseInt(String(datos.economico).replace(/[^0-9]/g, '') || 0) : 0;
+  const ecoNum = datos.economico ? _normEconomico(datos.economico) : 0;
   if (!ecoNum) return { ok: false, error: 'sin económico' };
   const op = operadores.find(function (o) { return o.unidad === ecoNum; });
   if (!op) return { ok: false, error: 'económico no encontrado en Flota' };
