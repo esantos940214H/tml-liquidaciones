@@ -395,6 +395,27 @@ tr:hover td{background:#fafafa}
       <button class="btn btn-out btn-sm" onclick="renderArchivoMaestroFletes()">🔄 Generar archivo maestro</button>
     </div>
     <div id="archivoMaestroFletesWrap"><p style="font-size:13px;color:#aaa;padding:10px 0">Dale "Generar archivo maestro" para verlo.</p></div>
+    <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap">
+      <button class="btn btn-out btn-sm" onclick="descargarConcentradoRecibosManiobra()">📄 Descargar concentrado de recibos (PDF)</button>
+      <button class="btn btn-out btn-sm" onclick="descargarPedidoManiobrasExcel()">📊 Descargar pedido de maniobras (Excel)</button>
+    </div>
+  </div>
+
+  <!-- EVIDENCIA DE MANIOBRAS: orden de embarque sellada (bultos) y recibo -->
+  <div class="card">
+    <div class="card-title">📸 Evidencia de maniobras (bultos y recibos) <span class="info-tip">?<span class="info-tip-box">Sube aparte la foto de la orden de embarque YA SELLADA por la tienda (trae el T.U. y el número de bultos entregados) y la foto del recibo de maniobra (comprobante de lo pagado) — la IA lee cada una y la liga sola al pedido que corresponde en el Archivo Maestro: la orden sellada por su T.U., el recibo de maniobra comparando su monto contra el autorizado. Ambas quedan guardadas para armar el Excel de pedido de maniobras y el concentrado de recibos.</span></span></div>
+    <div class="grid2">
+      <div class="field">
+        <label>📋 Orden de embarque sellada (foto)</label>
+        <input type="file" id="oesArchivo" accept="image/*,.pdf" onchange="subirOrdenEmbarqueSellada(this)">
+        <div id="oesInfo" style="margin-top:6px;font-size:12px"></div>
+      </div>
+      <div class="field">
+        <label>🧾 Recibo de maniobra (foto)</label>
+        <input type="file" id="rmArchivo" accept="image/*,.pdf" onchange="subirReciboManiobra(this)">
+        <div id="rmInfo" style="margin-top:6px;font-size:12px"></div>
+      </div>
+    </div>
   </div>
 
   </div>
@@ -2054,7 +2075,11 @@ function construirArchivoMaestroFletes(){
       montoAutorizadoManiobra:m?m.autorizacion.subtotal:null,
       metodoMatch:m?m.metodo:null,
       estadoFactura:f.estado,facturaFolio:f.facturaFolio,montoFactura:f.montoFactura,
-      tieneIngresoProvisional:!!tieneProvisional
+      tieneIngresoProvisional:!!tieneProvisional,
+      bultos:f.bultos!=null?f.bultos:null,
+      ordenEmbarqueImgURL:f.ordenEmbarqueImgURL||null,
+      reciboManiobraImgURL:f.reciboManiobraImgURL||null,
+      reciboManiobraMonto:f.reciboManiobraMonto!=null?f.reciboManiobraMonto:null
     };
   });
 }
@@ -2072,6 +2097,168 @@ async function reintentarProvisionalFlete(ordenEmbarque){
   if(r.ok){await guardar();renderIngresos();renderArchivoMaestroFletes();alert('✅ Ingreso provisional registrado.');}
   else{alert('⚠️ '+(r.error==='ya existe'?'Ese ingreso ya estaba registrado.':'No se pudo registrar: '+r.error));}
 }
+// ══════════════════════════════════════════════
+// EVIDENCIA DE MANIOBRAS: orden de embarque sellada (bultos) y recibo de
+// maniobra (monto) — cada foto se liga SOLA al pedido de flete que
+// corresponde en fletesDB, sin que el usuario tenga que indicar a mano de
+// cuál T.U. se trata:
+//  - Orden de embarque sellada: la IA lee el T.U. impreso directo de la
+//    foto (ver extraerOrdenEmbarqueSellada en functions/index.js).
+//  - Recibo de maniobra: normalmente no trae el T.U. legible, así que se
+//    empareja por MONTO contra el "autorizado de maniobra" ya conocido de
+//    cada pedido (mismo criterio que matchFleteConAutorizacion) — solo se
+//    asigna solo si hay UN único candidato con ese monto y sin recibo
+//    todavía; si hay más de uno o ninguno, se avisa para resolverlo a mano.
+// ══════════════════════════════════════════════
+const FUNCTION_URL_ORDEN_EMBARQUE_SELLADA='https://us-central1-tml-liquidaciones.cloudfunctions.net/extraerOrdenEmbarqueSellada';
+const FUNCTION_URL_RECIBO_MANIOBRA='https://us-central1-tml-liquidaciones.cloudfunctions.net/extraerReciboManiobra';
+function _archivoABase64(file){
+  return new Promise(function(resolve,reject){
+    var r=new FileReader();
+    r.onload=function(){resolve(String(r.result).split(',')[1]||'');};
+    r.onerror=reject;
+    r.readAsDataURL(file);
+  });
+}
+async function subirOrdenEmbarqueSellada(input){
+  var file=input.files&&input.files[0];
+  if(!file)return;
+  var info=$('oesInfo');
+  info.innerHTML='⏳ Leyendo la orden de embarque con IA...';
+  try{
+    var base64=await _archivoABase64(file);
+    var r=await fetch(FUNCTION_URL_ORDEN_EMBARQUE_SELLADA,{
+      method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({archivoBase64:base64,mimeType:file.type})
+    });
+    var data=await r.json();
+    if(data.error){info.innerHTML='⚠️ '+data.error;input.value='';return;}
+    var res=data.resultado||{};
+    var tu1=res.tu1?normalizarOrdenEmbarque(res.tu1):'';
+    var tu2=res.tu2?normalizarOrdenEmbarque(res.tu2):'';
+    var f=FLETES.find(function(x){return(tu1&&(x.ordenEmbarque===tu1||x.tu2===tu1))||(tu2&&(x.ordenEmbarque===tu2||x.tu2===tu2));});
+    if(!f){
+      info.innerHTML='⚠️ No se encontró ningún pedido de flete con el T.U. '+(tu1||tu2||'(no identificado)')+' en el Archivo Maestro. Verifica que ya esté registrado, o que la foto se lea bien.';
+      input.value='';return;
+    }
+    var ext=(file.name.split('.').pop()||'jpg').toLowerCase();
+    var path='maniobras/orden_embarque/'+f.ordenEmbarque+'_'+Date.now()+'.'+ext;
+    var url=await TMLComprobantes.subirArchivo(path,file);
+    await actualizarEvidenciaManiobra(f.ordenEmbarque,{bultos:res.bultos!=null?(parseInt(res.bultos)||null):null,ordenEmbarqueImgURL:url});
+    FLETES=await cargarFletes(true);
+    info.innerHTML='✅ T.U. '+f.ordenEmbarque+' — '+(res.bultos!=null?res.bultos+' bultos':'sin bultos detectados')+'.';
+    renderArchivoMaestroFletes();
+  }catch(e){info.innerHTML='⚠️ Error: '+e.message;}
+  input.value='';
+}
+async function subirReciboManiobra(input){
+  var file=input.files&&input.files[0];
+  if(!file)return;
+  var info=$('rmInfo');
+  info.innerHTML='⏳ Leyendo el recibo con IA...';
+  try{
+    var base64=await _archivoABase64(file);
+    var r=await fetch(FUNCTION_URL_RECIBO_MANIOBRA,{
+      method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({archivoBase64:base64,mimeType:file.type})
+    });
+    var data=await r.json();
+    if(data.error){info.innerHTML='⚠️ '+data.error;input.value='';return;}
+    var res=data.resultado||{};
+    var monto=parseFloat(res.monto||0);
+    if(!monto){info.innerHTML='⚠️ No se pudo leer el monto del recibo. Verifica la foto.';input.value='';return;}
+    var autorizaciones=ingresosDB.filter(function(v){return v.esAutorizacionCliente;});
+    var candidatos=FLETES.filter(function(f){
+      if(f.reciboManiobraImgURL)return false;
+      var m=matchFleteConAutorizacion(f,autorizaciones);
+      var montoAut=m?m.autorizacion.subtotal:null;
+      return montoAut!=null&&Math.abs(montoAut-monto)<0.5;
+    });
+    if(candidatos.length!==1){
+      info.innerHTML=candidatos.length===0
+        ?'⚠️ No se encontró ningún pedido con monto autorizado de maniobra de '+fmt(monto)+' pendiente de recibo. Verifica el monto leído o si ese T.U. ya tiene recibo.'
+        :'⚠️ '+candidatos.length+' pedidos distintos tienen un monto autorizado de '+fmt(monto)+' — no se puede asignar solo, avísame cuál T.U. es.';
+      input.value='';return;
+    }
+    var f=candidatos[0];
+    var ext=(file.name.split('.').pop()||'jpg').toLowerCase();
+    var path='maniobras/recibos/'+f.ordenEmbarque+'_'+Date.now()+'.'+ext;
+    var url=await TMLComprobantes.subirArchivo(path,file);
+    await actualizarEvidenciaManiobra(f.ordenEmbarque,{reciboManiobraImgURL:url,reciboManiobraMonto:monto});
+    FLETES=await cargarFletes(true);
+    info.innerHTML='✅ Recibo de '+fmt(monto)+' asignado al T.U. '+f.ordenEmbarque+' ('+(f.destino||f.tienda||'')+').';
+    renderArchivoMaestroFletes();
+  }catch(e){info.innerHTML='⚠️ Error: '+e.message;}
+  input.value='';
+}
+// _cargarImagenParaPDF: convierte la URL de una foto guardada en Storage a
+// un dataURL (vía canvas) para poder incrustarla en el PDF con jsPDF, que
+// necesita el ancho/alto reales de la imagen para no deformarla.
+function _cargarImagenParaPDF(url){
+  return new Promise(function(resolve,reject){
+    var img=new Image();
+    img.crossOrigin='anonymous';
+    img.onload=function(){
+      try{
+        var canvas=document.createElement('canvas');
+        canvas.width=img.naturalWidth;canvas.height=img.naturalHeight;
+        canvas.getContext('2d').drawImage(img,0,0);
+        resolve({dataUrl:canvas.toDataURL('image/jpeg',0.85),width:img.naturalWidth,height:img.naturalHeight});
+      }catch(e){reject(e);}
+    };
+    img.onerror=function(){reject(new Error('no se pudo cargar'));};
+    img.src=url;
+  });
+}
+async function descargarConcentradoRecibosManiobra(){
+  var filas=construirArchivoMaestroFletes().filter(function(f){return f.reciboManiobraImgURL;});
+  if(!filas.length){alert('Todavía no hay ningún recibo de maniobra registrado.');return;}
+  if(!window.jspdf||!window.jspdf.jsPDF){
+    try{await cargarScriptUnaVez('https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js');}
+    catch(e){alert('No se pudo cargar el generador de PDF. Revisa tu conexión e intenta de nuevo.');return;}
+  }
+  var doc=new window.jspdf.jsPDF({unit:'mm',format:'letter'});
+  var maxW=190,maxH=225;
+  for(var i=0;i<filas.length;i++){
+    var f=filas[i];
+    if(i>0)doc.addPage();
+    doc.setFontSize(11);
+    doc.text('T.U. '+f.ordenEmbarque+(f.tu2?' / '+f.tu2:'')+' — '+(f.destino||f.tienda||''),10,14);
+    doc.setFontSize(9);
+    doc.text('Fecha: '+(f.fecha||'—')+'   Operador: '+(f.operador||'—')+'   Monto recibo: '+fmt(f.reciboManiobraMonto||0),10,20);
+    try{
+      var img=await _cargarImagenParaPDF(f.reciboManiobraImgURL);
+      var w=maxW,h=maxW*(img.height/img.width);
+      if(h>maxH){h=maxH;w=maxH*(img.width/img.height);}
+      doc.addImage(img.dataUrl,'JPEG',10,28,w,h);
+    }catch(e){
+      doc.text('⚠️ No se pudo cargar la imagen del recibo.',10,34);
+    }
+  }
+  doc.save('concentrado_recibos_maniobra_'+hoy()+'.pdf');
+}
+// descargarPedidoManiobrasExcel: columnas PROVISIONALES con lo que ya
+// tenemos en el Archivo Maestro — ajustar en cuanto se tenga la plantilla
+// exacta que pide Raúl para el pedido de maniobras.
+async function descargarPedidoManiobrasExcel(){
+  var filas=construirArchivoMaestroFletes();
+  if(!filas.length){alert('Todavía no hay pedidos de flete registrados.');return;}
+  if(!window.XLSX){
+    try{await cargarScriptUnaVez('https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js');}
+    catch(e){alert('No se pudo cargar el generador de Excel. Revisa tu conexión e intenta de nuevo.');return;}
+  }
+  var datos=filas.map(function(f){
+    return {
+      'Fecha':f.fecha||'','Destino':f.destino||f.tienda||'','Operador':f.operador||'',
+      "T.U.'s 1":f.ordenEmbarque||'',"T.U.'s 2":f.tu2||'','Pedido de flete':f.pedidoFlete||'',
+      'Bultos':f.bultos!=null?f.bultos:'','Monto autorizado maniobra':f.montoAutorizadoManiobra!=null?f.montoAutorizadoManiobra:''
+    };
+  });
+  var ws=XLSX.utils.json_to_sheet(datos);
+  var wb=XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb,ws,'Pedido de maniobras');
+  XLSX.writeFile(wb,'pedido_maniobras_'+hoy()+'.xlsx');
+}
 function renderArchivoMaestroFletes(){
   var wrap=$('archivoMaestroFletesWrap');
   var filas=construirArchivoMaestroFletes();
@@ -2079,7 +2266,7 @@ function renderArchivoMaestroFletes(){
   filas.sort(function(a,b){return(b.fecha||'').localeCompare(a.fecha||'');});
   var sinMatch=filas.filter(function(f){return!f.operadorConfirmado;}).length;
   wrap.innerHTML=(sinMatch?'<div class="alert alert-warn">⚠️ '+sinMatch+' pedido(s) de flete no se pudieron emparejar con ninguna autorización de maniobra — revísalos a mano (resaltados abajo).</div>':'<div class="alert alert-ok">✅ Todos los pedidos de flete se emparejaron con su autorización.</div>')
-    +'<div class="tbl-wrap"><table><thead><tr><th>Fecha</th><th>Destino</th><th>Operador</th><th>T.U.\'s 1</th><th>T.U.\'s 2</th><th>Pedido de flete</th><th class="r">Monto flete</th><th class="r">Autorizado maniobra</th><th>Cómo emparejó</th><th>Factura</th></tr></thead><tbody>'
+    +'<div class="tbl-wrap"><table><thead><tr><th>Fecha</th><th>Destino</th><th>Operador</th><th>T.U.\'s 1</th><th>T.U.\'s 2</th><th>Pedido de flete</th><th class="r">Monto flete</th><th class="r">Autorizado maniobra</th><th>Cómo emparejó</th><th class="r">Bultos</th><th>Evidencia</th><th>Factura</th></tr></thead><tbody>'
     +filas.map(function(f){
       var sinMatch=!f.operadorConfirmado;
       return '<tr'+(sinMatch?' style="background:#fffbeb"':'')+'>'
@@ -2092,6 +2279,11 @@ function renderArchivoMaestroFletes(){
         +'<td class="num r">'+(f.montoFlete!=null?fmt(f.montoFlete):'—')+'</td>'
         +'<td class="num r">'+(f.montoAutorizadoManiobra!=null?fmt(f.montoAutorizadoManiobra):'—')+'</td>'
         +'<td style="font-size:11px;color:#888">'+(f.metodoMatch||'')+'</td>'
+        +'<td class="num r">'+(f.bultos!=null?f.bultos:'—')+'</td>'
+        +'<td style="font-size:11px;white-space:nowrap">'
+          +(f.ordenEmbarqueImgURL?'<a href="'+f.ordenEmbarqueImgURL+'" target="_blank" title="Ver orden de embarque sellada">📋</a>':'<span style="color:#ddd" title="Falta la orden de embarque sellada">📋</span>')+' '
+          +(f.reciboManiobraImgURL?'<a href="'+f.reciboManiobraImgURL+'" target="_blank" title="Ver recibo de maniobra ('+fmt(f.reciboManiobraMonto||0)+')">🧾</a>':'<span style="color:#ddd" title="Falta el recibo de maniobra">🧾</span>')
+          +'</td>'
         +'<td>'+(f.estadoFactura==='facturado'?'<span class="badge bg-green">✅ '+(f.facturaFolio||'')+'</span>':'<span class="badge bg-yellow">⏳ Pendiente</span>')+'</td>'
         +'</tr>';
     }).join('')+'</tbody></table></div>';
