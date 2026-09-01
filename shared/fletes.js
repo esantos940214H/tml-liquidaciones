@@ -116,6 +116,17 @@
     }, { merge: true });
   };
 
+  // actualizarEvidenciaManiobra(ordenEmbarque, campos): fusiona evidencia de
+  // maniobra (bultos leídos de la orden de embarque sellada, URLs de las
+  // fotos, monto del recibo) en un pedido de flete YA existente — nunca
+  // reemplaza el documento completo, solo los campos que trae (mismo
+  // criterio que marcarFleteFacturado).
+  window.actualizarEvidenciaManiobra = function (ordenEmbarque, campos) {
+    var _db = db();
+    if (!_db) return Promise.reject(new Error('Sin conexión a Firestore.'));
+    return _db.collection('fletesDB').doc(normalizarOrdenEmbarque(ordenEmbarque)).set(campos, { merge: true });
+  };
+
   window.eliminarFlete = function (ordenEmbarque) {
     var _db = db();
     if (!_db) return Promise.reject(new Error('Sin conexión a Firestore.'));

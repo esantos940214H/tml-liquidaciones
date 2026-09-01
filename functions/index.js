@@ -1739,6 +1739,112 @@ exports.extraerComprobantePagoCxP = onRequest(
 );
 
 // ══════════════════════════════════════════════════════════════════════════
+// extraerOrdenEmbarqueSellada / extraerReciboManiobra — ing.html, pestaña
+// "Buzón de pedidos y archivo maestro": para cobrar las maniobras al cliente
+// (Raúl) se necesita evidencia de dos documentos por embarque — la orden de
+// embarque que la TIENDA sella al recibir la mercancía (trae el número de
+// bultos entregados) y el recibo de maniobra (comprobante de lo pagado por
+// la maniobra). Igual que el resto de funciones de IA de este archivo: SOLO
+// extraen lo que trae el documento, el emparejamiento con el T.U./fila del
+// Archivo Maestro y la decisión de guardar se hacen en el navegador
+// (ing.html), nunca aquí.
+// ══════════════════════════════════════════════════════════════════════════
+const PROMPT_ORDEN_EMBARQUE_SELLADA =
+  'Eres un asistente que lee la ORDEN DE EMBARQUE de una empresa de mudanzas — un documento que la TIENDA/destino sella y ' +
+  'firma al recibir la mercancía. Trae impreso un número de T.U./orden de embarque (a veces dos números juntos separados ' +
+  'por "/", ej. "6500360289/6500360290" — en ese caso son DOS T.U.\'s del mismo embarque), y en algún lugar del documento ' +
+  '(tabla, sello o anotación a mano) se anota el NÚMERO DE BULTOS entregados/recibidos. Extrae un solo objeto JSON con ' +
+  'estas llaves exactas: {"tu1":"el primer/único número de T.U. u orden de embarque, tal cual viene, o null si no se ' +
+  'distingue","tu2":"el segundo número de T.U. si vienen dos juntos separados por \\"/\\", o null","bultos":el número de ' +
+  'bultos como entero, o null si no se puede determinar}. No inventes datos que no estén en el documento. Responde SOLO ' +
+  'el objeto JSON (sin texto explicativo, sin backticks, sin markdown).';
+
+const PROMPT_RECIBO_MANIOBRA =
+  'Eres un asistente que lee un RECIBO DE MANIOBRA de una empresa de mudanzas — el comprobante que firma quien realizó la ' +
+  'maniobra de carga/descarga de un embarque, indicando el monto pagado por ese servicio. Extrae un solo objeto JSON con ' +
+  'estas llaves exactas: {"monto":el monto pagado que muestra el recibo, como número, o 0 si no se puede determinar,' +
+  '"fecha":"YYYY-MM-DD si se puede determinar la fecha del recibo (convierte desde el formato que traiga), o null"}. No ' +
+  'inventes datos que no estén en el recibo. Responde SOLO el objeto JSON (sin texto explicativo, sin backticks, sin ' +
+  'markdown).';
+
+function _extraerImagenDocumento(prompt) {
+  return async (req, res) => {
+    if (req.method !== 'POST') {
+      res.status(405).json({ error: 'Método no permitido, usa POST.' });
+      return;
+    }
+    const archivoBase64 = ((req.body && req.body.archivoBase64) || '').toString().trim();
+    const mimeType = ((req.body && req.body.mimeType) || '').toString().trim();
+    if (!archivoBase64) {
+      res.status(400).json({ error: 'Falta la imagen (campo "archivoBase64").' });
+      return;
+    }
+    if (archivoBase64.length > 15000000) {
+      res.status(400).json({ error: 'El archivo es demasiado grande (máximo ~10 MB).' });
+      return;
+    }
+    const esPdf = mimeType === 'application/pdf';
+    const esImagen = /^image\/(jpeg|jpg|png|webp|gif)$/.test(mimeType);
+    if (!esPdf && !esImagen) {
+      res.status(400).json({ error: 'El archivo debe ser una foto (JPG/PNG/WEBP) o un PDF.' });
+      return;
+    }
+    try {
+      const content = [
+        esPdf
+          ? { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: archivoBase64 } }
+          : { type: 'image', source: { type: 'base64', media_type: mimeType, data: archivoBase64 } },
+        { type: 'text', text: prompt }
+      ];
+      const respuesta = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': ANTHROPIC_API_KEY.value(),
+          'anthropic-version': '2023-06-01'
+        },
+        body: JSON.stringify({
+          model: 'claude-sonnet-4-5',
+          max_tokens: 500,
+          messages: [{ role: 'user', content: content }]
+        })
+      });
+      const datos = await respuesta.json();
+      if (datos.error) {
+        res.status(502).json({ error: 'Error de la API de Anthropic: ' + (datos.error.message || JSON.stringify(datos.error)) });
+        return;
+      }
+      const textoRespuesta = (datos.content || [])
+        .filter(function (b) { return b.type === 'text'; })
+        .map(function (b) { return b.text; })
+        .join('');
+      const limpio = textoRespuesta.replace(/```json|```/g, '').trim();
+      let resultado;
+      try {
+        resultado = JSON.parse(limpio);
+      } catch (e) {
+        res.status(502).json({ error: 'La IA no regresó un JSON válido. Respuesta cruda: ' + textoRespuesta.slice(0, 500) });
+        return;
+      }
+      res.json({ resultado: resultado });
+    } catch (e) {
+      console.error('_extraerImagenDocumento:', e);
+      res.status(500).json({ error: e.message || 'Error interno del servidor.' });
+    }
+  };
+}
+
+exports.extraerOrdenEmbarqueSellada = onRequest(
+  { secrets: [ANTHROPIC_API_KEY], cors: true, region: 'us-central1' },
+  _extraerImagenDocumento(PROMPT_ORDEN_EMBARQUE_SELLADA)
+);
+
+exports.extraerReciboManiobra = onRequest(
+  { secrets: [ANTHROPIC_API_KEY], cors: true, region: 'us-central1' },
+  _extraerImagenDocumento(PROMPT_RECIBO_MANIOBRA)
+);
+
+// ══════════════════════════════════════════════════════════════════════════
 // BUZÓN DE PEDIDOS DE FLETE (fletes@mudandote.mx) — el cliente manda el
 // pedido de un embarque (orden de embarque, pedido de flete, tienda/destino,
 // fecha) ANTES de que exista la factura. Se registra en la colección real
