@@ -2237,27 +2237,81 @@ async function descargarConcentradoRecibosManiobra(){
   }
   doc.save('concentrado_recibos_maniobra_'+hoy()+'.pdf');
 }
-// descargarPedidoManiobrasExcel: columnas PROVISIONALES con lo que ya
-// tenemos en el Archivo Maestro — ajustar en cuanto se tenga la plantilla
-// exacta que pide Raúl para el pedido de maniobras.
+// buscarAutorizacionesPorTU(f, autorizaciones): a diferencia de
+// matchFleteConAutorizacion (que regresa solo la PRIMERA autorización que
+// coincide, para el Archivo Maestro en pantalla), el pedido de maniobras
+// necesita TODAS — un mismo T.U./viaje puede tener varias tiendas/destinos
+// (ej. cedis + destino final), cada una registrada como su propia
+// autorización con su propio monto (ver _crearAutorizacionEnMemoria en
+// maniobras.html — no hay un solo documento con varios destinos). Solo se
+// usa el cruce por T.U./orden de embarque (el más confiable) — si un flete
+// no tiene NINGUNA autorización así, se deja fuera y se avisa, en vez de
+// arriesgar un cruce por fecha+destino en un documento que se manda fuera
+// de la empresa.
+function buscarAutorizacionesPorTU(f,autorizaciones){
+  var tusNorm=_fleteTusNorm(f);
+  var pedNorm=f.pedidoFlete?_normTxtFactManiobras(f.pedidoFlete):'';
+  return autorizaciones.filter(function(v){
+    var vIds=_normTxtFactManiobras(v.observaciones);
+    return tusNorm.some(function(id){return id&&vIds.indexOf(id)!==-1;})||(pedNorm&&vIds.indexOf(pedNorm)!==-1);
+  });
+}
+// folioFacturaFleteDe(f): el folio de la factura DEL FLETE (carta porte),
+// no el de maniobras — se toma del ingreso 'flete_for' ya sustituido por su
+// XML real (candidato.folio, ver sustituirIngresoConXML), ligado a este
+// pedido por el mismo idCombinado que usa crearIngresoProvisionalFlete.
+// Vacío si ese flete todavía no se ha facturado.
+function folioFacturaFleteDe(f){
+  var idCombinado=[f.ordenEmbarque?'TU1:'+f.ordenEmbarque:null,f.tu2?'TU2:'+f.tu2:null,f.pedidoFlete?'PED:'+f.pedidoFlete:null].filter(Boolean).join(' | ');
+  if(!idCombinado)return'';
+  var ing=ingresosDB.find(function(v){return v.origenFlete&&v.sustituidoPorXML&&(v.observaciones||'').indexOf(idCombinado)===0;});
+  return ing&&ing.folio?ing.folio.replace(/-/g,''):'';
+}
+// descargarPedidoManiobrasExcel: replica la plantilla real de Raúl
+// (MANIOBRAS_AGOSTO_TML.xlsx) — un renglón por cada (T.U., tienda/destino)
+// de autorización de maniobra, con el mismo número de bultos repetido en
+// todos los renglones que comparten T.U. (una sola foto de orden de
+// embarque sellada por viaje, no por tienda).
 async function descargarPedidoManiobrasExcel(){
-  var filas=construirArchivoMaestroFletes();
-  if(!filas.length){alert('Todavía no hay pedidos de flete registrados.');return;}
+  var autorizaciones=ingresosDB.filter(function(v){return v.esAutorizacionCliente;});
+  var renglones=[];
+  var sinAutorizacion=0;
+  FLETES.forEach(function(f){
+    var autsDeEsteFlete=buscarAutorizacionesPorTU(f,autorizaciones);
+    if(!autsDeEsteFlete.length){sinAutorizacion++;return;}
+    var folioFlete=folioFacturaFleteDe(f);
+    var ordenCompleta=f.ordenEmbarque+(f.tu2?'/'+f.tu2:'');
+    autsDeEsteFlete.forEach(function(a){
+      renglones.push({
+        fecha:f.fecha,tienda:a.tienda||'',destino:(a.ruta&&a.ruta[0]&&a.ruta[0].destino)||'',
+        orden:ordenCompleta,pedido:f.pedidoFlete||'',bultos:f.bultos,folioFlete:folioFlete,monto:a.subtotal||0
+      });
+    });
+  });
+  if(!renglones.length){alert('Todavía no hay ningún pedido de flete con autorización de maniobra emparejada por T.U.');return;}
+  renglones.sort(function(a,b){return(a.fecha||'').localeCompare(b.fecha||'');});
   if(!window.XLSX){
     try{await cargarScriptUnaVez('https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js');}
     catch(e){alert('No se pudo cargar el generador de Excel. Revisa tu conexión e intenta de nuevo.');return;}
   }
-  var datos=filas.map(function(f){
-    return {
-      'Fecha':f.fecha||'','Destino':f.destino||f.tienda||'','Operador':f.operador||'',
-      "T.U.'s 1":f.ordenEmbarque||'',"T.U.'s 2":f.tu2||'','Pedido de flete':f.pedidoFlete||'',
-      'Bultos':f.bultos!=null?f.bultos:'','Monto autorizado maniobra':f.montoAutorizadoManiobra!=null?f.montoAutorizadoManiobra:''
-    };
+  var aoa=[
+    ['TRANSPORTISTA','MUDANZAS TML','','NUM PROVEEDOR','47001110'],
+    [],
+    ['MANIOBRAS DE DESCARGA'],
+    ['VIAJE','FECHA DE CARGA','TIENDA','DESTINO','ORDEN DE EMBARQUE','PEDIDO','Tipo','TOTAL BULTOS','Tipo','No FACTURA DEL FLETE','CONCEPTO DE PAGO','TOTAL','PEDIDO MANIOBRA DESCARGA'],
+    ['','','','','','','Unidad','','','','MANIOBRA','','']
+  ];
+  renglones.forEach(function(r,i){
+    aoa.push([
+      i+1,r.fecha?new Date(r.fecha+'T00:00:00'):'',r.tienda,r.destino,r.orden,r.pedido,
+      'mudanza',r.bultos!=null?r.bultos:'','descarga',r.folioFlete,'descarga',r.monto,''
+    ]);
   });
-  var ws=XLSX.utils.json_to_sheet(datos);
+  var ws=XLSX.utils.aoa_to_sheet(aoa);
   var wb=XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb,ws,'Pedido de maniobras');
-  XLSX.writeFile(wb,'pedido_maniobras_'+hoy()+'.xlsx');
+  XLSX.utils.book_append_sheet(wb,ws,'MANIOBRAS');
+  XLSX.writeFile(wb,'MANIOBRAS_'+hoy()+'.xlsx');
+  if(sinAutorizacion)alert('⚠️ '+sinAutorizacion+' pedido(s) de flete no tienen ninguna autorización de maniobra emparejada por T.U. y se dejaron fuera del Excel — revísalos en el Archivo Maestro.');
 }
 function renderArchivoMaestroFletes(){
   var wrap=$('archivoMaestroFletesWrap');
