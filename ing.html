@@ -2060,17 +2060,34 @@ function construirArchivoMaestroFletes(){
     var opPorEconomico=(!m&&f.economico)?OPERADORES.find(function(o){return o.unidad===normEconomico(f.economico);}):null;
     var operadorNombre=opConfirmado?opConfirmado.nombre:(opPorEconomico?opPorEconomico.nombre:null);
     var unidad=m?m.autorizacion.unidad:(opPorEconomico?opPorEconomico.operadorId:(f.economico||null));
+    var idCombinadoChk=[f.ordenEmbarque?'TU1:'+f.ordenEmbarque:null,f.tu2?'TU2:'+f.tu2:null,f.pedidoFlete?'PED:'+f.pedidoFlete:null].filter(Boolean).join(' | ');
+    var tieneProvisional=idCombinadoChk&&ingresosDB.some(function(v){return v.origenFlete&&v.observaciones===idCombinadoChk;});
     return{
       fecha:f.fecha,destino:f.destino,tienda:f.tienda,
-      ordenEmbarque:f.ordenEmbarque,tu2:f.tu2,pedidoFlete:f.pedidoFlete,
+      ordenEmbarque:f.ordenEmbarque,tu2:f.tu2,pedidoFlete:f.pedidoFlete,economico:f.economico,
       operador:operadorNombre||(f.economico?('Unidad '+f.economico+' (no encontrada en Flota)'):null),
       unidad:unidad,operadorConfirmado:!!m,
       montoFlete:f.montoFlete,
       montoAutorizadoManiobra:m?m.autorizacion.subtotal:null,
       metodoMatch:m?m.metodo:null,
-      estadoFactura:f.estado,facturaFolio:f.facturaFolio,montoFactura:f.montoFactura
+      estadoFactura:f.estado,facturaFolio:f.facturaFolio,montoFactura:f.montoFactura,
+      tieneIngresoProvisional:!!tieneProvisional
     };
   });
+}
+// reintentarProvisionalFlete: para pedidos que llegaron por correo cuando el
+// económico no se reconocía todavía (ej. unidad 4521 llegando como "521",
+// antes de mapear ese caso — ver normEconomico) el servidor falló en
+// silencio y nunca se creó el ingreso provisional. registrarFlete() no sirve
+// para reintentarlo porque el pedido ya existe en fletesDB (tiraría "ya
+// existe"); esto solo llama crearIngresoProvisionalFlete con los datos que
+// ya están en el Archivo Maestro, sin tocar fletesDB.
+async function reintentarProvisionalFlete(ordenEmbarque){
+  var f=FLETES.find(function(x){return x.ordenEmbarque===ordenEmbarque;});
+  if(!f){alert('No se encontró ese pedido de flete.');return;}
+  var r=crearIngresoProvisionalFlete(f);
+  if(r.ok){await guardar();renderIngresos();renderArchivoMaestroFletes();alert('✅ Ingreso provisional registrado.');}
+  else{alert('⚠️ '+(r.error==='ya existe'?'Ese ingreso ya estaba registrado.':'No se pudo registrar: '+r.error));}
 }
 function renderArchivoMaestroFletes(){
   var wrap=$('archivoMaestroFletesWrap');
@@ -2085,7 +2102,8 @@ function renderArchivoMaestroFletes(){
       return '<tr'+(sinMatch?' style="background:#fffbeb"':'')+'>'
         +'<td>'+f.fecha+'</td>'
         +'<td style="font-size:12px">'+(f.destino||f.tienda||'')+'</td>'
-        +'<td style="font-size:12px">'+(f.operador||'<span style="color:#c1121f">⚠️ Sin emparejar</span>')+(f.operador&&!f.operadorConfirmado?' <span style="color:#856404" title="Viene del económico del correo, pero no se confirmó contra ninguna autorización de maniobra">(sin confirmar)</span>':'')+'</td>'
+        +'<td style="font-size:12px">'+(f.operador||'<span style="color:#c1121f">⚠️ Sin emparejar</span>')+(f.operador&&!f.operadorConfirmado?' <span style="color:#856404" title="Viene del económico del correo, pero no se confirmó contra ninguna autorización de maniobra">(sin confirmar)</span>':'')
+          +(f.economico&&!f.tieneIngresoProvisional?' <button class="btn btn-out btn-sm" style="padding:1px 6px;font-size:10px" title="No aparece en Ingresos — créalo ahora con estos mismos datos" onclick="reintentarProvisionalFlete(\''+f.ordenEmbarque+'\')">➕ Registrar en Ingresos</button>':'')+'</td>'
         +'<td class="num">'+f.ordenEmbarque+'</td>'
         +'<td class="num">'+(f.tu2||'—')+'</td>'
         +'<td class="num">'+(f.pedidoFlete||'—')+'</td>'
