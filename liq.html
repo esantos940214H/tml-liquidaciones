@@ -3309,13 +3309,17 @@ function calcDiesel(){
   const ltsIerma=ltsPorComprobar*(mermaPct/100);
   const ltsECMAjustado=ltsECM+ltsIerma;
 
-  // Resultado: ECM + merma determina lo comprobado — pero los litros con
-  // FACTURA REAL (XML, op o empresa) también cuentan como comprobados por
-  // sí solos, sin depender de que el ECM los reconozca (un CFDI real ya es
-  // la prueba). Antes solo se confiaba en el ECM: una factura fuera de la
-  // red de telemetría del ECM se cargaba como "no comprobada" aunque
-  // hubiera comprobante fiscal real de por medio.
-  const ltsComprobados=Math.min(ltsPorComprobar,Math.max(ltsECMAjustado,ltsXmlTodos));
+  // Resultado: el ECM mide el consumo del camión en general (kms ÷
+  // rendimiento) — no tiene forma de "enterarse" de que parte del diesel
+  // cargado se compró con una factura real en vez de Edenred. Por eso los
+  // litros con FACTURA REAL (XML, op o empresa) se SUMAN a lo que ya
+  // reconoce el ECM (son dos pruebas de fuentes distintas, no
+  // redundantes entre sí) — topado al total cargado, para no pasarse.
+  // Antes se usaba el máximo entre ambos, lo cual no corregía nada cuando
+  // el ECM ya reconocía más litros que los de la factura por sí sola
+  // (caso real: factura de $4,000/148.20 lts de Martín Flores, con un ECM
+  // de 2,985 lts que por sí solo ya superaba esos 148.20).
+  const ltsComprobados=Math.min(ltsPorComprobar,ltsECMAjustado+ltsXmlTodos);
   const importeComprobado=ltsComprobados*pp;
   const importeComprobadoSub=ltsComprobados*ppSub; // sin IVA — para utilidad de empresa
   const ltsNoComprobados=Math.max(0,ltsPorComprobar-ltsComprobados);
@@ -4583,16 +4587,16 @@ function generarReporte(){
   const totalDieselLts=Math.max(0,(d.ltsIni||0)+(d.totLtsCarg||0)+ltsXmlTodos-(d.ltsFinal||0));
   const totalDieselImporte=totalDieselLts*(d.pp||0);
   const ltsECMRep=(d.ltsECM||0)+totalDieselLts*((d.mermaPct||0)/100);
-  // Los litros con FACTURA REAL (XML, sea "paga operador" o "paga empresa")
-  // siempre cuentan como comprobados, sin importar si el ECM los reconoce o
-  // no — un CFDI real ya es la prueba, no debería hacer falta que ADEMÁS
-  // el ECM lo capte. Antes solo se confiaba en el ECM: si no reconocía esos
-  // litros (común si se cargaron fuera de la red de telemetría), se
-  // cargaban como "no comprobados" aunque hubiera factura real de por
-  // medio — caso real: una factura de diesel pagada por el operador con
-  // dinero de un anticipo YA registrado terminaba cobrándosele otra vez
-  // como diesel sin comprobar.
-  const ltsComprobadosTot=Math.min(totalDieselLts,Math.max(ltsECMRep,ltsXmlTodos));
+  // El ECM mide el consumo del camión en general (kms ÷ rendimiento) — no
+  // "sabe" que parte del diesel cargado se compró con una factura real en
+  // vez de Edenred, así que los litros con FACTURA REAL se SUMAN a lo que
+  // ya reconoce el ECM (dos pruebas de fuentes distintas, no redundantes
+  // entre sí), topado al total cargado. Usar el máximo entre ambos (como
+  // antes) no corregía nada si el ECM ya reconocía más litros que la
+  // factura por sí sola — caso real: factura de $4,000/148.20 lts de
+  // Martín Flores, con un ECM de 2,985 lts que por sí solo ya superaba
+  // esos 148.20.
+  const ltsComprobadosTot=Math.min(totalDieselLts,ltsECMRep+ltsXmlTodos);
   const importeComprobadoTot=ltsComprobadosTot*(d.pp||0);
   const ltsNoCombprobados=Math.max(0,totalDieselLts-ltsComprobadosTot);
   const importeNoComprobadoTot=ltsNoCombprobados*(d.pp||0);
