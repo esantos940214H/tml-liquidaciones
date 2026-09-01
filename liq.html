@@ -3275,45 +3275,43 @@ function calcDiesel(){
 
   // ── XML de combustible (facturas) — excluye CFDI cancelados ante el SAT ─────
   var dXML=((liq&&liq.dieselXML)||[]).filter(function(x){return !x.satCancelado;});
-  var ltsXmlOp=0,impXmlOp=0,impXmlOpSub=0,ltsXmlEmp=0,impXmlEmp=0;
+  var ltsXmlOp=0,impXmlOp=0,ltsXmlEmp=0,impXmlEmp=0;
   dXML.forEach(function(x){
-    var sub=(x.subtotal!=null&&x.subtotal>0)?x.subtotal:(x.total||0)/1.16;
-    if(x.pagaOp){ltsXmlOp+=x.litros;impXmlOp+=x.total;impXmlOpSub+=sub;}
+    if(x.pagaOp){ltsXmlOp+=x.litros;impXmlOp+=x.total;}
     else{ltsXmlEmp+=x.litros;impXmlEmp+=x.total;}
   });
-  const ltsXmlTodos=ltsXmlOp+ltsXmlEmp; // solo para el KPI informativo, no entra al fondo
 
-  // El fondo "adelantado ↔ comprobado" (Edenred + arrastre + factura PAGA
-  // EMPRESA) es diesel que la EMPRESA controló/adelantó — necesita
-  // reconciliarse contra el ECM porque, a diferencia de una factura, una
-  // carga de Edenred no trae por sí sola ninguna prueba de que se usó bien.
-  // Una factura "PAGA OPERADOR" es justo lo opuesto: el operador la pagó
-  // con dinero que YA tenía (de un anticipo ya registrado, o de su
-  // bolsillo) — no es un adelanto nuevo de la empresa, así que NUNCA debe
-  // entrar a este fondo. Antes si entraba, y como también se sumaba entera
-  // al lado "comprobado", cargo y abono subían por igual y el saldo nunca
-  // se movía — parecía que la factura no hacía nada (caso real: factura de
-  // $4,000 de Martín Flores, pagada con dinero de un anticipo ya
-  // registrado). Ahora esa factura se reconoce como gasto comprobado del
-  // operador (ver más abajo, "Diesel pagado por el operador"), fuera de
-  // este fondo por completo.
-  const totDisp=ltsIni+totLtsCarg+ltsXmlEmp;
-  const totImpDisp=importeIni+totImporteCarg+impXmlEmp;
+  // Un solo fondo: Edenred + arrastre + TODAS las facturas (paga operador o
+  // paga empresa) — una factura no es "prueba automática de que se usó
+  // bien", solo prueba que se compró; igual que el Edenred, tiene que
+  // comprobarse contra el ECM. El operador debe comprobar el TOTAL cargado
+  // (lo que venía de Edenred + lo que compró con factura), no cada fuente
+  // por separado: si comprueba menos que el total, lo que le falta se le
+  // cobra — sin importar si esos litros de más vinieron de Edenred o de su
+  // factura en efectivo. (Antes de esta corrección se intentó separar la
+  // factura "paga operador" del fondo con reembolso automático — eso
+  // volvía la factura una prueba incondicional, cuando el operador aparte
+  // debe comprobar que ese diesel de verdad se usó, no solo que lo
+  // compró.)
+  const ltsXmlTodos=ltsXmlOp+ltsXmlEmp;
+  const impXmlTodos=impXmlOp+impXmlEmp;
+  const totDisp=ltsIni+totLtsCarg+ltsXmlTodos;
+  const totImpDisp=importeIni+totImporteCarg+impXmlTodos;
   const pp=totDisp>0?totImpDisp/totDisp:0;
 
   // Precio promedio SIN IVA — para la utilidad de empresa. El IVA del diesel
   // (Edenred, arrastre y XML son CFDIs con IVA desglosado) es acreditable, así
   // que no cuenta como costo real. Edenred/arrastre: subtotal = total/1.16
-  // (16%); XML: subtotal real del CFDI.
-  var impXmlEmpSub=dXML.filter(function(x){return !x.pagaOp;}).reduce(function(s,x){return s+((x.subtotal!=null&&x.subtotal>0)?x.subtotal:(x.total||0)/1.16);},0);
-  const totImpDispSub=importeIni/1.16+totImporteCarg/1.16+impXmlEmpSub;
+  // (16%); XML: subtotal real del CFDI. La cuenta del operador SÍ usa pp (con
+  // IVA) porque el operador adelantó el monto completo.
+  var impXmlTodosSub=dXML.reduce(function(s,x){return s+((x.subtotal!=null&&x.subtotal>0)?x.subtotal:(x.total||0)/1.16);},0);
+  const totImpDispSub=importeIni/1.16+totImporteCarg/1.16+impXmlTodosSub;
   const ppSub=totDisp>0?totImpDispSub/totDisp:0;
 
   // Diesel final en tanque (al precio de la última carga) — ya calculado arriba
   const importeFinal=ltsFinal*ultimoPrecio;
 
-  // Diesel por comprobar = todo lo disponible (Edenred+arrastre+factura
-  // empresa) - final en tanque
+  // Diesel por comprobar = todo lo disponible - final en tanque
   const ltsPorComprobar=Math.max(0,totDisp-ltsFinal);
 
   // Litros ECM del escaneo + merma reconocida
@@ -3322,11 +3320,9 @@ function calcDiesel(){
   const ltsIerma=ltsPorComprobar*(mermaPct/100);
   const ltsECMAjustado=ltsECM+ltsIerma;
 
-  // Lo comprobado es el ECM (que sí necesita reconciliar Edenred, sin
-  // prueba propia) MÁS los litros de la factura "paga empresa" (que ya
-  // traen su propio CFDI como prueba, no hace falta que el ECM los
-  // reconozca aparte) — topado al total del fondo.
-  const ltsComprobados=Math.min(ltsPorComprobar,ltsECMAjustado+ltsXmlEmp);
+  // Resultado: ECM + merma determina lo comprobado, contra el fondo COMPLETO
+  // (Edenred + todas las facturas) — sin ninguna excepción por quién pagó.
+  const ltsComprobados=Math.min(ltsECMAjustado,ltsPorComprobar);
   const importeComprobado=ltsComprobados*pp;
   const importeComprobadoSub=ltsComprobados*ppSub; // sin IVA — para utilidad de empresa
   const ltsNoComprobados=Math.max(0,ltsPorComprobar-ltsComprobados);
@@ -3360,7 +3356,7 @@ function calcDiesel(){
   if(liq){liq.diesel={
     ltsIni:ltsIni,precioIni:precioIni,importeIni:importeIni,
     totLtsCarg:totLtsCarg,totImporteCarg:totImporteCarg,
-    ltsXmlOp:ltsXmlOp,impXmlOp:impXmlOp,impXmlOpSub:impXmlOpSub,
+    ltsXmlOp:ltsXmlOp,impXmlOp:impXmlOp,
     ltsXmlEmp:ltsXmlEmp,impXmlEmp:impXmlEmp,
     ltsFinal:ltsFinal,importeFinal:importeFinal,ultimoPrecio:ultimoPrecio,
     totDisp:totDisp,totImpDisp:totImpDisp,pp:pp,ppSub:ppSub,
@@ -4382,11 +4378,6 @@ function generarReporte(){
   // (más abajo) sigue usando el total con IVA porque el operador adelantó el
   // monto completo. Fallback /1.16 para liquidaciones guardadas antes de este cambio.
   const dieselComprobadoSub=(d.importeComprobadoSub!=null)?d.importeComprobadoSub:dieselComprobado/1.16;
-  // Diesel pagado por el operador (factura "paga operador") — reembolsárselo
-  // SÍ es un costo real de la empresa (el dinero sale de la empresa hacia el
-  // operador tarde o temprano), aunque nunca pasó por el fondo
-  // adelantado/comprobado (ver calcDiesel).
-  const dieselPagadoOpSub=d.impXmlOpSub||0;
 
   // Autopistas — excluye casetas XML canceladas ante el SAT
   console.log('DEBUG autopistas:', liq.autopistas?liq.autopistas.length:0, JSON.stringify(liq.autopistas||[]));
@@ -4480,7 +4471,7 @@ function generarReporte(){
   // porque son CFDIs deducibles y su IVA es acreditable. Los gastos manuales
   // sin factura, la comisión, el 2%, incidentes y casetas sin comprobante no
   // llevan IVA desglosado y entran con su monto completo tal cual.
-  const totGastosEmpTotal=dieselComprobadoSub+dieselPagadoOpSub+totAutSub+totGastosManual+gastosXMLSub+totComision+totGastos1+totIncidentes+totCasetasNF+totCxpFacturas;
+  const totGastosEmpTotal=dieselComprobadoSub+totAutSub+totGastosManual+gastosXMLSub+totComision+totGastos1+totIncidentes+totCasetasNF+totCxpFacturas;
   const utilidad=totIngSubtotal-totGastosEmpTotal;
 
   // Cuenta operador
@@ -4515,7 +4506,6 @@ function generarReporte(){
   // El no comprobado se refleja en la cuenta del operador, no en gastos de empresa
   var gastosHTML=
     rr('Diesel ('+fmtN(d.ltsComprobados||0)+' lts comprobados × '+fmt(d.ppSub||(d.pp||0)/1.16)+' sin IVA)',dieselComprobadoSub)
-    +(dieselPagadoOpSub>0?rr('Diesel pagado por el operador ('+fmtN(d.ltsXmlOp||0)+' lts, factura, reembolsado)',dieselPagadoOpSub):'')
     +(d.ltsNoComprobados>0?rrDetail('⚠️ '+fmtN(d.ltsNoComprobados||0)+' lts no comprobados — cargo al operador',0):'')
     +rrDetail('Arrastre próx. liq. ('+fmtN(d.ltsFinal||0)+' lts × '+fmt(d.ultimoPrecio||0)+')',d.importePend||0)
     +(liq.dieselXML||[]).filter(function(x){return x.satCancelado;}).map(function(x){
@@ -4597,35 +4587,33 @@ function generarReporte(){
   // la empresa al operador (mismo fondo que calcDiesel) — una factura "paga
   // operador" NUNCA entra aquí: el operador la pagó con dinero que YA
   // tenía (de un anticipo ya registrado, o de su bolsillo), así que no es
-  // un adelanto nuevo; se reconoce más abajo como gasto comprobado
-  // reembolsado, igual que Maniobras/Otros. Antes si entraba a este fondo,
-  // y como también se sumaba entera al lado "comprobado", cargo y abono
-  // subían por igual y el saldo nunca se movía al subir la factura (caso
-  // real: Martín Flores, factura de $4,000 pagada con dinero de un
-  // anticipo ya registrado).
-  const totalDieselLts=Math.max(0,(d.ltsIni||0)+(d.totLtsCarg||0)+(d.ltsXmlEmp||0)-(d.ltsFinal||0));
+  // Fondo único: Edenred + arrastre + TODAS las facturas de diesel (las
+  // pague el operador o la empresa) — una factura no exime de comprobar
+  // contra el ECM, solo prueba que se compró (caso real: Martín Flores,
+  // factura de $4,000 pagada con dinero de un anticipo ya registrado, que
+  // igual debe comprobarse contra el fondo completo, no aparte).
+  const ltsXmlTodos=(d.ltsXmlOp||0)+(d.ltsXmlEmp||0);
+  const totalDieselLts=Math.max(0,(d.ltsIni||0)+(d.totLtsCarg||0)+ltsXmlTodos-(d.ltsFinal||0));
   const totalDieselImporte=totalDieselLts*(d.pp||0);
   const ltsECMRep=(d.ltsECM||0)+totalDieselLts*((d.mermaPct||0)/100);
-  // Lo comprobado es el ECM (que sí necesita reconciliar Edenred) más los
-  // litros de factura "paga empresa" (que ya traen su propio CFDI como
-  // prueba), topado al total del fondo.
-  const ltsComprobadosTot=Math.min(totalDieselLts,ltsECMRep+(d.ltsXmlEmp||0));
+  const ltsComprobadosTot=Math.min(totalDieselLts,ltsECMRep);
   const importeComprobadoTot=ltsComprobadosTot*(d.pp||0);
   const ltsNoCombprobados=Math.max(0,totalDieselLts-ltsComprobadosTot);
   const importeNoComprobadoTot=ltsNoCombprobados*(d.pp||0);
-  // Diesel pagado por el operador (factura, con dinero que ya tenía) — se
-  // le reembolsa completo como gasto comprobado, fuera del fondo de arriba.
-  const dieselPagadoOpTot=d.impXmlOp||0;
 
   const totalCargosReal=totAnts+totalDieselImporte+totNomina+totCargosFlota;
-  const totalAbonosReal=totComision+totGastos1+importeComprobadoTot+dieselPagadoOpTot+totAutOp+totGastosOp+totIncidentes+totCasetasNFOp;
+  const totalAbonosReal=totComision+totGastos1+importeComprobadoTot+totAutOp+totGastosOp+totIncidentes+totCasetasNFOp;
   const saldoReal=totalAbonosReal-totalCargosReal;
+
+  var detalleXml='';
+  if((d.ltsXmlOp||0)>0)detalleXml+=rrDetail('  Factura op. (empresa depositó al operador): '+fmtN(d.ltsXmlOp||0)+' lts / '+fmt((d.ltsXmlOp||0)*(d.pp||0)),0);
+  if((d.ltsXmlEmp||0)>0)detalleXml+=rrDetail('  Factura empresa (pago directo gasolinera): '+fmtN(d.ltsXmlEmp||0)+' lts / '+fmt((d.ltsXmlEmp||0)*(d.pp||0)),0);
 
   $('repCargos').innerHTML=
     rr('Anticipos recibidos',totAnts,'cargo')
     +rr('Diesel total adelantado ('+fmtN(totalDieselLts)+' lts × '+fmt(d.pp||0)+')',totalDieselImporte,'cargo')
-    +((d.ltsXmlEmp||0)>0?rrDetail('  Edenred: '+fmtN(Math.max(0,(d.ltsIni||0)+(d.totLtsCarg||0)-(d.ltsFinal||0)))+' lts',0):'')
-    +((d.ltsXmlEmp||0)>0?rrDetail('  Factura empresa (pago directo gasolinera): '+fmtN(d.ltsXmlEmp||0)+' lts / '+fmt((d.ltsXmlEmp||0)*(d.pp||0)),0):'')
+    +(ltsXmlTodos>0?rrDetail('  Edenred: '+fmtN(Math.max(0,(d.ltsIni||0)+(d.totLtsCarg||0)-(d.ltsFinal||0)))+' lts',0):'')
+    +detalleXml
     +(totNomina?rr('Deducciones de nómina (IMSS, ISR, etc.)',totNomina,'cargo'):'')
     +(totCargosFlota?rr('Cargos de mantenimiento/flota',totCargosFlota,'cargo'):'')
     +'<div class="rep-row subtotal cargo"><span>TOTAL CARGOS</span><span class="num">'+fmt(totalCargosReal)+'</span></div>';
@@ -4634,7 +4622,7 @@ function generarReporte(){
     rr('Comisión fletes '+liq.comision+'% (s/ '+fmt(totSubFletes)+')',totComision,'abono')
     +rr('2% gastos sin comprobante',totGastos1,'abono')
     +rr('Diesel comprobado ECM ('+fmtN(ltsComprobadosTot)+' lts × '+fmt(d.pp||0)+')',importeComprobadoTot,'abono')
-    +(dieselPagadoOpTot>0?rr('Diesel pagado por el operador ('+fmtN(d.ltsXmlOp||0)+' lts, factura)',dieselPagadoOpTot,'abono'):'')
+    +(importeNoComprobadoTot>0?rrDetail('⚠️ Exceso de diesel no comprobado ('+fmtN(ltsNoCombprobados)+' lts) — cargo neto al operador: '+fmt(importeNoComprobadoTot),0):'')
     +rr('Autopistas pagadas por operador',totAutOp,'abono')
     +rr('Gastos del operador comprobados',totGastosOp,'abono')
     +Object.keys(gastosPorConceptoOp).map(function(k){return rrDetail(k,gastosPorConceptoOp[k]);}).join('')
