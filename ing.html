@@ -1866,8 +1866,18 @@ function renderFletesPendientes(){
 // Raúl todavía no exista) y se sustituye solo cuando llega el XML real (ver
 // buscarIngresoFleteProvisional/parseXML más abajo). Sin económico no hay
 // forma de atribuirlo a ningún operador, así que no se crea nada aquí.
+// normEconomico: las unidades 45xx a veces llegan del cliente/pedido de
+// flete como "521" (sin el prefijo "4") — mismo mapeo que normUnidad() en
+// liq.html para PASE/IAVE, portado aquí porque el cruce de pedidos de
+// flete lo necesita igual (caso real: unidad 4521 llegó como "521" y no
+// se encontró en Flota).
+var ECO_MAP_45XX={521:4521,522:4522,523:4523,524:4524,526:4526};
+function normEconomico(eco){
+  var n=parseInt(String(eco||'').replace(/[^0-9]/g,'')||0,10)||0;
+  return ECO_MAP_45XX[n]||n;
+}
 function crearIngresoProvisionalFlete(datos){
-  var ecoNum=datos.economico?parseInt(String(datos.economico).replace(/[^0-9]/g,'')||0):0;
+  var ecoNum=datos.economico?normEconomico(datos.economico):0;
   if(!ecoNum)return{ok:false,error:'sin económico'};
   var op=OPERADORES.find(function(o){return o.unidad===ecoNum;});
   if(!op)return{ok:false,error:'económico no encontrado en Flota'};
@@ -2014,7 +2024,7 @@ function matchFleteConAutorizacion(flete,autorizaciones){
   // porque el económico ya identifica al operador sin ambigüedad).
   if(flete.economico){
     var porEconomico=autorizaciones.filter(function(v){
-      return v.unidad===parseInt(flete.economico)&&(v.fecha||'')===(flete.fecha||'');
+      return v.unidad===normEconomico(flete.economico)&&(v.fecha||'')===(flete.fecha||'');
     });
     if(porEconomico.length===1)return{autorizacion:porEconomico[0],metodo:'económico+fecha'};
   }
@@ -2047,7 +2057,7 @@ function construirArchivoMaestroFletes(){
     // unidad (ej. un operador que se va y el camión pasa a otro, o al
     // revés) la búsqueda fallaba en silencio y mostraba solo el número.
     var opConfirmado=m?OPERADORES.find(function(o){return o.operadorId===m.autorizacion.unidad;}):null;
-    var opPorEconomico=(!m&&f.economico)?OPERADORES.find(function(o){return o.unidad===parseInt(f.economico);}):null;
+    var opPorEconomico=(!m&&f.economico)?OPERADORES.find(function(o){return o.unidad===normEconomico(f.economico);}):null;
     var operadorNombre=opConfirmado?opConfirmado.nombre:(opPorEconomico?opPorEconomico.nombre:null);
     var unidad=m?m.autorizacion.unidad:(opPorEconomico?opPorEconomico.operadorId:(f.economico||null));
     return{
