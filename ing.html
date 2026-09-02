@@ -2150,33 +2150,72 @@ function _archivoABase64(file){
     r.readAsDataURL(file);
   });
 }
+// _paginasDeArchivo(file): si es una imagen, la regresa tal cual (un solo
+// "documento"). Si es un PDF, lo renderiza página por página (pdf.js) y
+// regresa un JPEG por página — así un PDF con varios T.U.'s o varios
+// recibos escaneados juntos se procesa cada uno por separado, en vez de
+// que la IA intente leer un solo T.U./monto de todo el archivo mezclado.
+async function _paginasDeArchivo(file){
+  var esPdf=file.type==='application/pdf'||/\.pdf$/i.test(file.name||'');
+  if(!esPdf)return[{blob:file,mimeType:file.type||'image/jpeg'}];
+  if(!window.pdfjsLib){
+    await cargarScriptUnaVez('https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/legacy/build/pdf.min.js');
+    window.pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/legacy/build/pdf.worker.min.js';
+  }
+  var buf=await file.arrayBuffer();
+  var pdf=await window.pdfjsLib.getDocument({data:buf}).promise;
+  var paginas=[];
+  for(var i=1;i<=pdf.numPages;i++){
+    var page=await pdf.getPage(i);
+    var viewport=page.getViewport({scale:2.2});
+    var canvas=document.createElement('canvas');
+    canvas.width=viewport.width;canvas.height=viewport.height;
+    await page.render({canvasContext:canvas.getContext('2d'),viewport:viewport}).promise;
+    var blob=await new Promise(function(resolve){canvas.toBlob(resolve,'image/jpeg',0.92);});
+    paginas.push({blob:blob,mimeType:'image/jpeg'});
+  }
+  return paginas;
+}
+// _procesarUnaOrdenEmbarque: la lógica de UN solo documento (una foto o UNA
+// página de un PDF) — la IA lee el T.U. y los bultos de esa sola página y
+// se liga sola al pedido que corresponde. Regresa el mensaje en vez de
+// escribirlo directo, para poder juntar los mensajes de varias páginas.
+async function _procesarUnaOrdenEmbarque(blob,mimeType){
+  var base64=await _archivoABase64(blob);
+  var r=await fetch(FUNCTION_URL_ORDEN_EMBARQUE_SELLADA,{
+    method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({archivoBase64:base64,mimeType:mimeType})
+  });
+  var data=await r.json();
+  if(data.error)return'⚠️ '+data.error;
+  var res=data.resultado||{};
+  var tu1=res.tu1?normalizarOrdenEmbarque(res.tu1):'';
+  var tu2=res.tu2?normalizarOrdenEmbarque(res.tu2):'';
+  var f=FLETES.find(function(x){return(tu1&&(x.ordenEmbarque===tu1||x.tu2===tu1))||(tu2&&(x.ordenEmbarque===tu2||x.tu2===tu2));});
+  if(!f)return'⚠️ No se encontró ningún pedido de flete con el T.U. '+(tu1||tu2||'(no identificado)')+' en el Archivo Maestro. Verifica que ya esté registrado, o que la foto/página se lea bien.';
+  var ext=mimeType==='image/png'?'png':'jpg';
+  var path='maniobras/orden_embarque/'+f.ordenEmbarque+'_'+Date.now()+'.'+ext;
+  var url=await TMLComprobantes.subirArchivo(path,blob);
+  var bultos=res.bultos!=null?(parseInt(res.bultos)||null):null;
+  await actualizarEvidenciaManiobra(f.ordenEmbarque,{bultos:bultos,ordenEmbarqueImgURL:url});
+  f.bultos=bultos;f.ordenEmbarqueImgURL=url; // refleja el cambio de inmediato en FLETES, para las páginas que siguen en este mismo lote
+  return'✅ T.U. '+f.ordenEmbarque+' — '+(bultos!=null?bultos+' bultos':'sin bultos detectados')+'.';
+}
 async function subirOrdenEmbarqueSellada(input){
   var file=input.files&&input.files[0];
   if(!file)return;
   var info=$('oesInfo');
-  info.innerHTML='⏳ Leyendo la orden de embarque con IA...';
   try{
-    var base64=await _archivoABase64(file);
-    var r=await fetch(FUNCTION_URL_ORDEN_EMBARQUE_SELLADA,{
-      method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({archivoBase64:base64,mimeType:file.type})
-    });
-    var data=await r.json();
-    if(data.error){info.innerHTML='⚠️ '+data.error;input.value='';return;}
-    var res=data.resultado||{};
-    var tu1=res.tu1?normalizarOrdenEmbarque(res.tu1):'';
-    var tu2=res.tu2?normalizarOrdenEmbarque(res.tu2):'';
-    var f=FLETES.find(function(x){return(tu1&&(x.ordenEmbarque===tu1||x.tu2===tu1))||(tu2&&(x.ordenEmbarque===tu2||x.tu2===tu2));});
-    if(!f){
-      info.innerHTML='⚠️ No se encontró ningún pedido de flete con el T.U. '+(tu1||tu2||'(no identificado)')+' en el Archivo Maestro. Verifica que ya esté registrado, o que la foto se lea bien.';
-      input.value='';return;
+    info.innerHTML='⏳ Preparando el archivo...';
+    var paginas=await _paginasDeArchivo(file);
+    var mensajes=[];
+    for(var i=0;i<paginas.length;i++){
+      info.innerHTML='⏳ Leyendo '+(paginas.length>1?'página '+(i+1)+' de '+paginas.length:'la orden de embarque')+' con IA...<br>'+mensajes.join('<br>');
+      var msg=await _procesarUnaOrdenEmbarque(paginas[i].blob,paginas[i].mimeType);
+      mensajes.push((paginas.length>1?'Página '+(i+1)+': ':'')+msg);
     }
-    var ext=(file.name.split('.').pop()||'jpg').toLowerCase();
-    var path='maniobras/orden_embarque/'+f.ordenEmbarque+'_'+Date.now()+'.'+ext;
-    var url=await TMLComprobantes.subirArchivo(path,file);
-    await actualizarEvidenciaManiobra(f.ordenEmbarque,{bultos:res.bultos!=null?(parseInt(res.bultos)||null):null,ordenEmbarqueImgURL:url});
     FLETES=await cargarFletes(true);
-    info.innerHTML='✅ T.U. '+f.ordenEmbarque+' — '+(res.bultos!=null?res.bultos+' bultos':'sin bultos detectados')+'.';
+    info.innerHTML=mensajes.join('<br>');
     renderArchivoMaestroFletes();
   }catch(e){info.innerHTML='⚠️ Error: '+e.message;}
   input.value='';
@@ -2211,44 +2250,58 @@ function _recortarImagenPorPorcentaje(file,recorte){
     img.src=urlTmp;
   });
 }
+// _procesarUnReciboManiobra: la lógica de UN solo comprobante (una foto o
+// UNA página de un PDF) — la IA lee el monto de esa sola página y se
+// empareja contra lo autorizado. Regresa el mensaje en vez de escribirlo
+// directo, para poder juntar los mensajes de varias páginas/comprobantes.
+async function _procesarUnReciboManiobra(blob,mimeType){
+  var base64=await _archivoABase64(blob);
+  var r=await fetch(FUNCTION_URL_RECIBO_MANIOBRA,{
+    method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({archivoBase64:base64,mimeType:mimeType})
+  });
+  var data=await r.json();
+  if(data.error)return'⚠️ '+data.error;
+  var res=data.resultado||{};
+  var monto=parseFloat(res.monto||0);
+  if(!monto)return'⚠️ No se pudo leer el monto del recibo. Verifica la foto/página.';
+  var autorizaciones=ingresosDB.filter(function(v){return v.esAutorizacionCliente;});
+  var candidatos=FLETES.filter(function(f){
+    if(f.reciboManiobraImgURL)return false;
+    var m=matchFleteConAutorizacion(f,autorizaciones);
+    var montoAut=m?m.autorizacion.subtotal:null;
+    return montoAut!=null&&Math.abs(montoAut-monto)<0.5;
+  });
+  if(candidatos.length!==1){
+    return candidatos.length===0
+      ?'⚠️ No se encontró ningún pedido con monto autorizado de maniobra de '+fmt(monto)+' pendiente de recibo. Verifica el monto leído o si ese T.U. ya tiene recibo.'
+      :'⚠️ '+candidatos.length+' pedidos distintos tienen un monto autorizado de '+fmt(monto)+' — no se puede asignar solo, avísame cuál T.U. es.';
+  }
+  var f=candidatos[0];
+  var archivoParaSubir=await _recortarImagenPorPorcentaje(blob,res.recorte);
+  var seRecorto=archivoParaSubir!==blob;
+  var ext=seRecorto?'jpg':(mimeType==='image/png'?'png':'jpg');
+  var path='maniobras/recibos/'+f.ordenEmbarque+'_'+Date.now()+'.'+ext;
+  var url=await TMLComprobantes.subirArchivo(path,archivoParaSubir);
+  await actualizarEvidenciaManiobra(f.ordenEmbarque,{reciboManiobraImgURL:url,reciboManiobraMonto:monto});
+  f.reciboManiobraImgURL=url;f.reciboManiobraMonto=monto; // refleja el cambio de inmediato en FLETES, para que las páginas que siguen en este mismo lote ya no lo vuelvan a ofrecer como candidato
+  return'✅ Recibo de '+fmt(monto)+' asignado al T.U. '+f.ordenEmbarque+' ('+(f.destino||f.tienda||'')+')'+(seRecorto?' — recortado automático.':' — ⚠️ no se pudo recortar solo, se guardó la foto completa.');
+}
 async function subirReciboManiobra(input){
   var file=input.files&&input.files[0];
   if(!file)return;
   var info=$('rmInfo');
-  info.innerHTML='⏳ Leyendo el recibo con IA...';
   try{
-    var base64=await _archivoABase64(file);
-    var r=await fetch(FUNCTION_URL_RECIBO_MANIOBRA,{
-      method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({archivoBase64:base64,mimeType:file.type})
-    });
-    var data=await r.json();
-    if(data.error){info.innerHTML='⚠️ '+data.error;input.value='';return;}
-    var res=data.resultado||{};
-    var monto=parseFloat(res.monto||0);
-    if(!monto){info.innerHTML='⚠️ No se pudo leer el monto del recibo. Verifica la foto.';input.value='';return;}
-    var autorizaciones=ingresosDB.filter(function(v){return v.esAutorizacionCliente;});
-    var candidatos=FLETES.filter(function(f){
-      if(f.reciboManiobraImgURL)return false;
-      var m=matchFleteConAutorizacion(f,autorizaciones);
-      var montoAut=m?m.autorizacion.subtotal:null;
-      return montoAut!=null&&Math.abs(montoAut-monto)<0.5;
-    });
-    if(candidatos.length!==1){
-      info.innerHTML=candidatos.length===0
-        ?'⚠️ No se encontró ningún pedido con monto autorizado de maniobra de '+fmt(monto)+' pendiente de recibo. Verifica el monto leído o si ese T.U. ya tiene recibo.'
-        :'⚠️ '+candidatos.length+' pedidos distintos tienen un monto autorizado de '+fmt(monto)+' — no se puede asignar solo, avísame cuál T.U. es.';
-      input.value='';return;
+    info.innerHTML='⏳ Preparando el archivo...';
+    var paginas=await _paginasDeArchivo(file);
+    var mensajes=[];
+    for(var i=0;i<paginas.length;i++){
+      info.innerHTML='⏳ Leyendo '+(paginas.length>1?'página '+(i+1)+' de '+paginas.length:'el recibo')+' con IA...<br>'+mensajes.join('<br>');
+      var msg=await _procesarUnReciboManiobra(paginas[i].blob,paginas[i].mimeType);
+      mensajes.push((paginas.length>1?'Página '+(i+1)+': ':'')+msg);
     }
-    var f=candidatos[0];
-    var archivoParaSubir=await _recortarImagenPorPorcentaje(file,res.recorte);
-    var seRecorto=archivoParaSubir!==file;
-    var ext=seRecorto?'jpg':(file.name.split('.').pop()||'jpg').toLowerCase();
-    var path='maniobras/recibos/'+f.ordenEmbarque+'_'+Date.now()+'.'+ext;
-    var url=await TMLComprobantes.subirArchivo(path,archivoParaSubir);
-    await actualizarEvidenciaManiobra(f.ordenEmbarque,{reciboManiobraImgURL:url,reciboManiobraMonto:monto});
     FLETES=await cargarFletes(true);
-    info.innerHTML='✅ Recibo de '+fmt(monto)+' asignado al T.U. '+f.ordenEmbarque+' ('+(f.destino||f.tienda||'')+')'+(seRecorto?' — recortado automático.':' — ⚠️ no se pudo recortar solo, se guardó la foto completa.')+'';
+    info.innerHTML=mensajes.join('<br>');
     renderArchivoMaestroFletes();
   }catch(e){info.innerHTML='⚠️ Error: '+e.message;}
   input.value='';
