@@ -26,6 +26,12 @@ cp proveedores.html    dist/proveedores/index.html
 # LOGO.png solo lo usa el portal (index.html)
 cp LOGO.png dist/portal/LOGO.png
 
+# plantillas/: plantillas .xlsx reales (con logos/formato del cliente) que
+# ing.html descarga tal cual, solo sustituyendo los datos — solo la usa cxc
+# (Ingresos), para el Excel de pedido de maniobras.
+mkdir -p dist/cxc/plantillas
+cp plantillas/*.xlsx dist/cxc/plantillas/
+
 # shared/: JS común cargado con <script src="shared/...">. Todos los módulos
 # lo usan (login con Firebase Auth, ver shared/sesion.js) excepto el portal
 # (index.html no tiene login propio, es solo el menú de acceso a los demás).
