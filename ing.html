@@ -2387,7 +2387,7 @@ function _filaTotalManiobrasXML(rowNum,primero,ultimo){
 }
 async function descargarPedidoManiobrasExcel(){
   var seleccionados=Object.keys(seleccionManiobrasExcel).filter(function(k){return seleccionManiobrasExcel[k];});
-  if(!seleccionados.length){alert('No has seleccionado ningún pedido — marca "Incluir" en las filas del Archivo Maestro que ya tengan bultos y recibo de maniobra.');return;}
+  if(!seleccionados.length){alert('No has seleccionado ningún pedido — marca "Incluir" en las filas del Archivo Maestro que ya tengan bultos, recibo de maniobra y su carta porte de flete facturada.');return;}
   var autorizaciones=ingresosDB.filter(function(v){return v.esAutorizacionCliente;});
   var renglones=[];
   var sinAutorizacion=0;
@@ -2445,8 +2445,17 @@ async function descargarPedidoManiobrasExcel(){
 // página), a propósito: cada vez que arma su pedido es un corte distinto de
 // lo que ya se facturó/mandó antes, no algo que deba persistir solo.
 var seleccionManiobrasExcel={};
+// _maniobraCompleta: además de bultos y recibo, la plantilla de Raúl pide
+// el folio de la carta porte del FLETE en la columna "No FACTURA DEL
+// FLETE" (ver folioFacturaFleteDe) — si ese flete todavía no tiene su
+// propia carta porte sustituida (aunque ya tenga bultos y recibo), la
+// plantilla saldría con esa columna vacía, así que tampoco cuenta como
+// completo. Se calcula aquí mismo (no se asume que "f" ya traiga
+// facturaFleteFolio) para que funcione igual con las filas del Archivo
+// Maestro (que sí lo traen precalculado) y con los registros crudos de
+// FLETES que usa descargarPedidoManiobrasExcel (que no).
 function _maniobraCompleta(f){
-  return f.bultos!=null&&!!f.reciboManiobraImgURL;
+  return f.bultos!=null&&!!f.reciboManiobraImgURL&&!!folioFacturaFleteDe(f);
 }
 function toggleSeleccionManiobra(orden,checked){
   if(checked)seleccionManiobrasExcel[orden]=true;else delete seleccionManiobrasExcel[orden];
@@ -2503,13 +2512,13 @@ function renderArchivoMaestroFletes(){
       +'<button class="btn btn-out btn-sm" onclick="seleccionarTodosCompletosManiobra(true)">☑️ Seleccionar todos los completos</button>'
       +'<button class="btn btn-out btn-sm" onclick="seleccionarTodosCompletosManiobra(false)">☐ Quitar selección</button>'
       +'</div>'
-    +'<div class="tbl-wrap"><table><thead><tr><th title="Solo se puede elegir si ya tiene bultos Y recibo de maniobra">Incluir</th><th>Fecha</th><th>Destino</th><th>Operador</th><th>T.U.\'s 1</th><th>T.U.\'s 2</th><th>Pedido de flete</th><th class="r">Monto flete</th><th class="r">Autorizado maniobra</th><th>Cómo emparejó</th><th class="r">Bultos</th><th>Evidencia</th><th title="La carta porte PROPIA de este flete — un CFDI por viaje, de Mudanzas TML al cliente">Factura de flete</th><th title="La factura GLOBAL de maniobras de Raúl — una sola factura cubre muchos viajes/T.U.\'s distintos, NO es la misma factura que la del flete">Factura de maniobra</th></tr></thead><tbody>'
+    +'<div class="tbl-wrap"><table><thead><tr><th title="Solo se puede elegir si ya tiene bultos, recibo de maniobra Y su propia carta porte de flete facturada">Incluir</th><th>Fecha</th><th>Destino</th><th>Operador</th><th>T.U.\'s 1</th><th>T.U.\'s 2</th><th>Pedido de flete</th><th class="r">Monto flete</th><th class="r">Autorizado maniobra</th><th>Cómo emparejó</th><th class="r">Bultos</th><th>Evidencia</th><th title="La carta porte PROPIA de este flete — un CFDI por viaje, de Mudanzas TML al cliente">Factura de flete</th><th title="La factura GLOBAL de maniobras de Raúl — una sola factura cubre muchos viajes/T.U.\'s distintos, NO es la misma factura que la del flete">Factura de maniobra</th></tr></thead><tbody>'
     +filas.map(function(f){
       var sinMatch=!f.operadorConfirmado;
       var completa=_maniobraCompleta(f);
       var marcada=!!seleccionManiobrasExcel[f.ordenEmbarque];
       return '<tr'+(sinMatch?' style="background:#fffbeb"':'')+'>'
-        +'<td style="text-align:center"><input type="checkbox" '+(completa?'':'disabled')+' '+(marcada&&completa?'checked':'')+' title="'+(completa?'Incluir en el próximo Excel de pedido de maniobras':'Falta el número de bultos y/o el recibo de maniobra para poder incluirlo')+'" onchange="toggleSeleccionManiobra(\''+f.ordenEmbarque+'\',this.checked)"></td>'
+        +'<td style="text-align:center"><input type="checkbox" '+(completa?'':'disabled')+' '+(marcada&&completa?'checked':'')+' title="'+(completa?'Incluir en el próximo Excel de pedido de maniobras':'Falta bultos, recibo de maniobra y/o la carta porte propia del flete (columna "Factura de flete") para poder incluirlo')+'" onchange="toggleSeleccionManiobra(\''+f.ordenEmbarque+'\',this.checked)"></td>'
         +'<td>'+f.fecha+'</td>'
         +'<td style="font-size:12px">'+(f.destino||f.tienda||'')+'</td>'
         +'<td style="font-size:12px">'+(f.operador||'<span style="color:#c1121f">⚠️ Sin emparejar</span>')+(f.operador&&!f.operadorConfirmado?' <span style="color:#856404" title="Viene del económico del correo, pero no se confirmó contra ninguna autorización de maniobra">(sin confirmar)</span>':'')+'</td>'
