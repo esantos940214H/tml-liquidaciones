@@ -2267,11 +2267,62 @@ function folioFacturaFleteDe(f){
   var ing=ingresosDB.find(function(v){return v.origenFlete&&v.sustituidoPorXML&&(v.observaciones||'').indexOf(idCombinado)===0;});
   return ing&&ing.folio?ing.folio.replace(/-/g,''):'';
 }
-// descargarPedidoManiobrasExcel: replica la plantilla real de Raúl
-// (MANIOBRAS_AGOSTO_TML.xlsx) — un renglón por cada (T.U., tienda/destino)
-// de autorización de maniobra, con el mismo número de bultos repetido en
-// todos los renglones que comparten T.U. (una sola foto de orden de
-// embarque sellada por viaje, no por tienda).
+// descargarPedidoManiobrasExcel: en vez de generar un Excel desde cero (que
+// pierde los logos, el fondo gris de encabezados y los paneles inmóviles de
+// A/B/C que trae la plantilla real de Raúl — SheetJS no puede escribir eso),
+// se parte del archivo .xlsx original (plantillas/plantilla_maniobras_
+// descarga.xlsx, tal cual lo compartieron) y se le hace cirugía de ZIP: se
+// abre como ZIP (es lo que es un .xlsx), se reemplaza SOLO el bloque de
+// filas de datos dentro de xl/worksheets/sheet1.xml (conservando encabezado,
+// logos/OLE embebido, estilos, y el "pane" congelado de sheetViews intactos
+// tal cual vienen del archivo original) y se vuelve a comprimir. Un renglón
+// por cada (T.U., tienda/destino) de autorización de maniobra, con el mismo
+// número de bultos repetido en todos los renglones que comparten T.U. (una
+// sola foto de orden de embarque sellada por viaje, no por tienda).
+const URL_PLANTILLA_MANIOBRAS='plantillas/plantilla_maniobras_descarga.xlsx';
+function _excelSerialDate(isoStr){
+  var d=new Date(isoStr+'T00:00:00');
+  var epoch=Date.UTC(1899,11,30);
+  var utc=Date.UTC(d.getFullYear(),d.getMonth(),d.getDate());
+  return Math.round((utc-epoch)/86400000);
+}
+function _escXML(s){
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+function _celdaXML(ref,style,val,esTexto){
+  if(val===''||val==null)return '<c r="'+ref+'" s="'+style+'"/>';
+  if(!esTexto){
+    var n=(typeof val==='number')?val:parseFloat(val);
+    if(!isNaN(n))return '<c r="'+ref+'" s="'+style+'"><v>'+n+'</v></c>';
+  }
+  return '<c r="'+ref+'" s="'+style+'" t="inlineStr"><is><t>'+_escXML(val)+'</t></is></c>';
+}
+// Estilos (s="N") copiados tal cual del renglón 17 de la plantilla real
+// (un renglón limpio, sin fórmula) — así cada celda nueva se ve exactamente
+// igual (fuente, bordes, formato de fecha/moneda) que las de Raúl.
+function _filaManiobraXML(rowNum,r){
+  return '<row r="'+rowNum+'" spans="1:13" ht="11.25" customHeight="1" x14ac:dyDescent="0.2">'
+    +_celdaXML('A'+rowNum,8,r.viaje,false)
+    +_celdaXML('B'+rowNum,9,r.fechaSerial,false)
+    +_celdaXML('C'+rowNum,10,r.tienda,false)
+    +_celdaXML('D'+rowNum,35,r.destino,true)
+    +_celdaXML('E'+rowNum,36,r.orden,true)
+    +_celdaXML('F'+rowNum,36,r.pedido,false)
+    +_celdaXML('G'+rowNum,37,'mudanza',true)
+    +_celdaXML('H'+rowNum,38,r.bultos,false)
+    +_celdaXML('I'+rowNum,38,'descarga',true)
+    +_celdaXML('J'+rowNum,38,r.folioFlete,true)
+    +_celdaXML('K'+rowNum,38,'descarga',true)
+    +_celdaXML('L'+rowNum,39,r.monto,false)
+    +'<c r="M'+rowNum+'" s="11"/>'
+    +'</row>';
+}
+function _filaTotalManiobrasXML(rowNum,primero,ultimo){
+  return '<row r="'+rowNum+'" spans="1:13" ht="33.75" customHeight="1" thickBot="1" x14ac:dyDescent="0.25">'
+    +'<c r="A'+rowNum+'" s="8"/><c r="D'+rowNum+'" s="40"/><c r="E'+rowNum+'" s="41"/><c r="F'+rowNum+'" s="41"/>'
+    +'<c r="G'+rowNum+'" s="41"/><c r="H'+rowNum+'" s="41"/><c r="I'+rowNum+'" s="41"/><c r="J'+rowNum+'" s="41"/>'
+    +'<c r="K'+rowNum+'" s="40"/><c r="L'+rowNum+'" s="42"><f>SUM(L'+primero+':L'+ultimo+')</f></c></row>';
+}
 async function descargarPedidoManiobrasExcel(){
   var autorizaciones=ingresosDB.filter(function(v){return v.esAutorizacionCliente;});
   var renglones=[];
@@ -2290,28 +2341,38 @@ async function descargarPedidoManiobrasExcel(){
   });
   if(!renglones.length){alert('Todavía no hay ningún pedido de flete con autorización de maniobra emparejada por T.U.');return;}
   renglones.sort(function(a,b){return(a.fecha||'').localeCompare(b.fecha||'');});
-  if(!window.XLSX){
-    try{await cargarScriptUnaVez('https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js');}
+  if(!window.JSZip){
+    try{await cargarScriptUnaVez('https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js');}
     catch(e){alert('No se pudo cargar el generador de Excel. Revisa tu conexión e intenta de nuevo.');return;}
   }
-  var aoa=[
-    ['TRANSPORTISTA','MUDANZAS TML','','NUM PROVEEDOR','47001110'],
-    [],
-    ['MANIOBRAS DE DESCARGA'],
-    ['VIAJE','FECHA DE CARGA','TIENDA','DESTINO','ORDEN DE EMBARQUE','PEDIDO','Tipo','TOTAL BULTOS','Tipo','No FACTURA DEL FLETE','CONCEPTO DE PAGO','TOTAL','PEDIDO MANIOBRA DESCARGA'],
-    ['','','','','','','Unidad','','','','MANIOBRA','','']
-  ];
-  renglones.forEach(function(r,i){
-    aoa.push([
-      i+1,r.fecha?new Date(r.fecha+'T00:00:00'):'',r.tienda,r.destino,r.orden,r.pedido,
-      'mudanza',r.bultos!=null?r.bultos:'','descarga',r.folioFlete,'descarga',r.monto,''
-    ]);
-  });
-  var ws=XLSX.utils.aoa_to_sheet(aoa);
-  var wb=XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb,ws,'MANIOBRAS');
-  XLSX.writeFile(wb,'MANIOBRAS_'+hoy()+'.xlsx');
-  if(sinAutorizacion)alert('⚠️ '+sinAutorizacion+' pedido(s) de flete no tienen ninguna autorización de maniobra emparejada por T.U. y se dejaron fuera del Excel — revísalos en el Archivo Maestro.');
+  try{
+    var resp=await fetch(URL_PLANTILLA_MANIOBRAS);
+    if(!resp.ok)throw new Error('No se encontró la plantilla en '+URL_PLANTILLA_MANIOBRAS+' (status '+resp.status+').');
+    var buf=await resp.arrayBuffer();
+    var zip=await JSZip.loadAsync(buf);
+    var sheetPath='xl/worksheets/sheet1.xml';
+    var archivoHoja=zip.file(sheetPath);
+    if(!archivoHoja)throw new Error('La plantilla no trae '+sheetPath+' — ¿es el archivo original?');
+    var xml=await archivoHoja.async('text');
+    var iRow13=xml.indexOf('<row r="13"');
+    var iSheetDataEnd=xml.indexOf('</sheetData>');
+    if(iRow13===-1||iSheetDataEnd===-1)throw new Error('La plantilla no tiene el formato esperado.');
+    var header=xml.slice(0,iRow13);
+    var footer=xml.slice(iSheetDataEnd);
+    var primero=13,ultimo=12+renglones.length,filaTotal=ultimo+1;
+    var cuerpo=renglones.map(function(r,i){
+      return _filaManiobraXML(primero+i,{
+        viaje:i+1,fechaSerial:r.fecha?_excelSerialDate(r.fecha):'',tienda:r.tienda,destino:r.destino,
+        orden:r.orden,pedido:r.pedido,bultos:r.bultos!=null?r.bultos:'',folioFlete:r.folioFlete,monto:r.monto
+      });
+    }).join('')+_filaTotalManiobrasXML(filaTotal,primero,ultimo);
+    header=header.replace(/<dimension ref="[^"]*"\/>/,'<dimension ref="A1:M'+filaTotal+'"/>');
+    footer=footer.replace(/<mergeCell ref="M13:M\d+"\/>/,'<mergeCell ref="M13:M'+ultimo+'"/>');
+    zip.file(sheetPath,header+cuerpo+footer);
+    var blob=await zip.generateAsync({type:'blob'});
+    dlBlob(blob,'MANIOBRAS_'+hoy()+'.xlsx','application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    if(sinAutorizacion)alert('⚠️ '+sinAutorizacion+' pedido(s) de flete no tienen ninguna autorización de maniobra emparejada por T.U. y se dejaron fuera del Excel — revísalos en el Archivo Maestro.');
+  }catch(e){alert('⚠️ No se pudo generar el Excel: '+e.message);}
 }
 function renderArchivoMaestroFletes(){
   var wrap=$('archivoMaestroFletesWrap');
