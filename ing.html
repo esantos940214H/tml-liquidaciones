@@ -389,15 +389,23 @@ tr:hover td{background:#fafafa}
     </div>
   </div>
 
-  <!-- ARCHIVO MAESTRO DE FLETES (cruce pedidos de flete ↔ autorizaciones de maniobra) -->
+  <!-- ARCHIVO MAESTRO DE FLETES (cruce pedidos de flete ↔ autorizaciones de maniobra) —
+       siempre visible/actualizado (colapsado por default), ya no hace falta darle
+       "generar" — se recalcula solo cada vez que cambian los pedidos de flete o las
+       autorizaciones de maniobra (ver cargarYRenderFletesPendientes y el listener de
+       ingresosDB). Incluye TODOS los pedidos de flete que existan (pendientes y ya
+       facturados) — no se depura ni se archiva solo, ver nota en renderArchivoMaestroFletes. -->
   <div class="card">
-    <div class="card-title">🗂️ Archivo maestro de fletes <span class="info-tip">?<span class="info-tip-box">Cruza cada pedido de flete (fletesDB) contra las autorizaciones de maniobra capturadas en Maniobras, para armar en un solo lugar: fecha, destino, operador, orden de embarque, pedido de flete, monto autorizado de maniobra y estado de facturación. Primero intenta emparejar por T.U./orden de embarque; si no coincide, usa fecha + destino/tienda como respaldo — solo si hay UN solo candidato posible ese día para ese destino (nunca adivina entre varios).</span></span>
-      <button class="btn btn-out btn-sm" onclick="renderArchivoMaestroFletes()">🔄 Generar archivo maestro</button>
+    <div class="card-title" style="cursor:pointer;user-select:none" onclick="toggleArchivoMaestroFletes()">
+      <span>🗂️ Archivo maestro de fletes <span id="amFletesIcon" style="font-weight:400;color:#888;text-transform:none;letter-spacing:normal">▶ expandir</span></span>
+      <span class="info-tip">?<span class="info-tip-box">Cruza cada pedido de flete (fletesDB) contra las autorizaciones de maniobra capturadas en Maniobras, para armar en un solo lugar: fecha, destino, operador, orden de embarque, pedido de flete, monto autorizado de maniobra y estado de facturación. Primero intenta emparejar por T.U./orden de embarque; si no coincide, usa fecha + destino/tienda como respaldo — solo si hay UN solo candidato posible ese día para ese destino (nunca adivina entre varios). Incluye TODOS los pedidos, pendientes y ya facturados — no se borra ni se archiva solo.</span></span>
     </div>
-    <div id="archivoMaestroFletesWrap"><p style="font-size:13px;color:#aaa;padding:10px 0">Dale "Generar archivo maestro" para verlo.</p></div>
-    <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap">
-      <button class="btn btn-out btn-sm" onclick="descargarConcentradoRecibosManiobra()">📄 Descargar concentrado de recibos (PDF)</button>
-      <button class="btn btn-out btn-sm" onclick="descargarPedidoManiobrasExcel()">📊 Descargar pedido de maniobras (Excel)</button>
+    <div id="amFletesWrap" style="display:none;margin-top:12px">
+      <div id="archivoMaestroFletesWrap"><p style="font-size:13px;color:#aaa;padding:10px 0">Cargando...</p></div>
+      <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap">
+        <button class="btn btn-out btn-sm" onclick="descargarConcentradoRecibosManiobra()">📄 Descargar concentrado de recibos (PDF)</button>
+        <button class="btn btn-out btn-sm" onclick="descargarPedidoManiobrasExcel()">📊 Descargar pedido de maniobras (Excel)</button>
+      </div>
     </div>
   </div>
 
@@ -1124,7 +1132,7 @@ window.onFBReady(async function(){
   if(data&&data.data)ingresosDB=JSON.parse(data.data);
   renderIngresos();
   window.FB.listen('estado','ingresosDB',data=>{
-    if(data&&data.data){ingresosDB=JSON.parse(data.data);renderIngresos();}
+    if(data&&data.data){ingresosDB=JSON.parse(data.data);renderIngresos();renderArchivoMaestroFletes();}
   });
   cargarYRenderFletesPendientes();
   cargarCorreosPendientesPedidos();
@@ -1412,6 +1420,12 @@ var _ultimoFiltradosIng=[],_ultimoFiltOpIng=0;
 
 function toggleTablaIngresos(){
   var wrap=$('tablaIngWrap'),icon=$('tablaIngIcon');
+  var oculto=wrap.style.display==='none';
+  wrap.style.display=oculto?'':'none';
+  icon.textContent=oculto?'▼ colapsar':'▶ expandir';
+}
+function toggleArchivoMaestroFletes(){
+  var wrap=$('amFletesWrap'),icon=$('amFletesIcon');
   var oculto=wrap.style.display==='none';
   wrap.style.display=oculto?'':'none';
   icon.textContent=oculto?'▼ colapsar':'▶ expandir';
@@ -1844,6 +1858,7 @@ async function cargarYRenderFletesPendientes(){
   try{
     FLETES=await _conTimeout(window.cargarFletes(true),15000);
     renderFletesPendientes();
+    renderArchivoMaestroFletes();
   }catch(e){
     console.error('cargarYRenderFletesPendientes:',e);
     $('fletesPendientesWrap').innerHTML='<div class="alert alert-warn">⚠️ '+e.message+' <button class="btn btn-out btn-sm" onclick="cargarYRenderFletesPendientes()">🔄 Reintentar</button></div>';
