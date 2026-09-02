@@ -1761,11 +1761,16 @@ const PROMPT_ORDEN_EMBARQUE_SELLADA =
 
 const PROMPT_RECIBO_MANIOBRA =
   'Eres un asistente que lee un RECIBO DE MANIOBRA de una empresa de mudanzas — el comprobante que firma quien realizó la ' +
-  'maniobra de carga/descarga de un embarque, indicando el monto pagado por ese servicio. Extrae un solo objeto JSON con ' +
-  'estas llaves exactas: {"monto":el monto pagado que muestra el recibo, como número, o 0 si no se puede determinar,' +
-  '"fecha":"YYYY-MM-DD si se puede determinar la fecha del recibo (convierte desde el formato que traiga), o null"}. No ' +
-  'inventes datos que no estén en el recibo. Responde SOLO el objeto JSON (sin texto explicativo, sin backticks, sin ' +
-  'markdown).';
+  'maniobra de carga/descarga de un embarque, indicando el monto pagado por ese servicio. También necesitas ubicar el ' +
+  'RECTÁNGULO que contiene SOLO el papel del recibo, para recortar la foto y que no se vean manos, dedos, mesa ni otro ' +
+  'fondo — el recorte debe ser lo más ajustado posible a las orillas del papel, pero sin cortar ninguna esquina del ' +
+  'texto/papel. Extrae un solo objeto JSON con estas llaves exactas: {"monto":el monto pagado que muestra el recibo, ' +
+  'como número, o 0 si no se puede determinar,"fecha":"YYYY-MM-DD si se puede determinar la fecha del recibo (convierte ' +
+  'desde el formato que traiga), o null","recorte":{"x0":porcentaje (0-100) de la orilla IZQUIERDA del papel respecto al ' +
+  'ancho total de la imagen,"y0":porcentaje (0-100) de la orilla SUPERIOR del papel respecto al alto total,"x1":' +
+  'porcentaje (0-100) de la orilla DERECHA del papel,"y1":porcentaje (0-100) de la orilla INFERIOR del papel} — o null ' +
+  'si no logras distinguir claramente las orillas del papel (ej. está borroso o tapado)}. No inventes datos que no estén ' +
+  'en el recibo. Responde SOLO el objeto JSON (sin texto explicativo, sin backticks, sin markdown).';
 
 function _extraerImagenDocumento(prompt) {
   return async (req, res) => {
