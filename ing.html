@@ -2454,8 +2454,16 @@ var seleccionManiobrasExcel={};
 // facturaFleteFolio) para que funcione igual con las filas del Archivo
 // Maestro (que sí lo traen precalculado) y con los registros crudos de
 // FLETES que usa descargarPedidoManiobrasExcel (que no).
+// Tampoco se puede incluir si la MANIOBRA ya está facturada (f.estado
+//==='facturado', puesto por marcarFleteFacturado cuando se sustituye la
+// factura consolidada de Raúl) — mandarle otra vez un pedido de algo que
+// ya facturó puede hacer que rechace el conjunto completo de maniobras.
 function _maniobraCompleta(f){
-  return f.bultos!=null&&!!f.reciboManiobraImgURL&&!!folioFacturaFleteDe(f);
+  // f.estado (registro crudo de FLETES) o f.estadoFactura (fila ya armada
+  // por construirArchivoMaestroFletes, que lo renombra) — según de dónde
+  // venga "f", nunca los dos a la vez.
+  var estadoManiobra=f.estadoFactura!=null?f.estadoFactura:f.estado;
+  return f.bultos!=null&&!!f.reciboManiobraImgURL&&!!folioFacturaFleteDe(f)&&estadoManiobra!=='facturado';
 }
 function toggleSeleccionManiobra(orden,checked){
   if(checked)seleccionManiobrasExcel[orden]=true;else delete seleccionManiobrasExcel[orden];
@@ -2518,7 +2526,7 @@ function renderArchivoMaestroFletes(){
       var completa=_maniobraCompleta(f);
       var marcada=!!seleccionManiobrasExcel[f.ordenEmbarque];
       return '<tr'+(sinMatch?' style="background:#fffbeb"':'')+'>'
-        +'<td style="text-align:center"><input type="checkbox" '+(completa?'':'disabled')+' '+(marcada&&completa?'checked':'')+' title="'+(completa?'Incluir en el próximo Excel de pedido de maniobras':'Falta bultos, recibo de maniobra y/o la carta porte propia del flete (columna "Factura de flete") para poder incluirlo')+'" onchange="toggleSeleccionManiobra(\''+f.ordenEmbarque+'\',this.checked)"></td>'
+        +'<td style="text-align:center"><input type="checkbox" '+(completa?'':'disabled')+' '+(marcada&&completa?'checked':'')+' title="'+(completa?'Incluir en el próximo Excel de pedido de maniobras':(f.estadoFactura==='facturado'?'Esta maniobra ya está facturada por Raúl — no se puede volver a incluir en un pedido':'Falta bultos, recibo de maniobra y/o la carta porte propia del flete (columna Factura de flete) para poder incluirlo'))+'" onchange="toggleSeleccionManiobra(\''+f.ordenEmbarque+'\',this.checked)"></td>'
         +'<td>'+f.fecha+'</td>'
         +'<td style="font-size:12px">'+(f.destino||f.tienda||'')+'</td>'
         +'<td style="font-size:12px">'+(f.operador||'<span style="color:#c1121f">⚠️ Sin emparejar</span>')+(f.operador&&!f.operadorConfirmado?' <span style="color:#856404" title="Viene del económico del correo, pero no se confirmó contra ninguna autorización de maniobra">(sin confirmar)</span>':'')+'</td>'
