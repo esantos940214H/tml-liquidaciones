@@ -401,6 +401,14 @@ tr:hover td{background:#fafafa}
       <span class="info-tip">?<span class="info-tip-box">Cruza cada pedido de flete (fletesDB) contra las autorizaciones de maniobra capturadas en Maniobras, para armar en un solo lugar: fecha, destino, operador, orden de embarque, pedido de flete, monto autorizado de maniobra y estado de facturación. Primero intenta emparejar por T.U./orden de embarque; si no coincide, usa fecha + destino/tienda como respaldo — solo si hay UN solo candidato posible ese día para ese destino (nunca adivina entre varios). Incluye TODOS los pedidos, pendientes y ya facturados — no se borra ni se archiva solo.</span></span>
     </div>
     <div id="amFletesWrap" style="display:none;margin-top:12px">
+      <div class="field" style="max-width:220px;margin-bottom:10px">
+        <label>Mostrar</label>
+        <select id="amFiltroEstado" onchange="renderArchivoMaestroFletes()">
+          <option value="pendiente" selected>Pendientes de facturar</option>
+          <option value="facturado">Ya facturados</option>
+          <option value="todos">Todos</option>
+        </select>
+      </div>
       <div id="archivoMaestroFletesWrap"><p style="font-size:13px;color:#aaa;padding:10px 0">Cargando...</p></div>
       <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap">
         <button class="btn btn-out btn-sm" onclick="descargarConcentradoRecibosManiobra()">📄 Descargar concentrado de recibos (PDF)</button>
@@ -2437,15 +2445,50 @@ function toggleSeleccionManiobra(orden,checked){
   if(checked)seleccionManiobrasExcel[orden]=true;else delete seleccionManiobrasExcel[orden];
 }
 function seleccionarTodosCompletosManiobra(marcar){
-  construirArchivoMaestroFletes().forEach(function(f){
+  _filasArchivoMaestroFiltradas().forEach(function(f){
     if(_maniobraCompleta(f)){if(marcar)seleccionManiobrasExcel[f.ordenEmbarque]=true;else delete seleccionManiobrasExcel[f.ordenEmbarque];}
   });
   renderArchivoMaestroFletes();
 }
+// _filasArchivoMaestroFiltradas: aplica el filtro "Mostrar" (por default
+// solo pendientes de facturar, para no cargar años de historial ya
+// facturado — ver #amFiltroEstado) sobre el cruce completo.
+function _filasArchivoMaestroFiltradas(){
+  var filas=construirArchivoMaestroFletes();
+  var filtro=$('amFiltroEstado')?$('amFiltroEstado').value:'pendiente';
+  if(filtro==='pendiente')return filas.filter(function(f){return f.estadoFactura!=='facturado';});
+  if(filtro==='facturado')return filas.filter(function(f){return f.estadoFactura==='facturado';});
+  return filas;
+}
+// eliminarEvidenciaManiobra: para cuando una foto salió muy fea (borrosa,
+// mal encuadrada) — borra la referencia en fletesDB (y de paso el archivo
+// en Storage) para que el pedido vuelva a quedar disponible y se pueda
+// subir otra foto en su lugar. Al borrar la orden de embarque sellada
+// también se borra el número de bultos, porque venía de esa misma foto.
+async function eliminarEvidenciaManiobra(ordenEmbarque,tipo){
+  var f=FLETES.find(function(x){return x.ordenEmbarque===ordenEmbarque;});
+  if(!f)return;
+  var campoURL=tipo==='orden'?'ordenEmbarqueImgURL':'reciboManiobraImgURL';
+  var url=f[campoURL];
+  if(!url)return;
+  if(!confirm('¿Borrar esta foto'+(tipo==='orden'?' (y el número de bultos que traía)':' de recibo')+'? Podrás subir otra después.'))return;
+  var campos=tipo==='orden'?{bultos:null,ordenEmbarqueImgURL:null}:{reciboManiobraImgURL:null,reciboManiobraMonto:null};
+  try{
+    await actualizarEvidenciaManiobra(ordenEmbarque,campos);
+  }catch(e){alert('⚠️ Error al borrar: '+e.message);return;}
+  try{ if(window.firebase&&firebase.storage) await firebase.storage().refFromURL(url).delete(); }
+  catch(e){ console.warn('No se pudo borrar el archivo de Storage (puede que ya no exista):',e); }
+  FLETES=await cargarFletes(true);
+  renderArchivoMaestroFletes();
+}
 function renderArchivoMaestroFletes(){
   var wrap=$('archivoMaestroFletesWrap');
-  var filas=construirArchivoMaestroFletes();
-  if(!filas.length){wrap.innerHTML='<p style="font-size:13px;color:#aaa;padding:10px 0">Todavía no hay pedidos de flete registrados.</p>';return;}
+  var filas=_filasArchivoMaestroFiltradas();
+  var filtro=$('amFiltroEstado')?$('amFiltroEstado').value:'pendiente';
+  if(!filas.length){
+    wrap.innerHTML='<p style="font-size:13px;color:#aaa;padding:10px 0">'+(filtro==='pendiente'?'No hay pedidos pendientes de facturar.':(filtro==='facturado'?'No hay pedidos facturados todavía.':'Todavía no hay pedidos de flete registrados.'))+'</p>';
+    return;
+  }
   filas.sort(function(a,b){return(b.fecha||'').localeCompare(a.fecha||'');});
   var sinMatch=filas.filter(function(f){return!f.operadorConfirmado;}).length;
   wrap.innerHTML=(sinMatch?'<div class="alert alert-warn">⚠️ '+sinMatch+' pedido(s) de flete no se pudieron emparejar con ninguna autorización de maniobra — revísalos a mano (resaltados abajo).</div>':'<div class="alert alert-ok">✅ Todos los pedidos de flete se emparejaron con su autorización.</div>')
@@ -2471,8 +2514,8 @@ function renderArchivoMaestroFletes(){
         +'<td style="font-size:11px;color:#888">'+(f.metodoMatch||'')+'</td>'
         +'<td class="num r">'+(f.bultos!=null?f.bultos:'—')+'</td>'
         +'<td style="font-size:11px;white-space:nowrap">'
-          +(f.ordenEmbarqueImgURL?'<a href="'+f.ordenEmbarqueImgURL+'" target="_blank" title="Ver orden de embarque sellada">📋</a>':'<span style="color:#ddd" title="Falta la orden de embarque sellada">📋</span>')+' '
-          +(f.reciboManiobraImgURL?'<a href="'+f.reciboManiobraImgURL+'" target="_blank" title="Ver recibo de maniobra ('+fmt(f.reciboManiobraMonto||0)+')">🧾</a>':'<span style="color:#ddd" title="Falta el recibo de maniobra">🧾</span>')
+          +(f.ordenEmbarqueImgURL?'<a href="'+f.ordenEmbarqueImgURL+'" target="_blank" title="Ver orden de embarque sellada">📋</a> <button style="background:none;border:none;cursor:pointer;color:#c1121f;font-size:11px" title="Borrar esta foto (y el número de bultos) para subir otra" onclick="eliminarEvidenciaManiobra(\''+f.ordenEmbarque+'\',\'orden\')">🗑️</button>':'<span style="color:#ddd" title="Falta la orden de embarque sellada">📋</span>')+' '
+          +(f.reciboManiobraImgURL?'<a href="'+f.reciboManiobraImgURL+'" target="_blank" title="Ver recibo de maniobra ('+fmt(f.reciboManiobraMonto||0)+')">🧾</a> <button style="background:none;border:none;cursor:pointer;color:#c1121f;font-size:11px" title="Borrar este recibo para subir otro" onclick="eliminarEvidenciaManiobra(\''+f.ordenEmbarque+'\',\'recibo\')">🗑️</button>':'<span style="color:#ddd" title="Falta el recibo de maniobra">🧾</span>')
           +'</td>'
         +'<td>'+(f.estadoFactura==='facturado'?'<span class="badge bg-green">✅ '+(f.facturaFolio||'')+'</span>':'<span class="badge bg-yellow">⏳ Pendiente</span>')+'</td>'
         +'</tr>';
