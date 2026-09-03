@@ -2040,7 +2040,7 @@ function matchFleteConAutorizacion(flete,autorizaciones){
   var tusNorm=_fleteTusNorm(flete);
   var pedNorm=flete.pedidoFlete?_normTxtFactManiobras(flete.pedidoFlete):'';
   var directo=autorizaciones.find(function(v){
-    var vIds=_normTxtFactManiobras(v.observaciones);
+    var vIds=_idsDeObservacionesFactManiobras(v.observaciones);
     return tusNorm.some(function(id){return id&&vIds.indexOf(id)!==-1;})||(pedNorm&&vIds.indexOf(pedNorm)!==-1);
   });
   if(directo)return{autorizacion:directo,metodo:'T.U./orden de embarque'};
@@ -2367,7 +2367,7 @@ function buscarAutorizacionesPorTU(f,autorizaciones){
   var tusNorm=_fleteTusNorm(f);
   var pedNorm=f.pedidoFlete?_normTxtFactManiobras(f.pedidoFlete):'';
   return autorizaciones.filter(function(v){
-    var vIds=_normTxtFactManiobras(v.observaciones);
+    var vIds=_idsDeObservacionesFactManiobras(v.observaciones);
     return tusNorm.some(function(id){return id&&vIds.indexOf(id)!==-1;})||(pedNorm&&vIds.indexOf(pedNorm)!==-1);
   });
 }
@@ -2611,6 +2611,17 @@ function renderArchivoMaestroFletes(){
 // pendiente que ya lo tenía desde que se autorizó.
 // ══════════════════════════════════════════════
 function _normTxtFactManiobras(s){return(s||'').toString().trim().toUpperCase().replace(/\s+/g,' ');}
+// _idsDeObservacionesFactManiobras: mismo criterio que _idsDeObservaciones
+// en maniobras.html — parte "FOLIO:2763 | TU1:6500360352 | TU2:6500360353"
+// en sus identificadores exactos, en vez de comparar por "contiene" sobre
+// el string completo (un T.U./folio corto hacía falso positivo con
+// cualquier otro identificador de más dígitos que lo trajera en medio,
+// ej. "603" adentro de "6500360352" — causaba emparejamientos falsos que
+// "robaban" la autorización correcta de otro renglón, dejándolo sin
+// encontrar su match real).
+function _idsDeObservacionesFactManiobras(observaciones){
+  return (observaciones||'').split('|').map(function(s){return _normTxtFactManiobras(s.replace(/^\s*[A-Z0-9]+:/,''));}).filter(function(s){return s;});
+}
 function _leerArchivoTexto(file){
   return new Promise(function(resolve,reject){
     var r=new FileReader();
@@ -2727,7 +2738,7 @@ async function procesarFacturaManiobrasExcel(){
         var idNorm=_normTxtFactManiobras(rg.tus[i]);
         candidato=ingresosDB.find(function(v){
           return v.esAutorizacionCliente&&!v.sustituidoPorXML&&!v.montoPendiente&&!usadosIds[v.id]&&
-            _normTxtFactManiobras(v.observaciones).indexOf(idNorm)!==-1;
+            _idsDeObservacionesFactManiobras(v.observaciones).indexOf(idNorm)!==-1;
         });
       }
       if(candidato){

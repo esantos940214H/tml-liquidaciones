@@ -416,6 +416,14 @@ async function _procesarMensajeImap(rawBuffer, apiKey) {
 // para revisión manual en Maniobras, exactamente como antes.
 // ══════════════════════════════════════════════════════════════════════════
 function _normTxtServer(s) { return (s || '').toString().trim().toUpperCase().replace(/\s+/g, ' '); }
+// _idsDeObservacionesServer: mismo criterio que _idsDeObservaciones en
+// maniobras.html — parte "FOLIO:2763 | TU1:6500360352 | TU2:6500360353" en
+// sus identificadores exactos, en vez de comparar por "contiene" sobre el
+// string completo (un folio corto como "603" hacía falso positivo con
+// cualquier T.U. de 10 dígitos que lo trajera en medio, ej. "6500360352").
+function _idsDeObservacionesServer(observaciones) {
+  return (observaciones || '').split('|').map(function (s) { return _normTxtServer(s.replace(/^\s*[A-Z0-9]+:/, '')); }).filter(function (s) { return s; });
+}
 
 async function _cargarOperadoresServer() {
   const snap = await db.collection('operadores').where('activo', '==', true).get();
@@ -481,7 +489,7 @@ function _buscarDuplicadoServer(ingresosDB, datos) {
     if (v.unidad !== unidad) return false;
     if (Math.abs((v.subtotal || 0) - monto) >= 0.01) return false;
     if ((v.fecha || '') !== fecha) return false;
-    const vIds = _normTxtServer(v.observaciones);
+    const vIds = _idsDeObservacionesServer(v.observaciones);
     return ids.some(function (id) { return vIds.indexOf(id) !== -1; });
   });
 }
@@ -506,7 +514,7 @@ function _crearAutorizacionServer(ingresosDB, datos) {
     const existentePendiente = ingresosDB.find(function (v) {
       if (!v.esAutorizacionCliente || !v.montoPendiente || v.sustituidoPorXML) return false;
       if (v.unidad !== unidad) return false;
-      const vIds = _normTxtServer(v.observaciones);
+      const vIds = _idsDeObservacionesServer(v.observaciones);
       return idsNuevos.some(function (id) { return vIds.indexOf(id) !== -1; });
     });
     if (existentePendiente) {
@@ -522,7 +530,7 @@ function _crearAutorizacionServer(ingresosDB, datos) {
   const existenteCorregible = (!pendiente && monto && idsCorreccion.length) ? ingresosDB.find(function (v) {
     if (!v.esAutorizacionCliente || v.montoPendiente || v.sustituidoPorXML) return false;
     if (v.unidad !== unidad) return false;
-    const vIds = _normTxtServer(v.observaciones);
+    const vIds = _idsDeObservacionesServer(v.observaciones);
     if (!idsCorreccion.some(function (id) { return vIds.indexOf(id) !== -1; })) return false;
     return Math.abs((v.subtotal || 0) - monto) >= 0.01;
   }) : null;
@@ -539,7 +547,7 @@ function _crearAutorizacionServer(ingresosDB, datos) {
   const idsChoque = [folio, pedido].map(_normTxtServer).filter(function (s) { return s; });
   const choqueId = idsChoque.length ? ingresosDB.find(function (v) {
     if (!v.sinFacturaJustificar || v.sustituidoPorXML) return false;
-    const vIds = _normTxtServer(v.observaciones);
+    const vIds = _idsDeObservacionesServer(v.observaciones);
     return idsChoque.some(function (id) { return vIds.indexOf(id) !== -1; });
   }) : null;
   if (choqueId) return { ok: false, error: 'Alguno de esos identificadores ya está en uso por otro ingreso sin factura pendiente.' };
@@ -548,7 +556,7 @@ function _crearAutorizacionServer(ingresosDB, datos) {
   if (tuIds.length) {
     const yaConEsteTU = ingresosDB.filter(function (v) {
       if (!v.esAutorizacionCliente) return false;
-      const vIds = _normTxtServer(v.observaciones);
+      const vIds = _idsDeObservacionesServer(v.observaciones);
       return tuIds.some(function (id) { return vIds.indexOf(id) !== -1; });
     });
     if (yaConEsteTU.length >= 2) return { ok: false, error: 'Este T.U. ya tiene 2 autorizaciones registradas.' };
