@@ -2346,22 +2346,36 @@ async function descargarConcentradoRecibosManiobra(){
     catch(e){alert('No se pudo cargar el generador de PDF. Revisa tu conexión e intenta de nuevo.');return;}
   }
   var doc=new window.jspdf.jsPDF({unit:'mm',format:'letter'});
-  var maxW=190,maxH=225;
+  var margen=3;
+  var pageW=doc.internal.pageSize.getWidth(),pageH=doc.internal.pageSize.getHeight();
+  var maxW=pageW-margen*2,maxH=pageH-margen*2;
   for(var i=0;i<filas.length;i++){
     var f=filas[i];
     if(i>0)doc.addPage();
-    doc.setFontSize(11);
-    doc.text('T.U. '+f.ordenEmbarque+(f.tu2?' / '+f.tu2:'')+' — '+(f.destino||f.tienda||''),10,14);
-    doc.setFontSize(9);
-    doc.text('Pedido: '+(f.pedidoFlete||'—')+'   Fecha: '+(f.fecha||'—')+'   Monto recibo: '+fmt(f.reciboManiobraMonto||0),10,20);
+    var linea1='T.U. '+f.ordenEmbarque+(f.tu2?' / '+f.tu2:'')+' — '+(f.destino||f.tienda||'');
+    var linea2='Pedido: '+(f.pedidoFlete||'—')+'   Fecha: '+(f.fecha||'—')+'   Monto recibo: '+fmt(f.reciboManiobraMonto||0);
     try{
       var img=await _cargarImagenParaPDF(f.reciboManiobraImgURL);
       var w=maxW,h=maxW*(img.height/img.width);
       if(h>maxH){h=maxH;w=maxH*(img.width/img.height);}
-      doc.addImage(img.dataUrl,'JPEG',10,28,w,h);
+      var x=margen+(maxW-w)/2,y=margen+(maxH-h)/2;
+      doc.addImage(img.dataUrl,'JPEG',x,y,w,h);
     }catch(e){
-      doc.text('⚠️ No se pudo cargar la imagen del recibo.',10,34);
+      var x=margen,y=margen;
     }
+    // Encabezado ENCIMA de la imagen (o del recuadro vacío si falló) — franja
+    // blanca semitransparente para que se lea aunque el recibo tenga fondo
+    // oscuro/ocupado justo ahí arriba.
+    doc.setFillColor(255,255,255);
+    try{doc.setGState(new doc.GState({opacity:0.75}));}catch(e){}
+    doc.rect(x,y,w||maxW,11,'F');
+    try{doc.setGState(new doc.GState({opacity:1}));}catch(e){}
+    doc.setTextColor(0,0,0);
+    doc.setFontSize(11);
+    doc.text(linea1,x+2,y+5);
+    doc.setFontSize(9);
+    doc.text(linea2,x+2,y+9.5);
+    if(!w){doc.setFontSize(11);doc.text('⚠️ No se pudo cargar la imagen del recibo.',x+2,y+20);}
   }
   doc.save('concentrado_recibos_maniobra_'+hoy()+'.pdf');
 }
