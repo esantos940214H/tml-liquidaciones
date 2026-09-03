@@ -414,14 +414,14 @@ tr:hover td{background:#fafafa}
       <div id="archivoMaestroFletesWrap"><p style="font-size:13px;color:#aaa;padding:10px 0">Cargando...</p></div>
       <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap">
         <button class="btn btn-out btn-sm" title="Solo incluye los pedidos marcados con la casilla &quot;Incluir&quot; de la tabla" onclick="descargarConcentradoRecibosManiobra()">📄 Descargar concentrado de recibos (PDF)</button>
-        <button class="btn btn-out btn-sm" onclick="descargarPedidoManiobrasExcel()">📊 Descargar pedido de maniobras (Excel)</button>
+        <button class="btn btn-out btn-sm" onclick="descargarPedidoManiobrasExcel()">📊 Descargar solicitud de maniobras (Excel)</button>
       </div>
     </div>
   </div>
 
   <!-- EVIDENCIA DE MANIOBRAS: orden de embarque sellada (bultos) y recibo -->
   <div class="card">
-    <div class="card-title">📸 Evidencia de maniobras (bultos y recibos) <span class="info-tip">?<span class="info-tip-box">Sube aparte la foto de la orden de embarque YA SELLADA por la tienda (trae el T.U. y el número de bultos entregados) y la foto del recibo de maniobra (comprobante de lo pagado) — la IA lee cada una y la liga sola al pedido que corresponde en el Archivo Maestro: la orden sellada por su T.U., el recibo de maniobra comparando su monto contra el autorizado. Ambas quedan guardadas para armar el Excel de pedido de maniobras y el concentrado de recibos.</span></span></div>
+    <div class="card-title">📸 Evidencia de maniobras (bultos y recibos) <span class="info-tip">?<span class="info-tip-box">Sube aparte la foto de la orden de embarque YA SELLADA por la tienda (trae el T.U. y el número de bultos entregados) y la foto del recibo de maniobra (comprobante de lo pagado) — la IA lee cada una y la liga sola al pedido que corresponde en el Archivo Maestro: la orden sellada por su T.U., el recibo de maniobra comparando su monto contra el autorizado. Ambas quedan guardadas para armar el Excel de solicitud de maniobras y el concentrado de recibos.</span></span></div>
     <div class="grid2">
       <div class="field">
         <label>📋 Orden de embarque sellada (foto)</label>
@@ -2611,7 +2611,7 @@ function renderArchivoMaestroFletes(){
       var completa=_maniobraCompleta(f);
       var marcada=!!seleccionManiobrasExcel[f.ordenEmbarque];
       return '<tr'+(sinMatch?' style="background:#fffbeb"':'')+'>'
-        +'<td style="text-align:center"><input type="checkbox" '+(completa?'':'disabled')+' '+(marcada&&completa?'checked':'')+' title="'+(completa?'Incluir en el próximo Excel de pedido de maniobras':(f.estadoFactura==='facturado'?'Esta maniobra ya está facturada — no se puede volver a incluir en un pedido':'Falta bultos, recibo de maniobra y/o la carta porte propia del flete (columna Factura de flete) para poder incluirlo'))+'" onchange="toggleSeleccionManiobra(\''+f.ordenEmbarque+'\',this.checked)"></td>'
+        +'<td style="text-align:center"><input type="checkbox" '+(completa?'':'disabled')+' '+(marcada&&completa?'checked':'')+' title="'+(completa?'Incluir en la próxima solicitud de maniobras (Excel)':(f.estadoFactura==='facturado'?'Esta maniobra ya está facturada — no se puede volver a incluir en un pedido':'Falta bultos, recibo de maniobra y/o la carta porte propia del flete (columna Factura de flete) para poder incluirlo'))+'" onchange="toggleSeleccionManiobra(\''+f.ordenEmbarque+'\',this.checked)"></td>'
         +'<td>'+f.fecha+'</td>'
         +'<td style="font-size:12px">'+(f.destino||f.tienda||'')+'</td>'
         +'<td style="font-size:12px">'+(f.operador||'<span style="color:#c1121f">⚠️ Sin emparejar</span>')+(f.operador&&!f.operadorConfirmado?' <span style="color:#856404" title="Viene del económico del correo, pero no se confirmó contra ninguna autorización de maniobra">(sin confirmar)</span>':'')+'</td>'
