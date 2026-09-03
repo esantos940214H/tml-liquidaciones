@@ -2353,7 +2353,7 @@ async function descargarConcentradoRecibosManiobra(){
     doc.setFontSize(11);
     doc.text('T.U. '+f.ordenEmbarque+(f.tu2?' / '+f.tu2:'')+' — '+(f.destino||f.tienda||''),10,14);
     doc.setFontSize(9);
-    doc.text('Fecha: '+(f.fecha||'—')+'   Operador: '+(f.operador||'—')+'   Monto recibo: '+fmt(f.reciboManiobraMonto||0),10,20);
+    doc.text('Pedido: '+(f.pedidoFlete||'—')+'   Fecha: '+(f.fecha||'—')+'   Operador: '+(f.operador||'—')+'   Monto recibo: '+fmt(f.reciboManiobraMonto||0),10,20);
     try{
       var img=await _cargarImagenParaPDF(f.reciboManiobraImgURL);
       var w=maxW,h=maxW*(img.height/img.width);
