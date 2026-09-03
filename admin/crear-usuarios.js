@@ -117,7 +117,7 @@ const USUARIOS = [
       // liquidación — en ambos solo puede consultar. Historial ya es de
       // solo lectura para cualquiera que no sea admin, sin necesidad de un
       // candado aparte.
-      ant: true, ing: true, liq: true, nom: false, inc: false, hist: true, autoriz: false, precarga: false,
+      ant: true, ing: true, liq: true, nom: false, inc: false, hist: true, autoriz: false, precarga: true,
       anticipos_editar: false, ingresos_editar: true, incidentes_editar: false, casetas_editar: false,
       ant_solo_ver: true, liq_solo_ver: true
     }
