@@ -355,8 +355,10 @@ tr:hover td{background:#fafafa}
   <!-- ══════ TAB: BUZÓN DE PEDIDOS Y ARCHIVO MAESTRO ══════ -->
   <div class="tabpanel" id="panelFletes">
 
-  <!-- BUZÓN DE PEDIDOS DE FLETE -->
-  <div class="card">
+  <!-- BUZÓN DE PEDIDOS DE FLETE — solo administrador (Raúl, como proveedor de
+       maniobras/fletes, solo necesita el Archivo Maestro y subir evidencia,
+       no la administración del buzón/correo interno). -->
+  <div class="card" id="cardBuzonPedidosFlete">
     <div class="card-title">📦 Buzón de pedidos de flete (fletes@mudandote.mx) <span class="info-tip">?<span class="info-tip-box">El cliente manda el pedido de un embarque (orden de embarque, pedido de flete, tienda/destino, fecha) ANTES de que exista la factura. El sistema revisa este buzón 3 veces al día (7:00, 14:00 y 22:00 hrs) y registra solo lo que trae una orden de embarque reconocible — cuando subas aquí abajo tu XML+Excel de factura consolidada, cada renglón que coincida se marca "facturado" solo.</span></span>
       <button class="btn btn-out btn-sm" onclick="revisarBuzonPedidosAhora()" id="btnRevisarBuzonPedidos">🔄 Revisar buzón ahora</button>
     </div>
@@ -368,8 +370,8 @@ tr:hover td{background:#fafafa}
 
   <!-- Aparte de la lista de pendientes, para no confundirlo con "editar" uno
        que ya está registrado — esto es solo para dar de alta uno NUEVO que
-       el buzón no haya capturado. -->
-  <div class="card">
+       el buzón no haya capturado. Solo administrador (ver nota arriba). -->
+  <div class="card" id="cardRegistrarFleteManual">
     <div class="card-title" style="cursor:pointer;user-select:none" onclick="toggleRegistrarFleteManual()">
       <span>➕ ¿Falta algún pedido de flete? Registrarlo a mano <span id="fleteManualIcon" style="font-weight:400;color:#888;text-transform:none;letter-spacing:normal">▶ expandir</span></span>
     </div>
@@ -1104,6 +1106,8 @@ function verificarSesionModulo(){
   // factura, la tarjeta "🤖 Registrar sin factura" (solo administrador).
   var esAdminIng=!!u.esAdmin;
   if($('cardEstimadoIA'))$('cardEstimadoIA').style.display=esAdminIng?'':'none';
+  if($('cardBuzonPedidosFlete'))$('cardBuzonPedidosFlete').style.display=esAdminIng?'':'none';
+  if($('cardRegistrarFleteManual'))$('cardRegistrarFleteManual').style.display=esAdminIng?'':'none';
 }
 window.onFBReady(verificarSesionModulo);
 
