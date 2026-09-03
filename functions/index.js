@@ -888,7 +888,7 @@ exports.revisarBuzonManiobras = onRequest(
 // quedaba en los logs de Cloud Functions (solo visibles desde Cloud Shell);
 // ahora se puede consultar directo desde Firestore.
 exports.revisarBuzonManiobrasProgramado = onSchedule(
-  { schedule: '0 7,14,22 * * *', timeZone: 'America/Mexico_City', secrets: [ANTHROPIC_API_KEY, MANIOBRAS_EMAIL_USER, MANIOBRAS_EMAIL_PASS], region: 'us-central1', timeoutSeconds: 300 },
+  { schedule: '0 */3 * * *', timeZone: 'America/Mexico_City', secrets: [ANTHROPIC_API_KEY, MANIOBRAS_EMAIL_USER, MANIOBRAS_EMAIL_PASS], region: 'us-central1', timeoutSeconds: 300 },
   async () => {
     const inicio = new Date().toISOString();
     try {
@@ -1429,7 +1429,7 @@ exports.revisarBuzonCompras = onRequest(
 );
 
 exports.revisarBuzonComprasProgramado = onSchedule(
-  { schedule: '0 7,14,22 * * *', timeZone: 'America/Mexico_City', secrets: [COMPRAS_EMAIL_USER, COMPRAS_EMAIL_PASS, ANTHROPIC_API_KEY], region: 'us-central1', timeoutSeconds: 300 },
+  { schedule: '0 */3 * * *', timeZone: 'America/Mexico_City', secrets: [COMPRAS_EMAIL_USER, COMPRAS_EMAIL_PASS, ANTHROPIC_API_KEY], region: 'us-central1', timeoutSeconds: 300 },
   async () => {
     const inicio = new Date().toISOString();
     try {
@@ -2027,7 +2027,7 @@ exports.revisarBuzonPedidos = onRequest(
 );
 
 exports.revisarBuzonPedidosProgramado = onSchedule(
-  { schedule: '0 7,14,22 * * *', timeZone: 'America/Mexico_City', secrets: [FLETES_EMAIL_USER, FLETES_EMAIL_PASS, ANTHROPIC_API_KEY], region: 'us-central1', timeoutSeconds: 300 },
+  { schedule: '0 */3 * * *', timeZone: 'America/Mexico_City', secrets: [FLETES_EMAIL_USER, FLETES_EMAIL_PASS, ANTHROPIC_API_KEY], region: 'us-central1', timeoutSeconds: 300 },
   async () => {
     const inicio = new Date().toISOString();
     try {
