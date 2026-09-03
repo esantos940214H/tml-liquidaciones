@@ -1098,24 +1098,32 @@ function _parseCfdiProveedorServer(xmlText) {
 }
 
 // Mismos candados de Fase 1 que evaluarCandados() en proveedores.html.
+// "Proveedor registrado y activo" YA NO bloquea el registro (bloqueante:
+// false) — una factura de un proveedor que todavía no se da de alta se
+// registra igual para pago, solo que sin días de crédito (se trata como
+// vencimiento inmediato) hasta que se dé de alta con sus datos reales; los
+// demás candados (fiscales/de integridad del CFDI) siguen bloqueando.
 async function _evaluarCandadosCxPServer(data) {
   const candados = [];
   const yaExiste = (await db.collection('cxpFacturas').doc(data.uuid).get()).exists;
-  candados.push({ label: 'UUID único', ok: !yaExiste });
-  candados.push({ label: 'Tipo de comprobante I/E', ok: data.tipoComprobante === 'I' || data.tipoComprobante === 'E' });
-  candados.push({ label: 'Receptor = Mudanzas TML', ok: data.rfcReceptor === TML_RFC });
+  candados.push({ label: 'UUID único', ok: !yaExiste, bloqueante: true });
+  candados.push({ label: 'Tipo de comprobante I/E', ok: data.tipoComprobante === 'I' || data.tipoComprobante === 'E', bloqueante: true });
+  candados.push({ label: 'Receptor = Mudanzas TML', ok: data.rfcReceptor === TML_RFC, bloqueante: true });
   const aritmetica = Math.abs((data.subtotal + data.traslados - data.retenciones) - data.total) < 0.02;
-  candados.push({ label: 'Aritmética del CFDI', ok: aritmetica });
+  candados.push({ label: 'Aritmética del CFDI', ok: aritmetica, bloqueante: true });
   const provSnap = await db.collection('proveedores').doc(data.rfcEmisor).get();
   const proveedor = provSnap.exists ? Object.assign({ rfc: data.rfcEmisor }, provSnap.data()) : null;
   const proveedorOk = !!proveedor && proveedor.activo !== false;
-  candados.push({ label: 'Proveedor registrado y activo', ok: proveedorOk });
+  candados.push({ label: 'Proveedor registrado y activo', ok: proveedorOk, bloqueante: false });
   // Si el proveedor no mandó a tiempo el complemento de pago (REP) de una
   // factura ya pagada, se bloquea (ver revisarComplementosPagoProgramado) —
   // sus facturas nuevas quedan pendientes de revisión manual en vez de
-  // registrarse solas hasta que se resuelva.
-  candados.push({ label: 'Proveedor no bloqueado por complemento de pago pendiente', ok: !(proveedor && proveedor.bloqueadoPorRep) });
-  return { candados: candados, proveedor: proveedor, todosOk: candados.every(function (c) { return c.ok; }) };
+  // registrarse solas hasta que se resuelva. Si el proveedor ni siquiera
+  // está registrado, este candado sale ok trivialmente (nunca puede estar
+  // bloqueado por REP algo que no existe) — el candado de arriba ya avisa.
+  candados.push({ label: 'Proveedor no bloqueado por complemento de pago pendiente', ok: !(proveedor && proveedor.bloqueadoPorRep), bloqueante: true });
+  const todosOk = candados.every(function (c) { return c.bloqueante === false || c.ok; });
+  return { candados: candados, proveedor: proveedor, todosOk: todosOk };
 }
 
 // Además del XML, algunos proveedores mandan en el MISMO correo un PDF con
@@ -1309,7 +1317,10 @@ function _revisarBuzonComprasCore(user, pass, apiKey) {
           continue;
         }
         const data = c.cfdi;
-        const diasCredito = ev.proveedor.diasCredito != null ? ev.proveedor.diasCredito : 15;
+        // Sin proveedor registrado no hay días de crédito que aplicar — se
+        // trata como vencimiento inmediato (0 días) hasta que se dé de alta
+        // con sus datos reales (ver nota en _evaluarCandadosCxPServer).
+        const diasCredito = ev.proveedor ? (ev.proveedor.diasCredito != null ? ev.proveedor.diasCredito : 15) : 0;
         // Los días de crédito corren desde que se REGISTRA la factura (hoy),
         // no desde la fecha de timbrado del CFDI — el proveedor a veces
         // timbra días antes de mandarla, y no hay forma de "regresar el
@@ -1336,7 +1347,9 @@ function _revisarBuzonComprasCore(user, pass, apiKey) {
           }
         }
         await db.collection('cxpFacturas').doc(data.uuid).set({
-          proveedorId: ev.proveedor.rfc, proveedorNombre: ev.proveedor.razonSocial || ev.proveedor.rfc,
+          proveedorId: ev.proveedor ? ev.proveedor.rfc : data.rfcEmisor,
+          proveedorNombre: ev.proveedor ? (ev.proveedor.razonSocial || ev.proveedor.rfc) : (data.nombreEmisor || data.rfcEmisor),
+          proveedorRegistrado: !!ev.proveedor,
           serie: data.serie, folio: data.folio, tipoComprobante: data.tipoComprobante,
           metodoPago: data.metodoPago, formaPago: data.formaPago,
           subtotal: data.subtotal, totalImpuestos: data.traslados - data.retenciones, total: data.total,

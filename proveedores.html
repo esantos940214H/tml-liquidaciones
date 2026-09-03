@@ -677,8 +677,9 @@ function parseCfdiProveedor(text){
 
 // Candados de Fase 1 — ver plan: UUID único, tipo I/E, receptor=TML,
 // aritmética, proveedor existente y activo. Los "duro" bloquean guardar;
-// el de proveedor es blando porque se puede resolver dando de alta rápido
-// sin perder lo ya leído del XML.
+// el de proveedor YA NO bloquea (ver renderFacCandados/guardarFactura) —
+// la factura se registra igual para pago, sin días de crédito, hasta que
+// se dé de alta al proveedor con sus datos reales.
 function evaluarCandados(data){
   var candados=[];
   var yaExiste=FACTURAS.some(function(f){return f.id===data.uuid;});
@@ -727,10 +728,10 @@ function renderFacCandados(){
     return '<div style="font-size:12px;padding:4px 0">'+(c.ok?'✅':(c.duro?'🚫':'⚠️'))+' '+c.label+(c.ok?'':(c.duro?' — bloquea el registro':' — revisa'))+'</div>';
   }).join('');
   if(!_facProveedorMatch){
-    html+='<div class="alert alert-warn" style="margin-top:8px">⚠️ No hay un proveedor activo con RFC <strong>'+data.rfcEmisor+'</strong> ("'+data.nombreEmisor+'"). <button class="btn btn-out btn-sm" onclick="altaRapidaProveedorDesdeXML()">+ Dar de alta rápido</button></div>';
+    html+='<div class="alert alert-warn" style="margin-top:8px">⚠️ No hay un proveedor activo con RFC <strong>'+data.rfcEmisor+'</strong> ("'+data.nombreEmisor+'"). Se puede registrar la factura igual para pago (sin días de crédito, vencimiento inmediato) — <button class="btn btn-out btn-sm" onclick="altaRapidaProveedorDesdeXML()">+ Dar de alta rápido</button> si ya tienes sus datos, para que sí le apliquen los días de crédito normales.</div>';
   }
   $('facCandadosWrap').innerHTML=html;
-  if(!todosDurosOk||!_facProveedorMatch){
+  if(!todosDurosOk){
     $('facFormWrap').style.display='none';
     return;
   }
@@ -754,7 +755,7 @@ function _opsProrrateoOptions(sel){
 }
 function mostrarFacFormulario(){
   var data=_facParsed;
-  $('facProveedorLabel').value=_facProveedorMatch.razonSocial+' ('+data.rfcEmisor+')';
+  $('facProveedorLabel').value=_facProveedorMatch?(_facProveedorMatch.razonSocial+' ('+data.rfcEmisor+')'):((data.nombreEmisor||data.rfcEmisor)+' ('+data.rfcEmisor+') — NO REGISTRADO, sin días de crédito');
   $('facFolio').value=(data.serie?data.serie+'-':'')+data.folio;
   $('facFecha').value=data.fechaEmision;
   $('facTotal').value=fmt(data.total);
@@ -1102,7 +1103,6 @@ async function guardarFactura(){
   var data=_facParsed;
   if(!data)return;
   if(!_facModoProrratearExistente&&_facCandados.some(function(c){return c.duro&&!c.ok;})){alert('Hay candados sin pasar arriba — revísalos antes de guardar.');return;}
-  if(!_facProveedorMatch){alert('Falta el proveedor.');return;}
   var sinUnidad=$('facSinUnidad').checked;
   if(!sinUnidad){
     if(_facProrrateo.some(function(r){return !r.unidad;})){alert('Falta seleccionar la unidad en alguna fila del prorrateo (o marca "gasto general" si no aplica a ninguna unidad).');return;}
@@ -1124,7 +1124,9 @@ async function guardarFactura(){
     }
     var yaExiste=await window.FB.get('cxpFacturas',data.uuid);
     if(yaExiste){alert('⚠️ Esta factura (UUID '+data.uuid+') ya está registrada.');$('btnGuardarFactura').disabled=false;return;}
-    var diasCredito=_facProveedorMatch.diasCredito||15;
+    // Sin proveedor registrado no hay días de crédito que aplicar — se
+    // trata como vencimiento inmediato (0 días) hasta que se dé de alta.
+    var diasCredito=_facProveedorMatch?(_facProveedorMatch.diasCredito||15):0;
     // Los días de crédito corren desde que se REGISTRA la factura (hoy), no
     // desde la fecha de timbrado del CFDI (el proveedor a veces timbra días
     // antes de mandarla, y no se puede pagar en una fecha ya pasada).
@@ -1135,7 +1137,9 @@ async function guardarFactura(){
     var estadoPago=data.metodoPago==='PUE'?'pendiente_pago':'vigente_por_pagar';
     var u=usuarioSesion();
     await window.FB.set('cxpFacturas',data.uuid,{
-      proveedorId:_facProveedorMatch.rfc,proveedorNombre:_facProveedorMatch.razonSocial,
+      proveedorId:_facProveedorMatch?_facProveedorMatch.rfc:data.rfcEmisor,
+      proveedorNombre:_facProveedorMatch?_facProveedorMatch.razonSocial:(data.nombreEmisor||data.rfcEmisor),
+      proveedorRegistrado:!!_facProveedorMatch,
       serie:data.serie,folio:data.folio,tipoComprobante:data.tipoComprobante,
       metodoPago:data.metodoPago,formaPago:data.formaPago,
       subtotal:data.subtotal,totalImpuestos:data.traslados-data.retenciones,total:data.total,
@@ -1153,7 +1157,7 @@ async function guardarFactura(){
     // el proveedor no tiene correo capturado).
     fetch(FUNCTION_URL_ENVIAR_CONFIRMACION_FACTURA,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({uuid:data.uuid})})
       .catch(function(e){console.error('enviarConfirmacionFacturaRecibida:',e);});
-    alert('✅ Factura registrada: '+fmt(data.total)+' — '+_facProveedorMatch.razonSocial+(estadoPago==='pendiente_pago'?'\n\n⚠️ Es PUE: queda BLOQUEADA hasta registrar el pago (botón "➕ Pago" en Facturas y Pagos).':''));
+    alert('✅ Factura registrada: '+fmt(data.total)+' — '+(_facProveedorMatch?_facProveedorMatch.razonSocial:(data.nombreEmisor||data.rfcEmisor)+' (proveedor no registrado, sin días de crédito)')+(estadoPago==='pendiente_pago'?'\n\n⚠️ Es PUE: queda BLOQUEADA hasta registrar el pago (botón "➕ Pago" en Facturas y Pagos).':''));
     cancelarCapturaFactura();
     await cargarYRenderFacturas(true);
   }catch(e){
@@ -1248,7 +1252,7 @@ function renderFacturas(){
       var sinPagar=!pagada&&!bloqueada;
       var negrita=sinPagar?'font-weight:700':'';
       var fila='<tr'+(sinPagar?' style="background:#fff8e1"':'')+'>'
-        +'<td style="font-size:12px;'+negrita+'">'+(f.proveedorNombre||f.proveedorId||'')+(f.estadoProrrateo==='n_aplica'?'<div style="font-size:10px;color:#888">gasto general (sin unidad)</div>':'')+'</td>'
+        +'<td style="font-size:12px;'+negrita+'">'+(f.proveedorNombre||f.proveedorId||'')+(f.proveedorRegistrado===false?' <span class="badge bg-yellow" title="Este proveedor todavía no está dado de alta — se registró sin días de crédito. Dalo de alta para que le apliquen los días de crédito normales.">⚠️ no registrado</span>':'')+(f.estadoProrrateo==='n_aplica'?'<div style="font-size:10px;color:#888">gasto general (sin unidad)</div>':'')+'</td>'
         +'<td class="num" style="'+negrita+'">'+(f.serie?f.serie+'-':'')+f.folio+'</td>'
         +'<td style="'+negrita+'">'+f.fechaEmision+'</td>'
         +'<td class="num r" style="'+negrita+'">'+fmt(f.total)+'</td>'
