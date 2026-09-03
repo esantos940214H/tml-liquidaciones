@@ -411,7 +411,7 @@ tr:hover td{background:#fafafa}
       </div>
       <div id="archivoMaestroFletesWrap"><p style="font-size:13px;color:#aaa;padding:10px 0">Cargando...</p></div>
       <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap">
-        <button class="btn btn-out btn-sm" onclick="descargarConcentradoRecibosManiobra()">📄 Descargar concentrado de recibos (PDF)</button>
+        <button class="btn btn-out btn-sm" title="Solo incluye los pedidos marcados con la casilla &quot;Incluir&quot; de la tabla" onclick="descargarConcentradoRecibosManiobra()">📄 Descargar concentrado de recibos (PDF)</button>
         <button class="btn btn-out btn-sm" onclick="descargarPedidoManiobrasExcel()">📊 Descargar pedido de maniobras (Excel)</button>
       </div>
     </div>
@@ -2333,8 +2333,14 @@ function _cargarImagenParaPDF(url){
   });
 }
 async function descargarConcentradoRecibosManiobra(){
-  var filas=construirArchivoMaestroFletes().filter(function(f){return f.reciboManiobraImgURL;});
-  if(!filas.length){alert('Todavía no hay ningún recibo de maniobra registrado.');return;}
+  // Mismo criterio de selección que el Excel de pedido de maniobras (casilla
+  // "Incluir") — si no marcaste nada, se avisa en vez de mandar TODOS los
+  // recibos que existan (antes mezclaba operadores que no tenían nada que
+  // ver con lo que se quería mandar).
+  var seleccionados=Object.keys(seleccionManiobrasExcel).filter(function(k){return seleccionManiobrasExcel[k];});
+  if(!seleccionados.length){alert('No has seleccionado ningún pedido — marca "Incluir" en las filas del Archivo Maestro cuyo recibo quieras meter al concentrado.');return;}
+  var filas=construirArchivoMaestroFletes().filter(function(f){return f.reciboManiobraImgURL&&seleccionManiobrasExcel[f.ordenEmbarque];});
+  if(!filas.length){alert('Ninguno de los pedidos seleccionados tiene recibo de maniobra subido todavía.');return;}
   if(!window.jspdf||!window.jspdf.jsPDF){
     try{await cargarScriptUnaVez('https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js');}
     catch(e){alert('No se pudo cargar el generador de PDF. Revisa tu conexión e intenta de nuevo.');return;}
