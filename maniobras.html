@@ -541,6 +541,20 @@ async function confirmarDepositoManiobra(id){
 // Normaliza texto para comparar (mayúsculas, sin espacios de sobra) — usado
 // tanto para armar el ID combinado como para la detección de duplicados.
 function _normTxt(s){return(s||'').toString().trim().toUpperCase().replace(/\s+/g,' ');}
+// _idsDeObservaciones(observaciones): parte "FOLIO:2763 | TU1:6500360352 |
+// TU2:6500360353" en sus identificadores exactos ["2763","6500360352",
+// "6500360353"] (quita la etiqueta y normaliza cada uno por separado).
+// IMPORTANTE: antes se comparaba con vIds.indexOf(id) sobre el STRING
+// completo sin partir — un folio corto como "603" hacía falso positivo con
+// CUALQUIER T.U. de 10 dígitos que trajera "603" en medio (ej. "6500360352"
+// contiene "603" empezando en el dígito 6), bloqueando registros que en
+// realidad no tenían nada que ver. Al partir en tokens y comparar cada uno
+// completo (array.indexOf ya es igualdad exacta, no "contiene"), un folio
+// corto solo puede chocar con un folio/T.U. IGUAL, nunca con un substring
+// de otro número.
+function _idsDeObservaciones(observaciones){
+  return (observaciones||'').split('|').map(function(s){return _normTxt(s.replace(/^\s*[A-Z0-9]+:/,''));}).filter(function(s){return s;});
+}
 
 // Revisa si YA existe una autorización con los mismos datos (operador,
 // monto, fecha, destino, tienda, y al menos uno de folio/pedido/T.U.'s
@@ -564,7 +578,7 @@ function _buscarDuplicado(datos){
     var vTienda=_normTxt(v.tienda);
     if(destino&&vDestino&&destino!==vDestino)return false;
     if(tienda&&vTienda&&tienda!==vTienda)return false;
-    var vIds=_normTxt(v.observaciones);
+    var vIds=_idsDeObservaciones(v.observaciones);
     return ids.some(function(id){return vIds.indexOf(id)!==-1;});
   });
 }
@@ -593,7 +607,7 @@ function _crearAutorizacionEnMemoria(datos){
     var existentePendiente=ingresosDB.find(function(v){
       if(!v.esAutorizacionCliente||!v.montoPendiente||v.sustituidoPorXML)return false;
       if(v.unidad!==unidad)return false;
-      var vIds=_normTxt(v.observaciones);
+      var vIds=_idsDeObservaciones(v.observaciones);
       return idsNuevos.some(function(id){return vIds.indexOf(id)!==-1;});
     });
     if(existentePendiente){
@@ -614,7 +628,7 @@ function _crearAutorizacionEnMemoria(datos){
   var existenteCorregible=(!pendiente&&monto&&idsCorreccion.length)?ingresosDB.find(function(v){
     if(!v.esAutorizacionCliente||v.montoPendiente||v.sustituidoPorXML)return false;
     if(v.unidad!==unidad)return false;
-    var vIds=_normTxt(v.observaciones);
+    var vIds=_idsDeObservaciones(v.observaciones);
     if(!idsCorreccion.some(function(id){return vIds.indexOf(id)!==-1;}))return false;
     return Math.abs((v.subtotal||0)-monto)>=0.01;
   }):null;
@@ -635,7 +649,7 @@ function _crearAutorizacionEnMemoria(datos){
   var idsChoque=[folio,pedido].map(_normTxt).filter(function(s){return s;});
   var choqueId=idsChoque.length?ingresosDB.find(function(v){
     if(!v.sinFacturaJustificar||v.sustituidoPorXML)return false;
-    var vIds=_normTxt(v.observaciones);
+    var vIds=_idsDeObservaciones(v.observaciones);
     return idsChoque.some(function(id){return vIds.indexOf(id)!==-1;});
   }):null;
   if(choqueId)return{ok:false,error:'Alguno de esos identificadores ya está en uso por otro ingreso sin factura pendiente (ID: "'+choqueId.observaciones+'"). Usa uno distinto o revisa si ya existe.'};
@@ -647,7 +661,7 @@ function _crearAutorizacionEnMemoria(datos){
   if(tuIds.length){
     var yaConEsteTU=ingresosDB.filter(function(v){
       if(!v.esAutorizacionCliente)return false;
-      var vIds=_normTxt(v.observaciones);
+      var vIds=_idsDeObservaciones(v.observaciones);
       return tuIds.some(function(id){return vIds.indexOf(id)!==-1;});
     });
     if(yaConEsteTU.length>=2)return{ok:false,error:'⚠️ Este T.U. ya tiene 2 autorizaciones registradas (CEDIS + destino final) — no debería haber una tercera. Revisa si es un error antes de forzarlo. Registros existentes: "'+yaConEsteTU.map(function(v){return v.observaciones;}).join('" y "')+'".'};
@@ -760,7 +774,7 @@ function _correoYaRegistrado(ids){
   if(!ids.length)return false;
   return ingresosDB.some(function(v){
     if(!v.esAutorizacionCliente)return false;
-    var vIds=_normTxt(v.observaciones);
+    var vIds=_idsDeObservaciones(v.observaciones);
     return ids.some(function(id){return vIds.indexOf(id)!==-1;});
   });
 }
