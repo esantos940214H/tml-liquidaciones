@@ -102,9 +102,11 @@
     return ordenNorm;
   };
 
-  // marcarFleteFacturado(ordenEmbarque, datosFactura): se llama desde
-  // procesarFacturaManiobrasExcel cuando un renglón del Excel de la factura
-  // consolidada coincide con un pedido de flete pendiente — nunca se
+  // marcarFleteFacturado(ordenEmbarque, datosFactura): la factura PROPIA del
+  // FLETE (carta porte) — se llama desde intentarSustituirFletePorXML en
+  // ing.html cuando llega el XML normal del embarque y su T.U./pedido
+  // coincide con un pedido de flete pendiente. NO usar esto para la factura
+  // de maniobras (ver marcarManiobraFacturada, campos aparte) — nunca se
   // sobrescribe en bloque, solo se fusionan los campos de la factura.
   window.marcarFleteFacturado = function (ordenEmbarque, datosFactura) {
     var _db = db();
@@ -113,6 +115,26 @@
       estado: 'facturado', facturaUUID: datosFactura.uuid || null,
       facturaFolio: datosFactura.folio || null, montoFactura: datosFactura.monto != null ? datosFactura.monto : null,
       facturadoEn: new Date().toISOString()
+    }, { merge: true });
+  };
+
+  // marcarManiobraFacturada(ordenEmbarque, datosFactura): APARTE de
+  // marcarFleteFacturado — esa es la factura propia del FLETE (carta porte,
+  // la marca intentarSustituirFletePorXML en ing.html cuando llega el XML
+  // normal del embarque); esta es la factura GLOBAL de MANIOBRAS (Raúl,
+  // procesarFacturaManiobrasExcel). Antes ambas escribían los MISMOS campos
+  // (estado/facturaFolio/facturaUUID/montoFactura) — subir la carta porte
+  // del flete marcaba también la maniobra como facturada de pilón, aunque
+  // la factura real de Raúl todavía no llegara (caso real: Eduardo
+  // Hernández Aceves, T.U. 6500360831/6500360832, folio A2588). Con campos
+  // separados, una no puede pisar a la otra.
+  window.marcarManiobraFacturada = function (ordenEmbarque, datosFactura) {
+    var _db = db();
+    if (!_db) return Promise.reject(new Error('Sin conexión a Firestore.'));
+    return _db.collection('fletesDB').doc(normalizarOrdenEmbarque(ordenEmbarque)).set({
+      maniobraFacturada: true, facturaManiobraUUID: datosFactura.uuid || null,
+      facturaManiobraFolio: datosFactura.folio || null, montoFacturaManiobra: datosFactura.monto != null ? datosFactura.monto : null,
+      maniobraFacturadaEn: new Date().toISOString()
     }, { merge: true });
   };
 

@@ -2097,13 +2097,20 @@ function construirArchivoMaestroFletes(){
       montoFlete:f.montoFlete,
       montoAutorizadoManiobra:m?m.autorizacion.subtotal:null,
       metodoMatch:m?m.metodo:null,
-      // OJO — NO MEZCLAR: estadoFactura/facturaFolio (de fletesDB, puestos
-      // por marcarFleteFacturado dentro de procesarFacturaManiobrasExcel)
-      // son la factura GLOBAL de MANIOBRAS de Raúl (una sola factura cubre
+      // OJO — NO MEZCLAR: estadoFactura/facturaFolio vienen de
+      // maniobraFacturada/facturaManiobraFolio (fletesDB, puestos por
+      // marcarManiobraFacturada dentro de procesarFacturaManiobrasExcel) —
+      // es la factura GLOBAL de MANIOBRAS de Raúl (una sola factura cubre
       // muchos viajes/T.U.'s). facturaFleteFolio es la carta porte PROPIA
-      // de este flete (un CFDI por viaje, ver folioFacturaFleteDe) — son dos
-      // facturas de dos proveedores/conceptos distintos, nunca la misma.
-      estadoFactura:f.estado,facturaFolio:f.facturaFolio,montoFactura:f.montoFactura,
+      // de este flete (un CFDI por viaje, ver folioFacturaFleteDe, y
+      // marcarFleteFacturado/intentarSustituirFletePorXML del lado de
+      // fletesDB.estado/facturaFolio) — son dos facturas de dos
+      // proveedores/conceptos distintos, con campos separados en fletesDB
+      // desde ahora para que nunca se pisen entre sí (antes compartían el
+      // mismo campo — caso real: subir la carta porte marcaba también la
+      // maniobra como facturada sin que la factura de Raúl hubiera llegado).
+      estadoFactura:f.maniobraFacturada?'facturado':'pendiente_factura',
+      facturaFolio:f.facturaManiobraFolio,montoFactura:f.montoFacturaManiobra,
       facturaFleteFolio:folioFacturaFleteDe(f),
       tieneIngresoProvisional:!!tieneProvisional,
       bultos:f.bultos!=null?f.bultos:null,
@@ -2507,16 +2514,17 @@ var seleccionManiobrasExcel={};
 // facturaFleteFolio) para que funcione igual con las filas del Archivo
 // Maestro (que sí lo traen precalculado) y con los registros crudos de
 // FLETES que usa descargarPedidoManiobrasExcel (que no).
-// Tampoco se puede incluir si la MANIOBRA ya está facturada (f.estado
-//==='facturado', puesto por marcarFleteFacturado cuando se sustituye la
-// factura consolidada de Raúl) — mandarle otra vez un pedido de algo que
+// Tampoco se puede incluir si la MANIOBRA ya está facturada
+// (f.maniobraFacturada, puesto por marcarManiobraFacturada cuando se
+// sustituye la factura consolidada de Raúl — NO f.estado, que es de la
+// carta porte propia del flete) — mandarle otra vez un pedido de algo que
 // ya facturó puede hacer que rechace el conjunto completo de maniobras.
 function _maniobraCompleta(f){
-  // f.estado (registro crudo de FLETES) o f.estadoFactura (fila ya armada
-  // por construirArchivoMaestroFletes, que lo renombra) — según de dónde
-  // venga "f", nunca los dos a la vez.
-  var estadoManiobra=f.estadoFactura!=null?f.estadoFactura:f.estado;
-  return f.bultos!=null&&!!f.reciboManiobraImgURL&&!!folioFacturaFleteDe(f)&&estadoManiobra!=='facturado';
+  // f.maniobraFacturada (registro crudo de FLETES) o f.estadoFactura (fila
+  // ya armada por construirArchivoMaestroFletes, que lo renombra) — según
+  // de dónde venga "f".
+  var maniobraFacturada=f.estadoFactura!=null?f.estadoFactura==='facturado':!!f.maniobraFacturada;
+  return f.bultos!=null&&!!f.reciboManiobraImgURL&&!!folioFacturaFleteDe(f)&&!maniobraFacturada;
 }
 function toggleSeleccionManiobra(orden,checked){
   if(checked)seleccionManiobrasExcel[orden]=true;else delete seleccionManiobrasExcel[orden];
@@ -2807,18 +2815,25 @@ async function procesarFacturaManiobrasExcel(){
       });
       sustituidos=resueltos;
       guardar();renderIngresos();
-      // De paso, marca "facturado" cualquier pedido de flete pendiente que
-      // coincida por orden de embarque (mismas T.U.'s del renglón) — no
-      // bloquea el guardado si alguno falla, es un extra sobre lo ya
-      // sustituido arriba.
-      var fletesPendientes=(await window.cargarFletes(true)).filter(function(f){return f.estado==='pendiente_factura';});
+      // De paso, marca la MANIOBRA como facturada en cualquier pedido de
+      // flete que coincida por orden de embarque (mismas T.U.'s del
+      // renglón) — no bloquea el guardado si alguno falla, es un extra
+      // sobre lo ya sustituido arriba. OJO: esto es aparte de
+      // marcarFleteFacturado (la carta porte propia del flete, que marca
+      // intentarSustituirFletePorXML) — por eso NO se filtra por
+      // estado==='pendiente_factura' (ese campo es del flete, no de la
+      // maniobra; un flete ya facturado igual puede seguir con su maniobra
+      // pendiente, y viceversa — antes compartían el mismo campo y uno se
+      // pisaba con el otro, ver nota en marcarManiobraFacturada).
+      var todosFletes=await window.cargarFletes(true);
       for(var iRes=0;iRes<sustituidos.length;iRes++){
         var rgRes=sustituidos[iRes].rg;
         for(var iTu=0;iTu<rgRes.tus.length;iTu++){
-          var fleteMatch=window.buscarFletePendientePorOrden(fletesPendientes,rgRes.tus[iTu]);
+          var tuNorm=normalizarOrdenEmbarque(rgRes.tus[iTu]);
+          var fleteMatch=todosFletes.find(function(f){return f.ordenEmbarque===tuNorm||f.tu2===tuNorm;});
           if(fleteMatch){
-            try{await window.marcarFleteFacturado(fleteMatch.ordenEmbarque,{uuid:uuid,folio:folioCompleto,monto:rgRes.total});}
-            catch(e){console.error('marcarFleteFacturado:',e);}
+            try{await window.marcarManiobraFacturada(fleteMatch.ordenEmbarque,{uuid:uuid,folio:folioCompleto,monto:rgRes.total});}
+            catch(e){console.error('marcarManiobraFacturada:',e);}
             break;
           }
         }
