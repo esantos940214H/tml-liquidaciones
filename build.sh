@@ -7,7 +7,7 @@ set -euo pipefail
 cd "$(dirname "$0")"
 
 rm -rf dist
-mkdir -p dist/portal dist/anticipos dist/cxc dist/liquidaciones dist/nomina dist/incidentes dist/historial dist/usuarios dist/autorizaciones dist/precarga dist/proveedores
+mkdir -p dist/portal dist/anticipos dist/cxc dist/liquidaciones dist/nomina dist/incidentes dist/historial dist/usuarios dist/autorizaciones dist/precarga dist/proveedores dist/operador
 
 cp index.html          dist/portal/index.html
 cp ant.html            dist/anticipos/index.html
@@ -22,9 +22,14 @@ cp flota.html          dist/usuarios/flota.html
 cp autorizaciones.html dist/autorizaciones/index.html
 cp precarga.html       dist/precarga/index.html
 cp proveedores.html    dist/proveedores/index.html
+cp operador.html        dist/operador/index.html
+cp manifest-operador.json dist/operador/manifest-operador.json
+cp sw-operador.js      dist/operador/sw-operador.js
 
-# LOGO.png solo lo usa el portal (index.html)
+# LOGO.png lo usa el portal (index.html) y el módulo de operadores (ícono
+# de la PWA + logo de la pantalla de login)
 cp LOGO.png dist/portal/LOGO.png
+cp LOGO.png dist/operador/LOGO.png
 
 # plantillas/: plantillas .xlsx reales (con logos/formato del cliente) que
 # ing.html descarga tal cual, solo sustituyendo los datos — solo la usa cxc
@@ -44,7 +49,7 @@ VERSION_ID="$(date -u +%Y%m%d%H%M%S)"
 # version.json: identificador único de este despliegue, usado por
 # shared/autoActualizar.js para avisar a pestañas abiertas que hay una
 # versión más nueva del sitio. Se genera fresco en cada build.
-for site in portal anticipos cxc liquidaciones nomina incidentes historial usuarios autorizaciones precarga proveedores; do
+for site in portal anticipos cxc liquidaciones nomina incidentes historial usuarios autorizaciones precarga proveedores operador; do
   echo "{\"v\":\"$VERSION_ID\"}" > dist/$site/version.json
 done
 
@@ -60,4 +65,4 @@ for f in dist/*/index.html dist/usuarios/flota.html dist/cxc/maniobras.html; do
   sed -i -E "s#(src=\"shared/[A-Za-z0-9_.-]+\.js)\"#\1?v=$VERSION_ID\"#g" "$f"
 done
 
-echo "build.sh: dist/ generado con 11 sites (version $VERSION_ID)."
+echo "build.sh: dist/ generado con 12 sites (version $VERSION_ID)."

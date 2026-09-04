@@ -15,7 +15,8 @@
         "usuarios": ["tml-liquidaciones-usuarios"],
         "autorizaciones": ["tml-liquidaciones-autorizaciones"],
         "precarga": ["tml-liquidaciones-precarga"],
-        "proveedores": ["tml-liquidaciones-proveedores"]
+        "proveedores": ["tml-liquidaciones-proveedores"],
+        "operador": ["tml-liquidaciones-operador"]
       }
     }
   }

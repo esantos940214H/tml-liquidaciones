@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+<title>TML Operadores</title>
+<meta name="theme-color" content="#0d1b2a">
+<link rel="manifest" href="manifest-operador.json">
+<link rel="apple-touch-icon" href="LOGO.png">
+<style>
+  *{box-sizing:border-box}
+  body{margin:0;min-height:100vh;background:#0d1b2a;color:#fff;font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;
+    display:flex;align-items:center;justify-content:center;padding:20px}
+  .card{width:100%;max-width:380px;background:#132a3f;border-radius:16px;padding:28px 24px;box-shadow:0 8px 30px rgba(0,0,0,.4)}
+  .logo{display:block;max-width:220px;margin:0 auto 20px}
+  h1{font-size:19px;text-align:center;margin:0 0 22px;font-weight:600;color:#e6edf3}
+  label{display:block;font-size:13px;color:#9fb3c8;margin:14px 0 6px}
+  input{width:100%;padding:14px;font-size:18px;border-radius:10px;border:1px solid #2a3f56;background:#0d1b2a;color:#fff;letter-spacing:1px}
+  input:focus{outline:2px solid #4da3ff}
+  button{width:100%;margin-top:22px;padding:15px;font-size:16px;font-weight:600;border:none;border-radius:10px;
+    background:#4da3ff;color:#06121e;cursor:pointer}
+  button:disabled{opacity:.5}
+  .msg{margin-top:14px;font-size:14px;text-align:center;min-height:18px}
+  .msg.error{color:#ff6b6b}
+  .msg.ok{color:#4ade80}
+  .bienvenida{text-align:center}
+  .bienvenida h2{font-size:20px;margin:0 0 6px}
+  .bienvenida p{color:#9fb3c8;margin:0 0 24px}
+  .salir{background:transparent;border:1px solid #2a3f56;color:#9fb3c8;margin-top:10px}
+</style>
+</head>
+<body>
+
+<div class="card">
+  <img class="logo" src="LOGO.png" alt="Mudanzas TML">
+
+  <!-- ── PANTALLA DE LOGIN ────────────────────────────────────────────── -->
+  <div id="panelLogin">
+    <h1>Acceso de operadores</h1>
+    <label for="inTelefono">Número de celular</label>
+    <input id="inTelefono" type="tel" inputmode="numeric" maxlength="10" placeholder="10 dígitos" autocomplete="tel">
+    <label for="inPin">PIN (4 dígitos)</label>
+    <input id="inPin" type="password" inputmode="numeric" maxlength="4" placeholder="••••" autocomplete="off">
+    <button id="btnEntrar" onclick="entrar()">Entrar</button>
+    <div id="msgLogin" class="msg"></div>
+  </div>
+
+  <!-- ── PANTALLA DE BIENVENIDA (placeholder Fase 1 — evidencias y dinero
+       llegan en las siguientes fases) ──────────────────────────────────── -->
+  <div id="panelBienvenida" class="bienvenida" style="display:none">
+    <h2 id="txtNombre">Bienvenido</h2>
+    <p>Sesión iniciada correctamente.</p>
+    <button class="salir" onclick="salir()">Cerrar sesión</button>
+  </div>
+</div>
+
+<!-- Firebase compat -->
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
+<script>
+const FUNCTION_URL_LOGIN_OPERADOR='https://us-central1-tml-liquidaciones.cloudfunctions.net/loginOperador';
+
+var cfg={apiKey:"AIzaSyDqlhREJFVFLGzz7bVlPcNl1Uba9HI3r8s",authDomain:"tml-liquidaciones.firebaseapp.com",
+  projectId:"tml-liquidaciones",storageBucket:"tml-liquidaciones.firebasestorage.app",
+  messagingSenderId:"268455373953",appId:"1:268455373953:web:ad359c5dbcba9f53557180"};
+if(!firebase.apps.length)firebase.initializeApp(cfg);
+
+function mostrarMsg(texto,tipo){
+  var el=document.getElementById('msgLogin');
+  el.textContent=texto||'';
+  el.className='msg'+(tipo?(' '+tipo):'');
+}
+
+async function entrar(){
+  var telefono=document.getElementById('inTelefono').value.replace(/\D/g,'');
+  var pin=document.getElementById('inPin').value.trim();
+  if(telefono.length!==10){ mostrarMsg('El teléfono debe tener 10 dígitos.','error'); return; }
+  if(!/^\d{4}$/.test(pin)){ mostrarMsg('El PIN debe ser de 4 dígitos.','error'); return; }
+  var btn=document.getElementById('btnEntrar');
+  btn.disabled=true; mostrarMsg('Verificando...','');
+  try{
+    var r=await fetch(FUNCTION_URL_LOGIN_OPERADOR,{
+      method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({telefono:telefono,pin:pin})
+    });
+    var datos=await r.json();
+    if(!r.ok||datos.error){ mostrarMsg(datos.error||'No se pudo entrar.','error'); btn.disabled=false; return; }
+    await firebase.auth().signInWithCustomToken(datos.token);
+    mostrarMsg('','');
+  }catch(e){
+    console.error('entrar:',e);
+    mostrarMsg('Sin conexión. Intenta de nuevo.','error');
+    btn.disabled=false;
+  }
+}
+
+function salir(){
+  firebase.auth().signOut();
+}
+
+firebase.auth().onAuthStateChanged(async function(usuario){
+  var btn=document.getElementById('btnEntrar');
+  if(btn)btn.disabled=false;
+  if(!usuario){
+    document.getElementById('panelLogin').style.display='block';
+    document.getElementById('panelBienvenida').style.display='none';
+    return;
+  }
+  var token=await usuario.getIdTokenResult();
+  if(token.claims.rol!=='operador'){
+    // Sesión de otro tipo de usuario (staff) abierta por error en este módulo.
+    mostrarMsg('Esta cuenta no tiene acceso de operador.','error');
+    firebase.auth().signOut();
+    return;
+  }
+  document.getElementById('panelLogin').style.display='none';
+  document.getElementById('panelBienvenida').style.display='block';
+  var etiqueta=token.claims.maestro?'Modo maestro':'Bienvenido';
+  document.getElementById('txtNombre').textContent=etiqueta+(usuario.displayName?(', '+usuario.displayName):'');
+});
+
+if('serviceWorker' in navigator){
+  navigator.serviceWorker.register('sw-operador.js').catch(function(e){console.error('sw-operador:',e);});
+}
+</script>
+</body>
+</html>
