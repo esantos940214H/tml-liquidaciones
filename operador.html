@@ -134,6 +134,25 @@
       </div>
     </div>
 
+    <!-- ── DEPÓSITOS A OPERADORES (solo cuenta maestro real, nunca en "Ver
+         como...", por ser dinero real) — junta lo que cada operador tiene
+         pendiente (anticipo de comisión + monto de maniobra ya evidenciado)
+         en un solo total redondeado hacia arriba a cientos, y detecta solo
+         cuáles ya se depositaron subiendo el estado de cuenta BBVA. Lo
+         depositado de días anteriores deja de mostrarse aquí (solo hoy). -->
+    <div id="bloqueDepositos" style="display:none">
+      <div class="card-ev">
+        <label>💰 Depósitos a operadores</label>
+        <label style="margin-top:10px">Subir estado de cuenta (CSV/TXT)</label>
+        <input type="file" id="estadoCuentaDepositos" accept=".csv,.txt" onchange="subirEstadoCuentaDepositos(this)">
+        <div id="depositosInfo" class="infoArchivo"></div>
+        <div style="font-size:12px;color:#1a1a1a;font-weight:600;margin-top:14px">Pendientes</div>
+        <div id="listaDepositosPendientes"></div>
+        <div style="font-size:12px;color:#1a1a1a;font-weight:600;margin-top:14px">Depositado hoy</div>
+        <div id="listaDepositosHoy"></div>
+      </div>
+    </div>
+
     <button class="salir" onclick="salir()">Cerrar sesión</button>
   </div>
 </div>
@@ -677,6 +696,10 @@ async function actualizarEstadoDinero(claims){
   poblarViajesDinero(claims);
   $('bloqueBitacoras').style.display='block';
   poblarBitacoras(claims);
+  if(claims.maestro&&!_verComoOperadorId){
+    $('bloqueDepositos').style.display='block';
+    poblarDepositos();
+  }
 }
 async function solicitarDinero(){
   if(_verComoOperadorId){
@@ -741,6 +764,11 @@ async function alCambiarVerComo(){
   restringirFletesAOperador(_claimsEfectivos());
   poblarViajesDinero(_claimsEfectivos());
   poblarBitacoras(_claimsEfectivos());
+  // Depósitos: dinero real, nunca se muestra/calcula durante "Ver como..."
+  // (que ya deja FLETES restringido a un solo operador, no serviría de
+  // todas formas para juntar los totales de todos).
+  $('bloqueDepositos').style.display=_verComoOperadorId?'none':'block';
+  if(!_verComoOperadorId)poblarDepositos();
   $('txtContexto').textContent=_verComoOperadorId
     ?'👁️ Viendo como operador — vista previa, no se puede enviar solicitudes reales.'
     :'Modo maestro: puedes subir evidencia de cualquier pedido.';
@@ -782,6 +810,169 @@ function poblarBitacoras(claims){
       +'<div class="estado-ev">'+(f.fecha||'')+(claims.maestro?(' · '+(op?op.nombre:'(operador no identificado)')):'')+'</div></div>'
       +'<button class="btn-icono" type="button" onclick="abrirBitacora(\''+f.ordenEmbarque+'\')">🕐</button>';
     cont.appendChild(div);
+  });
+}
+
+// ══════════════════════════════════════════════════════════════════════
+// DEPÓSITOS A OPERADORES (solo maestro real) — junta, por operador, todo
+// lo que tiene pendiente de cobrar: la suma de sus anticipos ya
+// solicitados (anticipoOperadorMonto, Fase 3) más el monto de maniobra ya
+// evidenciado (reciboManiobraMonto) de esos MISMOS viajes, en un solo
+// total redondeado HACIA ARRIBA a cientos (criterio del dueño). Detecta
+// solo quién ya se depositó subiendo el estado de cuenta BBVA (mismo
+// parser que ant.html, duplicado aquí a propósito — ver esa nota en otras
+// partes del archivo sobre por qué no se comparte código entre módulos).
+// ══════════════════════════════════════════════════════════════════════
+function _redondearArriba100(n){return Math.ceil(n/100)*100;}
+function _hoyISO(){return new Date().toISOString().slice(0,10);}
+
+function parseFechaCSVDeposito(str){
+  if(!str)return null;
+  var s=str.toString().replace(/\D/g,'');
+  if(s.length===8){var d=new Date(s.slice(4)+'-'+s.slice(2,4)+'-'+s.slice(0,2));return isNaN(d)?null:d.toISOString().slice(0,10);}
+  return null;
+}
+function parseFechaTXTDeposito(str){
+  if(!str)return null;
+  var p=str.split('-');
+  if(p.length===3){var d=new Date(p[2]+'-'+p[1].padStart(2,'0')+'-'+p[0].padStart(2,'0'));return isNaN(d)?null:d.toISOString().slice(0,10);}
+  return null;
+}
+// parseCargosEstadoCuenta: regresa [{fecha,importe,concepto}] — SOLO los
+// cargos (salidas de la cuenta de TML, columna "Cargo"==="-"), que es lo
+// que representa un depósito hecho a un operador. Mismo criterio que
+// parseCSV/parseTXT en ant.html.
+function parseCargosEstadoCuenta(text,esTXT){
+  var lines=text.split(/\r?\n/).filter(function(l){return l.trim();});
+  if(!lines.length)return[];
+  if(esTXT){
+    var filas=[];
+    for(var i=1;i<lines.length;i++){
+      var cols=lines[i].split('\t');
+      if(cols.length<3)continue;
+      var cargo=(cols[2]||'').trim().replace(/,/g,'');
+      if(!cargo||parseFloat(cargo)<=0)continue;
+      var fecha=parseFechaTXTDeposito((cols[0]||'').trim());
+      if(!fecha)continue;
+      filas.push({fecha:fecha,importe:parseFloat(cargo),concepto:(cols[1]||'').trim()});
+    }
+    return filas;
+  }
+  var clean=function(s){return s.replace(/^'+/,'').replace(/'+$/,'').trim();};
+  var sep=lines[0].indexOf('\t')!==-1?'\t':',';
+  var headers=lines[0].split(sep).map(function(h){return h.trim().replace(/^'/,'');});
+  var idx=function(h){return headers.findIndex(function(x){return x.toLowerCase().indexOf(h.toLowerCase())!==-1;});};
+  var iFecha=idx('Fecha'),iCA=idx('Cargo'),iImporte=idx('Importe'),iConcepto=idx('Concepto');
+  var rows=[];
+  for(var j=1;j<lines.length;j++){
+    var c=lines[j].split(sep).map(clean);
+    if(c.length<4)continue;
+    if((c[iCA]||'').trim()!=='-')continue;
+    var f=parseFechaCSVDeposito(c[iFecha]);
+    if(!f)continue;
+    rows.push({fecha:f,importe:parseFloat((c[iImporte]||'0').replace(/,/g,'')),concepto:c[iConcepto]||''});
+  }
+  return rows;
+}
+// _pendientesPorOperador: {operadorId:{nombre,total,viajes:[ordenEmbarque,...]}}
+// — solo viajes con dinero YA solicitado (anticipoOperadorSolicitado) y
+// todavía sin depositar.
+function _pendientesPorOperador(){
+  var mapa={};
+  FLETES.forEach(function(f){
+    if(!f.anticipoOperadorSolicitado||f.anticipoDepositado)return;
+    var operadorId=_operadorIdDeFlete(f);
+    if(!operadorId)return;
+    var op=OPERADORES.find(function(o){return o.operadorId===operadorId;});
+    if(!mapa[operadorId])mapa[operadorId]={nombre:op?op.nombre:('Operador '+operadorId),total:0,viajes:[]};
+    mapa[operadorId].total+=(f.anticipoOperadorMonto||0)+(f.reciboManiobraMonto||0);
+    mapa[operadorId].viajes.push(f.ordenEmbarque);
+  });
+  return mapa;
+}
+function _depositadosHoyPorOperador(){
+  var hoy=_hoyISO();
+  var mapa={};
+  FLETES.forEach(function(f){
+    if(!f.anticipoDepositado||f.anticipoDepositadoEn!==hoy)return;
+    var operadorId=_operadorIdDeFlete(f);
+    if(!operadorId)return;
+    var op=OPERADORES.find(function(o){return o.operadorId===operadorId;});
+    if(!mapa[operadorId])mapa[operadorId]={nombre:op?op.nombre:('Operador '+operadorId),total:0,viajes:[]};
+    mapa[operadorId].total+=(f.anticipoOperadorMonto||0)+(f.reciboManiobraMonto||0);
+    mapa[operadorId].viajes.push(f.ordenEmbarque);
+  });
+  return mapa;
+}
+function poblarDepositos(){
+  var pendientes=_pendientesPorOperador();
+  var contP=$('listaDepositosPendientes');
+  var idsP=Object.keys(pendientes);
+  if(!idsP.length){
+    contP.innerHTML='<div style="font-size:13px;color:#6f8ba6">No hay depósitos pendientes.</div>';
+  }else{
+    contP.innerHTML=idsP.map(function(id){
+      var p=pendientes[id];
+      var totalRedondeado=_redondearArriba100(p.total);
+      return '<div class="viaje-card"><div><div class="destino">'+p.nombre+'</div>'
+        +'<div class="estado-ev">'+fmt(totalRedondeado)+' · Pendiente</div></div></div>';
+    }).join('');
+  }
+  var hoy=_depositadosHoyPorOperador();
+  var contH=$('listaDepositosHoy');
+  var idsH=Object.keys(hoy);
+  if(!idsH.length){
+    contH.innerHTML='<div style="font-size:13px;color:#6f8ba6">Nada depositado hoy todavía.</div>';
+  }else{
+    contH.innerHTML=idsH.map(function(id){
+      var p=hoy[id];
+      var totalRedondeado=_redondearArriba100(p.total);
+      return '<div class="viaje-card"><div><div class="destino">'+p.nombre+'</div>'
+        +'<div class="estado-ev" style="color:#4ade80">'+fmt(totalRedondeado)+' · Depositado hoy</div></div></div>';
+    }).join('');
+  }
+}
+async function subirEstadoCuentaDepositos(input){
+  var file=input.files&&input.files[0];
+  if(!file)return;
+  var info=$('depositosInfo');
+  try{
+    info.innerHTML='⏳ Leyendo el estado de cuenta...';
+    var texto=await _leerArchivoTextoDepositos(file);
+    var esTXT=/\.txt$/i.test(file.name||'');
+    var cargos=parseCargosEstadoCuenta(texto,esTXT);
+    if(!cargos.length){info.innerHTML='⚠️ No se encontraron cargos (salidas) en el archivo.';input.value='';return;}
+    var pendientes=_pendientesPorOperador();
+    var mensajes=[];
+    for(var i=0;i<cargos.length;i++){
+      var cargo=cargos[i];
+      var coincidencias=Object.keys(pendientes).filter(function(id){
+        return _redondearArriba100(pendientes[id].total)===cargo.importe;
+      });
+      if(coincidencias.length!==1){
+        mensajes.push((coincidencias.length===0?'⚠️ Sin coincidencia':'⚠️ '+coincidencias.length+' operadores coinciden')+' para '+fmt(cargo.importe)+' ('+cargo.fecha+').');
+        continue;
+      }
+      var operadorId=coincidencias[0];
+      var p=pendientes[operadorId];
+      for(var j=0;j<p.viajes.length;j++){
+        await actualizarEvidenciaManiobra(p.viajes[j],{anticipoDepositado:true,anticipoDepositadoEn:_hoyISO()});
+      }
+      mensajes.push('✅ '+fmt(cargo.importe)+' asignado a '+p.nombre+'.');
+      delete pendientes[operadorId];
+    }
+    info.innerHTML=mensajes.join('<br>');
+    FLETES=await cargarFletes(true);
+    poblarDepositos();
+  }catch(e){info.innerHTML='⚠️ Error: '+e.message;}
+  input.value='';
+}
+function _leerArchivoTextoDepositos(file){
+  return new Promise(function(resolve,reject){
+    var r=new FileReader();
+    r.onload=function(e){resolve(e.target.result);};
+    r.onerror=reject;
+    r.readAsText(file,'UTF-8');
   });
 }
 var _bitacoraOrden=null,_bitacoraEventos=[],_bitacoraInterval=null,_bitacoraOperadorId=null,_bitacoraDistanciaKm=null;
