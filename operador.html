@@ -1027,8 +1027,41 @@ function _renderGridBitacora(){
   });
   cont.innerHTML=html;
 }
+// _candadoDescanso: candado de SEGURIDAD propio de la empresa (NO viene de
+// la NOM-087, es criterio del dueño por el riesgo de asalto) — antes de
+// dejar marcar "Descanso":
+//   1) El PRIMER descanso del viaje no se puede marcar antes de 5 horas
+//      de iniciado (casi no se pueden detener en las primeras horas).
+//   2) Los descansos siguientes exigen al menos 1 hora conduciendo desde
+//      que arrancó el tramo de manejo actual, antes de poder detenerse.
+// Regresa un mensaje de bloqueo, o null si sí se puede marcar.
+function _candadoDescanso(){
+  var yaHuboDescanso=_bitacoraEventos.some(function(e){return e.tipo==='descanso';});
+  var ahora=Date.now();
+  if(!yaHuboDescanso){
+    var inicioViaje=_bitacoraEventos.find(function(e){return e.tipo==='inicio_viaje';});
+    if(!inicioViaje)return null; // sin dato de inicio de viaje, no se puede validar — se deja pasar
+    var horasDesdeInicio=(ahora-new Date(inicioViaje.inicio).getTime())/3600000;
+    if(horasDesdeInicio<5){
+      return 'Por seguridad, el primer descanso del viaje no se puede marcar antes de 5 horas de iniciado (llevas '+horasDesdeInicio.toFixed(1)+'h).';
+    }
+    return null;
+  }
+  var ultimo=_bitacoraEventos[_bitacoraEventos.length-1];
+  if(ultimo&&ultimo.tipo==='conduciendo'&&!ultimo.fin){
+    var horasConduciendo=(ahora-new Date(ultimo.inicio).getTime())/3600000;
+    if(horasConduciendo<1){
+      return 'Debe pasar al menos 1 hora conduciendo antes de marcar descanso (llevas '+Math.round(horasConduciendo*60)+' min).';
+    }
+  }
+  return null;
+}
 async function registrarEventoBitacora(tipo){
   if(!_bitacoraOrden)return;
+  if(tipo==='descanso'){
+    var bloqueo=_candadoDescanso();
+    if(bloqueo){alert('⚠️ '+bloqueo);return;}
+  }
   var ahora=new Date().toISOString();
   var ref=db.collection('bitacoras').doc(_bitacoraOrden);
   await db.runTransaction(async function(tx){
