@@ -2206,30 +2206,25 @@ exports.loginOperador = onRequest({ cors: true, region: 'us-central1' }, async (
 });
 
 // ══════════════════════════════════════════════════════════════════════════
-// SOLICITAR DINERO (módulo operador.html, Fase 3) — un operador pide un
-// anticipo desde su celular. DOS candados antes de dejarlo pasar:
-//   1) Debe tener evidencia subida (orden de embarque sellada + recibo de
-//      maniobra) de su unidad — si no, se bloquea (ver _tieneEvidenciaSubida).
-//   2) Su "saldo probable" (ver _calcularSaldoProbableOperador) no puede
-//      estar por debajo de -$5,000 — si su deuda ya pasa ese límite, debe
-//      esperar a que se le liquide antes de pedir más.
+// SOLICITAR DINERO (módulo operador.html, Fase 3) — cada solicitud va ligada
+// a UN VIAJE (un pedido de flete/fletesDB) — un operador nunca pide "porque
+// se le antoja", sino contra un viaje concreto. Reglas para un operador
+// normal (rol:'operador', SIN maestro:true):
+//   1) Ese viaje debe tener evidencia completa subida (orden de embarque
+//      sellada + recibo de maniobra) — si no, se bloquea.
+//   2) El monto no puede pasar de 50% de SU comisión sobre ese viaje
+//      (montoFlete * comisión% * 50%) — nunca más.
+//   3) Una vez solicitado dinero para ese viaje, NO se puede volver a pedir
+//      para el mismo viaje (fletesDB.anticipoOperadorSolicitado).
 //
-// IMPORTANTE — fórmula SIMPLIFICADA a propósito: la fórmula completa que usa
-// liq.html (generarReporte, al cerrar una liquidación) también descuenta/
-// abona nómina, incidentes, diesel en efectivo y casetas no facturadas —
-// datos que solo existen DENTRO de una liquidación abierta, no se pueden
-// leer "en vivo" sin arriesgar duplicar mal esa lógica (ver el bug real de
-// esta sesión: fletesDB con campos compartidos entre dos facturas
-// distintas). Aquí solo se calculan: comisión+2% sobre sus fletes sin
-// liquidar, maniobras ya evidenciadas (el propio recibo que sube en este
-// módulo), gastos precargados a su favor pendientes, y sus anticipos
-// pendientes. Efecto de la simplificación: el saldo probable puede verse
-// MÁS A FAVOR del operador de lo que sería con la fórmula completa (nunca
-// al revés) — aceptado como límite conocido mientras el módulo está en
-// fase de demo (ver conversación con el dueño del proyecto).
+// La cuenta MAESTRO es la excepción a propósito: el dueño del negocio puede
+// autorizar manualmente un monto distinto para cualquier operador/viaje
+// ("si me llaman y considero que puedo prestarles una cantidad diferente,
+// se las subo, sin limitantes") — para maestro se SALTAN los 3 candados de
+// arriba (evidencia, tope del 50%, un solo request por viaje), pero la
+// solicitud igual se registra ligada al viaje elegido, para que quede
+// trazabilidad de a cuál operador/viaje corresponde.
 // ══════════════════════════════════════════════════════════════════════════
-const LIMITE_DEUDA_OPERADOR = -5000;
-
 async function _verificarOperador(req) {
   const encabezado = (req.get('Authorization') || '');
   const m = encabezado.match(/^Bearer (.+)$/);
@@ -2239,74 +2234,18 @@ async function _verificarOperador(req) {
   return decoded;
 }
 
-async function _tieneEvidenciaSubida(unidadActual) {
-  if (!unidadActual) return false;
-  const snap = await db.collection('fletesDB').where('economico', '==', unidadActual).get();
-  return snap.docs.some(function (d) {
-    const f = d.data();
-    return !!(f.ordenEmbarqueImgURL && f.reciboManiobraImgURL);
-  });
+// Duplicados a propósito (no requeridos por Firestore, funciones puras) —
+// deben coincidir EXACTO con normalizarOrdenEmbarque (shared/fletes.js) y
+// normEconomico (ing.html) para que un mismo viaje siempre resuelva al mismo
+// documento de fletesDB/al mismo económico sin importar desde dónde se llame.
+function _normalizarOrdenEmbarqueServer(valor) {
+  return (valor == null ? '' : String(valor)).trim().toUpperCase().replace(/\s+/g, '').replace(/^0+(?=\d)/, '');
 }
-
-async function _calcularSaldoProbableOperador(operadorId) {
-  const opDoc = await db.collection('operadores').doc(String(operadorId)).get();
-  if (!opDoc.exists) throw new Error('Operador no encontrado.');
-  const opData = opDoc.data();
-  const comision = opData.comision != null ? opData.comision : 12;
-  const unidadActual = opData.unidadActual != null ? opData.unidadActual : null;
-
-  const ingSnap = await db.collection('estado').doc('ingresosDB').get();
-  const ingresosDB = (ingSnap.exists && ingSnap.data().data) ? JSON.parse(ingSnap.data().data) : [];
-  function sfOf(v) { return v.subtFlete != null ? v.subtFlete : ((v.tipo === 'flete_for' || v.tipo === 'flete_mx') ? v.subtotal : 0); }
-  const viajes = ingresosDB.filter(function (v) {
-    return parseInt(v.unidad) === parseInt(operadorId) && v.estado === 'sin_liquidar' && !v.satCancelado;
-  });
-  const totSubFletes = viajes.reduce(function (s, v) { return s + (sfOf(v) || 0); }, 0);
-  const totComision = totSubFletes * (comision / 100);
-  const totGastos2pct = totSubFletes * 0.02;
-
-  let totManiobrasEvidenciadas = 0;
-  if (unidadActual != null) {
-    const fletesSnap = await db.collection('fletesDB').where('economico', '==', unidadActual).get();
-    fletesSnap.forEach(function (d) {
-      const f = d.data();
-      if (f.reciboManiobraMonto) totManiobrasEvidenciadas += f.reciboManiobraMonto;
-    });
-  }
-
-  let totGastosOp = 0;
-  const gastosSnap = await db.collection('comprobantesPrecargados')
-    .where('operador', '==', parseInt(operadorId)).where('estado', '==', 'pendiente').where('pagaOp', '==', true).get();
-  gastosSnap.forEach(function (d) { totGastosOp += (d.data().total || 0) / 100; });
-
-  const antSnap = await db.collection('estado').doc('anticiposDB').get();
-  let anticiposDB = (antSnap.exists && antSnap.data().data) ? JSON.parse(antSnap.data().data) : {};
-  if (Array.isArray(anticiposDB)) anticiposDB = {}; // mismo guard que el resto del sistema — nunca tratar como arreglo
-  const misAnticipos = Array.isArray(anticiposDB[String(operadorId)]) ? anticiposDB[String(operadorId)] : [];
-  const totAnticipos = misAnticipos.filter(function (a) { return a.estado === 'pendiente'; })
-    .reduce(function (s, a) { return s + (parseFloat(a.importe) || 0); }, 0);
-
-  const abonos = totComision + totGastos2pct + totManiobrasEvidenciadas + totGastosOp;
-  const cargos = totAnticipos;
-  return {
-    saldoProbable: abonos - cargos,
-    detalle: { totComision: totComision, totGastos2pct: totGastos2pct, totManiobrasEvidenciadas: totManiobrasEvidenciadas, totGastosOp: totGastosOp, totAnticipos: totAnticipos },
-    unidadActual: unidadActual
-  };
+const _ECO_MAP_45XX = { 521: 4521, 522: 4522, 523: 4523, 524: 4524, 526: 4526 };
+function _normEconomicoServer(eco) {
+  const n = parseInt(String(eco || '').replace(/[^0-9]/g, '') || 0, 10) || 0;
+  return _ECO_MAP_45XX[n] || n;
 }
-
-exports.saldoProbableOperador = onRequest({ cors: true, region: 'us-central1' }, async (req, res) => {
-  try {
-    const claims = await _verificarOperador(req);
-    if (claims.maestro) { res.json({ maestro: true, saldoProbable: null, tieneEvidencia: null }); return; }
-    const info = await _calcularSaldoProbableOperador(claims.operadorId);
-    const tieneEvidencia = await _tieneEvidenciaSubida(info.unidadActual);
-    res.json({ saldoProbable: info.saldoProbable, detalle: info.detalle, tieneEvidencia: tieneEvidencia, limite: LIMITE_DEUDA_OPERADOR });
-  } catch (e) {
-    console.error('saldoProbableOperador:', e);
-    res.status(401).json({ error: e.message || 'Error interno del servidor.' });
-  }
-});
 
 exports.solicitarAnticipoOperador = onRequest({ cors: true, region: 'us-central1' }, async (req, res) => {
   if (req.method !== 'POST') {
@@ -2315,52 +2254,89 @@ exports.solicitarAnticipoOperador = onRequest({ cors: true, region: 'us-central1
   }
   try {
     const claims = await _verificarOperador(req);
-    if (claims.maestro) {
-      res.status(403).json({ error: 'La cuenta maestro no puede solicitar dinero (no está ligada a ningún operador).' });
-      return;
-    }
-    const operadorId = claims.operadorId;
+    const ordenEmbarque = _normalizarOrdenEmbarqueServer(req.body && req.body.ordenEmbarque);
     const importe = parseFloat(req.body && req.body.importe);
-    if (!importe || importe <= 0) {
-      res.status(400).json({ error: 'El monto debe ser mayor a 0.' });
-      return;
+    if (!ordenEmbarque) { res.status(400).json({ error: 'Falta indicar el viaje.' }); return; }
+    if (!importe || importe <= 0) { res.status(400).json({ error: 'El monto debe ser mayor a 0.' }); return; }
+
+    const fleteRef = db.collection('fletesDB').doc(ordenEmbarque);
+    const fleteSnap = await fleteRef.get();
+    if (!fleteSnap.exists) { res.status(404).json({ error: 'No se encontró ese viaje en el Archivo Maestro.' }); return; }
+    const flete = fleteSnap.data();
+
+    // Identificar al operador dueño del viaje por el económico del flete —
+    // para un operador normal, además confirma que el viaje SÍ es suyo (no
+    // puede pedir dinero de un viaje de otra unidad).
+    let operadorId;
+    if (claims.maestro) {
+      if (!flete.economico) { res.status(400).json({ error: 'Ese viaje no tiene económico registrado — no se puede identificar a qué operador corresponde.' }); return; }
+      const opQuery = await db.collection('operadores').where('unidadActual', '==', _normEconomicoServer(flete.economico)).limit(1).get();
+      if (opQuery.empty) { res.status(404).json({ error: 'No se encontró un operador con esa unidad.' }); return; }
+      operadorId = parseInt(opQuery.docs[0].id);
+    } else {
+      operadorId = claims.operadorId;
+      const opDoc = await db.collection('operadores').doc(String(operadorId)).get();
+      const miUnidad = opDoc.exists ? opDoc.data().unidadActual : null;
+      if (!miUnidad || _normEconomicoServer(flete.economico) !== miUnidad) {
+        res.status(403).json({ error: 'Ese viaje no está asignado a tu unidad.' });
+        return;
+      }
     }
 
-    const info = await _calcularSaldoProbableOperador(operadorId);
-    const tieneEvidencia = await _tieneEvidenciaSubida(info.unidadActual);
-    if (!tieneEvidencia) {
-      res.status(403).json({ error: 'Todavía no has subido tu evidencia (orden de embarque sellada + recibo de maniobra) de tu unidad. Súbela primero para poder solicitar dinero.' });
-      return;
-    }
-    if (info.saldoProbable < LIMITE_DEUDA_OPERADOR) {
-      res.status(403).json({ error: 'Tu saldo probable es de $' + info.saldoProbable.toFixed(2) + ', por debajo del límite permitido ($' + LIMITE_DEUDA_OPERADOR.toFixed(2) + '). Debes liquidar antes de solicitar más dinero.' });
-      return;
+    if (!claims.maestro) {
+      if (!(flete.ordenEmbarqueImgURL && flete.reciboManiobraImgURL)) {
+        res.status(403).json({ error: 'Este viaje todavía no tiene evidencia completa (orden de embarque sellada + recibo de maniobra). Súbela antes de solicitar dinero.' });
+        return;
+      }
+      if (flete.anticipoOperadorSolicitado) {
+        res.status(403).json({ error: 'Ya se solicitó dinero para este viaje — no se puede volver a pedir.' });
+        return;
+      }
+      if (!flete.montoFlete) {
+        res.status(400).json({ error: 'Este viaje no tiene monto de flete registrado — no se puede calcular el tope permitido.' });
+        return;
+      }
+      const opDocComision = await db.collection('operadores').doc(String(operadorId)).get();
+      const comision = (opDocComision.exists && opDocComision.data().comision != null) ? opDocComision.data().comision : 12;
+      const tope = flete.montoFlete * (comision / 100) * 0.5;
+      if (importe > tope + 0.01) {
+        res.status(403).json({ error: 'El monto máximo permitido para este viaje es $' + tope.toFixed(2) + ' (50% de tu comisión sobre este viaje).' });
+        return;
+      }
     }
 
-    let saldoFinal;
     await db.runTransaction(async (tx) => {
+      if (!claims.maestro) {
+        const freshFlete = await tx.get(fleteRef);
+        if (!freshFlete.exists || freshFlete.data().anticipoOperadorSolicitado) {
+          throw new Error('Ya se solicitó dinero para este viaje — no se puede volver a pedir.');
+        }
+      }
       const ref = db.collection('estado').doc('anticiposDB');
       const snap = await tx.get(ref);
       let anticiposDB = (snap.exists && snap.data().data) ? JSON.parse(snap.data().data) : {};
-      if (Array.isArray(anticiposDB)) anticiposDB = {};
+      if (Array.isArray(anticiposDB)) anticiposDB = {}; // mismo guard que el resto del sistema — nunca tratar como arreglo
       const key = String(operadorId);
       if (!Array.isArray(anticiposDB[key])) anticiposDB[key] = [];
       anticiposDB[key].push({
         id: 'op-' + Date.now() + '-' + Math.random().toString(36).slice(2, 7),
         fecha: new Date().toISOString().slice(0, 10),
         importe: importe,
-        concepto: 'Solicitud desde app de operador',
+        concepto: 'Solicitud desde app de operador — viaje ' + ordenEmbarque + (claims.maestro ? ' (autorizado manualmente por usuario maestro)' : ''),
         estado: 'pendiente',
         liqNum: null,
         origen: 'app_operador',
-        unidadAlCapturar: info.unidadActual,
+        ordenEmbarque: ordenEmbarque,
+        unidadAlCapturar: flete.economico || null,
         capturadoEn: new Date().toISOString()
       });
       tx.set(ref, { data: JSON.stringify(anticiposDB) }, { merge: true });
-      saldoFinal = info.saldoProbable - importe;
+      if (!claims.maestro) {
+        tx.set(fleteRef, { anticipoOperadorSolicitado: true, anticipoOperadorMonto: importe, anticipoOperadorEn: new Date().toISOString() }, { merge: true });
+      }
     });
 
-    res.json({ ok: true, saldoProbable: saldoFinal });
+    res.json({ ok: true });
   } catch (e) {
     console.error('solicitarAnticipoOperador:', e);
     res.status(500).json({ error: e.message || 'Error interno del servidor.' });
