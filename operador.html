@@ -1003,12 +1003,12 @@ function _renderGridBitacora(){
   diasOrdenados.forEach(function(dia,idx){
     var inicioDia=new Date(dia+'T00:00:00').getTime();
     html+='<div style="font-size:11px;font-weight:600;color:#1a1a1a;margin-top:'+(idx?'12px':'0')+'">DÍA '+(idx+1)+' — '+dia+'</div>';
-    html+='<div style="overflow-x:auto"><table style="border-collapse:collapse;font-size:9px;margin-top:4px;width:100%">';
+    html+='<div style="overflow-x:auto"><table style="border-collapse:collapse;font-size:11px;margin-top:4px;width:100%">';
     html+='<tr><td style="'+estiloFijo+'"></td>';
-    for(var h=1;h<=24;h++)html+='<td style="text-align:center;padding:1px;color:#333">'+h+'</td>';
-    html+='<td style="text-align:center;padding:1px 4px;color:#333;font-weight:600">TOT</td></tr>';
+    for(var h=1;h<=24;h++)html+='<td style="text-align:center;padding:3px;min-width:18px;color:#333">'+h+'</td>';
+    html+='<td style="text-align:center;padding:3px 6px;color:#333;font-weight:600">TOT</td></tr>';
     CATEGORIAS_GRID.forEach(function(cat){
-      html+='<tr><td style="'+estiloFijo+';padding:2px 4px;white-space:nowrap;color:#1a1a1a;font-weight:600">'+cat.label+'</td>';
+      html+='<tr><td style="'+estiloFijo+';padding:3px 6px;white-space:nowrap;color:#1a1a1a;font-weight:600">'+cat.label+'</td>';
       var horasActivas=0;
       for(var h=1;h<=24;h++){
         var celdaIni=inicioDia+(h-1)*3600000,celdaFin=inicioDia+h*3600000;
@@ -1019,9 +1019,9 @@ function _renderGridBitacora(){
           return eIni<celdaFin&&eFin>celdaIni;
         });
         if(activo)horasActivas++;
-        html+='<td style="text-align:center;padding:1px;background:'+(activo?'#4da3ff':'transparent')+'">'+(activo?'●':'')+'</td>';
+        html+='<td style="text-align:center;padding:3px;min-width:18px;background:'+(activo?'#4da3ff':'transparent')+'">'+(activo?'●':'')+'</td>';
       }
-      html+='<td style="text-align:center;padding:1px 4px;color:#1a1a1a;font-weight:600">'+horasActivas+'h</td></tr>';
+      html+='<td style="text-align:center;padding:3px 6px;color:#1a1a1a;font-weight:600">'+horasActivas+'h</td></tr>';
     });
     html+='</table></div>';
   });
