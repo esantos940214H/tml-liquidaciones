@@ -1810,10 +1810,63 @@ const PROMPT_RECIBO_MANIOBRA =
   'inventes datos que no estén en el recibo. Responde SOLO el objeto JSON (sin texto explicativo, sin backticks, sin ' +
   'markdown).';
 
+// ── CANDADO DE SESIÓN + TOPE DIARIO para extraerOrdenEmbarqueSellada/
+// extraerReciboManiobra — las usa TANTO ing.html (oficina) como
+// operador.html (operadores por celular, expuesto a internet sin control
+// de quién puede llegar a la URL). Antes cualquiera que encontrara la URL
+// podía mandarle fotos sin límite, generando costo de la API de Anthropic
+// sin que nadie se diera cuenta. Ahora exige una sesión real de Firebase
+// Auth (de cualquier tipo, oficina u operador) y limita a
+// LIMITE_IA_DIARIO usos por persona por día — un operador normal sube 2
+// fotos por viaje, así que 20 al día deja margen amplio sin abrir la
+// puerta a un abuso sostenido.
+const LIMITE_IA_DIARIO = 20;
+
+async function _verificarSesionFirebase(req) {
+  const encabezado = (req.get('Authorization') || '');
+  const m = encabezado.match(/^Bearer (.+)$/);
+  if (!m) throw new Error('Falta la sesión (token). Vuelve a entrar.');
+  return admin.auth().verifyIdToken(m[1]);
+}
+
+// _claveUsoIA: identifica a la persona para el tope diario — operador real
+// por su operadorId, la cuenta maestro aparte, y cualquier cuenta de
+// oficina por su uid (rol de oficina: admin/cobranza/operaciones/etc.).
+function _claveUsoIA(decoded) {
+  if (decoded.rol === 'operador') return decoded.maestro ? 'maestro' : 'op' + decoded.operadorId;
+  return 'staff' + decoded.uid;
+}
+
+async function _verificarYRegistrarUsoIA(decoded) {
+  const clave = _claveUsoIA(decoded);
+  const hoy = new Date().toISOString().slice(0, 10);
+  const ref = db.collection('usoIA').doc(clave + '_' + hoy);
+  let permitido = true;
+  await db.runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    const conteo = (snap.exists && snap.data().conteo) || 0;
+    if (conteo >= LIMITE_IA_DIARIO) { permitido = false; return; }
+    tx.set(ref, { conteo: conteo + 1, actualizadoEn: new Date().toISOString() }, { merge: true });
+  });
+  return permitido;
+}
+
 function _extraerImagenDocumento(prompt) {
   return async (req, res) => {
     if (req.method !== 'POST') {
       res.status(405).json({ error: 'Método no permitido, usa POST.' });
+      return;
+    }
+    let sesion;
+    try {
+      sesion = await _verificarSesionFirebase(req);
+    } catch (e) {
+      res.status(401).json({ error: e.message || 'Sesión inválida. Vuelve a entrar.' });
+      return;
+    }
+    const puedeUsar = await _verificarYRegistrarUsoIA(sesion);
+    if (!puedeUsar) {
+      res.status(429).json({ error: 'Ya alcanzaste el límite de ' + LIMITE_IA_DIARIO + ' usos de hoy para esta función. Intenta de nuevo mañana, o contacta a la oficina si de verdad lo necesitas.' });
       return;
     }
     const archivoBase64 = ((req.body && req.body.archivoBase64) || '').toString().trim();
