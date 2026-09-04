@@ -1254,6 +1254,12 @@ function _candadoDescanso(){
 }
 async function registrarEventoBitacora(tipo){
   if(!_bitacoraOrden)return;
+  // Una vez que el viaje se cerró, ya no se registra NADA más — la
+  // bitácora queda finalizada.
+  if(_bitacoraEventos.some(function(e){return e.tipo==='cierre_viaje';})){
+    alert('⚠️ Este viaje ya se cerró — no se pueden registrar más eventos.');
+    return;
+  }
   // "Inicio de viaje" y "Cierre de viaje" son marcas de UNA SOLA VEZ —
   // a diferencia del resto (que se pueden alternar libremente), estos dos
   // no deben volver a tocarse una vez registrados, o se reasignaría la
@@ -1276,7 +1282,9 @@ async function registrarEventoBitacora(tipo){
     var snap=await tx.get(ref);
     var eventos=(snap.exists&&Array.isArray(snap.data().eventos))?snap.data().eventos:[];
     if(eventos.length&&!eventos[eventos.length-1].fin)eventos[eventos.length-1].fin=ahora;
-    eventos.push({tipo:tipo,inicio:ahora,fin:null});
+    // "Cierre de viaje" es un punto en el tiempo, no un estatus que dure —
+    // se autocompleta con fin=inicio, nunca se queda "en curso".
+    eventos.push({tipo:tipo,inicio:ahora,fin:tipo==='cierre_viaje'?ahora:null});
     tx.set(ref,{ordenEmbarque:_bitacoraOrden,eventos:eventos},{merge:true});
   });
   await _cargarEventosBitacora();
@@ -1291,6 +1299,12 @@ async function registrarEventoBitacora(tipo){
 function _actualizarEstadoBitacora(){
   if(!_bitacoraEventos.length){$('bitEstadoActual').textContent='Sin iniciar';$('bitAlerta').textContent='';return;}
   var ultimo=_bitacoraEventos[_bitacoraEventos.length-1];
+  if(ultimo.tipo==='cierre_viaje'){
+    $('bitEstadoActual').textContent='🏁 Viaje cerrado';
+    $('bitAlerta').textContent='';
+    if(_bitacoraInterval){clearInterval(_bitacoraInterval);_bitacoraInterval=null;}
+    return;
+  }
   var minDesde=Math.floor((Date.now()-new Date(ultimo.inicio).getTime())/60000);
   $('bitEstadoActual').textContent=(ETIQUETAS_BITACORA[ultimo.tipo]||ultimo.tipo)+' — '+Math.floor(minDesde/60)+'h '+(minDesde%60)+'min';
 
