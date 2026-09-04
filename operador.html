@@ -1062,6 +1062,18 @@ function _candadoDescanso(){
 }
 async function registrarEventoBitacora(tipo){
   if(!_bitacoraOrden)return;
+  // "Inicio de viaje" y "Cierre de viaje" son marcas de UNA SOLA VEZ —
+  // a diferencia del resto (que se pueden alternar libremente), estos dos
+  // no deben volver a tocarse una vez registrados, o se reasignaría la
+  // hora de inicio/cierre real del viaje cada vez que alguien le dé clic
+  // por error.
+  if(tipo==='inicio_viaje'||tipo==='cierre_viaje'){
+    var yaExiste=_bitacoraEventos.find(function(e){return e.tipo===tipo;});
+    if(yaExiste){
+      alert('⚠️ Ya se registró "'+(ETIQUETAS_BITACORA[tipo]||tipo)+'" a las '+new Date(yaExiste.inicio).toLocaleString('es-MX',{hour:'2-digit',minute:'2-digit',day:'2-digit',month:'2-digit'})+'. No se puede volver a marcar.');
+      return;
+    }
+  }
   if(tipo==='descanso'){
     var bloqueo=_candadoDescanso();
     if(bloqueo){alert('⚠️ '+bloqueo);return;}
