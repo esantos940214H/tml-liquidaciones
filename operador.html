@@ -32,6 +32,12 @@
   .infoArchivo{margin-top:8px;font-size:13px;line-height:1.4}
   .card-ev{background:#0d1b2a;border:1px solid #1e3247;border-radius:12px;padding:16px;margin-bottom:16px}
   .card-ev>label:first-child{margin-top:0}
+  .viaje-card{display:flex;align-items:center;justify-content:space-between;gap:10px;background:#132a3f;border:1px solid #1e3247;border-radius:10px;padding:10px 12px;margin-bottom:8px}
+  .viaje-card .destino{font-size:14px}
+  .viaje-card .estado-ev{font-size:11px;color:#6f8ba6;margin-top:2px}
+  .viaje-card .estado-ev.alerta{color:#ffb84d}
+  .btn-icono{width:auto;background:#1e3247;border:none;color:#fff;border-radius:8px;padding:8px 14px;font-size:17px;cursor:pointer;flex-shrink:0;margin:0}
+  .btn-icono:disabled{opacity:.3;cursor:default}
   .contexto{font-size:12px;color:#6f8ba6;text-align:center;margin:-8px 0 18px}
 </style>
 </head>
@@ -75,20 +81,26 @@
     </div>
     <div id="msgEvidencias" class="msg"></div>
 
-    <!-- ── SOLICITAR DINERO (Fase 3) — ligado a un viaje concreto, con tope
-         de 50% de la comisión de ESE viaje y un solo request por viaje. La
-         cuenta maestro es la excepción (el dueño autoriza manualmente lo
-         que considere, sin esos límites) — ver solicitarAnticipoOperador
-         en functions/index.js, que es quien de verdad decide. ─────────── -->
+    <!-- ── SOLICITAR DINERO (Fase 3) — un ícono 💵 por viaje (solo se
+         muestra el destino, no el T.U. ni otros datos). El ícono se
+         deshabilita si ese viaje no tiene evidencia completa o si ya se
+         pidió dinero para él; si el viaje ya pasó de fecha y sigue sin
+         evidencia, se marca con una alerta. El candado real (tope de 50%
+         de comisión, un solo request por viaje) vive en el SERVIDOR
+         (solicitarAnticipoOperador, functions/index.js) — esta pantalla
+         solo refleja esas reglas, nunca decide ella misma. La cuenta
+         maestro no tiene esas restricciones (autorización manual). ────── -->
     <div id="bloqueDinero" style="display:none">
       <div class="card-ev">
-        <label>💵 Solicitar dinero</label>
+        <label>💵 Mis viajes</label>
         <div id="dineroEstado" style="font-size:13px;color:#9fb3c8;margin-bottom:10px"></div>
-        <select id="selViajeDinero" onchange="alCambiarViajeDinero()"></select>
-        <label style="margin-top:14px">Monto a solicitar</label>
+        <div id="listaViajesDinero"></div>
+      </div>
+      <div class="card-ev" id="formSolicitud" style="display:none">
+        <label id="lblViajeSeleccionado">Solicitar dinero</label>
         <input type="text" inputmode="decimal" id="inMontoSolicitud" placeholder="Monto">
         <div id="topeInfo" style="font-size:12px;color:#6f8ba6;margin-top:6px"></div>
-        <button id="btnSolicitar" onclick="solicitarDinero()">Solicitar</button>
+        <button id="btnSolicitar" onclick="solicitarDinero()">Confirmar solicitud</button>
         <div id="msgDinero" class="msg"></div>
       </div>
     </div>
@@ -418,39 +430,49 @@ function topeDelViaje(f){
   if(!f.montoFlete)return null;
   return f.montoFlete*(comisionParaFlete(f)/100)*0.5;
 }
+var _viajeSeleccionado=null;
 function poblarViajesDinero(claims){
-  var sel=$('selViajeDinero');
-  var elegibles=claims.maestro
-    ?FLETES.slice()
-    :FLETES.filter(function(f){return f.montoFlete>0&&f.ordenEmbarqueImgURL&&f.reciboManiobraImgURL&&!f.anticipoOperadorSolicitado;});
-  sel.innerHTML='';
+  var cont=$('listaViajesDinero');
+  var elegibles=claims.maestro?FLETES.slice():FLETES.filter(function(f){return f.montoFlete>0;});
+  elegibles.sort(function(a,b){return(b.fecha||'').localeCompare(a.fecha||'');});
+  cont.innerHTML='';
+  $('formSolicitud').style.display='none';
   if(!elegibles.length){
-    sel.innerHTML='<option value="">(sin viajes disponibles)</option>';
-    $('dineroEstado').textContent=claims.maestro?'No hay viajes registrados todavía.':'Sube tu evidencia de un viaje para poder solicitar dinero sobre él.';
-    $('inMontoSolicitud').disabled=true;$('btnSolicitar').disabled=true;
+    cont.innerHTML='<div style="font-size:13px;color:#6f8ba6">No hay viajes registrados todavía.</div>';
+    $('dineroEstado').textContent='';
     return;
   }
+  var hoy=new Date().toISOString().slice(0,10);
+  $('dineroEstado').textContent=claims.maestro?'Elige el viaje y el monto que autorizas.':'Toca 💵 en el viaje sobre el que quieres solicitar dinero.';
   elegibles.forEach(function(f){
-    var tope=topeDelViaje(f);
-    var etiqueta='T.U. '+f.ordenEmbarque+(f.destino||f.tienda?' — '+(f.destino||f.tienda):'')+(tope!=null?' — tope: '+fmt(tope):'');
-    var opt=document.createElement('option');
-    opt.value=f.ordenEmbarque;opt.textContent=etiqueta;
-    sel.appendChild(opt);
+    var tieneEv=!!(f.ordenEmbarqueImgURL&&f.reciboManiobraImgURL);
+    var finalizado=!!(f.fecha&&f.fecha<=hoy);
+    var yaSolicitado=!!f.anticipoOperadorSolicitado;
+    var puedePedir=claims.maestro?true:(tieneEv&&!yaSolicitado);
+    var estadoTxt=tieneEv?'✅ Evidencia subida':(finalizado?'⚠️ Viaje finalizado sin evidencia':'Evidencia pendiente');
+    if(!claims.maestro&&yaSolicitado)estadoTxt+=' · dinero ya solicitado';
+    var div=document.createElement('div');
+    div.className='viaje-card';
+    div.innerHTML='<div><div class="destino">'+(f.destino||f.tienda||'(sin destino)')+'</div>'
+      +'<div class="estado-ev'+(finalizado&&!tieneEv?' alerta':'')+'">'+estadoTxt+'</div></div>'
+      +'<button class="btn-icono" type="button" '+(puedePedir?'':'disabled')+' onclick="seleccionarViajeDinero(\''+f.ordenEmbarque+'\')">💵</button>';
+    cont.appendChild(div);
   });
-  $('dineroEstado').textContent=claims.maestro?'Elige el viaje y el monto que autorizas.':'Elige el viaje sobre el que quieres solicitar dinero.';
-  $('inMontoSolicitud').disabled=false;$('btnSolicitar').disabled=false;
-  alCambiarViajeDinero();
 }
-function alCambiarViajeDinero(){
-  var ordenEmbarque=$('selViajeDinero').value;
+function seleccionarViajeDinero(ordenEmbarque){
+  _viajeSeleccionado=ordenEmbarque;
   var f=FLETES.find(function(x){return x.ordenEmbarque===ordenEmbarque;});
   var tope=f?topeDelViaje(f):null;
+  $('formSolicitud').style.display='block';
+  $('lblViajeSeleccionado').textContent='Solicitar dinero — '+(f?(f.destino||f.tienda||ordenEmbarque):ordenEmbarque);
   if(_miClaims&&_miClaims.maestro){
     $('topeInfo').textContent='Sin tope (autorización manual).';
+    $('inMontoSolicitud').value='';
   }else{
     $('topeInfo').textContent=tope!=null?('Tope permitido para este viaje: '+fmt(tope)):'';
-    if(tope!=null)$('inMontoSolicitud').value=tope.toFixed(2);
+    $('inMontoSolicitud').value=tope!=null?tope.toFixed(2):'';
   }
+  mostrarMsgDinero('','');
 }
 async function actualizarEstadoDinero(claims){
   if(!claims)return;
@@ -458,7 +480,7 @@ async function actualizarEstadoDinero(claims){
   poblarViajesDinero(claims);
 }
 async function solicitarDinero(){
-  var ordenEmbarque=$('selViajeDinero').value;
+  var ordenEmbarque=_viajeSeleccionado;
   var importe=parseFloat($('inMontoSolicitud').value);
   if(!ordenEmbarque){mostrarMsgDinero('Elige un viaje.','error');return;}
   if(!importe||importe<=0){mostrarMsgDinero('Captura un monto válido.','error');return;}
