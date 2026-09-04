@@ -2251,8 +2251,9 @@ async function _paginasDeArchivo(file){
 // escribirlo directo, para poder juntar los mensajes de varias páginas.
 async function _procesarUnaOrdenEmbarque(blob,mimeType){
   var base64=await _archivoABase64(blob);
+  var idToken=await firebase.auth().currentUser.getIdToken();
   var r=await fetch(FUNCTION_URL_ORDEN_EMBARQUE_SELLADA,{
-    method:'POST',headers:{'Content-Type':'application/json'},
+    method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+idToken},
     body:JSON.stringify({archivoBase64:base64,mimeType:mimeType})
   });
   var data=await r.json();
@@ -2325,8 +2326,9 @@ function _recortarImagenPorPorcentaje(file,recorte){
 // directo, para poder juntar los mensajes de varias páginas/comprobantes.
 async function _procesarUnReciboManiobra(blob,mimeType){
   var base64=await _archivoABase64(blob);
+  var idToken=await firebase.auth().currentUser.getIdToken();
   var r=await fetch(FUNCTION_URL_RECIBO_MANIOBRA,{
-    method:'POST',headers:{'Content-Type':'application/json'},
+    method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+idToken},
     body:JSON.stringify({archivoBase64:base64,mimeType:mimeType})
   });
   var data=await r.json();
