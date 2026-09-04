@@ -415,6 +415,7 @@ tr:hover td{background:#fafafa}
       <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap">
         <button class="btn btn-out btn-sm" title="Solo incluye los pedidos marcados con la casilla &quot;Incluir&quot; de la tabla" onclick="descargarConcentradoRecibosManiobra()">📄 Descargar concentrado de recibos (PDF)</button>
         <button class="btn btn-out btn-sm" onclick="descargarPedidoManiobrasExcel()">📊 Descargar solicitud de maniobras (Excel)</button>
+        <button class="btn btn-out btn-sm" title="Revisa los pedidos ya facturados que todavía no tengan datos de carta porte (origen/destino/horarios) para la bitácora de operador.html, y los completa releyendo el XML ya guardado — no vuelve a facturar ni cambia nada más." onclick="backfillCartaPorteFletes()">🕐 Completar datos de carta porte (bitácora)</button>
       </div>
     </div>
   </div>
@@ -1443,6 +1444,40 @@ async function intentarSustituirFletePorXML(doc,uuid,folioCompleto,total){
     }
     if(encontrados.length)cargarYRenderFletesPendientes();
   }catch(e){console.error('intentarSustituirFletePorXML:',e);}
+}
+// backfillCartaPorteFletes: barrida de UNA SOLA VEZ para completar
+// fletesDB.cartaPorte en pedidos que se facturaron ANTES de que existiera
+// _extraerRutaYHorariosCartaPorte (ver arriba) — no vuelve a facturar nada,
+// solo relee el XML que YA se guardó en Storage (xmlURL, ver
+// subirXMLIngresoEnSegundoPlano) para el ingreso correspondiente y rellena
+// el dato que falta. Si el XML de ese ingreso no se guardó (viejo, de
+// antes de que existiera esa función) o no es un CFDI con Carta Porte, ese
+// pedido simplemente se queda sin poder completarse — no truena el resto.
+async function backfillCartaPorteFletes(){
+  if(!confirm('¿Revisar los pedidos de flete ya facturados que todavía no tengan datos de carta porte (para la bitácora de operador.html) y completarlos releyendo su XML ya guardado?\n\nNo vuelve a facturar nada ni cambia ningún otro dato.'))return;
+  var fletesTodos=await window.cargarFletes(true);
+  var pendientes=fletesTodos.filter(function(f){return f.estado==='facturado'&&!f.cartaPorte&&f.facturaUUID;});
+  if(!pendientes.length){alert('No hay pedidos pendientes de completar — ya están todos, o ninguno tiene factura registrada todavía.');return;}
+  var ok=0,sinXML=0,sinRuta=0;
+  for(var i=0;i<pendientes.length;i++){
+    var f=pendientes[i];
+    var ing=ingresosDB.find(function(v){return v.uuid===f.facturaUUID||v.facturaUUID===f.facturaUUID;});
+    if(!ing||!ing.xmlURL){sinXML++;continue;}
+    try{
+      var r=await fetch(ing.xmlURL);
+      var texto=await r.text();
+      var doc=new DOMParser().parseFromString(texto,'application/xml');
+      var cp=_extraerRutaYHorariosCartaPorte(doc);
+      if(!cp){sinRuta++;continue;}
+      await actualizarEvidenciaManiobra(f.ordenEmbarque,{cartaPorte:cp});
+      ok++;
+    }catch(e){console.error('backfillCartaPorteFletes:',f.ordenEmbarque,e);sinXML++;}
+  }
+  alert('✅ Completados: '+ok+' de '+pendientes.length+'.'
+    +(sinXML?('\n⚠️ '+sinXML+' sin XML guardado (no se pudo releer).'):'')
+    +(sinRuta?('\n⚠️ '+sinRuta+' sin datos de Carta Porte en su XML.'):''));
+  FLETES=await window.cargarFletes(true);
+  renderArchivoMaestroFletes();
 }
 
 // Ingresos = CFDIs que Mudanzas TML EMITE a sus clientes. Un XML donde TML
