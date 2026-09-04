@@ -1417,10 +1417,20 @@ function _extraerRutaYHorariosCartaPorte(doc){
   var destino=puntos.slice().reverse().find(function(p){return p.tipo==='Destino';});
   var intermedios=puntos.filter(function(p){return p!==origen&&p!==destino;}).map(function(p){return p.label;});
   if(!origen&&!destino)return null;
+  // distanciaKm: para el candado de "primer descanso" de la bitácora
+  // (operador.html) — viajes de menos de 500 km bajan el umbral de 5 a 3
+  // horas. Se toma TotalDistRec del nodo CartaPorte; si no viene, se suma
+  // DistanciaRecorrida de cada Ubicacion como respaldo.
+  var cpEl=doc.querySelector('CartaPorte');
+  var distanciaKm=cpEl&&cpEl.getAttribute('TotalDistRec')?parseFloat(cpEl.getAttribute('TotalDistRec')):null;
+  if(!distanciaKm){
+    var sumaKms=ubics.reduce(function(s,u){return s+(parseFloat(u.getAttribute('DistanciaRecorrida'))||0);},0);
+    distanciaKm=sumaKms>0?sumaKms:null;
+  }
   return{
     origen:origen?origen.label:null,horaSalida:origen?origen.fechaHora:null,
     destino:destino?destino.label:null,horaLlegada:destino?destino.fechaHora:null,
-    puntosIntermedios:intermedios
+    puntosIntermedios:intermedios,distanciaKm:distanciaKm
   };
 }
 // _crearInicioViajeBitacoraSiHaceFalta: crea SOLO (nunca pisa lo que ya

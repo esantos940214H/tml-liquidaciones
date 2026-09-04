@@ -783,7 +783,7 @@ function poblarBitacoras(claims){
     cont.appendChild(div);
   });
 }
-var _bitacoraOrden=null,_bitacoraEventos=[],_bitacoraInterval=null,_bitacoraOperadorId=null;
+var _bitacoraOrden=null,_bitacoraEventos=[],_bitacoraInterval=null,_bitacoraOperadorId=null,_bitacoraDistanciaKm=null;
 // _operadorIdDeFlete: a qué operador corresponde un viaje, por el
 // económico del flete (mismo criterio que restringirFletesAOperador) —
 // para que la cuenta maestro SIEMPRE sepa qué operador hizo cada viaje,
@@ -800,6 +800,7 @@ async function abrirBitacora(ordenEmbarque){
   var claims=_claimsEfectivos();
   var operadorId=(claims&&!claims.maestro)?claims.operadorId:(_verComoOperadorId||_operadorIdDeFlete(f));
   _bitacoraOperadorId=operadorId;
+  _bitacoraDistanciaKm=cp.distanciaKm||null;
   var op=operadorId?OPERADORES.find(function(o){return o.operadorId===operadorId;}):null;
   var encabezado=
     '<strong>Mudanzas TML, S.A. de C.V.</strong> · Autotransporte Carga Federal<br>'+
@@ -1041,9 +1042,12 @@ function _candadoDescanso(){
   if(!yaHuboDescanso){
     var inicioViaje=_bitacoraEventos.find(function(e){return e.tipo==='inicio_viaje';});
     if(!inicioViaje)return null; // sin dato de inicio de viaje, no se puede validar — se deja pasar
+    // Viajes de menos de 500 km: umbral más corto (3h en vez de 5h) —
+    // criterio del dueño, menos riesgo de asalto en tramos cortos.
+    var umbralHoras=(_bitacoraDistanciaKm&&_bitacoraDistanciaKm<500)?3:5;
     var horasDesdeInicio=(ahora-new Date(inicioViaje.inicio).getTime())/3600000;
-    if(horasDesdeInicio<5){
-      return 'Por seguridad, el primer descanso del viaje no se puede marcar antes de 5 horas de iniciado (llevas '+horasDesdeInicio.toFixed(1)+'h).';
+    if(horasDesdeInicio<umbralHoras){
+      return 'Por seguridad, el primer descanso del viaje no se puede marcar antes de '+umbralHoras+' horas de iniciado (llevas '+horasDesdeInicio.toFixed(1)+'h).';
     }
     return null;
   }
