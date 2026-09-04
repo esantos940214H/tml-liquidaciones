@@ -75,15 +75,19 @@
     </div>
     <div id="msgEvidencias" class="msg"></div>
 
-    <!-- ── SOLICITAR DINERO (Fase 3) — bloqueado hasta que haya evidencia
-         subida y mientras el saldo probable no esté por debajo del límite
-         permitido (ver saldoProbableOperador/solicitarAnticipoOperador en
-         functions/index.js). No aplica a la cuenta maestro. ────────────── -->
+    <!-- ── SOLICITAR DINERO (Fase 3) — ligado a un viaje concreto, con tope
+         de 50% de la comisión de ESE viaje y un solo request por viaje. La
+         cuenta maestro es la excepción (el dueño autoriza manualmente lo
+         que considere, sin esos límites) — ver solicitarAnticipoOperador
+         en functions/index.js, que es quien de verdad decide. ─────────── -->
     <div id="bloqueDinero" style="display:none">
       <div class="card-ev">
         <label>💵 Solicitar dinero</label>
         <div id="dineroEstado" style="font-size:13px;color:#9fb3c8;margin-bottom:10px"></div>
-        <input type="text" inputmode="decimal" id="inMontoSolicitud" placeholder="Monto a solicitar">
+        <select id="selViajeDinero" onchange="alCambiarViajeDinero()"></select>
+        <label style="margin-top:14px">Monto a solicitar</label>
+        <input type="text" inputmode="decimal" id="inMontoSolicitud" placeholder="Monto">
+        <div id="topeInfo" style="font-size:12px;color:#6f8ba6;margin-top:6px"></div>
         <button id="btnSolicitar" onclick="solicitarDinero()">Solicitar</button>
         <div id="msgDinero" class="msg"></div>
       </div>
@@ -105,7 +109,6 @@
 const FUNCTION_URL_LOGIN_OPERADOR='https://us-central1-tml-liquidaciones.cloudfunctions.net/loginOperador';
 const FUNCTION_URL_ORDEN_EMBARQUE_SELLADA='https://us-central1-tml-liquidaciones.cloudfunctions.net/extraerOrdenEmbarqueSellada';
 const FUNCTION_URL_RECIBO_MANIOBRA='https://us-central1-tml-liquidaciones.cloudfunctions.net/extraerReciboManiobra';
-const FUNCTION_URL_SALDO_PROBABLE='https://us-central1-tml-liquidaciones.cloudfunctions.net/saldoProbableOperador';
 const FUNCTION_URL_SOLICITAR_ANTICIPO='https://us-central1-tml-liquidaciones.cloudfunctions.net/solicitarAnticipoOperador';
 
 var cfg={apiKey:"AIzaSyDqlhREJFVFLGzz7bVlPcNl1Uba9HI3r8s",authDomain:"tml-liquidaciones.firebaseapp.com",
@@ -391,48 +394,73 @@ async function subirReciboManiobra(input){
 }
 
 // ══════════════════════════════════════════════════════════════════════
-// SOLICITAR DINERO (Fase 3) — el candado real vive en el servidor
-// (saldoProbableOperador/solicitarAnticipoOperador, functions/index.js):
-// esta pantalla solo refleja lo que el servidor ya decidió, nunca decide
-// ella misma si se puede pedir o no (para que no se pueda burlar el
-// candado manipulando el navegador).
+// SOLICITAR DINERO (Fase 3) — ligado a un viaje concreto. El candado real
+// (evidencia completa + tope de 50% de comisión + un solo request por
+// viaje) vive en el SERVIDOR (solicitarAnticipoOperador, functions/
+// index.js) — esta pantalla solo arma la lista de viajes elegibles y
+// muestra un tope INFORMATIVO calculado aquí mismo (con los datos que ya
+// se cargaron), pero quien de verdad decide si se puede pedir es el
+// servidor, para que no se pueda burlar el candado manipulando el
+// navegador. Para la cuenta maestro no hay tope ni restricción de viaje
+// único — ve TODOS los viajes, sin importar si ya tienen evidencia o si
+// ya se les pidió dinero antes (autorización manual del dueño).
 // ══════════════════════════════════════════════════════════════════════
-function deshabilitarSolicitud(si){
-  $('inMontoSolicitud').disabled=si;
-  $('btnSolicitar').disabled=si;
-}
 function mostrarMsgDinero(texto,tipo){
   var el=$('msgDinero');
   el.textContent=texto||'';
   el.className='msg'+(tipo?(' '+tipo):'');
 }
-async function actualizarEstadoDinero(claims){
-  if(!claims||claims.maestro)return; // no aplica a la cuenta maestro
-  $('bloqueDinero').style.display='block';
-  $('dineroEstado').textContent='Consultando tu saldo...';
-  try{
-    var idToken=await firebase.auth().currentUser.getIdToken();
-    var r=await fetch(FUNCTION_URL_SALDO_PROBABLE,{headers:{'Authorization':'Bearer '+idToken}});
-    var d=await r.json();
-    if(!r.ok||d.error){$('dineroEstado').textContent='⚠️ '+(d.error||'No se pudo consultar tu saldo.');deshabilitarSolicitud(true);return;}
-    var saldoTxt='Saldo probable: '+fmt(d.saldoProbable);
-    if(!d.tieneEvidencia){
-      $('dineroEstado').innerHTML=saldoTxt+'<br>⚠️ Sube tu evidencia (orden de embarque sellada + recibo de maniobra) antes de poder solicitar dinero.';
-      deshabilitarSolicitud(true);
-    }else if(d.saldoProbable<d.limite){
-      $('dineroEstado').innerHTML=saldoTxt+'<br>⚠️ Estás por debajo del límite permitido ('+fmt(d.limite)+'). Debes liquidar antes de pedir más.';
-      deshabilitarSolicitud(true);
-    }else{
-      $('dineroEstado').textContent=saldoTxt;
-      deshabilitarSolicitud(false);
-    }
-  }catch(e){
-    $('dineroEstado').textContent='⚠️ Sin conexión.';
-    deshabilitarSolicitud(true);
+function comisionParaFlete(f){
+  var op=OPERADORES.find(function(o){return o.unidad===normEconomico(f.economico);});
+  return op?op.comision:12;
+}
+function topeDelViaje(f){
+  if(!f.montoFlete)return null;
+  return f.montoFlete*(comisionParaFlete(f)/100)*0.5;
+}
+function poblarViajesDinero(claims){
+  var sel=$('selViajeDinero');
+  var elegibles=claims.maestro
+    ?FLETES.slice()
+    :FLETES.filter(function(f){return f.montoFlete>0&&f.ordenEmbarqueImgURL&&f.reciboManiobraImgURL&&!f.anticipoOperadorSolicitado;});
+  sel.innerHTML='';
+  if(!elegibles.length){
+    sel.innerHTML='<option value="">(sin viajes disponibles)</option>';
+    $('dineroEstado').textContent=claims.maestro?'No hay viajes registrados todavía.':'Sube tu evidencia de un viaje para poder solicitar dinero sobre él.';
+    $('inMontoSolicitud').disabled=true;$('btnSolicitar').disabled=true;
+    return;
+  }
+  elegibles.forEach(function(f){
+    var tope=topeDelViaje(f);
+    var etiqueta='T.U. '+f.ordenEmbarque+(f.destino||f.tienda?' — '+(f.destino||f.tienda):'')+(tope!=null?' — tope: '+fmt(tope):'');
+    var opt=document.createElement('option');
+    opt.value=f.ordenEmbarque;opt.textContent=etiqueta;
+    sel.appendChild(opt);
+  });
+  $('dineroEstado').textContent=claims.maestro?'Elige el viaje y el monto que autorizas.':'Elige el viaje sobre el que quieres solicitar dinero.';
+  $('inMontoSolicitud').disabled=false;$('btnSolicitar').disabled=false;
+  alCambiarViajeDinero();
+}
+function alCambiarViajeDinero(){
+  var ordenEmbarque=$('selViajeDinero').value;
+  var f=FLETES.find(function(x){return x.ordenEmbarque===ordenEmbarque;});
+  var tope=f?topeDelViaje(f):null;
+  if(_miClaims&&_miClaims.maestro){
+    $('topeInfo').textContent='Sin tope (autorización manual).';
+  }else{
+    $('topeInfo').textContent=tope!=null?('Tope permitido para este viaje: '+fmt(tope)):'';
+    if(tope!=null)$('inMontoSolicitud').value=tope.toFixed(2);
   }
 }
+async function actualizarEstadoDinero(claims){
+  if(!claims)return;
+  $('bloqueDinero').style.display='block';
+  poblarViajesDinero(claims);
+}
 async function solicitarDinero(){
+  var ordenEmbarque=$('selViajeDinero').value;
   var importe=parseFloat($('inMontoSolicitud').value);
+  if(!ordenEmbarque){mostrarMsgDinero('Elige un viaje.','error');return;}
   if(!importe||importe<=0){mostrarMsgDinero('Captura un monto válido.','error');return;}
   $('btnSolicitar').disabled=true;
   mostrarMsgDinero('Enviando...','');
@@ -440,13 +468,15 @@ async function solicitarDinero(){
     var idToken=await firebase.auth().currentUser.getIdToken();
     var r=await fetch(FUNCTION_URL_SOLICITAR_ANTICIPO,{
       method:'POST',headers:{'Authorization':'Bearer '+idToken,'Content-Type':'application/json'},
-      body:JSON.stringify({importe:importe})
+      body:JSON.stringify({ordenEmbarque:ordenEmbarque,importe:importe})
     });
     var d=await r.json();
     if(!r.ok||d.error){mostrarMsgDinero(d.error||'No se pudo enviar la solicitud.','error');$('btnSolicitar').disabled=false;return;}
     mostrarMsgDinero('✅ Solicitud enviada. La oficina la va a procesar.','ok');
     $('inMontoSolicitud').value='';
-    await actualizarEstadoDinero(_miClaims);
+    FLETES=await cargarFletes(true);
+    restringirFletesAOperador(_miClaims);
+    poblarViajesDinero(_miClaims);
   }catch(e){
     mostrarMsgDinero('Sin conexión. Intenta de nuevo.','error');
     $('btnSolicitar').disabled=false;
