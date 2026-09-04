@@ -2143,10 +2143,22 @@ exports.loginOperador = onRequest({ cors: true, region: 'us-central1' }, async (
 
     await docRef.set({ intentosFallidos: 0, bloqueadoHasta: null, ultimoLogin: new Date().toISOString() }, { merge: true });
 
-    const opDoc = await db.collection('operadores').doc(operadorId).get();
-    const nombre = opDoc.exists ? (opDoc.data().nombre || '') : '';
+    // "maestro" (id fijo, dado de alta con `node admin/asignar-pin-operador.js
+    // maestro ...`) es una cuenta de PRUEBA/administración: NO está ligada a
+    // un operadorId, así que puede subir evidencias de CUALQUIER operador
+    // (útil para la demo con Raúl antes de dar de alta a los operadores
+    // reales, y después para que la oficina capture evidencia por un
+    // operador que aún no tenga o no use su propia cuenta). El resto del
+    // flujo (candado de dinero) queda bloqueado para esta cuenta porque no
+    // tiene operadorId — "solicitar dinero" no aplica a un usuario maestro.
+    const esMaestro = operadorId === 'maestro';
+    let nombre = datos.nombre || '';
+    if (!esMaestro) {
+      const opDoc = await db.collection('operadores').doc(operadorId).get();
+      nombre = opDoc.exists ? (opDoc.data().nombre || '') : nombre;
+    }
 
-    const uid = 'operador_' + operadorId;
+    const uid = esMaestro ? 'operador_maestro' : ('operador_' + operadorId);
     try {
       await admin.auth().getUser(uid);
     } catch (e) {
@@ -2156,10 +2168,13 @@ exports.loginOperador = onRequest({ cors: true, region: 'us-central1' }, async (
         throw e;
       }
     }
-    await admin.auth().setCustomUserClaims(uid, { rol: 'operador', operadorId: parseInt(operadorId) });
+    const claims = esMaestro
+      ? { rol: 'operador', maestro: true, operadorId: null }
+      : { rol: 'operador', operadorId: parseInt(operadorId) };
+    await admin.auth().setCustomUserClaims(uid, claims);
     const token = await admin.auth().createCustomToken(uid);
 
-    res.json({ token: token, operadorId: parseInt(operadorId), nombre: nombre });
+    res.json({ token: token, operadorId: esMaestro ? null : parseInt(operadorId), maestro: esMaestro, nombre: nombre });
   } catch (e) {
     console.error('loginOperador:', e);
     res.status(500).json({ error: e.message || 'Error interno del servidor.' });

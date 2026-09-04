@@ -115,7 +115,8 @@ firebase.auth().onAuthStateChanged(async function(usuario){
   }
   document.getElementById('panelLogin').style.display='none';
   document.getElementById('panelBienvenida').style.display='block';
-  document.getElementById('txtNombre').textContent='Bienvenido'+(usuario.displayName?(', '+usuario.displayName):'');
+  var etiqueta=token.claims.maestro?'Modo maestro':'Bienvenido';
+  document.getElementById('txtNombre').textContent=etiqueta+(usuario.displayName?(', '+usuario.displayName):'');
 });
 
 if('serviceWorker' in navigator){
