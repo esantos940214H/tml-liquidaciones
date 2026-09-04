@@ -147,25 +147,11 @@
     </div>
     <div style="text-align:center;font-weight:700;font-size:14px;margin-bottom:10px">BITÁCORA DE HORAS DE SERVICIO</div>
 
-    <!-- ── PÁGINA 1: ANVERSO (encabezado, registro, cuadrícula) ────────── -->
+    <!-- ── PÁGINA 1: ANVERSO (encabezado, cuadrícula, detalle) ─────────── -->
     <div id="bitPagina1">
       <div id="bitEncabezado" style="font-size:12px;color:#333;line-height:1.6;margin-bottom:14px"></div>
       <div id="bitEstadoActual" style="text-align:center;font-size:16px;font-weight:600;margin-bottom:6px;color:#1a1a1a"></div>
       <div id="bitAlerta" style="color:#b45309;font-size:13px;text-align:center;margin-bottom:6px"></div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:14px 0">
-        <button type="button" class="btn-icono" style="width:100%" onclick="registrarEventoBitacora('inicio_viaje')">🏁 Inicio de viaje</button>
-        <button type="button" class="btn-icono" style="width:100%" onclick="registrarEventoBitacora('conduciendo')">🚛 Conduciendo</button>
-        <button type="button" class="btn-icono" style="width:100%" onclick="registrarEventoBitacora('pausa')">☕ Pausa</button>
-        <button type="button" class="btn-icono" style="width:100%" onclick="registrarEventoBitacora('descanso')">😴 Descanso</button>
-        <button type="button" class="btn-icono" style="width:100%" onclick="registrarEventoBitacora('carga')">📦 Carga</button>
-        <button type="button" class="btn-icono" style="width:100%" onclick="registrarEventoBitacora('descarga')">📤 Descarga</button>
-        <button type="button" class="btn-icono" style="width:100%" onclick="registrarEventoBitacora('retenes')">🚧 Retenes</button>
-        <button type="button" class="btn-icono" style="width:100%" onclick="registrarEventoBitacora('descompostura')">🔧 Avería</button>
-        <button type="button" class="btn-icono" style="width:100%" onclick="registrarEventoBitacora('percance_vial')">⚠️ Percance vial</button>
-        <button type="button" class="btn-icono" style="width:100%" onclick="registrarEventoBitacora('bloqueo_carretero')">🚫 Bloqueo</button>
-        <button type="button" class="btn-icono" style="width:100%" onclick="registrarEventoBitacora('eventos_climatologicos')">🌧️ Clima</button>
-        <button type="button" class="btn-icono" style="width:100%" onclick="registrarEventoBitacora('cierre_viaje')">🏁 Cierre de viaje</button>
-      </div>
       <div style="font-size:12px;color:#1a1a1a;font-weight:600;margin-top:6px">Formato oficial (por día)</div>
       <div id="bitGrid" style="max-height:260px;overflow:auto;color:#1a1a1a"></div>
       <div style="font-size:12px;color:#1a1a1a;font-weight:600;margin-top:14px">Detalle de eventos</div>
@@ -188,6 +174,25 @@
     </div>
 
     <button type="button" onclick="voltearBitacora()" style="width:100%;margin-top:16px;padding:12px;background:#1e3247;color:#fff;border:none;border-radius:10px;font-size:13px;cursor:pointer">🔄 <span id="txtVoltear">Ver aspectos relevantes (reverso)</span></button>
+
+    <!-- ── REGISTRAR EVENTO — NO forma parte del formato oficial (es la
+         interfaz de la app, no algo que se vea en el papel), por eso va
+         aparte, hasta abajo de las dos páginas. ────────────────────────── -->
+    <div style="font-size:12px;color:#1a1a1a;font-weight:600;margin:18px 0 8px;text-align:center">Registrar evento</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+      <button type="button" class="btn-icono" style="width:100%" onclick="registrarEventoBitacora('inicio_viaje')">🏁 Inicio de viaje</button>
+      <button type="button" class="btn-icono" style="width:100%" onclick="registrarEventoBitacora('conduciendo')">🚛 Conduciendo</button>
+      <button type="button" class="btn-icono" style="width:100%" onclick="registrarEventoBitacora('pausa')">☕ Pausa</button>
+      <button type="button" class="btn-icono" style="width:100%" onclick="registrarEventoBitacora('descanso')">😴 Descanso</button>
+      <button type="button" class="btn-icono" style="width:100%" onclick="registrarEventoBitacora('carga')">📦 Carga</button>
+      <button type="button" class="btn-icono" style="width:100%" onclick="registrarEventoBitacora('descarga')">📤 Descarga</button>
+      <button type="button" class="btn-icono" style="width:100%" onclick="registrarEventoBitacora('retenes')">🚧 Retenes</button>
+      <button type="button" class="btn-icono" style="width:100%" onclick="registrarEventoBitacora('descompostura')">🔧 Avería</button>
+      <button type="button" class="btn-icono" style="width:100%" onclick="registrarEventoBitacora('percance_vial')">⚠️ Percance vial</button>
+      <button type="button" class="btn-icono" style="width:100%" onclick="registrarEventoBitacora('bloqueo_carretero')">🚫 Bloqueo</button>
+      <button type="button" class="btn-icono" style="width:100%" onclick="registrarEventoBitacora('eventos_climatologicos')">🌧️ Clima</button>
+      <button type="button" class="btn-icono" style="width:100%" onclick="registrarEventoBitacora('cierre_viaje')">🏁 Cierre de viaje</button>
+    </div>
   </div>
 </div>
 
