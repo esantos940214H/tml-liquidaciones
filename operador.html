@@ -81,6 +81,20 @@
     </div>
     <div id="msgEvidencias" class="msg"></div>
 
+    <!-- ── VER COMO... (solo cuenta maestro) — simula en pantalla la vista
+         restringida de un operador real (checklist de evidencia, tarjetas
+         que desaparecen, tope/ventana de 36h) para probar el módulo sin
+         crear una cuenta de operador aparte. La sesión real sigue siendo
+         maestro: el envío de "solicitar dinero" queda bloqueado en este
+         modo (sería un envío real bajo reglas de maestro, no del operador
+         que se está simulando) — ver solicitarDinero(). ──────────────── -->
+    <div id="bloqueVerComo" class="card-ev" style="display:none">
+      <label>👁️ Ver como...</label>
+      <select id="selVerComo" onchange="alCambiarVerComo()">
+        <option value="">(verme a mí, modo maestro)</option>
+      </select>
+    </div>
+
     <!-- ── MIS VIAJES / SOLICITAR DINERO (Fase 3) — para un operador
          normal, "Mis viajes" es el checklist de evidencia PENDIENTE: un
          viaje desaparece de esta lista en cuanto sube su evidencia
@@ -185,6 +199,19 @@ var OPERADORES=[];
 var FLETES=[];
 var ingresosDB=[];
 var _miClaims=null;
+var _verComoOperadorId=null; // solo para la cuenta maestro (ver "👁️ Ver como...")
+
+// _claimsEfectivos(): las claims REALES (_miClaims) salvo que la cuenta
+// maestro esté en modo "Ver como", en cuyo caso se simulan las claims de
+// ese operador para que restringirFletesAOperador/poblarViajesDinero se
+// comporten igual que para él — sin que la sesión real deje de ser
+// maestro (ver el bloqueo en solicitarDinero, que sí usa _miClaims real).
+function _claimsEfectivos(){
+  if(_miClaims&&_miClaims.maestro&&_verComoOperadorId){
+    return{rol:'operador',maestro:false,operadorId:_verComoOperadorId};
+  }
+  return _miClaims;
+}
 
 var _lazyScripts={};
 function cargarScriptUnaVez(src){
@@ -323,9 +350,9 @@ async function subirOrdenEmbarqueSellada(input){
       mensajes.push((paginas.length>1?'Página '+(i+1)+': ':'')+msg);
     }
     FLETES=await cargarFletes(true);
-    restringirFletesAOperador(_miClaims);
+    restringirFletesAOperador(_claimsEfectivos());
     info.innerHTML=mensajes.join('<br>');
-    actualizarEstadoDinero(_miClaims);
+    actualizarEstadoDinero(_claimsEfectivos());
     ofrecerSolicitudSiElegible();
   }catch(e){info.innerHTML='⚠️ Error: '+e.message;}
   input.value='';
@@ -401,9 +428,9 @@ async function subirReciboManiobra(input){
       mensajes.push((paginas.length>1?'Página '+(i+1)+': ':'')+msg);
     }
     FLETES=await cargarFletes(true);
-    restringirFletesAOperador(_miClaims);
+    restringirFletesAOperador(_claimsEfectivos());
     info.innerHTML=mensajes.join('<br>');
-    actualizarEstadoDinero(_miClaims);
+    actualizarEstadoDinero(_claimsEfectivos());
     ofrecerSolicitudSiElegible();
   }catch(e){info.innerHTML='⚠️ Error: '+e.message;}
   input.value='';
@@ -502,7 +529,8 @@ function poblarViajesDinero(claims){
 // lo hace en este momento, pierde la oportunidad en cuanto se oculte de
 // "Mis viajes" — no hay otro lugar desde donde pedirlo después).
 function ofrecerSolicitudSiElegible(){
-  if(!_miClaims||_miClaims.maestro)return;
+  var claims=_claimsEfectivos();
+  if(!claims||claims.maestro)return;
   var candidato=FLETES.find(function(f){
     return f.montoFlete>0&&f.ordenEmbarqueImgURL&&f.reciboManiobraImgURL&&!f.anticipoOperadorSolicitado&&dentroDeVentana36h(f);
   });
@@ -517,14 +545,14 @@ function seleccionarViajeDinero(ordenEmbarque){
   var tope=f?topeDelViaje(f):null;
   $('formSolicitud').style.display='block';
   $('lblViajeSeleccionado').textContent='Solicitar dinero — '+(f?(f.destino||f.tienda||ordenEmbarque):ordenEmbarque);
-  if(_miClaims&&_miClaims.maestro){
+  if(_claimsEfectivos()&&_claimsEfectivos().maestro){
     $('topeInfo').textContent='Sin tope (autorización manual).';
     $('inMontoSolicitud').value='';
   }else{
     $('topeInfo').textContent=tope!=null?('Tope permitido para este viaje: '+fmt(tope)):'';
     $('inMontoSolicitud').value=tope!=null?tope.toFixed(2):'';
   }
-  mostrarMsgDinero('','');
+  mostrarMsgDinero(_verComoOperadorId?'🔍 Vista previa — no se puede enviar de verdad desde el modo maestro.':'','');
 }
 async function actualizarEstadoDinero(claims){
   if(!claims)return;
@@ -532,6 +560,10 @@ async function actualizarEstadoDinero(claims){
   poblarViajesDinero(claims);
 }
 async function solicitarDinero(){
+  if(_verComoOperadorId){
+    mostrarMsgDinero('🔍 Estás en modo "Ver como..." — esto es solo una vista previa, no se puede enviar de verdad. Para probar el envío real, entra con la cuenta de ese operador (teléfono+PIN).','error');
+    return;
+  }
   var ordenEmbarque=_viajeSeleccionado;
   var importe=parseFloat($('inMontoSolicitud').value);
   if(!ordenEmbarque){mostrarMsgDinero('Elige un viaje.','error');return;}
@@ -549,8 +581,8 @@ async function solicitarDinero(){
     mostrarMsgDinero('✅ Solicitud enviada. La oficina la va a procesar.','ok');
     $('inMontoSolicitud').value='';
     FLETES=await cargarFletes(true);
-    restringirFletesAOperador(_miClaims);
-    poblarViajesDinero(_miClaims);
+    restringirFletesAOperador(_claimsEfectivos());
+    poblarViajesDinero(_claimsEfectivos());
   }catch(e){
     mostrarMsgDinero('Sin conexión. Intenta de nuevo.','error');
     $('btnSolicitar').disabled=false;
@@ -573,7 +605,25 @@ async function iniciarEvidencias(claims){
   $('txtContexto').textContent=claims.maestro
     ?'Modo maestro: puedes subir evidencia de cualquier pedido.'
     :'Sube tu evidencia de este viaje.';
+  if(claims.maestro){
+    $('bloqueVerComo').style.display='block';
+    var sel=$('selVerComo');
+    OPERADORES.slice().sort(function(a,b){return(a.nombre||'').localeCompare(b.nombre||'');}).forEach(function(o){
+      var opt=document.createElement('option');
+      opt.value=o.operadorId;opt.textContent=o.nombre;
+      sel.appendChild(opt);
+    });
+  }
   actualizarEstadoDinero(claims);
+}
+async function alCambiarVerComo(){
+  _verComoOperadorId=$('selVerComo').value?parseInt($('selVerComo').value):null;
+  FLETES=await cargarFletes(true);
+  restringirFletesAOperador(_claimsEfectivos());
+  poblarViajesDinero(_claimsEfectivos());
+  $('txtContexto').textContent=_verComoOperadorId
+    ?'👁️ Viendo como operador — vista previa, no se puede enviar solicitudes reales.'
+    :'Modo maestro: puedes subir evidencia de cualquier pedido.';
 }
 
 firebase.auth().onAuthStateChanged(async function(usuario){
