@@ -1424,6 +1424,23 @@ function _extraerRutaYHorariosCartaPorte(doc){
     puntosIntermedios:intermedios
   };
 }
+// _crearInicioViajeBitacoraSiHaceFalta: crea SOLO (nunca pisa lo que ya
+// exista) el primer evento "Inicio de viaje" de la bitácora de un viaje,
+// usando la hora de salida que ya trae la carta porte — así el operador NO
+// tiene que acordarse de tocar el botón "Inicio de viaje" él mismo; queda
+// registrado solo en cuanto la oficina procesa el XML. Si ese viaje ya
+// tiene algún evento (el operador ya empezó a usar la bitácora, o esto ya
+// se corrió antes para él), no se toca nada.
+async function _crearInicioViajeBitacoraSiHaceFalta(ordenEmbarque,horaSalida){
+  if(!horaSalida)return;
+  try{
+    var ref=firebase.firestore().collection('bitacoras').doc(ordenEmbarque);
+    var snap=await ref.get();
+    var eventos=(snap.exists&&Array.isArray(snap.data().eventos))?snap.data().eventos:[];
+    if(eventos.length)return;
+    await ref.set({ordenEmbarque:ordenEmbarque,eventos:[{tipo:'inicio_viaje',inicio:horaSalida,fin:null}]},{merge:true});
+  }catch(e){console.error('_crearInicioViajeBitacoraSiHaceFalta:',e);}
+}
 async function intentarSustituirFletePorXML(doc,uuid,folioCompleto,total){
   try{
     var pendientes=(await window.cargarFletes(true)).filter(function(f){return f.estado==='pendiente_factura';});
@@ -1440,7 +1457,10 @@ async function intentarSustituirFletePorXML(doc,uuid,folioCompleto,total){
     var cartaPorte=_extraerRutaYHorariosCartaPorte(doc);
     for(var i=0;i<encontrados.length;i++){
       await window.marcarFleteFacturado(encontrados[i].ordenEmbarque,{uuid:uuid,folio:folioCompleto,monto:total});
-      if(cartaPorte)await actualizarEvidenciaManiobra(encontrados[i].ordenEmbarque,{cartaPorte:cartaPorte});
+      if(cartaPorte){
+        await actualizarEvidenciaManiobra(encontrados[i].ordenEmbarque,{cartaPorte:cartaPorte});
+        await _crearInicioViajeBitacoraSiHaceFalta(encontrados[i].ordenEmbarque,cartaPorte.horaSalida);
+      }
     }
     if(encontrados.length)cargarYRenderFletesPendientes();
   }catch(e){console.error('intentarSustituirFletePorXML:',e);}
@@ -1470,6 +1490,7 @@ async function backfillCartaPorteFletes(){
       var cp=_extraerRutaYHorariosCartaPorte(doc);
       if(!cp){sinRuta++;continue;}
       await actualizarEvidenciaManiobra(f.ordenEmbarque,{cartaPorte:cp});
+      await _crearInicioViajeBitacoraSiHaceFalta(f.ordenEmbarque,cp.horaSalida);
       ok++;
     }catch(e){console.error('backfillCartaPorteFletes:',f.ordenEmbarque,e);sinXML++;}
   }

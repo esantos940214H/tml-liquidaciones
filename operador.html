@@ -162,6 +162,9 @@
       <button type="button" class="btn-icono" style="width:100%" onclick="registrarEventoBitacora('eventos_climatologicos')">🌧️ Clima</button>
       <button type="button" class="btn-icono" style="width:100%" onclick="registrarEventoBitacora('cierre_viaje')">🏁 Cierre de viaje</button>
     </div>
+    <div style="font-size:12px;color:#e6edf3;font-weight:600;margin-top:6px">Formato oficial (por día)</div>
+    <div id="bitGrid" style="max-height:260px;overflow:auto"></div>
+    <div style="font-size:12px;color:#e6edf3;font-weight:600;margin-top:14px">Detalle de eventos</div>
     <div id="bitLog" style="font-size:12px;color:#9fb3c8;max-height:220px;overflow:auto"></div>
   </div>
 </div>
@@ -737,6 +740,7 @@ async function _cargarEventosBitacora(){
   var doc=await db.collection('bitacoras').doc(_bitacoraOrden).get();
   _bitacoraEventos=(doc.exists&&Array.isArray(doc.data().eventos))?doc.data().eventos:[];
   _renderLogBitacora();
+  _renderGridBitacora();
 }
 function _renderLogBitacora(){
   var cont=$('bitLog');
@@ -746,6 +750,61 @@ function _renderLogBitacora(){
     var fin=e.fin?new Date(e.fin).toLocaleString('es-MX',{hour:'2-digit',minute:'2-digit'}):'(en curso)';
     return '<div style="padding:4px 0;border-bottom:1px solid #1e3247">'+(ETIQUETAS_BITACORA[e.tipo]||e.tipo)+' — '+ini+' → '+fin+'</div>';
   }).join('');
+}
+// CATEGORIAS_GRID: las 5 filas del formato oficial (anverso del PDF de la
+// SCT) — mapean cada botón/tipo de evento a la fila que le corresponde,
+// tal como agrupa el propio formato en "ACTIVIDADES AUXILIARES" y "CASOS
+// DE EXCEPCIÓN" (ver el reverso del PDF, numerales 3.4/3.5). No es una
+// réplica exacta del PDF (celda por celda con firmas, etc.) — es una
+// cuadrícula equivalente en pantalla, que es lo que pidió el dueño
+// ("con que se pueda visualizar es suficiente").
+var CATEGORIAS_GRID=[
+  {label:'CONDUCIENDO',tipos:['conduciendo']},
+  {label:'PAUSA',tipos:['pausa']},
+  {label:'ACTIVIDADES AUXILIARES',tipos:['carga','descarga','retenes']},
+  {label:'CASOS DE EXCEPCIÓN',tipos:['descompostura','percance_vial','bloqueo_carretero','eventos_climatologicos']},
+  {label:'DESCANSO',tipos:['descanso']}
+];
+function _diaLocalISO(iso){
+  var d=new Date(iso);
+  return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+}
+function _renderGridBitacora(){
+  var cont=$('bitGrid');
+  if(!_bitacoraEventos.length){cont.innerHTML='<div style="color:#6f8ba6;font-size:12px">Sin eventos registrados todavía.</div>';return;}
+  var dias={};
+  _bitacoraEventos.forEach(function(e){
+    var dia=_diaLocalISO(e.inicio);
+    if(!dias[dia])dias[dia]=true;
+  });
+  var diasOrdenados=Object.keys(dias).sort();
+  var html='';
+  diasOrdenados.forEach(function(dia,idx){
+    var inicioDia=new Date(dia+'T00:00:00').getTime();
+    html+='<div style="font-size:11px;font-weight:600;margin-top:'+(idx?'12px':'0')+'">DÍA '+(idx+1)+' — '+dia+'</div>';
+    html+='<div style="overflow-x:auto"><table style="border-collapse:collapse;font-size:9px;margin-top:4px;width:100%">';
+    html+='<tr><td></td>';
+    for(var h=1;h<=24;h++)html+='<td style="text-align:center;padding:1px;color:#6f8ba6">'+h+'</td>';
+    html+='<td style="text-align:center;padding:1px 4px;color:#6f8ba6">TOT</td></tr>';
+    CATEGORIAS_GRID.forEach(function(cat){
+      html+='<tr><td style="padding:2px 4px;white-space:nowrap;color:#cdd9e4">'+cat.label+'</td>';
+      var horasActivas=0;
+      for(var h=1;h<=24;h++){
+        var celdaIni=inicioDia+(h-1)*3600000,celdaFin=inicioDia+h*3600000;
+        var activo=_bitacoraEventos.some(function(e){
+          if(cat.tipos.indexOf(e.tipo)===-1)return false;
+          var eIni=new Date(e.inicio).getTime();
+          var eFin=e.fin?new Date(e.fin).getTime():Date.now();
+          return eIni<celdaFin&&eFin>celdaIni;
+        });
+        if(activo)horasActivas++;
+        html+='<td style="text-align:center;padding:1px;background:'+(activo?'#4da3ff':'transparent')+'">'+(activo?'●':'')+'</td>';
+      }
+      html+='<td style="text-align:center;padding:1px 4px;color:#9fb3c8">'+horasActivas+'h</td></tr>';
+    });
+    html+='</table></div>';
+  });
+  cont.innerHTML=html;
 }
 async function registrarEventoBitacora(tipo){
   if(!_bitacoraOrden)return;
