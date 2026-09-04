@@ -137,7 +137,8 @@
           marca: datosUn.marca || '',
           modelo: datosUn.modelo || '',
           licencia: o.licencia || '',
-          licenciaVigencia: o.licenciaVigencia || ''
+          licenciaVigencia: o.licenciaVigencia || '',
+          firmaURL: o.firmaURL || ''
         });
       });
       lista.sort(function (a, b) { return (a.unidad || 0) - (b.unidad || 0); });

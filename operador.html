@@ -200,14 +200,17 @@
         </div>
       </div>
 
-      <!-- ── FIRMAS — espacio en blanco (sin firma electrónica todavía). ── -->
+      <!-- ── FIRMAS — la del responsable se precarga siempre igual (una
+           sola firma del dueño para toda la empresa); la del conductor se
+           captura UNA vez por operador y se reutiliza en todas sus
+           bitácoras después (ver firmarResponsable/firmarConductor). ──── -->
       <div style="display:flex;gap:8px;margin-top:14px">
         <div style="flex:1;text-align:center">
-          <div style="border-bottom:1px solid #999;height:36px"></div>
+          <div id="firmaResponsableBox" style="border-bottom:1px solid #999;height:36px;display:flex;align-items:center;justify-content:center"></div>
           <div style="font-size:10px;font-weight:700;margin-top:4px">FIRMA DEL RESPONSABLE</div>
         </div>
         <div style="flex:1;text-align:center">
-          <div style="border-bottom:1px solid #999;height:36px"></div>
+          <div id="firmaConductorBox" style="border-bottom:1px solid #999;height:36px;display:flex;align-items:center;justify-content:center"></div>
           <div style="font-size:10px;font-weight:700;margin-top:4px">FIRMA DEL CONDUCTOR</div>
         </div>
       </div>
@@ -780,7 +783,7 @@ function poblarBitacoras(claims){
     cont.appendChild(div);
   });
 }
-var _bitacoraOrden=null,_bitacoraEventos=[],_bitacoraInterval=null;
+var _bitacoraOrden=null,_bitacoraEventos=[],_bitacoraInterval=null,_bitacoraOperadorId=null;
 // _operadorIdDeFlete: a qué operador corresponde un viaje, por el
 // económico del flete (mismo criterio que restringirFletesAOperador) —
 // para que la cuenta maestro SIEMPRE sepa qué operador hizo cada viaje,
@@ -796,6 +799,7 @@ async function abrirBitacora(ordenEmbarque){
   var cp=(f&&f.cartaPorte)||{};
   var claims=_claimsEfectivos();
   var operadorId=(claims&&!claims.maestro)?claims.operadorId:(_verComoOperadorId||_operadorIdDeFlete(f));
+  _bitacoraOperadorId=operadorId;
   var op=operadorId?OPERADORES.find(function(o){return o.operadorId===operadorId;}):null;
   var encabezado=
     '<strong>Mudanzas TML, S.A. de C.V.</strong> · Autotransporte Carga Federal<br>'+
@@ -812,6 +816,7 @@ async function abrirBitacora(ordenEmbarque){
   $('txtVoltear').textContent='Ver aspectos relevantes (reverso)';
   await _cargarEventosBitacora();
   _actualizarEstadoBitacora();
+  await _renderFirmas();
   if(_bitacoraInterval)clearInterval(_bitacoraInterval);
   _bitacoraInterval=setInterval(_actualizarEstadoBitacora,30000);
 }
@@ -829,6 +834,100 @@ function voltearBitacora(){
   $('bitPagina2').style.display=enPagina1?'block':'none';
   $('txtVoltear').textContent=enPagina1?'Volver a la bitácora (anverso)':'Ver aspectos relevantes (reverso)';
   if(enPagina1)_renderAspecto();
+}
+
+// ══════════════════════════════════════════════════════════════════════
+// FIRMAS — la del responsable es UNA SOLA para toda la empresa (el dueño
+// la firma una vez y se precarga en todas las bitácoras); la de cada
+// conductor se captura UNA vez y se guarda en su propio operador
+// (operadores/{id}.firmaURL), reutilizándose después en todos sus viajes.
+// Por seguridad, solo se puede CAPTURAR (nunca solo VER) la firma del
+// responsable desde la sesión real de maestro (no en "Ver como..."), y la
+// del conductor solo desde la sesión real de ESE operador — así nunca
+// queda una firma de otra persona guardada por error desde otra cuenta.
+// ══════════════════════════════════════════════════════════════════════
+var _firmaResponsableURL=null;
+function _abrirFirmaPad(titulo,onGuardar){
+  var overlay=document.createElement('div');
+  overlay.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.8);z-index:10000;display:flex;align-items:center;justify-content:center;padding:16px';
+  overlay.innerHTML=
+    '<div style="background:#fff;border-radius:12px;padding:16px;max-width:340px;width:100%">'+
+    '<div style="font-weight:700;font-size:13px;margin-bottom:8px;text-align:center;color:#1a1a1a">'+titulo+'</div>'+
+    '<canvas id="firmaCanvas" width="300" height="140" style="border:1px solid #ccc;border-radius:8px;width:100%;touch-action:none;background:#fff"></canvas>'+
+    '<div style="display:flex;gap:8px;margin-top:10px">'+
+    '<button type="button" id="btnFirmaLimpiar" style="width:100%;margin:0;padding:10px;background:#eee;color:#1a1a1a;border:none;border-radius:8px;font-size:12px">Limpiar</button>'+
+    '<button type="button" id="btnFirmaCancelar" style="width:100%;margin:0;padding:10px;background:#eee;color:#1a1a1a;border:none;border-radius:8px;font-size:12px">Cancelar</button>'+
+    '<button type="button" id="btnFirmaGuardar" style="width:100%;margin:0;padding:10px;background:#4da3ff;color:#06121e;border:none;border-radius:8px;font-weight:600;font-size:12px">Guardar</button>'+
+    '</div></div>';
+  document.body.appendChild(overlay);
+  var canvas=overlay.querySelector('#firmaCanvas');
+  var ctx=canvas.getContext('2d');
+  ctx.lineWidth=2;ctx.lineCap='round';ctx.strokeStyle='#000';
+  var dibujando=false,huboTrazo=false;
+  function pos(e){
+    var r=canvas.getBoundingClientRect();
+    var cx=(e.touches?e.touches[0].clientX:e.clientX)-r.left;
+    var cy=(e.touches?e.touches[0].clientY:e.clientY)-r.top;
+    return{x:cx*(canvas.width/r.width),y:cy*(canvas.height/r.height)};
+  }
+  function iniciar(e){dibujando=true;huboTrazo=true;var p=pos(e);ctx.beginPath();ctx.moveTo(p.x,p.y);e.preventDefault();}
+  function mover(e){if(!dibujando)return;var p=pos(e);ctx.lineTo(p.x,p.y);ctx.stroke();e.preventDefault();}
+  function terminar(){dibujando=false;}
+  canvas.addEventListener('mousedown',iniciar);canvas.addEventListener('mousemove',mover);window.addEventListener('mouseup',terminar);
+  canvas.addEventListener('touchstart',iniciar,{passive:false});canvas.addEventListener('touchmove',mover,{passive:false});canvas.addEventListener('touchend',terminar);
+  overlay.querySelector('#btnFirmaLimpiar').onclick=function(){ctx.clearRect(0,0,canvas.width,canvas.height);huboTrazo=false;};
+  overlay.querySelector('#btnFirmaCancelar').onclick=function(){document.body.removeChild(overlay);};
+  overlay.querySelector('#btnFirmaGuardar').onclick=function(){
+    if(!huboTrazo){alert('Dibuja tu firma antes de guardar.');return;}
+    canvas.toBlob(function(blob){
+      document.body.removeChild(overlay);
+      onGuardar(blob);
+    },'image/png');
+  };
+}
+function firmarResponsable(){
+  _abrirFirmaPad('Firma del responsable',async function(blob){
+    var url=await TMLComprobantes.subirArchivo('firmas/responsable.png',blob);
+    await db.collection('estado').doc('firmaResponsable').set({url:url},{merge:true});
+    _firmaResponsableURL=url;
+    _renderFirmas();
+  });
+}
+function firmarConductor(){
+  if(!_bitacoraOperadorId)return;
+  _abrirFirmaPad('Firma del conductor',async function(blob){
+    var url=await TMLComprobantes.subirArchivo('firmas/operadores/'+_bitacoraOperadorId+'.png',blob);
+    await firebase.firestore().collection('operadores').doc(String(_bitacoraOperadorId)).update({firmaURL:url});
+    OPERADORES=await window.cargarOperadores(true);
+    await _renderFirmas();
+  });
+}
+async function _renderFirmas(){
+  if(_firmaResponsableURL===null){
+    var snap=await db.collection('estado').doc('firmaResponsable').get();
+    _firmaResponsableURL=(snap.exists&&snap.data().url)||'';
+  }
+  var claims=_miClaims;
+  var esMaestroReal=!!(claims&&claims.maestro&&!_verComoOperadorId);
+  var boxResp=$('firmaResponsableBox');
+  if(_firmaResponsableURL){
+    boxResp.innerHTML='<img src="'+_firmaResponsableURL+'" style="max-height:34px">';
+  }else if(esMaestroReal){
+    boxResp.innerHTML='<button type="button" onclick="firmarResponsable()" style="width:auto;margin:0;padding:4px 10px;font-size:11px;background:#1e3247;color:#fff;border:none;border-radius:6px">✏️ Firmar</button>';
+  }else{
+    boxResp.innerHTML='';
+  }
+
+  var op=_bitacoraOperadorId?OPERADORES.find(function(o){return o.operadorId===_bitacoraOperadorId;}):null;
+  var esElOperadorReal=!!(claims&&!claims.maestro&&claims.operadorId===_bitacoraOperadorId);
+  var boxCond=$('firmaConductorBox');
+  if(op&&op.firmaURL){
+    boxCond.innerHTML='<img src="'+op.firmaURL+'" style="max-height:34px">';
+  }else if(esElOperadorReal){
+    boxCond.innerHTML='<button type="button" onclick="firmarConductor()" style="width:auto;margin:0;padding:4px 10px;font-size:11px;background:#1e3247;color:#fff;border:none;border-radius:6px">✏️ Firmar</button>';
+  }else{
+    boxCond.innerHTML='';
+  }
 }
 // ASPECTOS_RELEVANTES: reverso del formato oficial — texto tal cual del PDF
 // de referencia (NOM-087-SCT-2-2017), sin parafrasear, para no arriesgar
