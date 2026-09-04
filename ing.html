@@ -1396,6 +1396,33 @@ function _fleteTusNorm(f){
   if(Array.isArray(f.tus))out=out.concat(f.tus.map(_normTxtFactManiobras)); // respaldo para registros viejos
   return out;
 }
+// _extraerRutaYHorariosCartaPorte: para la bitácora electrónica de horas de
+// servicio (operador.html, ícono 🕐, ver NOM-087-SCT-2-2017) — origen,
+// puntos intermedios, destino y sus horarios (FechaHoraSalidaLlegada), tal
+// como vienen en el complemento Carta Porte del XML. Nada de esto se ve en
+// ing.html, solo se guarda en fletesDB para que operador.html lo lea.
+function _extraerRutaYHorariosCartaPorte(doc){
+  var ubics=Array.from(doc.querySelectorAll('Ubicacion'));
+  if(!ubics.length)return null;
+  var puntos=ubics.map(function(u){
+    var tipo=u.getAttribute('TipoUbicacion')||'';
+    var dom=u.querySelector('Domicilio');
+    var estado=dom?dom.getAttribute('Estado')||'':'';
+    var munCod=dom?dom.getAttribute('Municipio')||'':'';
+    var munNombre=typeof nombreMunicipio==='function'?nombreMunicipio(estado,munCod):'';
+    var label=munNombre?(munNombre+', '+estado):(u.getAttribute('NombreRemitenteDestinatario')||estado||'Punto');
+    return{tipo:tipo,label:label,fechaHora:u.getAttribute('FechaHoraSalidaLlegada')||''};
+  });
+  var origen=puntos.find(function(p){return p.tipo==='Origen';});
+  var destino=puntos.slice().reverse().find(function(p){return p.tipo==='Destino';});
+  var intermedios=puntos.filter(function(p){return p!==origen&&p!==destino;}).map(function(p){return p.label;});
+  if(!origen&&!destino)return null;
+  return{
+    origen:origen?origen.label:null,horaSalida:origen?origen.fechaHora:null,
+    destino:destino?destino.label:null,horaLlegada:destino?destino.fechaHora:null,
+    puntosIntermedios:intermedios
+  };
+}
 async function intentarSustituirFletePorXML(doc,uuid,folioCompleto,total){
   try{
     var pendientes=(await window.cargarFletes(true)).filter(function(f){return f.estado==='pendiente_factura';});
@@ -1409,8 +1436,10 @@ async function intentarSustituirFletePorXML(doc,uuid,folioCompleto,total){
       var pedNorm=f.pedidoFlete?_normTxtFactManiobras(f.pedidoFlete):'';
       return _fleteTusNorm(f).some(function(id){return id&&textoNorm.indexOf(id)!==-1;})||(pedNorm&&textoNorm.indexOf(pedNorm)!==-1);
     });
+    var cartaPorte=_extraerRutaYHorariosCartaPorte(doc);
     for(var i=0;i<encontrados.length;i++){
       await window.marcarFleteFacturado(encontrados[i].ordenEmbarque,{uuid:uuid,folio:folioCompleto,monto:total});
+      if(cartaPorte)await actualizarEvidenciaManiobra(encontrados[i].ordenEmbarque,{cartaPorte:cartaPorte});
     }
     if(encontrados.length)cargarYRenderFletesPendientes();
   }catch(e){console.error('intentarSustituirFletePorXML:',e);}

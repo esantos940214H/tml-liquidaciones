@@ -107,30 +107,37 @@
       if (!_db) return [];
       try { await sembrarSiHaceFalta(_db); } catch (e) { console.error('shared/operadores.js: no se pudo sembrar:', e); }
       var snap = await _db.collection('operadores').where('activo', '==', true).get();
-      // Placas por unidad (colección "unidades") — se unen aquí para que el
-      // resto del sistema pueda machear un operador por la placa del CFDI
-      // (ver ing.html) sin tener que consultar dos colecciones por su
-      // cuenta. Si "unidades" no carga por alguna razón, no truena — solo
-      // se queda sin placa (igual que un operador con la placa en blanco).
-      var placasPorUnidad = {};
+      // Placas/marca/modelo por unidad (colección "unidades") — se unen aquí
+      // para que el resto del sistema pueda machear un operador por la placa
+      // del CFDI (ver ing.html) sin tener que consultar dos colecciones por
+      // su cuenta. Marca/modelo solo los usa la bitácora electrónica de
+      // horas de servicio (operador.html, ver NOM-087-SCT-2-2017). Si
+      // "unidades" no carga por alguna razón, no truena — solo se queda sin
+      // esos datos (igual que un operador con la placa en blanco).
+      var datosPorUnidad = {};
       try {
         var snapUn = await _db.collection('unidades').get();
         snapUn.forEach(function (d) {
           var u = d.data();
-          if (u.placas) placasPorUnidad[parseInt(d.id)] = u.placas;
+          datosPorUnidad[parseInt(d.id)] = { placa: u.placas || '', marca: u.marca || '', modelo: u.modelo || '' };
         });
       } catch (e) { console.error('shared/operadores.js: no se pudieron cargar las placas:', e); }
       var lista = [];
       snap.forEach(function (d) {
         var o = d.data();
         if (o.unidadActual == null) return; // sin unidad: aún no aparece en el resto del sistema
+        var datosUn = datosPorUnidad[o.unidadActual] || {};
         lista.push({
           unidad: o.unidadActual,
           operadorId: parseInt(d.id),
           nombre: o.nombre || '',
           comision: o.comision != null ? o.comision : 12,
           clave: o.clave || '',
-          placa: placasPorUnidad[o.unidadActual] || ''
+          placa: datosUn.placa || '',
+          marca: datosUn.marca || '',
+          modelo: datosUn.modelo || '',
+          licencia: o.licencia || '',
+          licenciaVigencia: o.licenciaVigencia || ''
         });
       });
       lista.sort(function (a, b) { return (a.unidad || 0) - (b.unidad || 0); });

@@ -153,6 +153,8 @@ tr:hover td{background:#fafafa}
         <div class="field" style="flex:2;min-width:200px"><label>Nombre completo</label><input type="text" id="nuevoOpNombre" placeholder="Nombre del operador"></div>
         <div class="field"><label>% Comisión</label><input type="number" id="nuevoOpComision" value="12" step="1" min="0" max="100"></div>
         <div class="field"><label>Clave (opcional, se asigna sola si se deja en blanco)</label><input type="text" id="nuevoOpClave" placeholder="Automática"></div>
+        <div class="field"><label>Licencia No. (bitácora SCT)</label><input type="text" id="nuevoOpLicencia" placeholder="Opcional"></div>
+        <div class="field"><label>Vigencia de licencia</label><input type="date" id="nuevoOpLicenciaVigencia"></div>
         <button class="btn btn-red btn-sm" onclick="altaOperador()">Dar de alta</button>
       </div>
     </div>
@@ -172,6 +174,8 @@ tr:hover td{background:#fafafa}
       <div class="row">
         <div class="field"><label>Número de unidad</label><input type="number" id="nuevaUnNumero" placeholder="Ej: 536"></div>
         <div class="field"><label>Placas</label><input type="text" id="nuevaUnPlacas" placeholder="ABC-1234"></div>
+        <div class="field"><label>Marca (bitácora SCT)</label><input type="text" id="nuevaUnMarca" placeholder="Opcional"></div>
+        <div class="field"><label>Modelo (bitácora SCT)</label><input type="text" id="nuevaUnModelo" placeholder="Opcional"></div>
         <div class="field" style="flex:2;min-width:220px"><label>Capacidad de tanque(s), en litros</label><input type="text" id="nuevaUnTanques" placeholder="Ej: 200 o 200,100 si son varios"></div>
         <div class="field"><label>Colchonetas esperadas</label><input type="number" id="nuevaUnColch" placeholder="30"></div>
         <div class="field"><label>Extintores esperados</label><input type="number" id="nuevaUnExt" placeholder="2"></div>
@@ -523,15 +527,19 @@ async function altaOperador(){
   var nombre=($('nuevoOpNombre').value||'').trim().toUpperCase();
   var comision=parseFloat($('nuevoOpComision').value||12);
   var clave=($('nuevoOpClave').value||'').trim()||siguienteClaveConsecutiva();
+  var licencia=($('nuevoOpLicencia').value||'').trim();
+  var licenciaVigencia=$('nuevoOpLicenciaVigencia').value||null;
   if(!nombre){alert('Escribe el nombre del operador.');return;}
   try{
     var db=firebase.firestore();
     var nuevoId=await siguienteOperadorId();
     await db.collection('operadores').doc(String(nuevoId)).set({
       nombre:nombre,comision:comision||12,clave:clave,
+      licencia:licencia||null,licenciaVigencia:licenciaVigencia,
       unidadActual:null,activo:true,fechaAlta:hoy(),fechaBaja:null
     });
     $('nuevoOpNombre').value='';$('nuevoOpComision').value='12';$('nuevoOpClave').value='';
+    $('nuevoOpLicencia').value='';$('nuevoOpLicenciaVigencia').value='';
     alert('✅ Operador dado de alta con clave '+clave+'. Asígnale una unidad en la pestaña "Asignar / Reasignar" para que empiece a aparecer en el resto del sistema.');
     await cargarTodo();
   }catch(e){console.error('altaOperador:',e);alert('⚠️ Error: '+e.message);}
@@ -545,9 +553,16 @@ async function editarOperador(id){
   if(comisionTxt===null)return;
   var clave=prompt('Clave:',op.clave||'');
   if(clave===null)return;
+  // Licencia+vigencia: solo se usan para autollenar la bitácora electrónica
+  // de horas de servicio (operador.html) — ver NOM-087-SCT-2-2017.
+  var licencia=prompt('Licencia No. (para la bitácora SCT, opcional):',op.licencia||'');
+  if(licencia===null)return;
+  var licenciaVigencia=prompt('Vigencia de licencia (YYYY-MM-DD, opcional):',op.licenciaVigencia||'');
+  if(licenciaVigencia===null)return;
   try{
     await firebase.firestore().collection('operadores').doc(id).update({
-      nombre:nombre.trim().toUpperCase(),comision:parseFloat(comisionTxt)||12,clave:clave.trim()
+      nombre:nombre.trim().toUpperCase(),comision:parseFloat(comisionTxt)||12,clave:clave.trim(),
+      licencia:licencia.trim()||null,licenciaVigencia:licenciaVigencia.trim()||null
     });
     if(window.cargarOperadores)window.cargarOperadores(true);
     await cargarTodo();
@@ -597,6 +612,8 @@ function renderOperadores(){
 async function altaUnidad(){
   var numero=parseInt($('nuevaUnNumero').value||0);
   var placas=($('nuevaUnPlacas').value||'').trim().toUpperCase();
+  var marca=($('nuevaUnMarca').value||'').trim();
+  var modelo=($('nuevaUnModelo').value||'').trim();
   var tanquesTxt=($('nuevaUnTanques').value||'').trim();
   var colchEsp=parseInt($('nuevaUnColch').value||0)||0;
   var extEsp=parseInt($('nuevaUnExt').value||0)||0;
@@ -607,8 +624,8 @@ async function altaUnidad(){
     var ref=db.collection('unidades').doc(String(numero));
     var existe=await ref.get();
     if(existe.exists){alert('Ya existe una unidad con ese número.');return;}
-    await ref.set({numero:numero,activa:true,placas:placas,tanques:tanques,colchonetasEsperadas:colchEsp,extintoresEsperados:extEsp,operadorActual:null});
-    $('nuevaUnNumero').value='';$('nuevaUnPlacas').value='';$('nuevaUnTanques').value='';$('nuevaUnColch').value='';$('nuevaUnExt').value='';
+    await ref.set({numero:numero,activa:true,placas:placas,marca:marca||null,modelo:modelo||null,tanques:tanques,colchonetasEsperadas:colchEsp,extintoresEsperados:extEsp,operadorActual:null});
+    $('nuevaUnNumero').value='';$('nuevaUnPlacas').value='';$('nuevaUnMarca').value='';$('nuevaUnModelo').value='';$('nuevaUnTanques').value='';$('nuevaUnColch').value='';$('nuevaUnExt').value='';
     alert('✅ Unidad dada de alta. Asígnale un operador en la pestaña "Asignar / Reasignar".');
     await cargarTodo();
   }catch(e){console.error('altaUnidad:',e);alert('⚠️ Error: '+e.message);}
@@ -618,6 +635,12 @@ async function editarUnidad(id){
   if(!un)return;
   var placas=prompt('Placas:',un.placas||'');
   if(placas===null)return;
+  // Marca+modelo: solo se usan para autollenar la bitácora electrónica de
+  // horas de servicio (operador.html) — ver NOM-087-SCT-2-2017.
+  var marca=prompt('Marca (para la bitácora SCT, opcional):',un.marca||'');
+  if(marca===null)return;
+  var modelo=prompt('Modelo (para la bitácora SCT, opcional):',un.modelo||'');
+  if(modelo===null)return;
   var tanquesTxt=prompt('Capacidad de tanque(s) en litros, separados por coma si son varios (ej. 200,100):',(un.tanques||[]).join(','));
   if(tanquesTxt===null)return;
   var colchTxt=prompt('Colchonetas esperadas:',un.colchonetasEsperadas!=null?un.colchonetasEsperadas:0);
@@ -627,7 +650,7 @@ async function editarUnidad(id){
   var tanques=tanquesTxt.split(',').map(function(s){return parseFloat(s.trim())||0;}).filter(function(n){return n>0;});
   try{
     await firebase.firestore().collection('unidades').doc(id).update({
-      placas:placas.trim().toUpperCase(),tanques:tanques,
+      placas:placas.trim().toUpperCase(),marca:marca.trim()||null,modelo:modelo.trim()||null,tanques:tanques,
       colchonetasEsperadas:parseInt(colchTxt)||0,extintoresEsperados:parseInt(extTxt)||0
     });
     await cargarTodo();

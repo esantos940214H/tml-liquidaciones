@@ -121,7 +121,48 @@
       </div>
     </div>
 
+    <!-- ── BITÁCORA DE HORAS DE SERVICIO (NOM-087-SCT-2-2017) — el ícono 🕐
+         aparece por viaje en cuanto la oficina sube su carta porte (XML,
+         ver _extraerRutaYHorariosCartaPorte en ing.html), que trae origen/
+         destino/horarios para autollenar el encabezado. Se abre en un
+         modal aparte, no en "Mis viajes" (esta lista NO desaparece al
+         completar evidencia — el viaje puede seguir en curso). ────────── -->
+    <div id="bloqueBitacoras" style="display:none">
+      <div class="card-ev">
+        <label>🕐 Bitácora de horas de servicio</label>
+        <div id="listaBitacoras"></div>
+      </div>
+    </div>
+
     <button class="salir" onclick="salir()">Cerrar sesión</button>
+  </div>
+</div>
+
+<!-- ── MODAL DE BITÁCORA ────────────────────────────────────────────────── -->
+<div id="modalBitacora" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:9999;align-items:flex-start;justify-content:center;overflow:auto;padding:16px">
+  <div style="background:#132a3f;border-radius:14px;max-width:480px;width:100%;padding:20px;margin-top:10px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+      <strong style="font-size:15px">🕐 Bitácora de horas de servicio</strong>
+      <button type="button" onclick="cerrarBitacora()" style="width:auto;margin:0;padding:6px 10px;background:#1e3247">✕</button>
+    </div>
+    <div id="bitEncabezado" style="font-size:12px;color:#9fb3c8;line-height:1.6;margin-bottom:14px"></div>
+    <div id="bitEstadoActual" style="text-align:center;font-size:16px;font-weight:600;margin-bottom:6px"></div>
+    <div id="bitAlerta" class="msg error" style="min-height:0"></div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:14px 0">
+      <button type="button" class="btn-icono" style="width:100%" onclick="registrarEventoBitacora('inicio_viaje')">🏁 Inicio de viaje</button>
+      <button type="button" class="btn-icono" style="width:100%" onclick="registrarEventoBitacora('conduciendo')">🚛 Conduciendo</button>
+      <button type="button" class="btn-icono" style="width:100%" onclick="registrarEventoBitacora('pausa')">☕ Pausa</button>
+      <button type="button" class="btn-icono" style="width:100%" onclick="registrarEventoBitacora('descanso')">😴 Descanso</button>
+      <button type="button" class="btn-icono" style="width:100%" onclick="registrarEventoBitacora('carga')">📦 Carga</button>
+      <button type="button" class="btn-icono" style="width:100%" onclick="registrarEventoBitacora('descarga')">📤 Descarga</button>
+      <button type="button" class="btn-icono" style="width:100%" onclick="registrarEventoBitacora('retenes')">🚧 Retenes</button>
+      <button type="button" class="btn-icono" style="width:100%" onclick="registrarEventoBitacora('descompostura')">🔧 Avería</button>
+      <button type="button" class="btn-icono" style="width:100%" onclick="registrarEventoBitacora('percance_vial')">⚠️ Percance vial</button>
+      <button type="button" class="btn-icono" style="width:100%" onclick="registrarEventoBitacora('bloqueo_carretero')">🚫 Bloqueo</button>
+      <button type="button" class="btn-icono" style="width:100%" onclick="registrarEventoBitacora('eventos_climatologicos')">🌧️ Clima</button>
+      <button type="button" class="btn-icono" style="width:100%" onclick="registrarEventoBitacora('cierre_viaje')">🏁 Cierre de viaje</button>
+    </div>
+    <div id="bitLog" style="font-size:12px;color:#9fb3c8;max-height:220px;overflow:auto"></div>
   </div>
 </div>
 
@@ -558,6 +599,8 @@ async function actualizarEstadoDinero(claims){
   if(!claims)return;
   $('bloqueDinero').style.display='block';
   poblarViajesDinero(claims);
+  $('bloqueBitacoras').style.display='block';
+  poblarBitacoras(claims);
 }
 async function solicitarDinero(){
   if(_verComoOperadorId){
@@ -621,9 +664,136 @@ async function alCambiarVerComo(){
   FLETES=await cargarFletes(true);
   restringirFletesAOperador(_claimsEfectivos());
   poblarViajesDinero(_claimsEfectivos());
+  poblarBitacoras(_claimsEfectivos());
   $('txtContexto').textContent=_verComoOperadorId
     ?'👁️ Viendo como operador — vista previa, no se puede enviar solicitudes reales.'
     :'Modo maestro: puedes subir evidencia de cualquier pedido.';
+}
+
+// ══════════════════════════════════════════════════════════════════════
+// BITÁCORA DE HORAS DE SERVICIO (NOM-087-SCT-2-2017) — ícono 🕐 por viaje,
+// solo si ya tiene datos de carta porte (f.cartaPorte, ver
+// _extraerRutaYHorariosCartaPorte en ing.html). Esta lista NO desaparece
+// al completar evidencia (a diferencia de "Mis viajes") porque el viaje
+// puede seguir en curso — se queda visible mientras exista el pedido de
+// flete. Cada viaje guarda sus eventos en la colección "bitacoras" (doc id
+// = ordenEmbarque), como un log de cambios de estatus (uno activo a la
+// vez, igual que un tacógrafo): al registrar un evento nuevo se cierra el
+// anterior (fin=ahora) y se abre el que se acaba de tocar.
+// ══════════════════════════════════════════════════════════════════════
+var ETIQUETAS_BITACORA={
+  inicio_viaje:'🏁 Inicio de viaje',conduciendo:'🚛 Conduciendo',pausa:'☕ Pausa',
+  descanso:'😴 Descanso',carga:'📦 Carga',descarga:'📤 Descarga',retenes:'🚧 Retenes',
+  descompostura:'🔧 Avería del vehículo',percance_vial:'⚠️ Percance vial',
+  bloqueo_carretero:'🚫 Bloqueo carretero',eventos_climatologicos:'🌧️ Eventos climatológicos',
+  cierre_viaje:'🏁 Cierre de viaje'
+};
+function poblarBitacoras(claims){
+  var cont=$('listaBitacoras');
+  var conCartaPorte=FLETES.filter(function(f){return!!f.cartaPorte;});
+  conCartaPorte.sort(function(a,b){return(b.fecha||'').localeCompare(a.fecha||'');});
+  cont.innerHTML='';
+  if(!conCartaPorte.length){
+    cont.innerHTML='<div style="font-size:13px;color:#6f8ba6">Todavía no hay viajes con carta porte cargada.</div>';
+    return;
+  }
+  conCartaPorte.forEach(function(f){
+    var div=document.createElement('div');
+    div.className='viaje-card';
+    div.innerHTML='<div><div class="destino">'+(f.destino||f.tienda||'(sin destino)')+'</div>'
+      +'<div class="estado-ev">'+(f.fecha||'')+'</div></div>'
+      +'<button class="btn-icono" type="button" onclick="abrirBitacora(\''+f.ordenEmbarque+'\')">🕐</button>';
+    cont.appendChild(div);
+  });
+}
+var _bitacoraOrden=null,_bitacoraEventos=[],_bitacoraInterval=null;
+async function abrirBitacora(ordenEmbarque){
+  _bitacoraOrden=ordenEmbarque;
+  var f=FLETES.find(function(x){return x.ordenEmbarque===ordenEmbarque;});
+  var cp=(f&&f.cartaPorte)||{};
+  var claims=_claimsEfectivos();
+  var operadorId=(claims&&!claims.maestro)?claims.operadorId:_verComoOperadorId;
+  var op=operadorId?OPERADORES.find(function(o){return o.operadorId===operadorId;}):null;
+  var encabezado=
+    '<strong>Mudanzas TML, S.A. de C.V.</strong> · Autotransporte Carga Federal<br>'+
+    'Conductor: '+(op?op.nombre:'(sin identificar)')+(op&&op.licencia?' · Lic. '+op.licencia+(op.licenciaVigencia?' (vig. '+op.licenciaVigencia+')':''):'')+'<br>'+
+    'Unidad: '+(op?op.unidad:'—')+(op&&op.placa?' · Placas '+op.placa:'')+(op&&op.marca?' · '+op.marca+(op.modelo?' '+op.modelo:''):'')+'<br>'+
+    'Origen: '+(cp.origen||'—')+(cp.horaSalida?' ('+cp.horaSalida+')':'')+'<br>'+
+    (cp.puntosIntermedios&&cp.puntosIntermedios.length?('Puntos intermedios: '+cp.puntosIntermedios.join(', ')+'<br>'):'')+
+    'Destino: '+(cp.destino||'—')+(cp.horaLlegada?' ('+cp.horaLlegada+')':'');
+  $('bitEncabezado').innerHTML=encabezado;
+  $('modalBitacora').style.display='flex';
+  await _cargarEventosBitacora();
+  _actualizarEstadoBitacora();
+  if(_bitacoraInterval)clearInterval(_bitacoraInterval);
+  _bitacoraInterval=setInterval(_actualizarEstadoBitacora,30000);
+}
+function cerrarBitacora(){
+  $('modalBitacora').style.display='none';
+  if(_bitacoraInterval){clearInterval(_bitacoraInterval);_bitacoraInterval=null;}
+  _bitacoraOrden=null;
+}
+async function _cargarEventosBitacora(){
+  var doc=await db.collection('bitacoras').doc(_bitacoraOrden).get();
+  _bitacoraEventos=(doc.exists&&Array.isArray(doc.data().eventos))?doc.data().eventos:[];
+  _renderLogBitacora();
+}
+function _renderLogBitacora(){
+  var cont=$('bitLog');
+  if(!_bitacoraEventos.length){cont.innerHTML='<div style="color:#6f8ba6">Sin eventos registrados todavía.</div>';return;}
+  cont.innerHTML=_bitacoraEventos.slice().reverse().map(function(e){
+    var ini=new Date(e.inicio).toLocaleString('es-MX',{hour:'2-digit',minute:'2-digit',day:'2-digit',month:'2-digit'});
+    var fin=e.fin?new Date(e.fin).toLocaleString('es-MX',{hour:'2-digit',minute:'2-digit'}):'(en curso)';
+    return '<div style="padding:4px 0;border-bottom:1px solid #1e3247">'+(ETIQUETAS_BITACORA[e.tipo]||e.tipo)+' — '+ini+' → '+fin+'</div>';
+  }).join('');
+}
+async function registrarEventoBitacora(tipo){
+  if(!_bitacoraOrden)return;
+  var ahora=new Date().toISOString();
+  var ref=db.collection('bitacoras').doc(_bitacoraOrden);
+  await db.runTransaction(async function(tx){
+    var snap=await tx.get(ref);
+    var eventos=(snap.exists&&Array.isArray(snap.data().eventos))?snap.data().eventos:[];
+    if(eventos.length&&!eventos[eventos.length-1].fin)eventos[eventos.length-1].fin=ahora;
+    eventos.push({tipo:tipo,inicio:ahora,fin:null});
+    tx.set(ref,{ordenEmbarque:_bitacoraOrden,eventos:eventos},{merge:true});
+  });
+  await _cargarEventosBitacora();
+  _actualizarEstadoBitacora();
+}
+// _actualizarEstadoBitacora: refleja el estatus actual y calcula los AVISOS
+// (nunca bloqueos) basados en NOM-087-SCT-2-2017 — art. 4.1 (pausa de 30
+// min tras 5h continuas conduciendo) y art. 4.7 (máximo 14h conduciendo en
+// 24h). Son solo avisos informativos: las excepciones del art. 3.4
+// (percance vial, avería, clima, etc.) las decide el conductor/
+// permisionario, este módulo no puede juzgar esas situaciones solo.
+function _actualizarEstadoBitacora(){
+  if(!_bitacoraEventos.length){$('bitEstadoActual').textContent='Sin iniciar';$('bitAlerta').textContent='';return;}
+  var ultimo=_bitacoraEventos[_bitacoraEventos.length-1];
+  var minDesde=Math.floor((Date.now()-new Date(ultimo.inicio).getTime())/60000);
+  $('bitEstadoActual').textContent=(ETIQUETAS_BITACORA[ultimo.tipo]||ultimo.tipo)+' — '+Math.floor(minDesde/60)+'h '+(minDesde%60)+'min';
+
+  var minConduciendoContinuo=0;
+  for(var i=_bitacoraEventos.length-1;i>=0;i--){
+    var e=_bitacoraEventos[i];
+    if(e.tipo==='pausa'||e.tipo==='descanso')break;
+    if(e.tipo==='conduciendo'){
+      var fin=e.fin?new Date(e.fin).getTime():Date.now();
+      minConduciendoContinuo+=(fin-new Date(e.inicio).getTime())/60000;
+    }
+  }
+  var hace24h=Date.now()-24*60*60*1000;
+  var minConduciendo24h=_bitacoraEventos.filter(function(e){return e.tipo==='conduciendo';}).reduce(function(s,e){
+    var ini=new Date(e.inicio).getTime();
+    if(ini<hace24h)return s;
+    var fin=e.fin?new Date(e.fin).getTime():Date.now();
+    return s+(fin-ini)/60000;
+  },0);
+
+  var alertas=[];
+  if(minConduciendoContinuo>=5*60)alertas.push('⚠️ Llevas '+Math.floor(minConduciendoContinuo/60)+'h conduciendo sin pausa — toma tu pausa de 30 min (art. 4.1 NOM-087).');
+  if(minConduciendo24h>=14*60)alertas.push('⚠️ Ya llevas '+Math.floor(minConduciendo24h/60)+'h conduciendo en las últimas 24h — el máximo permitido es 14h (art. 4.7 NOM-087).');
+  $('bitAlerta').innerHTML=alertas.join('<br>');
 }
 
 firebase.auth().onAuthStateChanged(async function(usuario){
