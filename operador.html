@@ -173,9 +173,6 @@
         <button type="button" class="btn-icono" style="width:100%" onclick="registrarEventoBitacora('eventos_climatologicos')">🌧️ Clima</button>
         <button type="button" class="btn-icono" style="width:100%" onclick="registrarEventoBitacora('cierre_viaje')">🏁 Cierre de viaje</button>
       </div>
-
-      <div style="font-size:12px;color:#1a1a1a;font-weight:600;margin-top:14px">Detalle de eventos</div>
-      <div id="bitLog" style="font-size:12px;color:#555;max-height:220px;overflow:auto"></div>
     </div>
 
     <!-- ── PÁGINA 2: REVERSO (aspectos relevantes NOM-087, en carrusel) ── -->
@@ -194,6 +191,12 @@
     </div>
 
     <button type="button" onclick="voltearBitacora()" style="width:100%;margin-top:16px;padding:12px;background:#1e3247;color:#fff;border:none;border-radius:10px;font-size:13px;cursor:pointer">🔄 <span id="txtVoltear">Ver aspectos relevantes (reverso)</span></button>
+
+    <!-- ── DETALLE DE EVENTOS — tampoco es parte del formato oficial (es
+         el registro cronológico que arma la app), va hasta abajo del todo
+         para no saturar lo que sí se ve como el papel oficial. ────────── -->
+    <div style="font-size:12px;color:#1a1a1a;font-weight:600;margin-top:18px">Detalle de eventos</div>
+    <div id="bitLog" style="font-size:12px;color:#555;max-height:220px;overflow:auto"></div>
   </div>
 </div>
 
