@@ -2292,6 +2292,10 @@ exports.solicitarAnticipoOperador = onRequest({ cors: true, region: 'us-central1
         res.status(403).json({ error: 'Ya se solicitó dinero para este viaje — no se puede volver a pedir.' });
         return;
       }
+      if (flete.fechaAlta && (Date.now() > new Date(flete.fechaAlta).getTime() + 36 * 60 * 60 * 1000)) {
+        res.status(403).json({ error: 'Ya pasaron más de 36 horas desde que este viaje se asignó — se venció la ventana para solicitar dinero de él.' });
+        return;
+      }
       if (!flete.montoFlete) {
         res.status(400).json({ error: 'Este viaje no tiene monto de flete registrado — no se puede calcular el tope permitido.' });
         return;

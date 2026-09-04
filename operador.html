@@ -81,15 +81,17 @@
     </div>
     <div id="msgEvidencias" class="msg"></div>
 
-    <!-- ── SOLICITAR DINERO (Fase 3) — un ícono 💵 por viaje (solo se
-         muestra el destino, no el T.U. ni otros datos). El ícono se
-         deshabilita si ese viaje no tiene evidencia completa o si ya se
-         pidió dinero para él; si el viaje ya pasó de fecha y sigue sin
-         evidencia, se marca con una alerta. El candado real (tope de 50%
-         de comisión, un solo request por viaje) vive en el SERVIDOR
-         (solicitarAnticipoOperador, functions/index.js) — esta pantalla
-         solo refleja esas reglas, nunca decide ella misma. La cuenta
-         maestro no tiene esas restricciones (autorización manual). ────── -->
+    <!-- ── MIS VIAJES / SOLICITAR DINERO (Fase 3) — para un operador
+         normal, "Mis viajes" es el checklist de evidencia PENDIENTE: un
+         viaje desaparece de esta lista en cuanto sube su evidencia
+         completa. Justo en ese momento (si sigue dentro de la ventana de
+         36 horas desde que el viaje se asignó), se le ofrece ahí mismo el
+         formulario para solicitar dinero — con tope de 50% de su comisión
+         sobre ese viaje, un solo request por viaje. El candado real vive
+         en el SERVIDOR (solicitarAnticipoOperador, functions/index.js).
+         La cuenta maestro ve TODOS los viajes con su ícono 💵 siempre
+         activo, sin esas restricciones (autorización manual del dueño). -->
+
     <div id="bloqueDinero" style="display:none">
       <div class="card-ev">
         <label>💵 Mis viajes</label>
@@ -324,6 +326,7 @@ async function subirOrdenEmbarqueSellada(input){
     restringirFletesAOperador(_miClaims);
     info.innerHTML=mensajes.join('<br>');
     actualizarEstadoDinero(_miClaims);
+    ofrecerSolicitudSiElegible();
   }catch(e){info.innerHTML='⚠️ Error: '+e.message;}
   input.value='';
 }
@@ -401,6 +404,7 @@ async function subirReciboManiobra(input){
     restringirFletesAOperador(_miClaims);
     info.innerHTML=mensajes.join('<br>');
     actualizarEstadoDinero(_miClaims);
+    ofrecerSolicitudSiElegible();
   }catch(e){info.innerHTML='⚠️ Error: '+e.message;}
   input.value='';
 }
@@ -431,33 +435,81 @@ function topeDelViaje(f){
   return f.montoFlete*(comisionParaFlete(f)/100)*0.5;
 }
 var _viajeSeleccionado=null;
+// dentroDeVentana36h: el dinero de un viaje solo se puede solicitar desde
+// que se asigna (fechaAlta) y hasta 36 horas después — pasada esa ventana
+// se deshabilita, sin importar si ya subió evidencia. Registros viejos sin
+// fechaAlta no se bloquean por esto (nunca existió ese dato para ellos).
+function dentroDeVentana36h(f){
+  if(!f.fechaAlta)return true;
+  return Date.now()<=new Date(f.fechaAlta).getTime()+36*60*60*1000;
+}
 function poblarViajesDinero(claims){
   var cont=$('listaViajesDinero');
-  var elegibles=claims.maestro?FLETES.slice():FLETES.filter(function(f){return f.montoFlete>0;});
-  elegibles.sort(function(a,b){return(b.fecha||'').localeCompare(a.fecha||'');});
   cont.innerHTML='';
+  if(claims.maestro){
+    // Vista del dueño: TODOS los viajes, sin filtrar por evidencia ni
+    // ventana de tiempo — puede autorizar lo que considere, cuando sea.
+    var elegibles=FLETES.slice();
+    elegibles.sort(function(a,b){return(b.fecha||'').localeCompare(a.fecha||'');});
+    if(!elegibles.length){
+      cont.innerHTML='<div style="font-size:13px;color:#6f8ba6">No hay viajes registrados todavía.</div>';
+      $('dineroEstado').textContent='';
+      return;
+    }
+    $('dineroEstado').textContent='Elige el viaje y el monto que autorizas.';
+    elegibles.forEach(function(f){
+      var tieneEv=!!(f.ordenEmbarqueImgURL&&f.reciboManiobraImgURL);
+      var estadoTxt=tieneEv?'✅ Evidencia subida':'Evidencia pendiente';
+      if(f.anticipoOperadorSolicitado)estadoTxt+=' · ya se autorizó dinero antes';
+      var div=document.createElement('div');
+      div.className='viaje-card';
+      div.innerHTML='<div><div class="destino">'+(f.destino||f.tienda||'(sin destino)')+'</div>'
+        +'<div class="estado-ev">'+estadoTxt+'</div></div>'
+        +'<button class="btn-icono" type="button" onclick="seleccionarViajeDinero(\''+f.ordenEmbarque+'\')">💵</button>';
+      cont.appendChild(div);
+    });
+    return;
+  }
+  // Operador normal: "Mis viajes" es SOLO el checklist de evidencia
+  // pendiente — un viaje desaparece de aquí en cuanto sube su evidencia
+  // completa. Solicitar dinero ya no se hace desde esta lista: en cuanto
+  // la evidencia de un viaje queda completa (ver subirOrdenEmbarqueSellada/
+  // subirReciboManiobra → ofrecerSolicitudSiElegible), si sigue dentro de
+  // la ventana de 36 horas desde que se asignó, se le ofrece ahí mismo.
   $('formSolicitud').style.display='none';
-  if(!elegibles.length){
-    cont.innerHTML='<div style="font-size:13px;color:#6f8ba6">No hay viajes registrados todavía.</div>';
+  var pendientes=FLETES.filter(function(f){return f.montoFlete>0&&!(f.ordenEmbarqueImgURL&&f.reciboManiobraImgURL);});
+  pendientes.sort(function(a,b){return(b.fecha||'').localeCompare(a.fecha||'');});
+  if(!pendientes.length){
+    cont.innerHTML='<div style="font-size:13px;color:#4ade80">✅ No tienes evidencia pendiente.</div>';
     $('dineroEstado').textContent='';
     return;
   }
   var hoy=new Date().toISOString().slice(0,10);
-  $('dineroEstado').textContent=claims.maestro?'Elige el viaje y el monto que autorizas.':'Toca 💵 en el viaje sobre el que quieres solicitar dinero.';
-  elegibles.forEach(function(f){
-    var tieneEv=!!(f.ordenEmbarqueImgURL&&f.reciboManiobraImgURL);
+  $('dineroEstado').textContent='Viajes con evidencia pendiente:';
+  pendientes.forEach(function(f){
     var finalizado=!!(f.fecha&&f.fecha<=hoy);
-    var yaSolicitado=!!f.anticipoOperadorSolicitado;
-    var puedePedir=claims.maestro?true:(tieneEv&&!yaSolicitado);
-    var estadoTxt=tieneEv?'✅ Evidencia subida':(finalizado?'⚠️ Viaje finalizado sin evidencia':'Evidencia pendiente');
-    if(!claims.maestro&&yaSolicitado)estadoTxt+=' · dinero ya solicitado';
     var div=document.createElement('div');
     div.className='viaje-card';
     div.innerHTML='<div><div class="destino">'+(f.destino||f.tienda||'(sin destino)')+'</div>'
-      +'<div class="estado-ev'+(finalizado&&!tieneEv?' alerta':'')+'">'+estadoTxt+'</div></div>'
-      +'<button class="btn-icono" type="button" '+(puedePedir?'':'disabled')+' onclick="seleccionarViajeDinero(\''+f.ordenEmbarque+'\')">💵</button>';
+      +'<div class="estado-ev'+(finalizado?' alerta':'')+'">'+(finalizado?'⚠️ Viaje finalizado sin evidencia':'Evidencia pendiente')+'</div></div>';
     cont.appendChild(div);
   });
+}
+// ofrecerSolicitudSiElegible: se llama justo después de subir cualquier
+// evidencia — si con eso algún viaje (de los propios) quedó con evidencia
+// COMPLETA, sin solicitud previa y todavía dentro de la ventana de 36h,
+// se le abre de inmediato el formulario de solicitud para ese viaje (si no
+// lo hace en este momento, pierde la oportunidad en cuanto se oculte de
+// "Mis viajes" — no hay otro lugar desde donde pedirlo después).
+function ofrecerSolicitudSiElegible(){
+  if(!_miClaims||_miClaims.maestro)return;
+  var candidato=FLETES.find(function(f){
+    return f.montoFlete>0&&f.ordenEmbarqueImgURL&&f.reciboManiobraImgURL&&!f.anticipoOperadorSolicitado&&dentroDeVentana36h(f);
+  });
+  if(candidato){
+    seleccionarViajeDinero(candidato.ordenEmbarque);
+    mostrarMsgDinero('✅ Ya puedes solicitar dinero para este viaje.','ok');
+  }
 }
 function seleccionarViajeDinero(ordenEmbarque){
   _viajeSeleccionado=ordenEmbarque;
