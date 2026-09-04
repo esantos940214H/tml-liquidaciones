@@ -1819,8 +1819,11 @@ const PROMPT_RECIBO_MANIOBRA =
 // Auth (de cualquier tipo, oficina u operador) y limita a
 // LIMITE_IA_DIARIO usos por persona por día — un operador normal sube 2
 // fotos por viaje, así que 20 al día deja margen amplio sin abrir la
-// puerta a un abuso sostenido.
+// puerta a un abuso sostenido. La cuenta maestro tiene un tope más alto
+// mientras el dueño hace pruebas del módulo (LIMITE_IA_DIARIO_MAESTRO) —
+// bajarlo a 20 también, igual que el resto, en cuanto termine esa fase.
 const LIMITE_IA_DIARIO = 20;
+const LIMITE_IA_DIARIO_MAESTRO = 100;
 
 async function _verificarSesionFirebase(req) {
   const encabezado = (req.get('Authorization') || '');
@@ -1839,13 +1842,14 @@ function _claveUsoIA(decoded) {
 
 async function _verificarYRegistrarUsoIA(decoded) {
   const clave = _claveUsoIA(decoded);
+  const limite = decoded.rol === 'operador' && decoded.maestro ? LIMITE_IA_DIARIO_MAESTRO : LIMITE_IA_DIARIO;
   const hoy = new Date().toISOString().slice(0, 10);
   const ref = db.collection('usoIA').doc(clave + '_' + hoy);
   let permitido = true;
   await db.runTransaction(async (tx) => {
     const snap = await tx.get(ref);
     const conteo = (snap.exists && snap.data().conteo) || 0;
-    if (conteo >= LIMITE_IA_DIARIO) { permitido = false; return; }
+    if (conteo >= limite) { permitido = false; return; }
     tx.set(ref, { conteo: conteo + 1, actualizadoEn: new Date().toISOString() }, { merge: true });
   });
   return permitido;
@@ -1866,7 +1870,7 @@ function _extraerImagenDocumento(prompt) {
     }
     const puedeUsar = await _verificarYRegistrarUsoIA(sesion);
     if (!puedeUsar) {
-      res.status(429).json({ error: 'Ya alcanzaste el límite de ' + LIMITE_IA_DIARIO + ' usos de hoy para esta función. Intenta de nuevo mañana, o contacta a la oficina si de verdad lo necesitas.' });
+      res.status(429).json({ error: 'Ya alcanzaste el límite de usos de hoy para esta función. Intenta de nuevo mañana, o contacta a la oficina si de verdad lo necesitas.' });
       return;
     }
     const archivoBase64 = ((req.body && req.body.archivoBase64) || '').toString().trim();
