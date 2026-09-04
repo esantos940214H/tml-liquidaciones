@@ -41,6 +41,7 @@
 // ══════════════════════════════════════════════════════════════════════════
 
 const admin = require('firebase-admin');
+const { getFirestore } = require('firebase-admin/firestore');
 const crypto = require('crypto');
 const path = require('path');
 
@@ -49,7 +50,7 @@ const RUTA_SERVICE_ACCOUNT = path.join(__dirname, '..', 'serviceAccountKey.json'
 admin.initializeApp({
   credential: admin.cert(require(RUTA_SERVICE_ACCOUNT))
 });
-const db = admin.firestore();
+const db = getFirestore();
 
 // IMPORTANTE: este hash debe coincidir EXACTO con _hashPin() en
 // functions/index.js (exports.loginOperador) — si cambias uno, cambia el
