@@ -140,32 +140,54 @@
 
 <!-- ── MODAL DE BITÁCORA ────────────────────────────────────────────────── -->
 <div id="modalBitacora" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:9999;align-items:flex-start;justify-content:center;overflow:auto;padding:16px">
-  <div style="background:#132a3f;border-radius:14px;max-width:480px;width:100%;padding:20px;margin-top:10px">
+  <div style="background:#fff;color:#1a1a1a;border-radius:14px;max-width:480px;width:100%;padding:20px;margin-top:10px">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
-      <strong style="font-size:15px">🕐 Bitácora de horas de servicio</strong>
-      <button type="button" onclick="cerrarBitacora()" style="width:auto;margin:0;padding:6px 10px;background:#1e3247">✕</button>
+      <img src="LOGO.png" alt="Mudanzas TML" style="height:32px">
+      <button type="button" onclick="cerrarBitacora()" style="width:auto;margin:0;padding:6px 10px;background:#eee;color:#1a1a1a">✕</button>
     </div>
-    <div id="bitEncabezado" style="font-size:12px;color:#9fb3c8;line-height:1.6;margin-bottom:14px"></div>
-    <div id="bitEstadoActual" style="text-align:center;font-size:16px;font-weight:600;margin-bottom:6px"></div>
-    <div id="bitAlerta" class="msg error" style="min-height:0"></div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:14px 0">
-      <button type="button" class="btn-icono" style="width:100%" onclick="registrarEventoBitacora('inicio_viaje')">🏁 Inicio de viaje</button>
-      <button type="button" class="btn-icono" style="width:100%" onclick="registrarEventoBitacora('conduciendo')">🚛 Conduciendo</button>
-      <button type="button" class="btn-icono" style="width:100%" onclick="registrarEventoBitacora('pausa')">☕ Pausa</button>
-      <button type="button" class="btn-icono" style="width:100%" onclick="registrarEventoBitacora('descanso')">😴 Descanso</button>
-      <button type="button" class="btn-icono" style="width:100%" onclick="registrarEventoBitacora('carga')">📦 Carga</button>
-      <button type="button" class="btn-icono" style="width:100%" onclick="registrarEventoBitacora('descarga')">📤 Descarga</button>
-      <button type="button" class="btn-icono" style="width:100%" onclick="registrarEventoBitacora('retenes')">🚧 Retenes</button>
-      <button type="button" class="btn-icono" style="width:100%" onclick="registrarEventoBitacora('descompostura')">🔧 Avería</button>
-      <button type="button" class="btn-icono" style="width:100%" onclick="registrarEventoBitacora('percance_vial')">⚠️ Percance vial</button>
-      <button type="button" class="btn-icono" style="width:100%" onclick="registrarEventoBitacora('bloqueo_carretero')">🚫 Bloqueo</button>
-      <button type="button" class="btn-icono" style="width:100%" onclick="registrarEventoBitacora('eventos_climatologicos')">🌧️ Clima</button>
-      <button type="button" class="btn-icono" style="width:100%" onclick="registrarEventoBitacora('cierre_viaje')">🏁 Cierre de viaje</button>
+    <div style="text-align:center;font-weight:700;font-size:14px;margin-bottom:10px">BITÁCORA DE HORAS DE SERVICIO</div>
+
+    <!-- ── PÁGINA 1: ANVERSO (encabezado, registro, cuadrícula) ────────── -->
+    <div id="bitPagina1">
+      <div id="bitEncabezado" style="font-size:12px;color:#333;line-height:1.6;margin-bottom:14px"></div>
+      <div id="bitEstadoActual" style="text-align:center;font-size:16px;font-weight:600;margin-bottom:6px;color:#1a1a1a"></div>
+      <div id="bitAlerta" style="color:#b45309;font-size:13px;text-align:center;margin-bottom:6px"></div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:14px 0">
+        <button type="button" class="btn-icono" style="width:100%" onclick="registrarEventoBitacora('inicio_viaje')">🏁 Inicio de viaje</button>
+        <button type="button" class="btn-icono" style="width:100%" onclick="registrarEventoBitacora('conduciendo')">🚛 Conduciendo</button>
+        <button type="button" class="btn-icono" style="width:100%" onclick="registrarEventoBitacora('pausa')">☕ Pausa</button>
+        <button type="button" class="btn-icono" style="width:100%" onclick="registrarEventoBitacora('descanso')">😴 Descanso</button>
+        <button type="button" class="btn-icono" style="width:100%" onclick="registrarEventoBitacora('carga')">📦 Carga</button>
+        <button type="button" class="btn-icono" style="width:100%" onclick="registrarEventoBitacora('descarga')">📤 Descarga</button>
+        <button type="button" class="btn-icono" style="width:100%" onclick="registrarEventoBitacora('retenes')">🚧 Retenes</button>
+        <button type="button" class="btn-icono" style="width:100%" onclick="registrarEventoBitacora('descompostura')">🔧 Avería</button>
+        <button type="button" class="btn-icono" style="width:100%" onclick="registrarEventoBitacora('percance_vial')">⚠️ Percance vial</button>
+        <button type="button" class="btn-icono" style="width:100%" onclick="registrarEventoBitacora('bloqueo_carretero')">🚫 Bloqueo</button>
+        <button type="button" class="btn-icono" style="width:100%" onclick="registrarEventoBitacora('eventos_climatologicos')">🌧️ Clima</button>
+        <button type="button" class="btn-icono" style="width:100%" onclick="registrarEventoBitacora('cierre_viaje')">🏁 Cierre de viaje</button>
+      </div>
+      <div style="font-size:12px;color:#1a1a1a;font-weight:600;margin-top:6px">Formato oficial (por día)</div>
+      <div id="bitGrid" style="max-height:260px;overflow:auto;color:#1a1a1a"></div>
+      <div style="font-size:12px;color:#1a1a1a;font-weight:600;margin-top:14px">Detalle de eventos</div>
+      <div id="bitLog" style="font-size:12px;color:#555;max-height:220px;overflow:auto"></div>
     </div>
-    <div style="font-size:12px;color:#e6edf3;font-weight:600;margin-top:6px">Formato oficial (por día)</div>
-    <div id="bitGrid" style="max-height:260px;overflow:auto"></div>
-    <div style="font-size:12px;color:#e6edf3;font-weight:600;margin-top:14px">Detalle de eventos</div>
-    <div id="bitLog" style="font-size:12px;color:#9fb3c8;max-height:220px;overflow:auto"></div>
+
+    <!-- ── PÁGINA 2: REVERSO (aspectos relevantes NOM-087, en carrusel) ── -->
+    <div id="bitPagina2" style="display:none;text-align:center">
+      <div style="font-size:12px;font-weight:700;margin-bottom:2px">ASPECTOS RELEVANTES</div>
+      <div style="font-size:10px;color:#666;margin-bottom:14px">NOM-087-SCT-2-2017 — tiempos de conducción y pausas</div>
+      <div style="display:flex;align-items:center;justify-content:center;gap:14px;min-height:200px">
+        <button type="button" onclick="aspectoAnterior()" style="width:44px;height:44px;border-radius:50%;background:#1e3247;color:#fff;border:none;font-size:18px;flex-shrink:0;cursor:pointer">◀</button>
+        <div style="flex:1">
+          <div id="aspectoNumeral" style="font-weight:700;font-size:13px;margin-bottom:8px;color:#1a1a1a"></div>
+          <div id="aspectoTexto" style="font-size:12px;color:#333;line-height:1.5;text-align:left"></div>
+        </div>
+        <button type="button" onclick="aspectoSiguiente()" style="width:44px;height:44px;border-radius:50%;background:#1e3247;color:#fff;border:none;font-size:18px;flex-shrink:0;cursor:pointer">▶</button>
+      </div>
+      <div id="aspectoContador" style="font-size:11px;color:#888;margin-top:10px"></div>
+    </div>
+
+    <button type="button" onclick="voltearBitacora()" style="width:100%;margin-top:16px;padding:12px;background:#1e3247;color:#fff;border:none;border-radius:10px;font-size:13px;cursor:pointer">🔄 <span id="txtVoltear">Ver aspectos relevantes (reverso)</span></button>
   </div>
 </div>
 
@@ -701,21 +723,32 @@ function poblarBitacoras(claims){
     return;
   }
   conCartaPorte.forEach(function(f){
+    var operadorId=_operadorIdDeFlete(f);
+    var op=operadorId?OPERADORES.find(function(o){return o.operadorId===operadorId;}):null;
     var div=document.createElement('div');
     div.className='viaje-card';
     div.innerHTML='<div><div class="destino">'+(f.destino||f.tienda||'(sin destino)')+'</div>'
-      +'<div class="estado-ev">'+(f.fecha||'')+'</div></div>'
+      +'<div class="estado-ev">'+(f.fecha||'')+(claims.maestro?(' · '+(op?op.nombre:'(operador no identificado)')):'')+'</div></div>'
       +'<button class="btn-icono" type="button" onclick="abrirBitacora(\''+f.ordenEmbarque+'\')">🕐</button>';
     cont.appendChild(div);
   });
 }
 var _bitacoraOrden=null,_bitacoraEventos=[],_bitacoraInterval=null;
+// _operadorIdDeFlete: a qué operador corresponde un viaje, por el
+// económico del flete (mismo criterio que restringirFletesAOperador) —
+// para que la cuenta maestro SIEMPRE sepa qué operador hizo cada viaje,
+// aunque no esté usando "Ver como...".
+function _operadorIdDeFlete(f){
+  if(!f||!f.economico)return null;
+  var op=OPERADORES.find(function(o){return o.unidad===normEconomico(f.economico);});
+  return op?op.operadorId:null;
+}
 async function abrirBitacora(ordenEmbarque){
   _bitacoraOrden=ordenEmbarque;
   var f=FLETES.find(function(x){return x.ordenEmbarque===ordenEmbarque;});
   var cp=(f&&f.cartaPorte)||{};
   var claims=_claimsEfectivos();
-  var operadorId=(claims&&!claims.maestro)?claims.operadorId:_verComoOperadorId;
+  var operadorId=(claims&&!claims.maestro)?claims.operadorId:(_verComoOperadorId||_operadorIdDeFlete(f));
   var op=operadorId?OPERADORES.find(function(o){return o.operadorId===operadorId;}):null;
   var encabezado=
     '<strong>Mudanzas TML, S.A. de C.V.</strong> · Autotransporte Carga Federal<br>'+
@@ -726,6 +759,10 @@ async function abrirBitacora(ordenEmbarque){
     'Destino: '+(cp.destino||'—')+(cp.horaLlegada?' ('+cp.horaLlegada+')':'');
   $('bitEncabezado').innerHTML=encabezado;
   $('modalBitacora').style.display='flex';
+  _aspectoIdx=0;
+  $('bitPagina1').style.display='block';
+  $('bitPagina2').style.display='none';
+  $('txtVoltear').textContent='Ver aspectos relevantes (reverso)';
   await _cargarEventosBitacora();
   _actualizarEstadoBitacora();
   if(_bitacoraInterval)clearInterval(_bitacoraInterval);
@@ -736,6 +773,40 @@ function cerrarBitacora(){
   if(_bitacoraInterval){clearInterval(_bitacoraInterval);_bitacoraInterval=null;}
   _bitacoraOrden=null;
 }
+// voltearBitacora: "voltea" el modal entre anverso (bitácora en curso) y
+// reverso (aspectos relevantes de la norma) — igual que una licencia
+// digital que se voltea para ver el reverso.
+function voltearBitacora(){
+  var enPagina1=$('bitPagina1').style.display!=='none';
+  $('bitPagina1').style.display=enPagina1?'none':'block';
+  $('bitPagina2').style.display=enPagina1?'block':'none';
+  $('txtVoltear').textContent=enPagina1?'Volver a la bitácora (anverso)':'Ver aspectos relevantes (reverso)';
+  if(enPagina1)_renderAspecto();
+}
+// ASPECTOS_RELEVANTES: reverso del formato oficial — texto tal cual del PDF
+// de referencia (NOM-087-SCT-2-2017), sin parafrasear, para no arriesgar
+// cambiar el sentido de la norma. Se navega uno por uno con las flechitas
+// circulares, como pidió el dueño ("como en las licencias digitales").
+var ASPECTOS_RELEVANTES=[
+  {numeral:'3.4. Excepciones temporales.',texto:'Es el tiempo que podrá prolongarse la duración de la conducción y del tiempo de servicio ininterrumpido, así como reducciones de la duración del descanso diario en las siguientes situaciones: en caso de percance vial, de avería del vehículo, de perturbación del servicio o alguna otra circunstancia que ocasione interrupción del tráfico por la vía que se transite, situaciones que deberán ser evidenciadas documentalmente; así como, cuando sea necesario asegurar el funcionamiento de servicios de interés público con carácter de urgente y excepcional.'},
+  {numeral:'3.5. Actividades auxiliares.',texto:'Cualquier trabajo distinto al de la conducción, para el mismo u otro permisionario, dentro o fuera del sector transporte, citando de forma enunciativa mas no limitativa: carga o descarga, limpieza y mantenimiento técnico, tareas que tengan como objeto garantizar la seguridad de la carga, tiempo dedicado a cumplir con las obligaciones legales vinculadas directamente con una operación de transporte (aduanal, administrativo, entre otros) y carga de combustible.'},
+  {numeral:'3.6. Pausa.',texto:'Periodo comprendido dentro del tiempo de servicio durante el cual, el conductor no lleva a cabo ninguna tarea de conducción o las definidas como otras actividades auxiliares.'},
+  {numeral:'4.1.',texto:'Todo conductor debe realizar una pausa de 30 minutos cuando: a) Ha conducido hasta cinco horas continuas, o bien; b) Esta pausa podrá distribuirse durante un lapso de cinco horas y media de acuerdo a las condiciones de la ruta.'},
+  {numeral:'4.2.',texto:'Los periodos de pausa, en ningún caso podrán ser acumulables.'},
+  {numeral:'4.6.',texto:'En rutas que impliquen una conducción máxima de 14 horas, el conductor debe tener una pausa no menor a 8 horas continuas, sin menoscabo de cumplir con las pausas mínimas establecidas en los numerales 4.1 y 4.2 de la presente Norma.'},
+  {numeral:'4.7.',texto:'El tiempo máximo de conducción en 24 horas nunca podrá exceder las 14 horas.'},
+  {numeral:'7.1. Vigilancia',texto:'La vigilancia del cumplimiento de esta Norma Oficial Mexicana corresponde a la Secretaría de Comunicaciones y Transportes y a la Secretaría de Gobernación, a través de la Policía Federal, en el ámbito de sus atribuciones.'},
+  {numeral:'8.3.1.',texto:'La Secretaría, sin perjuicio de las atribuciones que tiene conferidas la Secretaría de Gobernación, a través de la Policía Federal, verificará la bitácora de horas de servicio a través de sus distintas Unidades Administrativas y de acuerdo con las facultades que cada una tiene conferidas.'}
+];
+var _aspectoIdx=0;
+function _renderAspecto(){
+  var a=ASPECTOS_RELEVANTES[_aspectoIdx];
+  $('aspectoNumeral').textContent=a.numeral;
+  $('aspectoTexto').textContent=a.texto;
+  $('aspectoContador').textContent=(_aspectoIdx+1)+' / '+ASPECTOS_RELEVANTES.length;
+}
+function aspectoAnterior(){_aspectoIdx=(_aspectoIdx-1+ASPECTOS_RELEVANTES.length)%ASPECTOS_RELEVANTES.length;_renderAspecto();}
+function aspectoSiguiente(){_aspectoIdx=(_aspectoIdx+1)%ASPECTOS_RELEVANTES.length;_renderAspecto();}
 async function _cargarEventosBitacora(){
   var doc=await db.collection('bitacoras').doc(_bitacoraOrden).get();
   _bitacoraEventos=(doc.exists&&Array.isArray(doc.data().eventos))?doc.data().eventos:[];
