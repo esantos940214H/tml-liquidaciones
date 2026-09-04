@@ -3031,8 +3031,9 @@ async function extraerEstimadoConIA(){
   $('estimadoInfo').innerHTML='<div class="alert alert-info">⏳ Leyendo el estimado con IA...</div>';
   try{
     var body=_estPdfBase64?{pdfBase64:_estPdfBase64}:{texto:texto};
+    var idToken=await firebase.auth().currentUser.getIdToken();
     var r=await fetch(FUNCTION_URL_EXTRAER_ESTIMADO,{
-      method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)
+      method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+idToken},body:JSON.stringify(body)
     });
     var data=await r.json();
     if(data.error)throw new Error(data.error);

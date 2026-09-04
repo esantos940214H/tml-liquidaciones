@@ -888,7 +888,8 @@ async function handlePagoArchivo(ev,uuid){
     });
     var base64=dataUrl.split(',')[1]||'';
     var mimeType=file.type||'';
-    var resp=await fetch(FUNCTION_URL_EXTRAER_COMPROBANTE_PAGO_CXP,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({archivoBase64:base64,mimeType:mimeType})});
+    var idTokenCxP=await firebase.auth().currentUser.getIdToken();
+    var resp=await fetch(FUNCTION_URL_EXTRAER_COMPROBANTE_PAGO_CXP,{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+idTokenCxP},body:JSON.stringify({archivoBase64:base64,mimeType:mimeType})});
     var data=await resp.json();
     if(data.error)throw new Error(data.error);
     renderPagoExtraido(uuid,file,base64,mimeType,data.comprobante||{});
@@ -1011,7 +1012,8 @@ async function extraerJustificacionIA(){
     }else{
       body.texto=texto;
     }
-    var resp=await fetch(FUNCTION_URL_EXTRAER_JUSTIFICACION_CXP,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    var idTokenJust=await firebase.auth().currentUser.getIdToken();
+    var resp=await fetch(FUNCTION_URL_EXTRAER_JUSTIFICACION_CXP,{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+idTokenJust},body:JSON.stringify(body)});
     var data=await resp.json();
     if(data.error)throw new Error(data.error);
     aplicarSugerenciaProrrateo(data.renglones||[]);

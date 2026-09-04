@@ -938,10 +938,11 @@ async function extraerConIA(){
       // Un archivo = una llamada a la IA (el CFDI/documento va completo en
       // cada llamada) — se van juntando los renglones de todos antes de
       // aplicar los filtros de siempre (transportista/NO PAGA/duplicados).
+      var idTokenM=await firebase.auth().currentUser.getIdToken();
       for(var i=0;i<_autPdfBase64List.length;i++){
         $('extraerInfo').innerHTML='<div class="alert alert-info">⏳ Leyendo con IA '+(i+1)+' de '+_autPdfBase64List.length+' ('+_autPdfBase64List[i].nombre+')...</div>';
         var ri=await fetch(FUNCTION_URL_EXTRAER_MANIOBRAS,{
-          method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pdfBase64:_autPdfBase64List[i].base64})
+          method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+idTokenM},body:JSON.stringify({pdfBase64:_autPdfBase64List[i].base64})
         });
         var di=await ri.json();
         if(di.error)throw new Error(_autPdfBase64List[i].nombre+': '+di.error);
@@ -949,8 +950,9 @@ async function extraerConIA(){
       }
     }else{
       $('extraerInfo').innerHTML='<div class="alert alert-info">⏳ Leyendo el correo con IA...</div>';
+      var idTokenM2=await firebase.auth().currentUser.getIdToken();
       var r=await fetch(FUNCTION_URL_EXTRAER_MANIOBRAS,{
-        method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({texto:texto})
+        method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+idTokenM2},body:JSON.stringify({texto:texto})
       });
       var data=await r.json();
       if(data.error)throw new Error(data.error);

@@ -294,6 +294,8 @@ exports.extraerEstimado = onRequest(
       res.status(405).json({ error: 'Método no permitido, usa POST.' });
       return;
     }
+    const sesion = await _candadoIA(req, res, 'extraerEstimado');
+    if (!sesion) return;
     const texto = ((req.body && req.body.texto) || '').toString().trim();
     const pdfBase64 = ((req.body && req.body.pdfBase64) || '').toString().trim();
     if (!texto && !pdfBase64) {
@@ -924,6 +926,8 @@ exports.extraerManiobras = onRequest(
       res.status(405).json({ error: 'Método no permitido, usa POST.' });
       return;
     }
+    const sesion = await _candadoIA(req, res, 'extraerManiobras');
+    if (!sesion) return;
     const texto = ((req.body && req.body.texto) || '').toString().trim();
     const pdfBase64 = ((req.body && req.body.pdfBase64) || '').toString().trim();
     if (!texto && !pdfBase64) {
@@ -1022,6 +1026,8 @@ exports.extraerJustificacionCxP = onRequest(
       res.status(405).json({ error: 'Método no permitido, usa POST.' });
       return;
     }
+    const sesion = await _candadoIA(req, res, 'extraerJustificacionCxP');
+    if (!sesion) return;
     const texto = ((req.body && req.body.texto) || '').toString().trim();
     const pdfBase64 = ((req.body && req.body.pdfBase64) || '').toString().trim();
     if (!texto && !pdfBase64) {
@@ -1698,6 +1704,8 @@ exports.extraerComprobantePagoCxP = onRequest(
       res.status(405).json({ error: 'Método no permitido, usa POST.' });
       return;
     }
+    const sesion = await _candadoIA(req, res, 'extraerComprobantePagoCxP');
+    if (!sesion) return;
     const archivoBase64 = ((req.body && req.body.archivoBase64) || '').toString().trim();
     const mimeType = ((req.body && req.body.mimeType) || '').toString().trim();
     if (!archivoBase64) {
@@ -1840,11 +1848,15 @@ function _claveUsoIA(decoded) {
   return 'staff' + decoded.uid;
 }
 
-async function _verificarYRegistrarUsoIA(decoded) {
+// _verificarYRegistrarUsoIA: el conteo se lleva POR FUNCIÓN (nombreFuncion
+// aparte en la llave del documento) — así usar mucho extraerEstimado un
+// día no le quita margen a extraerManiobras ni a las demás, cada una
+// tiene su propio tope independiente por persona.
+async function _verificarYRegistrarUsoIA(decoded, nombreFuncion) {
   const clave = _claveUsoIA(decoded);
   const limite = decoded.rol === 'operador' && decoded.maestro ? LIMITE_IA_DIARIO_MAESTRO : LIMITE_IA_DIARIO;
   const hoy = new Date().toISOString().slice(0, 10);
-  const ref = db.collection('usoIA').doc(clave + '_' + hoy);
+  const ref = db.collection('usoIA').doc(clave + '_' + nombreFuncion + '_' + hoy);
   let permitido = true;
   await db.runTransaction(async (tx) => {
     const snap = await tx.get(ref);
@@ -1855,24 +1867,35 @@ async function _verificarYRegistrarUsoIA(decoded) {
   return permitido;
 }
 
-function _extraerImagenDocumento(prompt) {
+// _candadoIA(req, res, nombreFuncion): candado compartido por todas las
+// funciones de IA — exige sesión real de Firebase Auth (oficina u
+// operador) y aplica el tope diario POR FUNCIÓN. Si bloquea, ya mandó la
+// respuesta de error (401/429) y regresa null; si no, regresa las claims
+// decodificadas para que quien llama pueda seguir.
+async function _candadoIA(req, res, nombreFuncion) {
+  let sesion;
+  try {
+    sesion = await _verificarSesionFirebase(req);
+  } catch (e) {
+    res.status(401).json({ error: e.message || 'Sesión inválida. Vuelve a entrar.' });
+    return null;
+  }
+  const puedeUsar = await _verificarYRegistrarUsoIA(sesion, nombreFuncion);
+  if (!puedeUsar) {
+    res.status(429).json({ error: 'Ya alcanzaste el límite de usos de hoy para esta función. Intenta de nuevo mañana, o contacta a la oficina si de verdad lo necesitas.' });
+    return null;
+  }
+  return sesion;
+}
+
+function _extraerImagenDocumento(prompt, nombreFuncion) {
   return async (req, res) => {
     if (req.method !== 'POST') {
       res.status(405).json({ error: 'Método no permitido, usa POST.' });
       return;
     }
-    let sesion;
-    try {
-      sesion = await _verificarSesionFirebase(req);
-    } catch (e) {
-      res.status(401).json({ error: e.message || 'Sesión inválida. Vuelve a entrar.' });
-      return;
-    }
-    const puedeUsar = await _verificarYRegistrarUsoIA(sesion);
-    if (!puedeUsar) {
-      res.status(429).json({ error: 'Ya alcanzaste el límite de usos de hoy para esta función. Intenta de nuevo mañana, o contacta a la oficina si de verdad lo necesitas.' });
-      return;
-    }
+    const sesion = await _candadoIA(req, res, nombreFuncion);
+    if (!sesion) return;
     const archivoBase64 = ((req.body && req.body.archivoBase64) || '').toString().trim();
     const mimeType = ((req.body && req.body.mimeType) || '').toString().trim();
     if (!archivoBase64) {
@@ -1943,12 +1966,12 @@ function _extraerImagenDocumento(prompt) {
 
 exports.extraerOrdenEmbarqueSellada = onRequest(
   { secrets: [ANTHROPIC_API_KEY], cors: true, region: 'us-central1' },
-  _extraerImagenDocumento(PROMPT_ORDEN_EMBARQUE_SELLADA)
+  _extraerImagenDocumento(PROMPT_ORDEN_EMBARQUE_SELLADA, 'extraerOrdenEmbarqueSellada')
 );
 
 exports.extraerReciboManiobra = onRequest(
   { secrets: [ANTHROPIC_API_KEY], cors: true, region: 'us-central1' },
-  _extraerImagenDocumento(PROMPT_RECIBO_MANIOBRA)
+  _extraerImagenDocumento(PROMPT_RECIBO_MANIOBRA, 'extraerReciboManiobra')
 );
 
 // ══════════════════════════════════════════════════════════════════════════
