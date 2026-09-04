@@ -72,6 +72,12 @@
       "public": "dist/proveedores",
       "ignore": ["firebase.json", "**/.*"],
       "rewrites": [{ "source": "**", "destination": "/index.html" }]
+    },
+    {
+      "target": "operador",
+      "public": "dist/operador",
+      "ignore": ["firebase.json", "**/.*"],
+      "rewrites": [{ "source": "**", "destination": "/index.html" }]
     }
   ]
 }

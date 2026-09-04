@@ -1,0 +1,12 @@
+{
+  "name": "TML Operadores",
+  "short_name": "TML Operadores",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#0d1b2a",
+  "theme_color": "#0d1b2a",
+  "icons": [
+    { "src": "LOGO.png", "sizes": "720x162", "type": "image/png", "purpose": "any" }
+  ]
+}

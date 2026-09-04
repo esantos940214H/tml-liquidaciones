@@ -2065,3 +2065,103 @@ exports.revisarBuzonPedidosProgramado = onSchedule(
     }
   }
 );
+
+// ══════════════════════════════════════════════════════════════════════════
+// LOGIN DE OPERADORES (módulo operador.html) — autenticación propia por
+// teléfono + PIN de 4 dígitos, SEPARADA del login de oficina (Firebase Auth
+// con correo/contraseña + custom claims, ver shared/sesion.js y
+// admin/crear-usuarios.js). El operador no tiene cuenta de correo; en su
+// lugar, esta función valida teléfono+PIN contra la colección
+// operadoresAuth (nunca expuesta al cliente — solo el SDK de administrador,
+// aquí y en admin/asignar-pin-operador.js, la lee/escribe) y, si es
+// correcto, deja al operador con los MISMOS custom claims que usa el resto
+// del sistema ({rol:'operador', operadorId}), para poder reutilizar el
+// patrón de permisos ya existente en las reglas de Firestore y en otras
+// Cloud Functions.
+//
+// El PIN de cada operador se da de alta con
+// admin/asignar-pin-operador.js (script local, requiere
+// serviceAccountKey.json — igual que admin/crear-usuarios.js). El hash
+// usado aquí (scrypt) debe coincidir EXACTO con el de ese script: si se
+// cambia uno, hay que cambiar el otro.
+// ══════════════════════════════════════════════════════════════════════════
+const crypto = require('crypto');
+
+function _hashPin(pin, saltHex) {
+  return crypto.scryptSync(String(pin), Buffer.from(saltHex, 'hex'), 64).toString('hex');
+}
+
+function _normalizarTelefonoOperador(v) {
+  return String(v || '').replace(/\D/g, '').slice(-10);
+}
+
+const _LOGIN_OPERADOR_INTENTOS_MAX = 5;
+const _LOGIN_OPERADOR_BLOQUEO_MINUTOS = 15;
+
+exports.loginOperador = onRequest({ cors: true, region: 'us-central1' }, async (req, res) => {
+  if (req.method !== 'POST') {
+    res.status(405).json({ error: 'Método no permitido, usa POST.' });
+    return;
+  }
+  const telefono = _normalizarTelefonoOperador(req.body && req.body.telefono);
+  const pin = String((req.body && req.body.pin) || '').trim();
+  if (telefono.length !== 10) {
+    res.status(400).json({ error: 'El teléfono debe tener 10 dígitos.' });
+    return;
+  }
+  if (!/^\d{4}$/.test(pin)) {
+    res.status(400).json({ error: 'El PIN debe ser de 4 dígitos.' });
+    return;
+  }
+  try {
+    const snap = await db.collection('operadoresAuth').where('telefono', '==', telefono).limit(1).get();
+    if (snap.empty) {
+      res.status(401).json({ error: 'Teléfono o PIN incorrecto.' });
+      return;
+    }
+    const docRef = snap.docs[0].ref;
+    const datos = snap.docs[0].data();
+    const operadorId = snap.docs[0].id;
+
+    if (datos.bloqueadoHasta && datos.bloqueadoHasta > new Date().toISOString()) {
+      res.status(429).json({ error: 'Cuenta bloqueada temporalmente por varios intentos fallidos. Intenta de nuevo más tarde.' });
+      return;
+    }
+
+    const hashCalculado = _hashPin(pin, datos.salt);
+    if (hashCalculado !== datos.hash) {
+      const intentos = (datos.intentosFallidos || 0) + 1;
+      const actualizacion = { intentosFallidos: intentos };
+      if (intentos >= _LOGIN_OPERADOR_INTENTOS_MAX) {
+        actualizacion.bloqueadoHasta = new Date(Date.now() + _LOGIN_OPERADOR_BLOQUEO_MINUTOS * 60000).toISOString();
+        actualizacion.intentosFallidos = 0;
+      }
+      await docRef.set(actualizacion, { merge: true });
+      res.status(401).json({ error: 'Teléfono o PIN incorrecto.' });
+      return;
+    }
+
+    await docRef.set({ intentosFallidos: 0, bloqueadoHasta: null, ultimoLogin: new Date().toISOString() }, { merge: true });
+
+    const opDoc = await db.collection('operadores').doc(operadorId).get();
+    const nombre = opDoc.exists ? (opDoc.data().nombre || '') : '';
+
+    const uid = 'operador_' + operadorId;
+    try {
+      await admin.auth().getUser(uid);
+    } catch (e) {
+      if (e.code === 'auth/user-not-found') {
+        await admin.auth().createUser({ uid: uid, displayName: nombre });
+      } else {
+        throw e;
+      }
+    }
+    await admin.auth().setCustomUserClaims(uid, { rol: 'operador', operadorId: parseInt(operadorId) });
+    const token = await admin.auth().createCustomToken(uid);
+
+    res.json({ token: token, operadorId: parseInt(operadorId), nombre: nombre });
+  } catch (e) {
+    console.error('loginOperador:', e);
+    res.status(500).json({ error: e.message || 'Error interno del servidor.' });
+  }
+});
