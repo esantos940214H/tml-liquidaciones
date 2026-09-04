@@ -16,8 +16,8 @@
   .logo{display:block;width:100%}
   h1{font-size:19px;text-align:center;margin:0 0 22px;font-weight:600;color:#e6edf3}
   label{display:block;font-size:13px;color:#9fb3c8;margin:14px 0 6px}
-  input[type=tel],input[type=password]{width:100%;padding:14px;font-size:18px;border-radius:10px;border:1px solid #2a3f56;background:#0d1b2a;color:#fff;letter-spacing:1px}
-  input[type=tel]:focus,input[type=password]:focus{outline:2px solid #4da3ff}
+  input[type=tel],input[type=password],input[type=text]{width:100%;padding:14px;font-size:18px;border-radius:10px;border:1px solid #2a3f56;background:#0d1b2a;color:#fff;letter-spacing:1px}
+  input[type=tel]:focus,input[type=password]:focus,input[type=text]:focus{outline:2px solid #4da3ff}
   input[type=file]{width:100%;padding:10px;font-size:13px;border-radius:10px;border:1px dashed #2a3f56;background:#0d1b2a;color:#cdd9e4}
   select{width:100%;padding:12px;font-size:15px;border-radius:10px;border:1px solid #2a3f56;background:#0d1b2a;color:#fff}
   button{width:100%;margin-top:22px;padding:15px;font-size:16px;font-weight:600;border:none;border-radius:10px;
@@ -75,6 +75,20 @@
     </div>
     <div id="msgEvidencias" class="msg"></div>
 
+    <!-- ── SOLICITAR DINERO (Fase 3) — bloqueado hasta que haya evidencia
+         subida y mientras el saldo probable no esté por debajo del límite
+         permitido (ver saldoProbableOperador/solicitarAnticipoOperador en
+         functions/index.js). No aplica a la cuenta maestro. ────────────── -->
+    <div id="bloqueDinero" style="display:none">
+      <div class="card-ev">
+        <label>💵 Solicitar dinero</label>
+        <div id="dineroEstado" style="font-size:13px;color:#9fb3c8;margin-bottom:10px"></div>
+        <input type="text" inputmode="decimal" id="inMontoSolicitud" placeholder="Monto a solicitar">
+        <button id="btnSolicitar" onclick="solicitarDinero()">Solicitar</button>
+        <div id="msgDinero" class="msg"></div>
+      </div>
+    </div>
+
     <button class="salir" onclick="salir()">Cerrar sesión</button>
   </div>
 </div>
@@ -91,6 +105,8 @@
 const FUNCTION_URL_LOGIN_OPERADOR='https://us-central1-tml-liquidaciones.cloudfunctions.net/loginOperador';
 const FUNCTION_URL_ORDEN_EMBARQUE_SELLADA='https://us-central1-tml-liquidaciones.cloudfunctions.net/extraerOrdenEmbarqueSellada';
 const FUNCTION_URL_RECIBO_MANIOBRA='https://us-central1-tml-liquidaciones.cloudfunctions.net/extraerReciboManiobra';
+const FUNCTION_URL_SALDO_PROBABLE='https://us-central1-tml-liquidaciones.cloudfunctions.net/saldoProbableOperador';
+const FUNCTION_URL_SOLICITAR_ANTICIPO='https://us-central1-tml-liquidaciones.cloudfunctions.net/solicitarAnticipoOperador';
 
 var cfg={apiKey:"AIzaSyDqlhREJFVFLGzz7bVlPcNl1Uba9HI3r8s",authDomain:"tml-liquidaciones.firebaseapp.com",
   projectId:"tml-liquidaciones",storageBucket:"tml-liquidaciones.firebasestorage.app",
@@ -292,6 +308,7 @@ async function subirOrdenEmbarqueSellada(input){
     FLETES=await cargarFletes(true);
     restringirFletesAOperador(_miClaims);
     info.innerHTML=mensajes.join('<br>');
+    actualizarEstadoDinero(_miClaims);
   }catch(e){info.innerHTML='⚠️ Error: '+e.message;}
   input.value='';
 }
@@ -368,8 +385,72 @@ async function subirReciboManiobra(input){
     FLETES=await cargarFletes(true);
     restringirFletesAOperador(_miClaims);
     info.innerHTML=mensajes.join('<br>');
+    actualizarEstadoDinero(_miClaims);
   }catch(e){info.innerHTML='⚠️ Error: '+e.message;}
   input.value='';
+}
+
+// ══════════════════════════════════════════════════════════════════════
+// SOLICITAR DINERO (Fase 3) — el candado real vive en el servidor
+// (saldoProbableOperador/solicitarAnticipoOperador, functions/index.js):
+// esta pantalla solo refleja lo que el servidor ya decidió, nunca decide
+// ella misma si se puede pedir o no (para que no se pueda burlar el
+// candado manipulando el navegador).
+// ══════════════════════════════════════════════════════════════════════
+function deshabilitarSolicitud(si){
+  $('inMontoSolicitud').disabled=si;
+  $('btnSolicitar').disabled=si;
+}
+function mostrarMsgDinero(texto,tipo){
+  var el=$('msgDinero');
+  el.textContent=texto||'';
+  el.className='msg'+(tipo?(' '+tipo):'');
+}
+async function actualizarEstadoDinero(claims){
+  if(!claims||claims.maestro)return; // no aplica a la cuenta maestro
+  $('bloqueDinero').style.display='block';
+  $('dineroEstado').textContent='Consultando tu saldo...';
+  try{
+    var idToken=await firebase.auth().currentUser.getIdToken();
+    var r=await fetch(FUNCTION_URL_SALDO_PROBABLE,{headers:{'Authorization':'Bearer '+idToken}});
+    var d=await r.json();
+    if(!r.ok||d.error){$('dineroEstado').textContent='⚠️ '+(d.error||'No se pudo consultar tu saldo.');deshabilitarSolicitud(true);return;}
+    var saldoTxt='Saldo probable: '+fmt(d.saldoProbable);
+    if(!d.tieneEvidencia){
+      $('dineroEstado').innerHTML=saldoTxt+'<br>⚠️ Sube tu evidencia (orden de embarque sellada + recibo de maniobra) antes de poder solicitar dinero.';
+      deshabilitarSolicitud(true);
+    }else if(d.saldoProbable<d.limite){
+      $('dineroEstado').innerHTML=saldoTxt+'<br>⚠️ Estás por debajo del límite permitido ('+fmt(d.limite)+'). Debes liquidar antes de pedir más.';
+      deshabilitarSolicitud(true);
+    }else{
+      $('dineroEstado').textContent=saldoTxt;
+      deshabilitarSolicitud(false);
+    }
+  }catch(e){
+    $('dineroEstado').textContent='⚠️ Sin conexión.';
+    deshabilitarSolicitud(true);
+  }
+}
+async function solicitarDinero(){
+  var importe=parseFloat($('inMontoSolicitud').value);
+  if(!importe||importe<=0){mostrarMsgDinero('Captura un monto válido.','error');return;}
+  $('btnSolicitar').disabled=true;
+  mostrarMsgDinero('Enviando...','');
+  try{
+    var idToken=await firebase.auth().currentUser.getIdToken();
+    var r=await fetch(FUNCTION_URL_SOLICITAR_ANTICIPO,{
+      method:'POST',headers:{'Authorization':'Bearer '+idToken,'Content-Type':'application/json'},
+      body:JSON.stringify({importe:importe})
+    });
+    var d=await r.json();
+    if(!r.ok||d.error){mostrarMsgDinero(d.error||'No se pudo enviar la solicitud.','error');$('btnSolicitar').disabled=false;return;}
+    mostrarMsgDinero('✅ Solicitud enviada. La oficina la va a procesar.','ok');
+    $('inMontoSolicitud').value='';
+    await actualizarEstadoDinero(_miClaims);
+  }catch(e){
+    mostrarMsgDinero('Sin conexión. Intenta de nuevo.','error');
+    $('btnSolicitar').disabled=false;
+  }
 }
 
 async function iniciarEvidencias(claims){
@@ -388,6 +469,7 @@ async function iniciarEvidencias(claims){
   $('txtContexto').textContent=claims.maestro
     ?'Modo maestro: puedes subir evidencia de cualquier pedido.'
     :'Sube tu evidencia de este viaje.';
+  actualizarEstadoDinero(claims);
 }
 
 firebase.auth().onAuthStateChanged(async function(usuario){
