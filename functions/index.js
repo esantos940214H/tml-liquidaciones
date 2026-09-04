@@ -1770,6 +1770,22 @@ exports.extraerComprobantePagoCxP = onRequest(
 // Archivo Maestro y la decisión de guardar se hacen en el navegador
 // (ing.html), nunca aquí.
 // ══════════════════════════════════════════════════════════════════════════
+// _TEXTO_CALIDAD_ESCANEO: fragmento común de ambos prompts — pide a la IA
+// que además juzgue la CALIDAD del escaneo/foto (legible, derecho, con luz
+// suficiente) y regrese un rechazo explícito si no se puede confiar en lo
+// que extrajo. Importante para operador.html (Fase 2 del módulo de
+// operadores): un operador puede escanear con poca luz, movido o chueco —
+// sin este chequeo, el sistema guardaría datos leídos a medias como si
+// fueran buenos. En ing.html (Raúl/oficina) el mismo chequeo también
+// aplica, sin distinción — una foto mala es una foto mala sin importar
+// quién la suba.
+const _TEXTO_CALIDAD_ESCANEO =
+  ',"calidad":{"legible":true si el documento se alcanza a leer con confianza (no está borroso, no le falta luz, no está ' +
+  'tan inclinado/chueco que se corten datos, no está cortado o tapado en la parte que importa) o false si el escaneo/foto ' +
+  'tiene cualquiera de esos problemas y por eso NO se puede confiar en los datos leídos,"motivo":"si legible es false, ' +
+  'breve explicación en español de cuál es el problema (ej. \\"la foto está borrosa\\", \\"está muy inclinada/chueca\\", ' +
+  '\\"falta luz, no se distingue el texto\\", \\"está cortada, no se ve completa\\"), o null si legible es true"}';
+
 const PROMPT_ORDEN_EMBARQUE_SELLADA =
   'Eres un asistente que lee la ORDEN DE EMBARQUE de una empresa de mudanzas — un documento que la TIENDA/destino sella y ' +
   'firma al recibir la mercancía. Trae impreso un número de T.U./orden de embarque (a veces dos números juntos separados ' +
@@ -1777,8 +1793,8 @@ const PROMPT_ORDEN_EMBARQUE_SELLADA =
   '(tabla, sello o anotación a mano) se anota el NÚMERO DE BULTOS entregados/recibidos. Extrae un solo objeto JSON con ' +
   'estas llaves exactas: {"tu1":"el primer/único número de T.U. u orden de embarque, tal cual viene, o null si no se ' +
   'distingue","tu2":"el segundo número de T.U. si vienen dos juntos separados por \\"/\\", o null","bultos":el número de ' +
-  'bultos como entero, o null si no se puede determinar}. No inventes datos que no estén en el documento. Responde SOLO ' +
-  'el objeto JSON (sin texto explicativo, sin backticks, sin markdown).';
+  'bultos como entero, o null si no se puede determinar' + _TEXTO_CALIDAD_ESCANEO + '}. No inventes datos que no estén en ' +
+  'el documento. Responde SOLO el objeto JSON (sin texto explicativo, sin backticks, sin markdown).';
 
 const PROMPT_RECIBO_MANIOBRA =
   'Eres un asistente que lee un RECIBO DE MANIOBRA de una empresa de mudanzas — el comprobante que firma quien realizó la ' +
@@ -1790,8 +1806,9 @@ const PROMPT_RECIBO_MANIOBRA =
   'desde el formato que traiga), o null","recorte":{"x0":porcentaje (0-100) de la orilla IZQUIERDA del papel respecto al ' +
   'ancho total de la imagen,"y0":porcentaje (0-100) de la orilla SUPERIOR del papel respecto al alto total,"x1":' +
   'porcentaje (0-100) de la orilla DERECHA del papel,"y1":porcentaje (0-100) de la orilla INFERIOR del papel} — o null ' +
-  'si no logras distinguir claramente las orillas del papel (ej. está borroso o tapado)}. No inventes datos que no estén ' +
-  'en el recibo. Responde SOLO el objeto JSON (sin texto explicativo, sin backticks, sin markdown).';
+  'si no logras distinguir claramente las orillas del papel (ej. está borroso o tapado)' + _TEXTO_CALIDAD_ESCANEO + '}. No ' +
+  'inventes datos que no estén en el recibo. Responde SOLO el objeto JSON (sin texto explicativo, sin backticks, sin ' +
+  'markdown).';
 
 function _extraerImagenDocumento(prompt) {
   return async (req, res) => {
@@ -1850,6 +1867,13 @@ function _extraerImagenDocumento(prompt) {
         resultado = JSON.parse(limpio);
       } catch (e) {
         res.status(502).json({ error: 'La IA no regresó un JSON válido. Respuesta cruda: ' + textoRespuesta.slice(0, 500) });
+        return;
+      }
+      if (resultado.calidad && resultado.calidad.legible === false) {
+        res.status(422).json({
+          error: 'La foto no se puede leer con confianza: ' + (resultado.calidad.motivo || 'calidad insuficiente') + '. Vuelve a escanear/tomar la foto.',
+          rechazoPorCalidad: true
+        });
         return;
       }
       res.json({ resultado: resultado });

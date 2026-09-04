@@ -11,23 +11,28 @@
   *{box-sizing:border-box}
   body{margin:0;min-height:100vh;background:#0d1b2a;color:#fff;font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;
     display:flex;align-items:center;justify-content:center;padding:20px}
-  .card{width:100%;max-width:380px;background:#132a3f;border-radius:16px;padding:28px 24px;box-shadow:0 8px 30px rgba(0,0,0,.4)}
+  .card{width:100%;max-width:420px;background:#132a3f;border-radius:16px;padding:28px 24px;box-shadow:0 8px 30px rgba(0,0,0,.4)}
   .logoBox{background:#fff;border-radius:10px;padding:14px 18px;margin:0 auto 20px;max-width:220px}
   .logo{display:block;width:100%}
   h1{font-size:19px;text-align:center;margin:0 0 22px;font-weight:600;color:#e6edf3}
   label{display:block;font-size:13px;color:#9fb3c8;margin:14px 0 6px}
-  input{width:100%;padding:14px;font-size:18px;border-radius:10px;border:1px solid #2a3f56;background:#0d1b2a;color:#fff;letter-spacing:1px}
-  input:focus{outline:2px solid #4da3ff}
+  input[type=tel],input[type=password]{width:100%;padding:14px;font-size:18px;border-radius:10px;border:1px solid #2a3f56;background:#0d1b2a;color:#fff;letter-spacing:1px}
+  input[type=tel]:focus,input[type=password]:focus{outline:2px solid #4da3ff}
+  input[type=file]{width:100%;padding:10px;font-size:13px;border-radius:10px;border:1px dashed #2a3f56;background:#0d1b2a;color:#cdd9e4}
+  select{width:100%;padding:12px;font-size:15px;border-radius:10px;border:1px solid #2a3f56;background:#0d1b2a;color:#fff}
   button{width:100%;margin-top:22px;padding:15px;font-size:16px;font-weight:600;border:none;border-radius:10px;
     background:#4da3ff;color:#06121e;cursor:pointer}
   button:disabled{opacity:.5}
   .msg{margin-top:14px;font-size:14px;text-align:center;min-height:18px}
   .msg.error{color:#ff6b6b}
   .msg.ok{color:#4ade80}
-  .bienvenida{text-align:center}
-  .bienvenida h2{font-size:20px;margin:0 0 6px}
-  .bienvenida p{color:#9fb3c8;margin:0 0 24px}
-  .salir{background:transparent;border:1px solid #2a3f56;color:#9fb3c8;margin-top:10px}
+  .bienvenida h2{font-size:20px;margin:0 0 4px;text-align:center}
+  .bienvenida>p{color:#9fb3c8;margin:0 0 20px;text-align:center;font-size:13px}
+  .salir{background:transparent;border:1px solid #2a3f56;color:#9fb3c8;margin-top:26px}
+  .infoArchivo{margin-top:8px;font-size:13px;line-height:1.4}
+  .card-ev{background:#0d1b2a;border:1px solid #1e3247;border-radius:12px;padding:16px;margin-bottom:16px}
+  .card-ev>label:first-child{margin-top:0}
+  .contexto{font-size:12px;color:#6f8ba6;text-align:center;margin:-8px 0 18px}
 </style>
 </head>
 <body>
@@ -46,38 +51,67 @@
     <div id="msgLogin" class="msg"></div>
   </div>
 
-  <!-- ── PANTALLA DE BIENVENIDA (placeholder Fase 1 — evidencias y dinero
-       llegan en las siguientes fases) ──────────────────────────────────── -->
+  <!-- ── PANTALLA PRINCIPAL (tras login): evidencia de maniobras ─────────
+       Mismo flujo que ing.html ("Evidencia de maniobras (bultos y
+       recibos)") — la IA lee cada foto y la liga sola al pedido que
+       corresponde, sin que el operador tenga que indicar de cuál T.U. se
+       trata. La solicitud de dinero (Fase 3) se agrega después de esto,
+       bloqueada hasta que haya evidencia subida. ─────────────────────── -->
   <div id="panelBienvenida" class="bienvenida" style="display:none">
     <h2 id="txtNombre">Bienvenido</h2>
-    <p>Sesión iniciada correctamente.</p>
+    <p id="txtContexto">Sesión iniciada correctamente.</p>
+
+    <div id="bloqueEvidencias" style="display:none">
+      <div class="card-ev">
+        <label>📋 Orden de embarque sellada (foto)</label>
+        <input type="file" id="oesArchivo" accept="image/*,.pdf" onchange="subirOrdenEmbarqueSellada(this)">
+        <div id="oesInfo" class="infoArchivo"></div>
+      </div>
+      <div class="card-ev">
+        <label>🧾 Recibo de maniobra (foto)</label>
+        <input type="file" id="rmArchivo" accept="image/*,.pdf" onchange="subirReciboManiobra(this)">
+        <div id="rmInfo" class="infoArchivo"></div>
+      </div>
+    </div>
+    <div id="msgEvidencias" class="msg"></div>
+
     <button class="salir" onclick="salir()">Cerrar sesión</button>
   </div>
 </div>
 
 <!-- Firebase compat -->
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-storage-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
+<script src="shared/operadores.js"></script>
+<script src="shared/fletes.js"></script>
+<script src="shared/comprobantes.js"></script>
 <script>
 const FUNCTION_URL_LOGIN_OPERADOR='https://us-central1-tml-liquidaciones.cloudfunctions.net/loginOperador';
+const FUNCTION_URL_ORDEN_EMBARQUE_SELLADA='https://us-central1-tml-liquidaciones.cloudfunctions.net/extraerOrdenEmbarqueSellada';
+const FUNCTION_URL_RECIBO_MANIOBRA='https://us-central1-tml-liquidaciones.cloudfunctions.net/extraerReciboManiobra';
 
 var cfg={apiKey:"AIzaSyDqlhREJFVFLGzz7bVlPcNl1Uba9HI3r8s",authDomain:"tml-liquidaciones.firebaseapp.com",
   projectId:"tml-liquidaciones",storageBucket:"tml-liquidaciones.firebasestorage.app",
   messagingSenderId:"268455373953",appId:"1:268455373953:web:ad359c5dbcba9f53557180"};
 if(!firebase.apps.length)firebase.initializeApp(cfg);
+var db=firebase.firestore();
+
+function $(id){return document.getElementById(id);}
 
 function mostrarMsg(texto,tipo){
-  var el=document.getElementById('msgLogin');
+  var el=$('msgLogin');
   el.textContent=texto||'';
   el.className='msg'+(tipo?(' '+tipo):'');
 }
 
 async function entrar(){
-  var telefono=document.getElementById('inTelefono').value.replace(/\D/g,'');
-  var pin=document.getElementById('inPin').value.trim();
+  var telefono=$('inTelefono').value.replace(/\D/g,'');
+  var pin=$('inPin').value.trim();
   if(telefono.length!==10){ mostrarMsg('El teléfono debe tener 10 dígitos.','error'); return; }
   if(!/^\d{4}$/.test(pin)){ mostrarMsg('El PIN debe ser de 4 dígitos.','error'); return; }
-  var btn=document.getElementById('btnEntrar');
+  var btn=$('btnEntrar');
   btn.disabled=true; mostrarMsg('Verificando...','');
   try{
     var r=await fetch(FUNCTION_URL_LOGIN_OPERADOR,{
@@ -99,12 +133,270 @@ function salir(){
   firebase.auth().signOut();
 }
 
+// ══════════════════════════════════════════════════════════════════════
+// EVIDENCIA DE MANIOBRAS — DUPLICADO del flujo de ing.html (misma sección,
+// mismo criterio de emparejamiento: orden de embarque sellada por T.U.,
+// recibo de maniobra por monto autorizado). Se copia tal cual en vez de
+// compartir un módulo nuevo con ing.html para no arriesgar que un cambio
+// aquí rompa el flujo de oficina o viceversa — si se ajusta el
+// emparejamiento en ing.html, hay que reflejar el mismo cambio aquí.
+//
+// ÚNICA diferencia real: un operador SIN maestro:true solo puede
+// emparejar contra pedidos de flete cuyo económico coincide con la unidad
+// que tiene asignada HOY (ver restringirFletesAOperador) — así un
+// operador nunca puede (por error o a propósito) subir evidencia de un
+// viaje que no es el suyo. La cuenta "maestro" no tiene esa restricción:
+// ve todos los pedidos, igual que la oficina.
+// ══════════════════════════════════════════════════════════════════════
+var OPERADORES=[];
+var FLETES=[];
+var ingresosDB=[];
+var _miClaims=null;
+
+var _lazyScripts={};
+function cargarScriptUnaVez(src){
+  if(_lazyScripts[src])return _lazyScripts[src];
+  _lazyScripts[src]=new Promise(function(resolve,reject){
+    var s=document.createElement('script');
+    s.src=src;s.onload=resolve;s.onerror=reject;
+    document.head.appendChild(s);
+  });
+  return _lazyScripts[src];
+}
+
+const fmt=(n,d=2)=>'$'+parseFloat(n||0).toLocaleString('es-MX',{minimumFractionDigits:d,maximumFractionDigits:d});
+
+var ECO_MAP_45XX={521:4521,522:4522,523:4523,524:4524,526:4526};
+function normEconomico(eco){
+  var n=parseInt(String(eco||'').replace(/[^0-9]/g,'')||0,10)||0;
+  return ECO_MAP_45XX[n]||n;
+}
+function _normTxtFactManiobras(s){return(s||'').toString().trim().toUpperCase().replace(/\s+/g,' ');}
+function _idsDeObservacionesFactManiobras(observaciones){
+  return (observaciones||'').split('|').map(function(s){return _normTxtFactManiobras(s.replace(/^\s*[A-Z0-9]+:/,''));}).filter(function(s){return s;});
+}
+function _fleteTusNorm(f){
+  var out=[];
+  if(f.ordenEmbarque)out.push(_normTxtFactManiobras(f.ordenEmbarque));
+  if(f.tu2)out.push(_normTxtFactManiobras(f.tu2));
+  if(Array.isArray(f.tus))out=out.concat(f.tus.map(_normTxtFactManiobras));
+  return out;
+}
+function matchFleteConAutorizacion(flete,autorizaciones){
+  var tusNorm=_fleteTusNorm(flete);
+  var pedNorm=flete.pedidoFlete?_normTxtFactManiobras(flete.pedidoFlete):'';
+  var directo=autorizaciones.find(function(v){
+    var vIds=_idsDeObservacionesFactManiobras(v.observaciones);
+    return tusNorm.some(function(id){return id&&vIds.indexOf(id)!==-1;})||(pedNorm&&vIds.indexOf(pedNorm)!==-1);
+  });
+  if(directo)return{autorizacion:directo,metodo:'T.U./orden de embarque'};
+  if(flete.economico){
+    var porEconomico=autorizaciones.filter(function(v){
+      return v.unidad===normEconomico(flete.economico)&&(v.fecha||'')===(flete.fecha||'');
+    });
+    if(porEconomico.length===1)return{autorizacion:porEconomico[0],metodo:'económico+fecha'};
+  }
+  var destinoNorm=_normTxtFactManiobras(flete.destino);
+  var tiendaNorm=_normTxtFactManiobras(flete.tienda);
+  if(!destinoNorm&&!tiendaNorm)return null;
+  var candidatos=autorizaciones.filter(function(v){
+    if((v.fecha||'')!==(flete.fecha||''))return false;
+    var vDestino=_normTxtFactManiobras((v.ruta&&v.ruta[0]&&v.ruta[0].destino)||'');
+    var vTienda=_normTxtFactManiobras(v.tienda||'');
+    var matchDestino=destinoNorm&&vDestino&&(vDestino.indexOf(destinoNorm)!==-1||destinoNorm.indexOf(vDestino)!==-1);
+    var matchTienda=tiendaNorm&&vTienda&&vTienda===tiendaNorm;
+    return matchDestino||matchTienda;
+  });
+  if(candidatos.length===1)return{autorizacion:candidatos[0],metodo:'fecha+destino/tienda'};
+  return null;
+}
+
+// restringirFletesAOperador: para un operador real (no maestro), recorta
+// FLETES a solo los pedidos cuyo económico coincide con SU unidad
+// asignada hoy — así nunca puede emparejar evidencia de un viaje ajeno.
+function restringirFletesAOperador(claims){
+  if(claims.maestro)return true; // sin restricción
+  var miOp=OPERADORES.find(function(o){return o.operadorId===claims.operadorId;});
+  if(!miOp){
+    $('msgEvidencias').textContent='No tienes una unidad asignada en Flota — contacta a la oficina antes de subir evidencia.';
+    $('msgEvidencias').className='msg error';
+    return false;
+  }
+  FLETES=FLETES.filter(function(f){return f.economico&&normEconomico(f.economico)===miOp.unidad;});
+  return true;
+}
+
+function _archivoABase64(file){
+  return new Promise(function(resolve,reject){
+    var r=new FileReader();
+    r.onload=function(){resolve(String(r.result).split(',')[1]||'');};
+    r.onerror=reject;
+    r.readAsDataURL(file);
+  });
+}
+async function _paginasDeArchivo(file){
+  var esPdf=file.type==='application/pdf'||/\.pdf$/i.test(file.name||'');
+  if(!esPdf)return[{blob:file,mimeType:file.type||'image/jpeg'}];
+  if(!window.pdfjsLib){
+    await cargarScriptUnaVez('https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/legacy/build/pdf.min.js');
+    window.pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/legacy/build/pdf.worker.min.js';
+  }
+  var buf=await file.arrayBuffer();
+  var pdf=await window.pdfjsLib.getDocument({data:buf}).promise;
+  var paginas=[];
+  for(var i=1;i<=pdf.numPages;i++){
+    var page=await pdf.getPage(i);
+    var viewport=page.getViewport({scale:2.2});
+    var canvas=document.createElement('canvas');
+    canvas.width=viewport.width;canvas.height=viewport.height;
+    await page.render({canvasContext:canvas.getContext('2d'),viewport:viewport}).promise;
+    var blob=await new Promise(function(resolve){canvas.toBlob(resolve,'image/jpeg',0.92);});
+    paginas.push({blob:blob,mimeType:'image/jpeg'});
+  }
+  return paginas;
+}
+async function _procesarUnaOrdenEmbarque(blob,mimeType){
+  var base64=await _archivoABase64(blob);
+  var r=await fetch(FUNCTION_URL_ORDEN_EMBARQUE_SELLADA,{
+    method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({archivoBase64:base64,mimeType:mimeType})
+  });
+  var data=await r.json();
+  if(data.error)return'⚠️ '+data.error;
+  var res=data.resultado||{};
+  var tu1=res.tu1?normalizarOrdenEmbarque(res.tu1):'';
+  var tu2=res.tu2?normalizarOrdenEmbarque(res.tu2):'';
+  var f=FLETES.find(function(x){return(tu1&&(x.ordenEmbarque===tu1||x.tu2===tu1))||(tu2&&(x.ordenEmbarque===tu2||x.tu2===tu2));});
+  if(!f)return'⚠️ No se encontró ningún pedido de flete con el T.U. '+(tu1||tu2||'(no identificado)')+' asignado a tu unidad. Verifica que ya esté registrado, o avisa a la oficina.';
+  var ext=mimeType==='image/png'?'png':'jpg';
+  var path='maniobras/orden_embarque/'+f.ordenEmbarque+'_'+Date.now()+'.'+ext;
+  var url=await TMLComprobantes.subirArchivo(path,blob);
+  var bultos=res.bultos!=null?(parseInt(res.bultos)||null):null;
+  await actualizarEvidenciaManiobra(f.ordenEmbarque,{bultos:bultos,ordenEmbarqueImgURL:url});
+  f.bultos=bultos;f.ordenEmbarqueImgURL=url;
+  return'✅ T.U. '+f.ordenEmbarque+' — '+(bultos!=null?bultos+' bultos':'sin bultos detectados')+'.';
+}
+async function subirOrdenEmbarqueSellada(input){
+  var file=input.files&&input.files[0];
+  if(!file)return;
+  var info=$('oesInfo');
+  try{
+    info.innerHTML='⏳ Preparando el archivo...';
+    var paginas=await _paginasDeArchivo(file);
+    var mensajes=[];
+    for(var i=0;i<paginas.length;i++){
+      info.innerHTML='⏳ Leyendo '+(paginas.length>1?'página '+(i+1)+' de '+paginas.length:'la orden de embarque')+' con IA...<br>'+mensajes.join('<br>');
+      var msg=await _procesarUnaOrdenEmbarque(paginas[i].blob,paginas[i].mimeType);
+      mensajes.push((paginas.length>1?'Página '+(i+1)+': ':'')+msg);
+    }
+    FLETES=await cargarFletes(true);
+    restringirFletesAOperador(_miClaims);
+    info.innerHTML=mensajes.join('<br>');
+  }catch(e){info.innerHTML='⚠️ Error: '+e.message;}
+  input.value='';
+}
+function _recortarImagenPorPorcentaje(file,recorte){
+  return new Promise(function(resolve){
+    if(!recorte||[recorte.x0,recorte.y0,recorte.x1,recorte.y1].some(function(v){return v==null||isNaN(parseFloat(v));})){resolve(file);return;}
+    var img=new Image();
+    var urlTmp=URL.createObjectURL(file);
+    img.onload=function(){
+      URL.revokeObjectURL(urlTmp);
+      try{
+        var margen=1.5;
+        var x0=Math.max(0,parseFloat(recorte.x0)-margen),y0=Math.max(0,parseFloat(recorte.y0)-margen);
+        var x1=Math.min(100,parseFloat(recorte.x1)+margen),y1=Math.min(100,parseFloat(recorte.y1)+margen);
+        if(x1<=x0||y1<=y0){resolve(file);return;}
+        var sx=img.naturalWidth*(x0/100),sy=img.naturalHeight*(y0/100);
+        var sw=img.naturalWidth*((x1-x0)/100),sh=img.naturalHeight*((y1-y0)/100);
+        var canvas=document.createElement('canvas');
+        canvas.width=sw;canvas.height=sh;
+        canvas.getContext('2d').drawImage(img,sx,sy,sw,sh,0,0,sw,sh);
+        canvas.toBlob(function(blob){resolve(blob||file);},'image/jpeg',0.9);
+      }catch(e){resolve(file);}
+    };
+    img.onerror=function(){URL.revokeObjectURL(urlTmp);resolve(file);};
+    img.src=urlTmp;
+  });
+}
+async function _procesarUnReciboManiobra(blob,mimeType){
+  var base64=await _archivoABase64(blob);
+  var r=await fetch(FUNCTION_URL_RECIBO_MANIOBRA,{
+    method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({archivoBase64:base64,mimeType:mimeType})
+  });
+  var data=await r.json();
+  if(data.error)return'⚠️ '+data.error;
+  var res=data.resultado||{};
+  var monto=parseFloat(res.monto||0);
+  if(!monto)return'⚠️ No se pudo leer el monto del recibo. Verifica la foto/página.';
+  var autorizaciones=ingresosDB.filter(function(v){return v.esAutorizacionCliente;});
+  var candidatos=FLETES.filter(function(f){
+    if(f.reciboManiobraImgURL)return false;
+    var m=matchFleteConAutorizacion(f,autorizaciones);
+    var montoAut=m?m.autorizacion.subtotal:null;
+    return montoAut!=null&&Math.abs(montoAut-monto)<0.5;
+  });
+  if(candidatos.length!==1){
+    return candidatos.length===0
+      ?'⚠️ No se encontró ningún pedido (de tu unidad) con monto autorizado de maniobra de '+fmt(monto)+' pendiente de recibo. Verifica el monto leído o avisa a la oficina.'
+      :'⚠️ '+candidatos.length+' pedidos distintos tienen un monto autorizado de '+fmt(monto)+' — avisa a la oficina para asignarlo a mano.';
+  }
+  var f=candidatos[0];
+  var archivoParaSubir=await _recortarImagenPorPorcentaje(blob,res.recorte);
+  var seRecorto=archivoParaSubir!==blob;
+  var ext=seRecorto?'jpg':(mimeType==='image/png'?'png':'jpg');
+  var path='maniobras/recibos/'+f.ordenEmbarque+'_'+Date.now()+'.'+ext;
+  var url=await TMLComprobantes.subirArchivo(path,archivoParaSubir);
+  await actualizarEvidenciaManiobra(f.ordenEmbarque,{reciboManiobraImgURL:url,reciboManiobraMonto:monto});
+  f.reciboManiobraImgURL=url;f.reciboManiobraMonto=monto;
+  return'✅ Recibo de '+fmt(monto)+' asignado al T.U. '+f.ordenEmbarque+' ('+(f.destino||f.tienda||'')+')'+(seRecorto?' — recortado automático.':' — ⚠️ no se pudo recortar solo, se guardó la foto completa.');
+}
+async function subirReciboManiobra(input){
+  var file=input.files&&input.files[0];
+  if(!file)return;
+  var info=$('rmInfo');
+  try{
+    info.innerHTML='⏳ Preparando el archivo...';
+    var paginas=await _paginasDeArchivo(file);
+    var mensajes=[];
+    for(var i=0;i<paginas.length;i++){
+      info.innerHTML='⏳ Leyendo '+(paginas.length>1?'página '+(i+1)+' de '+paginas.length:'el recibo')+' con IA...<br>'+mensajes.join('<br>');
+      var msg=await _procesarUnReciboManiobra(paginas[i].blob,paginas[i].mimeType);
+      mensajes.push((paginas.length>1?'Página '+(i+1)+': ':'')+msg);
+    }
+    FLETES=await cargarFletes(true);
+    restringirFletesAOperador(_miClaims);
+    info.innerHTML=mensajes.join('<br>');
+  }catch(e){info.innerHTML='⚠️ Error: '+e.message;}
+  input.value='';
+}
+
+async function iniciarEvidencias(claims){
+  _miClaims=claims;
+  $('msgEvidencias').textContent='Cargando datos...';
+  $('msgEvidencias').className='msg';
+  OPERADORES=await window.cargarOperadores();
+  FLETES=await cargarFletes();
+  var snap=await db.collection('estado').doc('ingresosDB').get();
+  var data=snap.exists?snap.data():null;
+  if(data&&data.data)ingresosDB=JSON.parse(data.data);
+  var ok=restringirFletesAOperador(claims);
+  if(!ok)return;
+  $('msgEvidencias').textContent='';
+  $('bloqueEvidencias').style.display='block';
+  $('txtContexto').textContent=claims.maestro
+    ?'Modo maestro: puedes subir evidencia de cualquier pedido.'
+    :'Sube tu evidencia de este viaje.';
+}
+
 firebase.auth().onAuthStateChanged(async function(usuario){
-  var btn=document.getElementById('btnEntrar');
+  var btn=$('btnEntrar');
   if(btn)btn.disabled=false;
   if(!usuario){
-    document.getElementById('panelLogin').style.display='block';
-    document.getElementById('panelBienvenida').style.display='none';
+    $('panelLogin').style.display='block';
+    $('panelBienvenida').style.display='none';
+    $('bloqueEvidencias').style.display='none';
     return;
   }
   var token=await usuario.getIdTokenResult();
@@ -114,10 +406,11 @@ firebase.auth().onAuthStateChanged(async function(usuario){
     firebase.auth().signOut();
     return;
   }
-  document.getElementById('panelLogin').style.display='none';
-  document.getElementById('panelBienvenida').style.display='block';
+  $('panelLogin').style.display='none';
+  $('panelBienvenida').style.display='block';
   var etiqueta=token.claims.maestro?'Modo maestro':'Bienvenido';
-  document.getElementById('txtNombre').textContent=etiqueta+(usuario.displayName?(', '+usuario.displayName):'');
+  $('txtNombre').textContent=etiqueta+(usuario.displayName?(', '+usuario.displayName):'');
+  iniciarEvidencias(token.claims);
 });
 
 if('serviceWorker' in navigator){
