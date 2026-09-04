@@ -40,7 +40,7 @@ cp plantillas/*.xlsx dist/cxc/plantillas/
 # shared/: JS común cargado con <script src="shared/...">. Todos los módulos
 # lo usan (login con Firebase Auth, ver shared/sesion.js) excepto el portal
 # (index.html no tiene login propio, es solo el menú de acceso a los demás).
-for site in anticipos cxc liquidaciones nomina incidentes historial usuarios autorizaciones precarga proveedores; do
+for site in anticipos cxc liquidaciones nomina incidentes historial usuarios autorizaciones precarga proveedores operador; do
   cp -r shared dist/$site/shared
 done
 
