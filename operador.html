@@ -160,18 +160,18 @@
            etc.) que trae el formato oficial en ese mismo lugar. ───────── -->
       <div style="font-size:12px;color:#1a1a1a;font-weight:600;margin-top:14px;text-align:center">Registrar evento</div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:6px">
-        <button type="button" class="btn-icono" style="width:100%" onclick="registrarEventoBitacora('inicio_viaje')">🏁 Inicio de viaje</button>
-        <button type="button" class="btn-icono" style="width:100%" onclick="registrarEventoBitacora('conduciendo')">🚛 Conduciendo</button>
-        <button type="button" class="btn-icono" style="width:100%" onclick="registrarEventoBitacora('pausa')">☕ Pausa</button>
-        <button type="button" class="btn-icono" style="width:100%" onclick="registrarEventoBitacora('descanso')">😴 Descanso</button>
-        <button type="button" class="btn-icono" style="width:100%" onclick="registrarEventoBitacora('carga')">📦 Carga</button>
-        <button type="button" class="btn-icono" style="width:100%" onclick="registrarEventoBitacora('descarga')">📤 Descarga</button>
-        <button type="button" class="btn-icono" style="width:100%" onclick="registrarEventoBitacora('retenes')">🚧 Retenes</button>
-        <button type="button" class="btn-icono" style="width:100%" onclick="registrarEventoBitacora('descompostura')">🔧 Avería</button>
-        <button type="button" class="btn-icono" style="width:100%" onclick="registrarEventoBitacora('percance_vial')">⚠️ Percance vial</button>
-        <button type="button" class="btn-icono" style="width:100%" onclick="registrarEventoBitacora('bloqueo_carretero')">🚫 Bloqueo</button>
-        <button type="button" class="btn-icono" style="width:100%" onclick="registrarEventoBitacora('eventos_climatologicos')">🌧️ Clima</button>
-        <button type="button" class="btn-icono" style="width:100%" onclick="registrarEventoBitacora('cierre_viaje')">🏁 Cierre de viaje</button>
+        <button type="button" class="btn-icono" style="width:100%;font-size:12px;padding:8px 6px" onclick="registrarEventoBitacora('inicio_viaje')">🏁 Inicio de viaje</button>
+        <button type="button" class="btn-icono" style="width:100%;font-size:12px;padding:8px 6px" onclick="registrarEventoBitacora('conduciendo')">🚛 Conduciendo</button>
+        <button type="button" class="btn-icono" style="width:100%;font-size:12px;padding:8px 6px" onclick="registrarEventoBitacora('pausa')">☕ Pausa</button>
+        <button type="button" class="btn-icono" style="width:100%;font-size:12px;padding:8px 6px" onclick="registrarEventoBitacora('descanso')">😴 Descanso</button>
+        <button type="button" class="btn-icono" style="width:100%;font-size:12px;padding:8px 6px" onclick="registrarEventoBitacora('carga')">📦 Carga</button>
+        <button type="button" class="btn-icono" style="width:100%;font-size:12px;padding:8px 6px" onclick="registrarEventoBitacora('descarga')">📤 Descarga</button>
+        <button type="button" class="btn-icono" style="width:100%;font-size:12px;padding:8px 6px" onclick="registrarEventoBitacora('retenes')">🚧 Retenes</button>
+        <button type="button" class="btn-icono" style="width:100%;font-size:12px;padding:8px 6px" onclick="registrarEventoBitacora('descompostura')">🔧 Avería</button>
+        <button type="button" class="btn-icono" style="width:100%;font-size:12px;padding:8px 6px" onclick="registrarEventoBitacora('percance_vial')">⚠️ Percance vial</button>
+        <button type="button" class="btn-icono" style="width:100%;font-size:12px;padding:8px 6px" onclick="registrarEventoBitacora('bloqueo_carretero')">🚫 Bloqueo</button>
+        <button type="button" class="btn-icono" style="width:100%;font-size:12px;padding:8px 6px" onclick="registrarEventoBitacora('eventos_climatologicos')">🌧️ Clima</button>
+        <button type="button" class="btn-icono" style="width:100%;font-size:12px;padding:8px 6px" onclick="registrarEventoBitacora('cierre_viaje')">🏁 Cierre de viaje</button>
       </div>
 
       <!-- ── CASOS DE EXCEPCIÓN / ACTIVIDADES AUXILIARES — recuadros de
@@ -237,7 +237,7 @@
          el registro cronológico que arma la app), va hasta abajo del todo
          para no saturar lo que sí se ve como el papel oficial. ────────── -->
     <div style="font-size:12px;color:#1a1a1a;font-weight:600;margin-top:18px">Detalle de eventos</div>
-    <div id="bitLog" style="font-size:12px;color:#555;max-height:220px;overflow:auto"></div>
+    <div id="bitLog" style="font-size:12px;color:#333;max-height:220px;overflow:auto"></div>
   </div>
 </div>
 
@@ -988,23 +988,27 @@ function _diaLocalISO(iso){
 }
 function _renderGridBitacora(){
   var cont=$('bitGrid');
-  if(!_bitacoraEventos.length){cont.innerHTML='<div style="color:#6f8ba6;font-size:12px">Sin eventos registrados todavía.</div>';return;}
+  if(!_bitacoraEventos.length){cont.innerHTML='<div style="color:#555;font-size:12px">Sin eventos registrados todavía.</div>';return;}
   var dias={};
   _bitacoraEventos.forEach(function(e){
     var dia=_diaLocalISO(e.inicio);
     if(!dias[dia])dias[dia]=true;
   });
   var diasOrdenados=Object.keys(dias).sort();
+  // Primera columna (nombre de la fila) fija con position:sticky, para que
+  // en el celular se pueda deslizar solo la parte de las horas sin perder
+  // de vista a qué fila corresponde (CONDUCIENDO/PAUSA/etc.).
+  var estiloFijo='position:sticky;left:0;background:#fff';
   var html='';
   diasOrdenados.forEach(function(dia,idx){
     var inicioDia=new Date(dia+'T00:00:00').getTime();
-    html+='<div style="font-size:11px;font-weight:600;margin-top:'+(idx?'12px':'0')+'">DÍA '+(idx+1)+' — '+dia+'</div>';
+    html+='<div style="font-size:11px;font-weight:600;color:#1a1a1a;margin-top:'+(idx?'12px':'0')+'">DÍA '+(idx+1)+' — '+dia+'</div>';
     html+='<div style="overflow-x:auto"><table style="border-collapse:collapse;font-size:9px;margin-top:4px;width:100%">';
-    html+='<tr><td></td>';
-    for(var h=1;h<=24;h++)html+='<td style="text-align:center;padding:1px;color:#6f8ba6">'+h+'</td>';
-    html+='<td style="text-align:center;padding:1px 4px;color:#6f8ba6">TOT</td></tr>';
+    html+='<tr><td style="'+estiloFijo+'"></td>';
+    for(var h=1;h<=24;h++)html+='<td style="text-align:center;padding:1px;color:#333">'+h+'</td>';
+    html+='<td style="text-align:center;padding:1px 4px;color:#333;font-weight:600">TOT</td></tr>';
     CATEGORIAS_GRID.forEach(function(cat){
-      html+='<tr><td style="padding:2px 4px;white-space:nowrap;color:#cdd9e4">'+cat.label+'</td>';
+      html+='<tr><td style="'+estiloFijo+';padding:2px 4px;white-space:nowrap;color:#1a1a1a;font-weight:600">'+cat.label+'</td>';
       var horasActivas=0;
       for(var h=1;h<=24;h++){
         var celdaIni=inicioDia+(h-1)*3600000,celdaFin=inicioDia+h*3600000;
@@ -1017,7 +1021,7 @@ function _renderGridBitacora(){
         if(activo)horasActivas++;
         html+='<td style="text-align:center;padding:1px;background:'+(activo?'#4da3ff':'transparent')+'">'+(activo?'●':'')+'</td>';
       }
-      html+='<td style="text-align:center;padding:1px 4px;color:#9fb3c8">'+horasActivas+'h</td></tr>';
+      html+='<td style="text-align:center;padding:1px 4px;color:#1a1a1a;font-weight:600">'+horasActivas+'h</td></tr>';
     });
     html+='</table></div>';
   });
