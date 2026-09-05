@@ -1467,7 +1467,18 @@ async function intentarSustituirFletePorXML(doc,uuid,folioCompleto,total){
     for(var i=0;i<encontrados.length;i++){
       await window.marcarFleteFacturado(encontrados[i].ordenEmbarque,{uuid:uuid,folio:folioCompleto,monto:total});
       if(cartaPorte){
-        await actualizarEvidenciaManiobra(encontrados[i].ordenEmbarque,{cartaPorte:cartaPorte});
+        var camposEvidencia={cartaPorte:cartaPorte};
+        // La Carta Porte del XML es el destino REAL y verificado (documento
+        // legal ante el SAT) — si no coincide con lo que puso el cliente en
+        // el correo del pedido (a veces pone el destino final de la
+        // mercancía, no el nuestro, ver caso León/Morelia), se corrige el
+        // destino con el de la Carta Porte y se guarda el del correo aparte
+        // (destinoOriginalCorreo), nunca se pierde el dato original.
+        if(cartaPorte.destino&&encontrados[i].destino!==cartaPorte.destino){
+          camposEvidencia.destinoOriginalCorreo=encontrados[i].destino||null;
+          camposEvidencia.destino=cartaPorte.destino;
+        }
+        await actualizarEvidenciaManiobra(encontrados[i].ordenEmbarque,camposEvidencia);
         await _crearInicioViajeBitacoraSiHaceFalta(encontrados[i].ordenEmbarque,cartaPorte.horaSalida);
       }
     }
