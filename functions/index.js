@@ -635,7 +635,8 @@ function _crearProvisionalFleteServer(ingresosDB, operadores, datos) {
     iva: iva, ret: 0, total: monto + iva, estado: 'sin_liquidar', liqNum: null,
     origen: 'pedido_flete', origenFlete: true,
     ruta: destino ? [{ origen: '', destino: destino, kms: '' }] : [],
-    tienda: (datos.tienda || '').trim(), observaciones: idCombinado, sinFacturaJustificar: true,
+    tienda: (datos.tienda || '').trim(), tiendaPrevias: (datos.tiendaPrevias || '').trim() || null,
+    observaciones: idCombinado, sinFacturaJustificar: true,
     fechaLimiteJustificacion: _sumarDiasHabilesServer(fecha, 15) + 'T23:59:59', montoPendiente: pendiente,
     capturadoPor: { usuario: 'buzón automático', nombre: 'Buzón automático (fletes@mudandote.mx)' },
     creadoEn: new Date().toISOString(),
@@ -1988,8 +1989,16 @@ exports.extraerReciboManiobra = onRequest(
 const PROMPT_PEDIDO_FLETE =
   'Eres un asistente que extrae datos de un correo donde un cliente (empresa que contrata servicios de mudanza/transportación) ' +
   'manda un PEDIDO DE FLETE u orden de embarque, antes de que exista la factura. El correo suele venir en una TABLA con ' +
-  'columnas como FECHA, PEDIDO, TU (o "T.U.", "orden de embarque", "traffic unit"), ECO. (el número económico/unidad), ' +
-  'TIENDA o TIENDA PREVIAS, DESTINO y FLETE (el importe). IMPORTANTE — la columna TU/orden de embarque puede traer DOS (o ' +
+  'columnas como FECHA, PEDIDO, TU (o "T.U.", "orden de embarque", "traffic unit"), LT (Línea de Transporte), ECO. (el número ' +
+  'económico/unidad), UNIDAD (tipo de unidad, ej. "Mudanza"), TIENDA PREVIAS (o "TIENDA", el CEDIS/sucursal donde nosotros ' +
+  'entregamos), DESTINO y FLETE (el importe). ' +
+  'IMPORTANTE sobre TIENDA PREVIAS vs DESTINO — son DOS conceptos distintos, NUNCA los mezcles ni asumas que uno corrige al ' +
+  'otro: "Destino" a veces es el destino FINAL de la mercancía (puede seguir otro tramo después, con otro transportista, que ' +
+  'no es el nuestro), mientras que "Tienda Previas" (o "Tienda") es el CEDIS/punto donde ESTE viaje realmente entrega y sobre ' +
+  'el cual se calcula la tarifa que nos pagan. Pueden decir cosas diferentes en el mismo renglón (ej. Destino="Morelia" pero ' +
+  'Tienda Previas="CEDIS LEON") — eso no es un error tuyo de lectura, extrae AMBOS tal cual aparecen, cada uno en su propio ' +
+  'campo, sin intentar adivinar cuál es el "correcto". ' +
+  'IMPORTANTE — la columna TU/orden de embarque puede traer DOS (o ' +
   'más) números juntos separados por "/", por ejemplo "6500360289/6500360290": eso es UN SOLO renglón/embarque con dos T.U.\'s ' +
   'asociados, NO dos renglones distintos — extráelo TAL CUAL viene, con la "/" incluida, en un solo objeto (no dupliques el ' +
   'renglón por cada T.U.). También ten cuidado de no confundir la columna ECO. (el número económico de la unidad/camión, un ' +
@@ -1997,7 +2006,10 @@ const PROMPT_PEDIDO_FLETE =
   'el económico es específicamente ese número. Extrae UN renglón por cada embarque/viaje (fila de la tabla) que encuentres, ' +
   'con estas llaves exactas: {"ordenEmbarque":"el folio de la orden de embarque/TU tal cual aparece (con la \\"/\\" si trae ' +
   'más de uno), o null si no se puede determinar","pedidoFlete":"el número de pedido/PO del flete, o null","tienda":"la ' +
-  'tienda o sucursal, o null","destino":"el destino del embarque, o null","fecha":"YYYY-MM-DD si se puede convertir desde el ' +
+  'tienda o sucursal (columna TIENDA, si el correo trae esa columna en vez de o además de TIENDA PREVIAS), o null",' +
+  '"tiendaPrevias":"el valor de la columna TIENDA PREVIAS tal cual aparece (ej. \\"CEDIS LEON\\"), o null si el correo no ' +
+  'trae esa columna","destino":"el destino del embarque tal cual aparece en la columna DESTINO, o null","fecha":"YYYY-MM-DD ' +
+  'si se puede convertir desde el ' +
   'formato que traiga, o null","economico":"el número económico de la unidad/camión (columna ECO. o similar) tal cual ' +
   'aparece, o null si no se menciona","monto":"el importe/monto del flete, como número (sin signos de moneda ni comas), o ' +
   'null si no se menciona"}. No inventes datos que no estén en el ' +
@@ -2103,7 +2115,8 @@ function _revisarBuzonPedidosCore(user, pass, apiKey) {
           if (yaExiste) continue; // ya registrado antes (correo repetido/reenviado) — no es un error, se ignora
           await ref.set({
             ordenEmbarque: tu1, tu2: tu2, pedidoFlete: r.pedidoFlete || null,
-            destino: r.destino || '', tienda: r.tienda || '', fecha: r.fecha || c.fecha || new Date().toISOString().slice(0, 10),
+            destino: r.destino || '', tienda: r.tienda || '', tiendaPrevias: r.tiendaPrevias || null,
+            fecha: r.fecha || c.fecha || new Date().toISOString().slice(0, 10),
             economico: r.economico ? parseInt(String(r.economico).replace(/[^0-9]/g, '') || 0) || null : null,
             montoFlete: r.monto != null ? parseFloat(r.monto) || null : null,
             estado: 'pendiente_factura', facturaUUID: null, facturaFolio: null, montoFactura: null,
@@ -2112,7 +2125,7 @@ function _revisarBuzonPedidosCore(user, pass, apiKey) {
           totalRegistrados++;
           const rProv = _crearProvisionalFleteServer(ingresosDBProv, operadoresProv, {
             ordenEmbarque: tu1, tu2: tu2, pedidoFlete: r.pedidoFlete, destino: r.destino, tienda: r.tienda,
-            fecha: r.fecha || c.fecha, economico: r.economico, montoFlete: r.monto
+            tiendaPrevias: r.tiendaPrevias, fecha: r.fecha || c.fecha, economico: r.economico, montoFlete: r.monto
           });
           if (rProv.ok) provisionalesCreados++;
         } catch (e) {

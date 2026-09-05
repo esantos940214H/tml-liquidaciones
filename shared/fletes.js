@@ -93,6 +93,7 @@
     await ref.set({
       ordenEmbarque: ordenNorm, tu2: partes[1] || null, pedidoFlete: (datos.pedidoFlete || '').trim() || null,
       destino: (datos.destino || '').trim(), tienda: (datos.tienda || '').trim(),
+      tiendaPrevias: (datos.tiendaPrevias || '').trim() || null,
       fecha: datos.fecha || new Date().toISOString().slice(0, 10),
       economico: datos.economico ? parseInt(String(datos.economico).replace(/[^0-9]/g, '') || 0) || null : null,
       montoFlete: datos.montoFlete != null && datos.montoFlete !== '' ? parseFloat(datos.montoFlete) || null : null,
