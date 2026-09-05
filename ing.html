@@ -1447,7 +1447,19 @@ async function _crearInicioViajeBitacoraSiHaceFalta(ordenEmbarque,horaSalida){
     var snap=await ref.get();
     var eventos=(snap.exists&&Array.isArray(snap.data().eventos))?snap.data().eventos:[];
     if(eventos.length)return;
-    await ref.set({ordenEmbarque:ordenEmbarque,eventos:[{tipo:'inicio_viaje',inicio:horaSalida,fin:null}]},{merge:true});
+    // "Inicio de viaje" es solo un marcador instantáneo (fin=inicio) — el
+    // umbral de 5h/3h para el primer descanso lo sigue usando (ver
+    // operador.html → _candadoDescanso). Las horas de servicio reales se
+    // cuentan aparte con un evento "conduciendo" que arranca en el mismo
+    // momento: si no se agrega, el tiempo desde que sale el camión hasta el
+    // primer botón que presiona el operador (ej. Pausa) no contaba como
+    // conduciendo en ningún lado (ni en la cuadrícula ni en las alertas de
+    // NOM-087), porque "inicio_viaje" no es una de las categorías de
+    // CATEGORIAS_GRID.
+    await ref.set({ordenEmbarque:ordenEmbarque,eventos:[
+      {tipo:'inicio_viaje',inicio:horaSalida,fin:horaSalida},
+      {tipo:'conduciendo',inicio:horaSalida,fin:null}
+    ]},{merge:true});
   }catch(e){console.error('_crearInicioViajeBitacoraSiHaceFalta:',e);}
 }
 async function intentarSustituirFletePorXML(doc,uuid,folioCompleto,total){
