@@ -327,7 +327,12 @@ tr:hover td{background:#fafafa}
     </div>
 
     <div class="card">
-      <div class="card-title">⏰ Próximo mantenimiento estimado <span class="info-tip">?<span class="info-tip-box">Estimado a partir del último kilometraje que capturaste a mano para cada unidad — no viene de rastreo satelital en vivo, así que puede estar desfasado si no capturas seguido. Se puede conectar más adelante con la app de rastreo satelital si tiene una API disponible, para que la lectura sea más exacta.</span></span></div>
+      <div class="card-title">🎯 Ciclo de mantenimiento por unidad <span class="info-tip">?<span class="info-tip-box">El contador de Wialon (cnm) NO es el odómetro real del camión — solo cuenta desde que se instaló el rastreador. Por eso aquí se fija un "kilómetro cero" por unidad (el km de Wialon en el momento en que lo estableces) y a partir de ahí se cuenta el intervalo — no antes.</span></span> <button class="btn btn-out btn-sm" onclick="mtoInicializarCiclos()">⚙️ Inicializar con Wialon (20,000 km, 529 a 14,000)</button></div>
+      <div class="tbl-wrap"><table><thead><tr><th>Unidad</th><th class="num">Km base</th><th class="num">Intervalo</th><th class="num">Próximo servicio (km Wialon)</th><th class="num">Km Wialon actual</th><th class="num">Faltan</th><th></th></tr></thead><tbody id="tbMtoCiclos"></tbody></table></div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">⏰ Próximo mantenimiento por actividad (histórico) <span class="info-tip">?<span class="info-tip-box">Estimado a partir de la última vez que registraste cada actividad en el historial de mantenimientos — es un detalle más fino que el ciclo general de arriba, pero solo funciona para unidades con historial ya capturado.</span></span></div>
       <div id="mtoProximos"></div>
     </div>
 
@@ -1192,6 +1197,7 @@ var _mtoArticuloFilas=[];
 // leído aquí para precargar el kilometraje real en vez de solo depender de
 // lo último capturado a mano.
 var MTO_ODOMETRO_WIALON={};
+var MTO_CICLOS={}; // {economico: {kmBase, intervaloKm, fechaBase}}
 async function cargarMantenimiento(){
   try{
     var db=firebase.firestore();
@@ -1209,7 +1215,12 @@ async function cargarMantenimiento(){
       var snapOdo=await db.collection('mantenimientoOdometroWialon').get();
       snapOdo.forEach(function(d){MTO_ODOMETRO_WIALON[d.id]=d.data();});
     }catch(e){console.error('mantenimientoOdometroWialon:',e);}
-    renderMtoCatalogo();renderMtoMecanicos();renderMtoHistorial();renderMtoProximos();
+    MTO_CICLOS={};
+    try{
+      var snapCiclos=await db.collection('mantenimientoCicloUnidad').get();
+      snapCiclos.forEach(function(d){MTO_CICLOS[d.id]=d.data();});
+    }catch(e){console.error('mantenimientoCicloUnidad:',e);}
+    renderMtoCatalogo();renderMtoMecanicos();renderMtoHistorial();renderMtoProximos();renderMtoCiclos();
     poblarMtoSelects();
     if(!$('mtoFecha').value)$('mtoFecha').value=hoy();
     mtoRenderActividades();
@@ -1401,6 +1412,69 @@ function renderMtoHistorial(){
 // renderMtoProximos: estimado simple con el kilometraje MÁS RECIENTE
 // capturado a mano de cada unidad — ver nota en el info-tip de la tarjeta,
 // esto no sustituye una lectura real de odómetro/GPS.
+// mtoInicializarCiclos: fija HOY el "kilómetro cero" de cada unidad usando
+// su lectura actual de Wialon — a partir de ahí se cuenta el intervalo (no
+// antes, porque no sabemos en qué punto real del ciclo de servicio va cada
+// camión). 20,000 km para todas, 14,000 para la 529 — pedido explícito.
+// Solo inicializa las que NO tengan ya un ciclo guardado, para no pisar por
+// accidente un ajuste que ya se haya hecho a mano.
+async function mtoInicializarCiclos(){
+  var unidades=unidadesRaw.filter(function(u){return u.activa;});
+  var yaExisten=unidades.filter(function(u){return MTO_CICLOS[String(u.numero)];}).map(function(u){return u.numero;});
+  if(yaExisten.length&&!confirm('Las unidades '+yaExisten.join(', ')+' ya tienen un ciclo configurado — no se van a tocar. ¿Inicializar el resto con el km actual de Wialon?'))return;
+  try{
+    var db=firebase.firestore();
+    var hechos=0;
+    for(var i=0;i<unidades.length;i++){
+      var u=unidades[i];
+      if(MTO_CICLOS[String(u.numero)])continue;
+      var odo=MTO_ODOMETRO_WIALON[String(u.numero)];
+      if(!odo||odo.km==null)continue;
+      var intervalo=u.numero===529?14000:20000;
+      await db.collection('mantenimientoCicloUnidad').doc(String(u.numero)).set({
+        economico:u.numero,kmBase:odo.km,intervaloKm:intervalo,fechaBase:hoy(),definidoPor:(usuarioSesion()||{}).usuario||''
+      });
+      hechos++;
+    }
+    alert('✅ Se inicializaron '+hechos+' unidad(es). A partir de hoy se cuenta el intervalo desde su km actual de Wialon.');
+    await cargarMantenimiento();
+  }catch(e){alert('⚠️ Error al inicializar: '+e.message);}
+}
+async function mtoEditarCiclo(economico){
+  var ciclo=MTO_CICLOS[String(economico)]||{};
+  var kmBase=prompt('Km base (kilómetro cero) para la unidad '+economico+':',ciclo.kmBase!=null?ciclo.kmBase:'');
+  if(kmBase===null)return;
+  var intervalo=prompt('Intervalo (cada cuántos km toca servicio):',ciclo.intervaloKm||20000);
+  if(intervalo===null)return;
+  try{
+    await firebase.firestore().collection('mantenimientoCicloUnidad').doc(String(economico)).set({
+      economico:parseInt(economico),kmBase:parseFloat(kmBase)||0,intervaloKm:parseFloat(intervalo)||20000,
+      fechaBase:hoy(),definidoPor:(usuarioSesion()||{}).usuario||''
+    });
+    await cargarMantenimiento();
+  }catch(e){alert('⚠️ Error al guardar: '+e.message);}
+}
+function renderMtoCiclos(){
+  var unidades=unidadesRaw.filter(function(u){return u.activa;});
+  $('tbMtoCiclos').innerHTML=unidades.map(function(u){
+    var ciclo=MTO_CICLOS[String(u.numero)];
+    var odo=MTO_ODOMETRO_WIALON[String(u.numero)];
+    var kmActual=odo?odo.km:null;
+    if(!ciclo){
+      return '<tr><td>'+u.numero+'</td><td class="num" colspan="4" style="color:#aaa;text-align:center">Sin ciclo configurado</td>'
+        +'<td class="num r">'+(kmActual!=null?fmtN(kmActual,0):'—')+'</td>'
+        +'<td><button class="btn btn-out btn-sm" onclick="mtoEditarCiclo('+u.numero+')">⚙️ Configurar</button></td></tr>';
+    }
+    var proximo=ciclo.kmBase+ciclo.intervaloKm;
+    var faltan=kmActual!=null?proximo-kmActual:null;
+    var alerta=faltan!=null&&faltan<=1500;
+    return '<tr'+(alerta?' style="background:#fffbeb"':'')+'><td>'+u.numero+'</td>'
+      +'<td class="num r">'+fmtN(ciclo.kmBase,0)+'</td><td class="num r">'+fmtN(ciclo.intervaloKm,0)+'</td>'
+      +'<td class="num r">'+fmtN(proximo,0)+'</td><td class="num r">'+(kmActual!=null?fmtN(kmActual,0):'—')+'</td>'
+      +'<td class="num r">'+(faltan!=null?((alerta?'⚠️ ':'')+fmtN(faltan,0)):'—')+'</td>'
+      +'<td><button class="btn btn-out btn-sm" onclick="mtoEditarCiclo('+u.numero+')">⚙️ Editar</button></td></tr>';
+  }).join('');
+}
 function renderMtoProximos(){
   var porUnidad={};
   MTO_HISTORIAL.forEach(function(m){
