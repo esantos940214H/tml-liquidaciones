@@ -1004,8 +1004,17 @@ function _procesarRenglonesExtraidos(renglones){
   // ya no se paga. Se busca SOLO por folio/pedido/T.U.'s (sin exigir que el
   // operador matchee por nombre — el identificador ya es único de por sí, y
   // exigir el nombre solo arriesgaría no cerrarla por un error de dedo en el
-  // correo de seguimiento). Si no hay ninguna Pendiente que coincida, no
-  // pasa nada — no hay nada que cerrar, no se manda a revisión.
+  // correo de seguimiento).
+  //
+  // Si NO había ninguna Pendiente (caso más común: el "NO PAGA" es la ÚNICA
+  // noticia que llega de ese T.U., nunca hubo un correo previo) hay que
+  // registrarlo de todas formas en $0 — si no, nunca queda ninguna
+  // autorización ligada a ese T.U. y el Archivo Maestro de Fletes (Ingresos)
+  // nunca la encuentra: la fila del pedido se queda "(sin confirmar)" para
+  // siempre aunque en realidad ya está resuelta (caso real: Irapuato S1127,
+  // T.U. 6500362404/6500362405 — el correo dijo "NO PAGA" desde el
+  // principio, nunca hubo un "PENDIENTE" antes). Para esto sí hace falta
+  // identificar al operador; si no se encuentra, se deja sin resolver.
   renglonesSilvia.forEach(function(x){
     var m=(x.monto==null)?'':String(x.monto).trim().toUpperCase();
     if(m!=='NO_PAGA'&&m!=='NO PAGA'&&m!=='-')return;
@@ -1016,10 +1025,29 @@ function _procesarRenglonesExtraidos(renglones){
       var vIds=_idsDeObservaciones(v.observaciones);
       return ids.some(function(id){return vIds.indexOf(id)!==-1;});
     });
-    if(!existente)return;
-    existente.subtotal=0;existente.subtManiobras=0;existente.iva=0;existente.total=0;
-    existente.montoPendiente=false;
-    existente.observaciones=(existente.observaciones||'')+' | NO_PAGA confirmado el '+hoy();
+    if(existente){
+      existente.subtotal=0;existente.subtManiobras=0;existente.iva=0;existente.total=0;
+      existente.montoPendiente=false;
+      existente.observaciones=(existente.observaciones||'')+' | NO_PAGA confirmado el '+hoy();
+      noPagaResueltosCount++;
+      return;
+    }
+    var match=_matchOperadorPorNombre(x.operador,x.eco);
+    if(!match)return;
+    var idParts=[];
+    if(x.folio)idParts.push('FOLIO:'+x.folio);
+    if(x.pedido)idParts.push('PED:'+x.pedido);
+    if(x.tu1)idParts.push('TU1:'+x.tu1);
+    if(x.tu2)idParts.push('TU2:'+x.tu2);
+    if(!idParts.length)return;
+    var fecha=x.fecha||hoy();
+    ingresosDB.push({id:uid(),unidad:match.operadorId,folio:'MANIOBRAS',fecha:fecha,cliente:'GRUPO COMERCIAL DSW',tipo:'maniobra',
+      subtotal:0,subtFlete:0,subtManiobras:0,subtOtros:0,iva:0,ret:0,total:0,estado:'sin_liquidar',liqNum:null,origen:'autorizacion_cliente',
+      ruta:(x.destino||'').trim()?[{origen:'',destino:(x.destino||'').trim(),kms:''}]:[],tienda:(x.tienda||'').trim(),
+      observaciones:idParts.join(' | '),sinFacturaJustificar:true,
+      fechaLimiteJustificacion:sumarDiasHabiles(fecha,15)+'T23:59:59',montoPendiente:false,
+      capturadoPor:{usuario:'admin',nombre:'No paga (registrado al extraer)'},creadoEn:new Date().toISOString(),depositoConfirmado:false,
+      sustituidoPorXML:false,pdfURL:null,esAutorizacionCliente:true});
     noPagaResueltosCount++;
   });
   if(noPagaResueltosCount){window.FB.set('estado','ingresosDB',{data:JSON.stringify(ingresosDB)});renderPendientes();}
@@ -1066,7 +1094,7 @@ function _procesarRenglonesExtraidos(renglones){
   var hayPosibleCorreccion=_extraidos.some(function(x){return x.posibleCorreccion;});
   var avisoOtras=otrasCount?(' · <strong>se excluyeron '+otrasCount+' renglón(es) de otra(s) transportista(s) ('+otrasNombres.join(', ')+'), no son nuestros</strong>'):'';
   var avisoCorreccion=hayPosibleCorreccion?' · <strong style="color:#9b1c1c">⚠️ hay folios repetidos con monto distinto — probablemente el correo trae una corrección, revisa cuál es el vigente y borra el otro antes de registrar</strong>':'';
-  var avisoNoPaga=noPagaResueltosCount?(' · <strong style="color:#2a9d8f">✅ se cerraron automático en $0 '+noPagaResueltosCount+' autorización(es) que ya estaban Pendientes y este correo dice que no se pagan</strong>'):'';
+  var avisoNoPaga=noPagaResueltosCount?(' · <strong style="color:#2a9d8f">✅ se resolvieron automático en $0 '+noPagaResueltosCount+' autorización(es) marcadas "No paga"</strong>'):'';
   if(!_extraidos.length&&!noPagaCount&&!otrasCount){
     $('extraerInfo').innerHTML='<div class="alert alert-warn">⚠️ La IA no encontró ningún renglón reconocible en ese texto.</div>';
     $('wrapExtraidos').style.display='none';
