@@ -728,7 +728,17 @@ function renderFacCandados(){
     return '<div style="font-size:12px;padding:4px 0">'+(c.ok?'✅':(c.duro?'🚫':'⚠️'))+' '+c.label+(c.ok?'':(c.duro?' — bloquea el registro':' — revisa'))+'</div>';
   }).join('');
   if(!_facProveedorMatch){
-    html+='<div class="alert alert-warn" style="margin-top:8px">⚠️ No hay un proveedor activo con RFC <strong>'+data.rfcEmisor+'</strong> ("'+data.nombreEmisor+'"). Se puede registrar la factura igual para pago (sin días de crédito, vencimiento inmediato) — <button class="btn btn-out btn-sm" onclick="altaRapidaProveedorDesdeXML()">+ Dar de alta rápido</button> si ya tienes sus datos, para que sí le apliquen los días de crédito normales.</div>';
+    // PUE (pago en una sola exhibición, ej. diésel que pagó un operador de
+    // su bolsa) casi nunca es un proveedor real al que le demos crédito —
+    // no tiene caso ofrecerle "dar de alta rápido" ahí, se registra directo
+    // sin días de crédito y ya. Solo se ofrece el alta rápida para PPD
+    // (crédito), donde sí puede convenir tenerlo dado de alta con sus datos
+    // reales para que le corran sus días de crédito normales.
+    if(data.metodoPago==='PUE'){
+      html+='<div class="alert alert-warn" style="margin-top:8px">⚠️ No hay un proveedor activo con RFC <strong>'+data.rfcEmisor+'</strong> ("'+data.nombreEmisor+'"). Es PUE, así que se registra directo sin días de crédito (vencimiento inmediato) — no hace falta darlo de alta.</div>';
+    }else{
+      html+='<div class="alert alert-warn" style="margin-top:8px">⚠️ No hay un proveedor activo con RFC <strong>'+data.rfcEmisor+'</strong> ("'+data.nombreEmisor+'"). Se puede registrar la factura igual para pago (sin días de crédito, vencimiento inmediato) — <button class="btn btn-out btn-sm" onclick="altaRapidaProveedorDesdeXML()">+ Dar de alta rápido</button> si ya tienes sus datos, para que sí le apliquen los días de crédito normales.</div>';
+    }
   }
   $('facCandadosWrap').innerHTML=html;
   if(!todosDurosOk){
