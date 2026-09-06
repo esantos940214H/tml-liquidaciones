@@ -2128,7 +2128,7 @@ async function revisarBuzonPedidosAhora(){
 // mismo destino dos veces, así que si hay UN SOLO candidato con esa fecha y
 // destino/tienda, se usa — si hay más de uno, no se adivina (queda sin
 // emparejar para revisión manual).
-function matchFleteConAutorizacion(flete,autorizaciones){
+function matchFleteConAutorizacion(flete,autorizaciones,permiteRespaldoEconomico){
   var tusNorm=_fleteTusNorm(flete);
   var pedNorm=flete.pedidoFlete?_normTxtFactManiobras(flete.pedidoFlete):'';
   var directo=autorizaciones.find(function(v){
@@ -2137,11 +2137,18 @@ function matchFleteConAutorizacion(flete,autorizaciones){
   });
   if(directo)return{autorizacion:directo,metodo:'T.U./orden de embarque'};
   // Respaldo 1: si el correo del pedido de flete sí trae el económico, se usa
-  // junto con la fecha — el mismo operador no debería tener dos
-  // autorizaciones el mismo día, así que si hay un único candidato con esa
-  // unidad+fecha, se usa directo (más confiable que fecha+destino/tienda,
-  // porque el económico ya identifica al operador sin ambigüedad).
-  if(flete.economico){
+  // junto con la fecha — PERO solo si este operador tiene un único viaje ese
+  // día (permiteRespaldoEconomico, calculado en construirArchivoMaestroFletes
+  // contando TODOS los pedidos de flete, no solo las autorizaciones). Caso
+  // real: Martín cargó León e Irapuato el mismo día — León nunca tuvo
+  // autorización propia, y este respaldo le "prestó" por error la de
+  // Irapuato (mismo operador+fecha, única candidata) — si Irapuato hubiera
+  // tenido un monto real en vez de $0, León se lo habría atribuido igual,
+  // mezclando el pago de un viaje con el de otro. Con dos o más viajes el
+  // mismo día no hay forma de saber cuál autorización es de cuál, así que
+  // se desactiva este respaldo y se deja sin emparejar (revisión manual) en
+  // vez de arriesgar una atribución cruzada.
+  if(flete.economico&&permiteRespaldoEconomico!==false){
     var porEconomico=autorizaciones.filter(function(v){
       return v.unidad===normEconomico(flete.economico)&&(v.fecha||'')===(flete.fecha||'');
     });
@@ -2163,8 +2170,20 @@ function matchFleteConAutorizacion(flete,autorizaciones){
 }
 function construirArchivoMaestroFletes(){
   var autorizaciones=ingresosDB.filter(function(v){return v.esAutorizacionCliente;});
+  // Cuenta cuántos PEDIDOS DE FLETE (no autorizaciones) tiene cada
+  // económico+fecha — ver el porqué en matchFleteConAutorizacion: con dos o
+  // más viajes del mismo operador el mismo día, el respaldo "económico+
+  // fecha" no puede saber cuál autorización es de cuál.
+  var conteoPorEconomicoFecha={};
+  FLETES.forEach(function(f){
+    if(!f.economico)return;
+    var key=normEconomico(f.economico)+'|'+(f.fecha||'');
+    conteoPorEconomicoFecha[key]=(conteoPorEconomicoFecha[key]||0)+1;
+  });
   return FLETES.map(function(f){
-    var m=matchFleteConAutorizacion(f,autorizaciones);
+    var keyEcoFecha=f.economico?(normEconomico(f.economico)+'|'+(f.fecha||'')):null;
+    var permiteRespaldoEconomico=!keyEcoFecha||conteoPorEconomicoFecha[keyEcoFecha]===1;
+    var m=matchFleteConAutorizacion(f,autorizaciones,permiteRespaldoEconomico);
     // El económico/operador viene, en orden de confianza: de la autorización
     // ya emparejada; si no hubo match pero el correo del pedido de flete SÍ
     // traía el económico, se busca el operador que TIENE esa unidad ahora
