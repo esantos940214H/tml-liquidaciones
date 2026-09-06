@@ -2830,3 +2830,44 @@ exports.wialonListarPlantillasReporte = onRequest({ secrets: [WIALON_TOKEN], cor
     res.status(500).json({ error: e.message || 'Error interno del servidor.' });
   }
 });
+
+async function _wialonCall(sid, svc, params) {
+  const url = 'https://hst-api.wialon.com/wialon/ajax.html?svc=' + svc + '&params=' + encodeURIComponent(JSON.stringify(params)) + '&sid=' + sid;
+  const r = await fetch(url);
+  return r.json();
+}
+
+// Tercer diagnóstico: corre la plantilla "Mantenimiento TML" (resourceId
+// 22158447, templateId 1, creada por Esa en Wialon) sobre UNA unidad, y
+// regresa las filas tal cual las da Wialon — todavía no sabemos la forma
+// exacta de la respuesta (columnas/orden), así que este endpoint es solo
+// para verla antes de escribir el parseo real. Hoy debe regresar vacío o
+// "sin datos" porque el módulo de Mantenimiento de la cuenta sigue sin
+// habilitarse (ver conversación) — en cuanto Wialon lo active y Esa cargue
+// los intervalos de servicio, esta misma plantilla debe empezar a traer
+// datos reales sin cambiar nada aquí.
+exports.wialonProbarReporteMantenimiento = onRequest({ secrets: [WIALON_TOKEN], cors: true, region: 'us-central1', timeoutSeconds: 60 }, async (req, res) => {
+  try {
+    const sid = await _wialonLogin(WIALON_TOKEN.value());
+    const unitId = parseInt(req.query.unitId || '18225678', 10); // UNIDAD 521 SILVIA por defecto
+    const resourceId = 22158447, templateId = 1;
+    const ahora = Math.floor(Date.now() / 1000);
+    const execParams = {
+      reportResourceId: resourceId, reportTemplateId: templateId, reportObjectId: unitId, reportObjectSecId: 0,
+      interval: { flags: 0, from: ahora - 30 * 24 * 3600, to: ahora }
+    };
+    const execResult = await _wialonCall(sid, 'report/exec_report', execParams);
+    if (execResult.error) { res.status(502).json({ error: 'report/exec_report falló con código ' + execResult.error, detalle: execResult }); return; }
+    const tablas = (execResult.reportResult && execResult.reportResult.tables) || [];
+    const salida = [];
+    for (let i = 0; i < tablas.length; i++) {
+      const filas = await _wialonCall(sid, 'report/get_result_rows', { tableIndex: i, indexFrom: 0, indexTo: (tablas[i].rows || 1) - 1 });
+      salida.push({ tabla: tablas[i], filas: filas });
+    }
+    await _wialonCall(sid, 'report/cleanup_result', {});
+    res.json({ ok: true, unitId: unitId, totalTablas: tablas.length, resultado: salida });
+  } catch (e) {
+    console.error('wialonProbarReporteMantenimiento:', e);
+    res.status(500).json({ error: e.message || 'Error interno del servidor.' });
+  }
+});
