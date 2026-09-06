@@ -2040,8 +2040,180 @@ async function _procesarMensajePedidos(rawBuffer, apiKey) {
   };
 }
 
+// ══════════════════════════════════════════════════════════════════════════
+// FACTURAS DE FLETE por el mismo buzón (fletes@mudandote.mx) — si el cliente
+// también copia este correo en su sistema de facturación, el buzón recibe,
+// además de los pedidos (arriba), las facturas YA TIMBRADAS en XML+PDF. Solo
+// se procesan aquí las de FLETE: se identifican porque traen Complemento
+// Carta Porte (obligatorio por ley en servicio de transporte — una factura
+// de MANIOBRA, que es mano de obra, nunca lo trae). Cualquier XML sin Carta
+// Porte se ignora por completo — sigue su flujo normal con Raúl y el Excel
+// consolidado de maniobras, esto nunca lo toca. Tampoco se sustituye nada si
+// el T.U./pedido del XML no coincide con EXACTAMENTE un pedido pendiente en
+// fletesDB (ni si no coincide con ninguno, ni si es ambiguo con más de uno)
+// — mismo espíritu que el resto de los buzones: solo se autorregistra lo
+// 100% reconocible, todo lo demás se deja para revisión manual.
+function _clasificarConceptosCFDIServer(conceptos, subtotal) {
+  let subtFlete = 0, subtManiobras = 0, subtOtros = 0;
+  conceptos.forEach(function (c) {
+    const clave = c['@_ClaveProdServ'] || '';
+    const desc = (c['@_Descripcion'] || '').toUpperCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+    const imp = parseFloat(c['@_Importe'] || 0);
+    if (clave === '81141601') {
+      const esKmOEstadia = /KILOMETR/.test(desc) || /\bKMS?\b/.test(desc) || desc.indexOf('ESTADIA') !== -1;
+      if (esKmOEstadia) subtFlete += imp; else subtOtros += imp;
+      return;
+    }
+    const esManiobra = clave.indexOf('7812') === 0 || desc.indexOf('MANIOBRA') !== -1 || desc.indexOf('EMPAQUE') !== -1 ||
+      desc.indexOf('ESTIBA') !== -1 || desc.indexOf('CARGA Y DESCARGA') !== -1 || desc.indexOf('DESCARGA') !== -1 || desc.indexOf('CARGUE') !== -1;
+    const esFlete = !esManiobra && (clave.indexOf('7810') === 0 || clave.indexOf('7811') === 0 || clave.indexOf('7813') === 0 ||
+      clave.indexOf('7814') === 0 || desc.indexOf('FLETE') !== -1 || desc.indexOf('ACARREO') !== -1 || desc.indexOf('ACAREO') !== -1 ||
+      desc.indexOf('TRASLADO') !== -1 || desc.indexOf('TRANSPORTE TERRESTRE') !== -1 || /KILOMETR/.test(desc) || /\bKMS?\b/.test(desc));
+    if (esManiobra) subtManiobras += imp;
+    else if (esFlete) subtFlete += imp;
+    else subtOtros += imp;
+  });
+  if (!subtFlete && !subtManiobras && !subtOtros) subtFlete = subtotal;
+  return { subtFlete: subtFlete, subtManiobras: subtManiobras, subtOtros: subtOtros };
+}
+
+// _parseFacturaFleteXMLServer(xmlText): regresa null si el XML NO es una
+// factura de flete que TML emitió (sin Carta Porte, o emisor distinto) — esa
+// es la señal de "ignóralo, no es tuyo". El destino se saca de
+// NombreRemitenteDestinatario de la Carta Porte (el nombre del CEDIS/tienda
+// tal cual está en el documento legal) en vez del catálogo de municipios que
+// usa ing.html (ese catálogo es enorme y solo vive en el navegador) — es
+// menos "bonito" que "León, Guanajuato" pero es el dato real y verificado.
+function _parseFacturaFleteXMLServer(xmlText) {
+  const { XMLParser } = require('fast-xml-parser');
+  const parser = new XMLParser({ ignoreAttributes: false, attributeNamePrefix: '@_', removeNSPrefix: true });
+  let obj;
+  try { obj = parser.parse(xmlText); } catch (e) { return null; }
+  const comp = obj && obj.Comprobante;
+  if (!comp) return null;
+  const tfd = comp.Complemento && comp.Complemento.TimbreFiscalDigital;
+  const cartaPorteNodo = comp.Complemento && comp.Complemento.CartaPorte;
+  if (!tfd || !cartaPorteNodo) return null;
+  const emisor = comp.Emisor || {};
+  if ((emisor['@_Rfc'] || '').toUpperCase() !== TML_RFC) return null;
+  const receptor = comp.Receptor || {};
+  let conceptos = (comp.Conceptos && comp.Conceptos.Concepto) || [];
+  if (!Array.isArray(conceptos)) conceptos = [conceptos];
+  const textoConceptos = _normTxtServer(conceptos.map(function (c) { return c['@_Descripcion'] || ''; }).join(' '));
+  let ubics = (cartaPorteNodo.Ubicaciones && cartaPorteNodo.Ubicaciones.Ubicacion) || [];
+  if (!Array.isArray(ubics)) ubics = [ubics];
+  const puntos = ubics.map(function (u) {
+    const dom = u.Domicilio || {};
+    const estado = dom['@_Estado'] || '';
+    return {
+      tipo: u['@_TipoUbicacion'] || '', label: u['@_NombreRemitenteDestinatario'] || estado || 'Punto',
+      fechaHora: u['@_FechaHoraSalidaLlegada'] || '', kms: u['@_DistanciaRecorrida'] || ''
+    };
+  });
+  const origen = puntos.find(function (p) { return p.tipo === 'Origen'; }) || null;
+  let destinoPunto = null;
+  for (let i = puntos.length - 1; i >= 0; i--) { if (puntos[i].tipo === 'Destino') { destinoPunto = puntos[i]; break; } }
+  let ruta = [], puntoPrevio = null;
+  puntos.forEach(function (p) {
+    if (p.tipo === 'Origen') { puntoPrevio = p; }
+    else if (p.tipo === 'Destino' && puntoPrevio) { ruta.push({ origen: puntoPrevio.label, destino: p.label, kms: p.kms || (cartaPorteNodo['@_TotalDistRec'] || '') }); puntoPrevio = p; }
+  });
+  const subtotal = parseFloat(comp['@_SubTotal'] || 0);
+  const total = parseFloat(comp['@_Total'] || 0);
+  const impResumen = comp.Impuestos || {};
+  const clasif = _clasificarConceptosCFDIServer(conceptos, subtotal);
+  let distanciaKm = cartaPorteNodo['@_TotalDistRec'] ? parseFloat(cartaPorteNodo['@_TotalDistRec']) : null;
+  if (!distanciaKm) {
+    const sumaKms = ubics.reduce(function (s, u) { return s + (parseFloat(u['@_DistanciaRecorrida']) || 0); }, 0);
+    distanciaKm = sumaKms > 0 ? sumaKms : null;
+  }
+  return {
+    uuid: (tfd['@_UUID'] || '').toUpperCase(), folio: (comp['@_Serie'] ? comp['@_Serie'] + '-' : '') + (comp['@_Folio'] || ''),
+    fecha: (comp['@_Fecha'] || '').slice(0, 10),
+    subtotal: subtotal, subtFlete: clasif.subtFlete, subtManiobras: clasif.subtManiobras, subtOtros: clasif.subtOtros,
+    iva: parseFloat(impResumen['@_TotalImpuestosTrasladados'] || 0), ret: parseFloat(impResumen['@_TotalImpuestosRetenidos'] || 0), total: total,
+    rfcEmisor: (emisor['@_Rfc'] || '').toUpperCase(), rfcReceptor: (receptor['@_Rfc'] || '').toUpperCase(), cliente: receptor['@_Nombre'] || '',
+    textoConceptos: textoConceptos, ruta: ruta,
+    destino: destinoPunto ? destinoPunto.label : null, horaSalida: origen ? origen.fechaHora : null, distanciaKm: distanciaKm
+  };
+}
+
+// _sustituirFacturaFleteServer(fac): busca EXACTAMENTE un pedido pendiente
+// en fletesDB cuyo T.U./pedido aparezca en los Conceptos del XML (mismo
+// criterio "contiene" que intentarSustituirFletePorXML del lado cliente en
+// ing.html). Si hay una sola coincidencia: marca el pedido facturado,
+// corrige el destino con el de la Carta Porte (documento verificado, ver
+// caso real León/Morelia) guardando el del correo aparte
+// (destinoOriginalCorreo), y si ya existe el ingreso PROVISIONAL de ese
+// pedido (se crea en cuanto llega el correo del pedido, si traía económico)
+// lo actualiza con los montos reales — igual que hace un humano hoy al subir
+// el XML a mano. Si el pedido llegó SIN económico no hay ingreso provisional
+// que actualizar — identificar la unidad por la placa del XML no se intenta
+// aquí, se deja el pedido marcado como facturado en fletesDB para que se
+// registre el ingreso a mano con el XML ya identificado.
+async function _sustituirFacturaFleteServer(fac) {
+  const pendSnap = await db.collection('fletesDB').where('estado', '==', 'pendiente_factura').get();
+  const pendientes = [];
+  pendSnap.forEach(function (d) { pendientes.push(Object.assign({ id: d.id }, d.data())); });
+  const encontrados = pendientes.filter(function (f) {
+    const tus = [f.ordenEmbarque, f.tu2].filter(Boolean).map(_normalizarOrdenEmbarqueServer);
+    const pedNorm = f.pedidoFlete ? _normTxtServer(f.pedidoFlete) : '';
+    return tus.some(function (id) { return id && fac.textoConceptos.indexOf(id) !== -1; }) ||
+      (pedNorm && fac.textoConceptos.indexOf(pedNorm) !== -1);
+  });
+  if (encontrados.length !== 1) {
+    return { ok: false, motivo: encontrados.length ? ('ambiguo, ' + encontrados.length + ' pedidos pendientes coinciden') : 'ningún pedido pendiente coincide' };
+  }
+  const f = encontrados[0];
+  if (f.facturaUUID === fac.uuid) return { ok: false, motivo: 'ya estaba facturado con este mismo XML' };
+  const camposFlete = { estado: 'facturado', facturaUUID: fac.uuid, facturaFolio: fac.folio, montoFactura: fac.total, facturadoEn: new Date().toISOString() };
+  if (fac.destino && f.destino !== fac.destino) { camposFlete.destinoOriginalCorreo = f.destino || null; camposFlete.destino = fac.destino; }
+  await db.collection('fletesDB').doc(f.id).set(camposFlete, { merge: true });
+
+  const refIngresos = db.collection('estado').doc('ingresosDB');
+  let ingresoActualizado = false;
+  await db.runTransaction(async function (tx) {
+    const snap = await tx.get(refIngresos);
+    const ingresosDB = (snap.exists && snap.data().data) ? JSON.parse(snap.data().data) : [];
+    const idBuscado = 'TU1:' + f.ordenEmbarque;
+    const prov = ingresosDB.find(function (v) { return v.origenFlete && !v.sustituidoPorXML && (v.observaciones || '').indexOf(idBuscado) === 0; });
+    if (!prov) return;
+    prov.subtotal = fac.subtotal; prov.subtFlete = fac.subtFlete; prov.subtManiobras = fac.subtManiobras; prov.subtOtros = fac.subtOtros;
+    prov.iva = fac.iva; prov.ret = fac.ret; prov.total = fac.total;
+    prov.folio = fac.folio; prov.uuid = fac.uuid; prov.facturaUUID = fac.uuid;
+    prov.rfcEmisor = fac.rfcEmisor; prov.rfcReceptor = fac.rfcReceptor;
+    prov.fecha = fac.fecha; if (fac.cliente) prov.cliente = fac.cliente;
+    if (fac.ruta.length) prov.ruta = fac.ruta;
+    prov.montoPendiente = false; prov.sustituidoPorXML = true;
+    prov.observaciones = (prov.observaciones || '') + ' — sustituido por XML (buzón automático) ' + fac.folio + ' el ' + new Date().toISOString().slice(0, 10);
+    tx.set(refIngresos, { data: JSON.stringify(ingresosDB) });
+    ingresoActualizado = true;
+  });
+
+  // Bitácora: mismo criterio que _crearInicioViajeBitacoraSiHaceFalta del
+  // lado cliente (ing.html) — el marcador "inicio_viaje" + un evento
+  // "conduciendo" desde la misma hora, para que las horas de servicio
+  // cuenten desde que sale el camión (ver corrección del 6-sept-2026).
+  if (fac.horaSalida) {
+    const refBit = db.collection('bitacoras').doc(f.ordenEmbarque);
+    const bitSnap = await refBit.get();
+    const eventosBit = (bitSnap.exists && Array.isArray(bitSnap.data().eventos)) ? bitSnap.data().eventos : [];
+    if (!eventosBit.length) {
+      await refBit.set({
+        ordenEmbarque: f.ordenEmbarque,
+        eventos: [
+          { tipo: 'inicio_viaje', inicio: fac.horaSalida, fin: fac.horaSalida },
+          { tipo: 'conduciendo', inicio: fac.horaSalida, fin: null }
+        ]
+      }, { merge: true });
+    }
+  }
+  return { ok: true, ordenEmbarque: f.ordenEmbarque, ingresoActualizado: ingresoActualizado };
+}
+
 function _revisarBuzonPedidosCore(user, pass, apiKey) {
   const Imap = require('imap');
+  const resultadosFacturas = [];
   return new Promise(function (resolveTodo, rejectTodo) {
     const imap = new Imap({ user: user, password: pass, host: 'imap.ionos.mx', port: 993, tls: true, connTimeout: 20000, authTimeout: 20000 });
     const encontrados = [];
@@ -2062,12 +2234,43 @@ function _revisarBuzonPedidosCore(user, pass, apiKey) {
             msg.once('end', function () {
               const raw = Buffer.concat(partes);
               pendientes.push(
-                _procesarMensajePedidos(raw, apiKey)
-                  .then(function (r) { encontrados.push(Object.assign({ error: null, revisadoEn: new Date().toISOString() }, r)); })
-                  .catch(function (e) {
+                (async function () {
+                  try {
+                    // Este mismo buzón también puede recibir facturas ya
+                    // timbradas (XML+PDF), no solo pedidos — se revisa
+                    // primero si trae algún XML de FLETE (con Carta Porte,
+                    // ver _parseFacturaFleteXMLServer); si sí, se procesa
+                    // aparte y el correo NUNCA se manda al extractor de
+                    // pedidos (evita que la IA intente leer una factura
+                    // como si fuera una tabla de pedidos).
+                    const { simpleParser } = require('mailparser');
+                    const parsed = await simpleParser(raw);
+                    const xmlAdjuntos = (parsed.attachments || []).filter(function (a) {
+                      return (a.filename || '').toLowerCase().endsWith('.xml') || (a.contentType || '').toLowerCase().indexOf('xml') !== -1;
+                    });
+                    let eraFactura = false;
+                    for (const adj of xmlAdjuntos) {
+                      let fac;
+                      try { fac = _parseFacturaFleteXMLServer(adj.content.toString('utf8')); }
+                      catch (eParse) { console.error('revisarBuzonPedidos: error leyendo XML adjunto:', eParse); continue; }
+                      if (!fac) continue; // sin Carta Porte o no emitida por TML = no es una factura de flete, se ignora (ej. maniobras)
+                      eraFactura = true;
+                      try {
+                        const r = await _sustituirFacturaFleteServer(fac);
+                        resultadosFacturas.push(Object.assign({ uuid: fac.uuid, folio: fac.folio }, r));
+                      } catch (eSust) {
+                        console.error('revisarBuzonPedidos: error sustituyendo factura de flete:', eSust);
+                        resultadosFacturas.push({ uuid: fac.uuid, folio: fac.folio, ok: false, motivo: eSust.message || String(eSust) });
+                      }
+                    }
+                    if (eraFactura) return;
+                    const r = await _procesarMensajePedidos(raw, apiKey);
+                    encontrados.push(Object.assign({ error: null, revisadoEn: new Date().toISOString() }, r));
+                  } catch (e) {
                     console.error('revisarBuzonPedidos: error procesando mensaje #' + seqno + ':', e);
                     encontrados.push({ error: e.message || String(e), renglones: [], asunto: '(error al procesar)', de: '', fecha: '', revisadoEn: new Date().toISOString() });
-                  })
+                  }
+                })()
               );
             });
           });
@@ -2147,6 +2350,11 @@ function _revisarBuzonPedidosCore(user, pass, apiKey) {
     encontrados._totalRegistrados = totalRegistrados;
     encontrados._totalPendientes = conAlgoPendiente.length;
     encontrados._totalProvisionales = provisionalesCreados;
+    encontrados._facturasFlete = {
+      registradas: resultadosFacturas.filter(function (r) { return r.ok; }).length,
+      pendientesRevision: resultadosFacturas.filter(function (r) { return !r.ok; }).length,
+      detalle: resultadosFacturas
+    };
     return encontrados;
   });
 }
@@ -2156,7 +2364,12 @@ exports.revisarBuzonPedidos = onRequest(
   async (req, res) => {
     try {
       const encontrados = await _revisarBuzonPedidosCore(FLETES_EMAIL_USER.value(), FLETES_EMAIL_PASS.value(), ANTHROPIC_API_KEY.value());
-      res.json({ ok: true, correosNuevos: encontrados.length, pedidosRegistrados: encontrados._totalRegistrados || 0, pendientesRevision: encontrados._totalPendientes || 0, ingresosProvisionales: encontrados._totalProvisionales || 0 });
+      res.json({
+        ok: true, correosNuevos: encontrados.length, pedidosRegistrados: encontrados._totalRegistrados || 0,
+        pendientesRevision: encontrados._totalPendientes || 0, ingresosProvisionales: encontrados._totalProvisionales || 0,
+        facturasFleteRegistradas: (encontrados._facturasFlete || {}).registradas || 0,
+        facturasFletePendientesRevision: (encontrados._facturasFlete || {}).pendientesRevision || 0
+      });
     } catch (e) {
       console.error('revisarBuzonPedidos:', e);
       res.status(500).json({ error: e.message || 'Error interno del servidor.' });
@@ -2172,7 +2385,10 @@ exports.revisarBuzonPedidosProgramado = onSchedule(
       const encontrados = await _revisarBuzonPedidosCore(FLETES_EMAIL_USER.value(), FLETES_EMAIL_PASS.value(), ANTHROPIC_API_KEY.value());
       await db.collection('estado').doc('buzonPedidosEstado').set({
         ultimaEjecucion: inicio, ok: true, correosNuevos: encontrados.length,
-        pedidosRegistrados: encontrados._totalRegistrados || 0, pendientesRevision: encontrados._totalPendientes || 0, error: null
+        pedidosRegistrados: encontrados._totalRegistrados || 0, pendientesRevision: encontrados._totalPendientes || 0,
+        facturasFleteRegistradas: (encontrados._facturasFlete || {}).registradas || 0,
+        facturasFletePendientesRevision: (encontrados._facturasFlete || {}).pendientesRevision || 0,
+        error: null
       });
     } catch (e) {
       console.error('revisarBuzonPedidosProgramado:', e);
