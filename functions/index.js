@@ -716,11 +716,20 @@ function _registrarNoPagaServer(ingresosDB, x, operadores) {
 // correo más reciente manda), aplicado también cuando ese correo dice que
 // ya no se paga — nunca requieren revisión manual.
 function _clasificarYRegistrar(renglonesCrudos, ingresosDB, operadores) {
+  // Log temporal de diagnóstico — un renglón real (Irapuato/Martín Flores
+  // Lugo, correo "NO PAGA") desapareció en silencio varias corridas
+  // seguidas sin pasar ni por el registro automático, ni por "No paga sin
+  // resolver", ni por la lista de pendientes de revisión — esto vuelca tal
+  // cual lo que la IA extrajo del correo para ver en qué paso se pierde
+  // (ej. si lineaTransporte no llegó exactamente como "SILVIA"). Quitar en
+  // cuanto se resuelva.
+  console.log('revisarBuzonManiobras: renglonesCrudos=' + JSON.stringify(renglonesCrudos));
   const normLinea = function (s) { return (s || '').toString().trim().toUpperCase().normalize('NFD').replace(/[̀-ͯ]/g, ''); };
   const silvia = renglonesCrudos.filter(function (x) {
     const linea = normLinea(x.lineaTransporte);
     return !linea || linea === 'SILVIA';
   });
+  console.log('revisarBuzonManiobras: tras filtro SILVIA quedaron ' + silvia.length + ' de ' + renglonesCrudos.length + ' renglón(es).');
   const esNoPagaTxt = function (x) {
     const m = (x.monto == null) ? '' : String(x.monto).trim().toUpperCase();
     return m === 'NO_PAGA' || m === 'NO PAGA' || m === '-';
