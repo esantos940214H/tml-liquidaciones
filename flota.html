@@ -1187,6 +1187,11 @@ var MTO_ACTIVIDADES_DEFAULT=[
   {nombre:'Rotación de llantas',intervaloKm:10000}
 ];
 var _mtoArticuloFilas=[];
+// MTO_ODOMETRO_WIALON: {economico: {km, actualizadoEn}} — sincronizado 1x/día
+// desde Wialon (functions/index.js → wialonSincronizarOdometrosProgramado),
+// leído aquí para precargar el kilometraje real en vez de solo depender de
+// lo último capturado a mano.
+var MTO_ODOMETRO_WIALON={};
 async function cargarMantenimiento(){
   try{
     var db=firebase.firestore();
@@ -1199,6 +1204,11 @@ async function cargarMantenimiento(){
     var snapHist=await db.collection('mantenimientos').get();
     MTO_HISTORIAL=[];snapHist.forEach(function(d){MTO_HISTORIAL.push(Object.assign({id:d.id},d.data()));});
     MTO_HISTORIAL.sort(function(a,b){return(b.fecha||'').localeCompare(a.fecha||'');});
+    MTO_ODOMETRO_WIALON={};
+    try{
+      var snapOdo=await db.collection('mantenimientoOdometroWialon').get();
+      snapOdo.forEach(function(d){MTO_ODOMETRO_WIALON[d.id]=d.data();});
+    }catch(e){console.error('mantenimientoOdometroWialon:',e);}
     renderMtoCatalogo();renderMtoMecanicos();renderMtoHistorial();renderMtoProximos();
     poblarMtoSelects();
     if(!$('mtoFecha').value)$('mtoFecha').value=hoy();
@@ -1242,6 +1252,11 @@ function mtoActividadesSeleccionadas(){
 // entregar el filtro equivocado por error.
 function mtoAlCambiarUnidad(){
   renderMtoArticulosFilas();
+  // Precarga el kilometraje real de Wialon (si existe) — sigue siendo
+  // editable, por si el dato está desfasado o la unidad no trae GPS.
+  var unidad=parseInt($('mtoUnidad').value||0);
+  var odo=unidad?MTO_ODOMETRO_WIALON[String(unidad)]:null;
+  if(odo&&odo.km!=null)$('mtoKm').value=odo.km;
 }
 function mtoArticulosCompatibles(){
   var unidad=parseInt($('mtoUnidad').value||0);
@@ -1403,7 +1418,12 @@ function renderMtoProximos(){
   });
   var filas=[];
   Object.keys(porUnidad).forEach(function(unidad){
+    // El kilometraje real de Wialon (si existe y es más alto que lo último
+    // capturado a mano) manda — es más actual que esperar a que alguien
+    // registre otro mantenimiento para saber cuánto lleva rodado.
+    var odo=MTO_ODOMETRO_WIALON[String(unidad)];
     var kmActual=porUnidad[unidad].km||0;
+    if(odo&&odo.km>kmActual)kmActual=odo.km;
     var porActividad=porUnidad[unidad].ultimasPorActividad||{};
     Object.keys(porActividad).forEach(function(nombreAct){
       var info=porActividad[nombreAct];

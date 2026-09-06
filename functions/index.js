@@ -2905,3 +2905,60 @@ exports.wialonProbarOdometro = onRequest({ secrets: [WIALON_TOKEN], cors: true, 
     res.status(500).json({ error: e.message || 'Error interno del servidor.' });
   }
 });
+
+// Sincronización real: guarda en Firestore (mantenimientoOdometroWialon,
+// un doc por económico) el kilometraje que Wialon reporta (campo "cnm",
+// confirmado con la unidad 521 = 548,552 km). flota.html (pestaña
+// Mantenimiento) lee esta colección para precargar el kilometraje al
+// capturar una orden y para el estimado de "próximo mantenimiento", en vez
+// de depender solo de lo que se haya tecleado a mano.
+// _wialonExtraerEconomico: "UNIDAD 521 SILVIA" -> 521, "Unidad 4526
+// SILVIA//37BG7V" -> 4526 — el número económico siempre viene justo
+// después de "UNIDAD"/"Unidad" en el nombre que tiene configurado en Wialon.
+function _wialonExtraerEconomico(nombre) {
+  const m = /unidad\s+(\d+)/i.exec(nombre || '');
+  return m ? parseInt(m[1], 10) : null;
+}
+async function _wialonSincronizarOdometrosCore() {
+  const sid = await _wialonLogin(WIALON_TOKEN.value());
+  const spec = { itemsType: 'avl_unit', propName: 'sys_name', propValueMask: '*', sortType: 'sys_name' };
+  const params = { spec: spec, force: 1, flags: 0xFFFFFFFF, from: 0, to: 0 };
+  const d = await _wialonCall(sid, 'core/search_items', params);
+  if (d.error) throw new Error('Wialon core/search_items falló con código ' + d.error);
+  const items = d.items || [];
+  let actualizados = 0;
+  const sinEconomico = [];
+  for (const it of items) {
+    const economico = _wialonExtraerEconomico(it.nm);
+    if (!economico) { sinEconomico.push(it.nm); continue; }
+    if (it.cnm == null) continue;
+    await db.collection('mantenimientoOdometroWialon').doc(String(economico)).set({
+      economico: economico, km: it.cnm, wialonId: it.id, wialonNombre: it.nm, actualizadoEn: new Date().toISOString()
+    });
+    actualizados++;
+  }
+  return { actualizados: actualizados, sinEconomico: sinEconomico, totalUnidades: items.length };
+}
+exports.wialonSincronizarOdometros = onRequest({ secrets: [WIALON_TOKEN], cors: true, region: 'us-central1', timeoutSeconds: 60 }, async (req, res) => {
+  try {
+    const r = await _wialonSincronizarOdometrosCore();
+    res.json(Object.assign({ ok: true }, r));
+  } catch (e) {
+    console.error('wialonSincronizarOdometros:', e);
+    res.status(500).json({ error: e.message || 'Error interno del servidor.' });
+  }
+});
+// Corre solo una vez al día — el kilometraje no cambia tan rápido como para
+// necesitar algo más seguido, y así se evita gastar cuota de la API de
+// Wialon sin necesidad.
+exports.wialonSincronizarOdometrosProgramado = onSchedule(
+  { schedule: '0 6 * * *', timeZone: 'America/Mexico_City', secrets: [WIALON_TOKEN], region: 'us-central1', timeoutSeconds: 60 },
+  async () => {
+    try {
+      const r = await _wialonSincronizarOdometrosCore();
+      console.log('wialonSincronizarOdometrosProgramado:', JSON.stringify(r));
+    } catch (e) {
+      console.error('wialonSincronizarOdometrosProgramado:', e);
+    }
+  }
+);
