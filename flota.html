@@ -327,7 +327,7 @@ tr:hover td{background:#fafafa}
     </div>
 
     <div class="card">
-      <div class="card-title">🎯 Ciclo de mantenimiento por unidad <span class="info-tip">?<span class="info-tip-box">El contador de Wialon (cnm) NO es el odómetro real del camión — solo cuenta desde que se instaló el rastreador. Por eso aquí se fija un "kilómetro cero" por unidad (el km de Wialon en el momento en que lo estableces) y a partir de ahí se cuenta el intervalo — no antes.</span></span> <button class="btn btn-out btn-sm" onclick="mtoInicializarCiclos()">⚙️ Inicializar con Wialon (20,000 km, 529 a 14,000)</button></div>
+      <div class="card-title">🎯 Ciclo de mantenimiento por unidad <span class="info-tip">?<span class="info-tip-box">El contador de Wialon (cnm) NO es el odómetro real del camión — solo cuenta desde que se instaló el rastreador, y no dice en qué punto del ciclo de servicio va cada camión. El kilómetro base de cada unidad se fija solo: (1) a mano con "Configurar/Editar", idealmente con el kilometraje real que te confirme el operador, o (2) automático, cada vez que registras un mantenimiento real arriba (usa el km que capturaste en esa orden).</span></span></div>
       <div class="tbl-wrap"><table><thead><tr><th>Unidad</th><th class="num">Km base</th><th class="num">Intervalo</th><th class="num">Próximo servicio (km Wialon)</th><th class="num">Km Wialon actual</th><th class="num">Faltan</th><th></th></tr></thead><tbody id="tbMtoCiclos"></tbody></table></div>
     </div>
 
@@ -1346,6 +1346,18 @@ async function mtoGuardarYGenerar(){
         await refArt.set({existencia:existenciaActual-articulosUsados[j].cantidad},{merge:true});
       }
     }
+    // El mantenimiento que se acaba de registrar SÍ es un punto de partida
+    // confiable (kilometraje real, capturado a mano al momento del
+    // servicio) — a diferencia del contador de Wialon solo, que no dice en
+    // qué punto del ciclo va cada camión. Se reinicia aquí el "kilómetro
+    // cero" de esta unidad, conservando el intervalo si ya estaba
+    // configurado (o usando el default: 20,000 km, 14,000 para la 529).
+    var cicloExistente=MTO_CICLOS[String(unidad)];
+    await db.collection('mantenimientoCicloUnidad').doc(String(unidad)).set({
+      economico:unidad,kmBase:km,fechaBase:fecha,
+      intervaloKm:cicloExistente?cicloExistente.intervaloKm:(unidad===529?14000:20000),
+      definidoPor:u?(u.nombre||u.usuario):''
+    });
     mtoImprimirFiltrosEntregados({id:ref.id,unidad:unidad,fecha:fecha,articulos:articulosUsados,notas:$('mtoNotas').value});
     mtoImprimirOrdenServicio({id:ref.id,unidad:unidad,fecha:fecha,km:km,mecanico:mecanico?mecanico.nombre:'(sin asignar)',actividades:actividades,notas:$('mtoNotas').value});
     $('mtoInfo').innerHTML='<div class="alert alert-ok">✅ Orden de mantenimiento registrada para la unidad '+unidad+'.</div>';
@@ -1412,34 +1424,6 @@ function renderMtoHistorial(){
 // renderMtoProximos: estimado simple con el kilometraje MÁS RECIENTE
 // capturado a mano de cada unidad — ver nota en el info-tip de la tarjeta,
 // esto no sustituye una lectura real de odómetro/GPS.
-// mtoInicializarCiclos: fija HOY el "kilómetro cero" de cada unidad usando
-// su lectura actual de Wialon — a partir de ahí se cuenta el intervalo (no
-// antes, porque no sabemos en qué punto real del ciclo de servicio va cada
-// camión). 20,000 km para todas, 14,000 para la 529 — pedido explícito.
-// Solo inicializa las que NO tengan ya un ciclo guardado, para no pisar por
-// accidente un ajuste que ya se haya hecho a mano.
-async function mtoInicializarCiclos(){
-  var unidades=unidadesRaw.filter(function(u){return u.activa;});
-  var yaExisten=unidades.filter(function(u){return MTO_CICLOS[String(u.numero)];}).map(function(u){return u.numero;});
-  if(yaExisten.length&&!confirm('Las unidades '+yaExisten.join(', ')+' ya tienen un ciclo configurado — no se van a tocar. ¿Inicializar el resto con el km actual de Wialon?'))return;
-  try{
-    var db=firebase.firestore();
-    var hechos=0;
-    for(var i=0;i<unidades.length;i++){
-      var u=unidades[i];
-      if(MTO_CICLOS[String(u.numero)])continue;
-      var odo=MTO_ODOMETRO_WIALON[String(u.numero)];
-      if(!odo||odo.km==null)continue;
-      var intervalo=u.numero===529?14000:20000;
-      await db.collection('mantenimientoCicloUnidad').doc(String(u.numero)).set({
-        economico:u.numero,kmBase:odo.km,intervaloKm:intervalo,fechaBase:hoy(),definidoPor:(usuarioSesion()||{}).usuario||''
-      });
-      hechos++;
-    }
-    alert('✅ Se inicializaron '+hechos+' unidad(es). A partir de hoy se cuenta el intervalo desde su km actual de Wialon.');
-    await cargarMantenimiento();
-  }catch(e){alert('⚠️ Error al inicializar: '+e.message);}
-}
 async function mtoEditarCiclo(economico){
   var ciclo=MTO_CICLOS[String(economico)]||{};
   var kmBase=prompt('Km base (kilómetro cero) para la unidad '+economico+':',ciclo.kmBase!=null?ciclo.kmBase:'');
