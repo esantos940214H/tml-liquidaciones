@@ -1998,6 +1998,11 @@ const PROMPT_PEDIDO_FLETE =
   'el cual se calcula la tarifa que nos pagan. Pueden decir cosas diferentes en el mismo renglón (ej. Destino="Morelia" pero ' +
   'Tienda Previas="CEDIS LEON") — eso no es un error tuyo de lectura, extrae AMBOS tal cual aparecen, cada uno en su propio ' +
   'campo, sin intentar adivinar cuál es el "correcto". ' +
+  'IMPORTANTE sobre LT (Línea de Transporte) — el correo se manda con visibilidad compartida a VARIAS transportistas ' +
+  'subcontratadas a la vez, así que puede traer renglones de otras empresas (ej. "RAMIREZ", "BENITEZ", "MERLOS") mezclados ' +
+  'con los nuestros ("SILVIA") — extrae la columna LT/Línea de Transporte de CADA renglón tal cual aparece, SIN filtrar nada ' +
+  'tú (el sistema descarta después los que no sean nuestros); NUNCA ignores un renglón solo porque su LT no sea "SILVIA", ' +
+  'extráelo igual con su LT correspondiente. ' +
   'IMPORTANTE — la columna TU/orden de embarque puede traer DOS (o ' +
   'más) números juntos separados por "/", por ejemplo "6500360289/6500360290": eso es UN SOLO renglón/embarque con dos T.U.\'s ' +
   'asociados, NO dos renglones distintos — extráelo TAL CUAL viene, con la "/" incluida, en un solo objeto (no dupliques el ' +
@@ -2005,16 +2010,18 @@ const PROMPT_PEDIDO_FLETE =
   'número corto tipo "532") con otras columnas cercanas que sean texto (como un nombre de persona o un tipo de unidad/flota) — ' +
   'el económico es específicamente ese número. Extrae UN renglón por cada embarque/viaje (fila de la tabla) que encuentres, ' +
   'con estas llaves exactas: {"ordenEmbarque":"el folio de la orden de embarque/TU tal cual aparece (con la \\"/\\" si trae ' +
-  'más de uno), o null si no se puede determinar","pedidoFlete":"el número de pedido/PO del flete, o null","tienda":"la ' +
-  'tienda o sucursal (columna TIENDA, si el correo trae esa columna en vez de o además de TIENDA PREVIAS), o null",' +
-  '"tiendaPrevias":"el valor de la columna TIENDA PREVIAS tal cual aparece (ej. \\"CEDIS LEON\\"), o null si el correo no ' +
-  'trae esa columna","destino":"el destino del embarque tal cual aparece en la columna DESTINO, o null","fecha":"YYYY-MM-DD ' +
-  'si se puede convertir desde el ' +
+  'más de uno), o null si no se puede determinar","pedidoFlete":"el número de pedido/PO del flete, o null",' +
+  '"lineaTransporte":"el nombre de la transportista de esa fila (columna LT/Línea de Transporte), tal cual aparece, o null ' +
+  'si no aparece","tienda":"la tienda o sucursal (columna TIENDA, si el correo trae esa columna en vez de o además de TIENDA ' +
+  'PREVIAS), o null","tiendaPrevias":"el valor de la columna TIENDA PREVIAS tal cual aparece (ej. \\"CEDIS LEON\\"), o null ' +
+  'si el correo no trae esa columna","destino":"el destino del embarque tal cual aparece en la columna DESTINO, o null",' +
+  '"fecha":"YYYY-MM-DD si se puede convertir desde el ' +
   'formato que traiga, o null","economico":"el número económico de la unidad/camión (columna ECO. o similar) tal cual ' +
   'aparece, o null si no se menciona","monto":"el importe/monto del flete, como número (sin signos de moneda ni comas), o ' +
   'null si no se menciona"}. No inventes datos que no estén en el ' +
   'correo. Responde SOLO un arreglo JSON (sin texto explicativo, sin backticks, sin markdown) con un objeto por cada renglón ' +
-  'que encuentres. Si no hay ningún renglón reconocible, responde [].';
+  'que encuentres (incluyendo los de otras transportistas, con su LT correspondiente — el sistema los filtra después). Si no ' +
+  'hay ningún renglón reconocible, responde [].';
 
 function _normalizarOrdenEmbarqueServer(valor) {
   return (valor == null ? '' : String(valor)).trim().toUpperCase().replace(/\s+/g, '').replace(/^0+(?=\d)/, '');
@@ -2296,10 +2303,25 @@ function _revisarBuzonPedidosCore(user, pass, apiKey) {
     const snapIngresosProv = await refIngresosProv.get();
     const ingresosDBProv = (snapIngresosProv.exists && snapIngresosProv.data().data) ? JSON.parse(snapIngresosProv.data().data) : [];
     let provisionalesCreados = 0;
+    let otrasTransportistasDescartados = 0;
+    // El correo se manda con visibilidad compartida a VARIAS transportistas
+    // subcontratadas a la vez (mismo criterio que ya usa Maniobras, ver
+    // _clasificarYRegistrar) — puede traer renglones de otras empresas (ej.
+    // "RAMIREZ") mezclados con los nuestros ("SILVIA"). Caso real: 4
+    // pedidos de otra transportista se registraron por error como fletes
+    // propios porque este filtro no existía todavía. Se descartan aquí,
+    // ANTES de registrar nada — nunca se le muestran ni al admin ni se
+    // guardan en fletesDB, igual que Maniobras los descarta en silencio.
+    const _normLineaPedido = function (s) { return (s || '').toString().trim().toUpperCase().normalize('NFD').replace(/[̀-ͯ]/g, ''); };
     for (const c of encontrados) {
       if (c.error) { conAlgoPendiente.push(c); continue; }
       const renglonesSinOrden = [];
-      for (const r of (c.renglones || [])) {
+      const renglonesPropios = (c.renglones || []).filter(function (r) {
+        const linea = _normLineaPedido(r.lineaTransporte);
+        if (linea && linea !== 'SILVIA') { otrasTransportistasDescartados++; return false; }
+        return true;
+      });
+      for (const r of renglonesPropios) {
         // La columna TU/orden de embarque puede traer dos números juntos
         // separados por "/" (un solo embarque con dos T.U.'s asociados, ej.
         // "6500360289/6500360290") — se separan aquí en T.U.'s 1 y T.U.'s 2,
@@ -2350,6 +2372,7 @@ function _revisarBuzonPedidosCore(user, pass, apiKey) {
     encontrados._totalRegistrados = totalRegistrados;
     encontrados._totalPendientes = conAlgoPendiente.length;
     encontrados._totalProvisionales = provisionalesCreados;
+    encontrados._otrasTransportistasDescartados = otrasTransportistasDescartados;
     encontrados._facturasFlete = {
       registradas: resultadosFacturas.filter(function (r) { return r.ok; }).length,
       pendientesRevision: resultadosFacturas.filter(function (r) { return !r.ok; }).length,
@@ -2367,6 +2390,7 @@ exports.revisarBuzonPedidos = onRequest(
       res.json({
         ok: true, correosNuevos: encontrados.length, pedidosRegistrados: encontrados._totalRegistrados || 0,
         pendientesRevision: encontrados._totalPendientes || 0, ingresosProvisionales: encontrados._totalProvisionales || 0,
+        otrasTransportistasDescartados: encontrados._otrasTransportistasDescartados || 0,
         facturasFleteRegistradas: (encontrados._facturasFlete || {}).registradas || 0,
         facturasFletePendientesRevision: (encontrados._facturasFlete || {}).pendientesRevision || 0
       });
@@ -2386,6 +2410,7 @@ exports.revisarBuzonPedidosProgramado = onSchedule(
       await db.collection('estado').doc('buzonPedidosEstado').set({
         ultimaEjecucion: inicio, ok: true, correosNuevos: encontrados.length,
         pedidosRegistrados: encontrados._totalRegistrados || 0, pendientesRevision: encontrados._totalPendientes || 0,
+        otrasTransportistasDescartados: encontrados._otrasTransportistasDescartados || 0,
         facturasFleteRegistradas: (encontrados._facturasFlete || {}).registradas || 0,
         facturasFletePendientesRevision: (encontrados._facturasFlete || {}).pendientesRevision || 0,
         error: null
