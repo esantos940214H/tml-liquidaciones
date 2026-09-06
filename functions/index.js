@@ -48,6 +48,9 @@ const COMPRAS_EMAIL_USER = defineSecret('COMPRAS_EMAIL_USER');
 const COMPRAS_EMAIL_PASS = defineSecret('COMPRAS_EMAIL_PASS');
 const FLETES_EMAIL_USER = defineSecret('FLETES_EMAIL_USER');
 const FLETES_EMAIL_PASS = defineSecret('FLETES_EMAIL_PASS');
+// Token de API de Wialon (rastreo satelital) — se genera desde la cuenta de
+// Wialon (Usuario → Token de acceso a la API), nunca se pega en el código.
+const WIALON_TOKEN = defineSecret('WIALON_TOKEN');
 // RFC de Mudanzas TML confirmado contra su Constancia de Situación Fiscal
 // (agosto 2026) — el receptor del CFDI de proveedor debe ser este RFC.
 const TML_RFC = 'MTM171214PI4';
@@ -2766,6 +2769,39 @@ exports.solicitarAnticipoOperador = onRequest({ cors: true, region: 'us-central1
     res.json({ ok: true });
   } catch (e) {
     console.error('solicitarAnticipoOperador:', e);
+    res.status(500).json({ error: e.message || 'Error interno del servidor.' });
+  }
+});
+
+// ══════════════════════════════════════════════════════════════════════════
+// WIALON (rastreo satelital) — integración para Mantenimiento (flota.html).
+// Primer paso, solo diagnóstico: iniciar sesión con el token y listar las
+// unidades tal cual las tiene Wialon (id + nombre), para confirmar cómo
+// emparejarlas contra los números económicos de Flota antes de construir la
+// sincronización real (leer "Upcoming maintenance" y registrar mantenimiento
+// hecho vía unit/registry_maintenance_event). No toca Firestore todavía.
+// ══════════════════════════════════════════════════════════════════════════
+async function _wialonLogin(token) {
+  const url = 'https://hst-api.wialon.com/wialon/ajax.html?svc=token/login&params=' + encodeURIComponent(JSON.stringify({ token: token }));
+  const r = await fetch(url);
+  const d = await r.json();
+  if (d.error) throw new Error('Wialon token/login falló con código de error ' + d.error + ' (revisa que el token sea válido y no haya expirado).');
+  return d.eid;
+}
+
+exports.wialonListarUnidades = onRequest({ secrets: [WIALON_TOKEN], cors: true, region: 'us-central1', timeoutSeconds: 60 }, async (req, res) => {
+  try {
+    const sid = await _wialonLogin(WIALON_TOKEN.value());
+    const spec = { itemsType: 'avl_unit', propName: 'sys_name', propValueMask: '*', sortType: 'sys_name' };
+    const params = { spec: spec, force: 1, flags: 1, from: 0, to: 0 };
+    const url = 'https://hst-api.wialon.com/wialon/ajax.html?svc=core/search_items&params=' + encodeURIComponent(JSON.stringify(params)) + '&sid=' + sid;
+    const r = await fetch(url);
+    const d = await r.json();
+    if (d.error) { res.status(502).json({ error: 'Wialon core/search_items falló con código ' + d.error }); return; }
+    const unidades = (d.items || []).map(function (u) { return { wialonId: u.id, nombre: u.nm }; });
+    res.json({ ok: true, totalUnidades: unidades.length, unidades: unidades });
+  } catch (e) {
+    console.error('wialonListarUnidades:', e);
     res.status(500).json({ error: e.message || 'Error interno del servidor.' });
   }
 });
