@@ -2912,12 +2912,17 @@ exports.wialonProbarOdometro = onRequest({ secrets: [WIALON_TOKEN], cors: true, 
 // Mantenimiento) lee esta colección para precargar el kilometraje al
 // capturar una orden y para el estimado de "próximo mantenimiento", en vez
 // de depender solo de lo que se haya tecleado a mano.
-// _wialonExtraerEconomico: "UNIDAD 521 SILVIA" -> 521, "Unidad 4526
-// SILVIA//37BG7V" -> 4526 — el número económico siempre viene justo
-// después de "UNIDAD"/"Unidad" en el nombre que tiene configurado en Wialon.
+// _wialonExtraerEconomico: "UNIDAD 521 SILVIA" -> 4521, "Unidad 4526
+// SILVIA//37BG7V" -> 4526 — el número económico viene justo después de
+// "UNIDAD"/"Unidad" en el nombre que tiene configurado en Wialon, pero
+// unidades de la serie 45xx a veces se nombran con solo 3 dígitos (caso
+// real: "UNIDAD 521 SILVIA" en Wialon es la unidad 4521 en Flota — ahí no
+// existe ningún "521" registrado) — se aplica el mismo mapeo 45xx que ya
+// usa el resto del sistema (ver _ECO_MAP_45XX/_normEconomicoServer).
 function _wialonExtraerEconomico(nombre) {
   const m = /unidad\s+(\d+)/i.exec(nombre || '');
-  return m ? parseInt(m[1], 10) : null;
+  if (!m) return null;
+  return _normEconomicoServer(m[1]);
 }
 async function _wialonSincronizarOdometrosCore() {
   const sid = await _wialonLogin(WIALON_TOKEN.value());
