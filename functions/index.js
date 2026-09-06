@@ -2882,14 +2882,24 @@ exports.wialonProbarReporteMantenimiento = onRequest({ secrets: [WIALON_TOKEN], 
 // vez de captura a mano. flags incluye base (1) + contadores/odómetro
 // (1024) — este diagnóstico vuelca el item tal cual para confirmar en qué
 // campo exacto viene el kilometraje antes de escribir el parseo real.
+// flags=1025 (base+lmsg) no trajo el contador de odómetro, solo posición y
+// último mensaje — el bit correcto puede ser otro. Se acepta ?flags= y
+// ?unitId= por querystring para poder probar distintas combinaciones sin
+// desplegar cada vez; por default pide TODO (0xFFFFFFFF) sobre una sola
+// unidad para no saturar la respuesta, y ahí se busca a mano dónde viene el
+// contador (normalmente un objeto "cnm" con el kilometraje/horas de motor).
 exports.wialonProbarOdometro = onRequest({ secrets: [WIALON_TOKEN], cors: true, region: 'us-central1', timeoutSeconds: 60 }, async (req, res) => {
   try {
     const sid = await _wialonLogin(WIALON_TOKEN.value());
-    const spec = { itemsType: 'avl_unit', propName: 'sys_name', propValueMask: '*', sortType: 'sys_name' };
-    const params = { spec: spec, force: 1, flags: 1 + 1024, from: 0, to: 0 };
+    const flags = req.query.flags ? parseInt(req.query.flags, 10) : 0xFFFFFFFF;
+    const unitId = req.query.unitId ? parseInt(req.query.unitId, 10) : null;
+    const spec = unitId
+      ? { itemsType: 'avl_unit', propName: 'sys_id', propValueMask: String(unitId), sortType: 'sys_name' }
+      : { itemsType: 'avl_unit', propName: 'sys_name', propValueMask: '*', sortType: 'sys_name' };
+    const params = { spec: spec, force: 1, flags: flags, from: 0, to: 0 };
     const d = await _wialonCall(sid, 'core/search_items', params);
     if (d.error) { res.status(502).json({ error: 'core/search_items falló con código ' + d.error }); return; }
-    res.json({ ok: true, items: d.items || [] });
+    res.json({ ok: true, flagsUsados: flags, items: d.items || [] });
   } catch (e) {
     console.error('wialonProbarOdometro:', e);
     res.status(500).json({ error: e.message || 'Error interno del servidor.' });
