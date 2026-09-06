@@ -161,6 +161,7 @@ tr:hover td{background:#fafafa}
     <textarea id="autTexto" rows="6" placeholder="...o pega aquí el texto del correo" style="border:1.5px solid #dde;border-radius:6px;padding:8px 10px;font-size:13px;color:#1a1a2e;background:#fafafa;width:100%;font-family:inherit;resize:vertical;margin-bottom:10px" oninput="_autPdfBase64List=[]"></textarea>
     <button class="btn btn-red" id="btnExtraerIA" onclick="extraerConIA()">🤖 Extraer con IA</button>
     <div id="extraerInfo" style="margin-top:10px"></div>
+    <div id="wrapNoPagaPendientes" style="display:none;margin-top:10px"></div>
     <div id="wrapExtraidos" style="display:none;margin-top:14px">
       <div class="tbl-wrap"><table>
         <thead><tr><th>Operador</th><th class="r">Monto</th><th>Fecha</th><th>Folio</th><th>Pedido</th><th>T.U. 1</th><th>T.U. 2</th><th>Tienda</th><th>Destino</th><th></th></tr></thead>
@@ -524,6 +525,38 @@ function eliminarAutorizacion(id){
     renderPendientes();
   });
 }
+function renderCandidatosNoPaga(){
+  var wrap=$('wrapNoPagaPendientes');
+  if(!_candidatosNoPaga.length){wrap.style.display='none';wrap.innerHTML='';return;}
+  wrap.style.display='block';
+  wrap.innerHTML='<div class="alert alert-warn">⚠️ Este correo dice "No paga" para '+_candidatosNoPaga.length+' autorización(es) que sigue(n) pendiente(s) de monto — probablemente ya no hay que esperar más, ciérralas en $0:</div>'
+    +_candidatosNoPaga.map(function(c){
+      return '<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 8px;background:#fffbeb;border-radius:6px;margin-top:6px;font-size:13px">'
+        +'<span>'+(nombreOp(c.unidad)||c.unidad)+' — ID "'+(c.observaciones||'')+'"</span>'
+        +'<button class="btn btn-sm btn-out" onclick="cerrarComoNoPaga(\''+c.id+'\')">Cerrar en $0 (No paga)</button>'
+        +'</div>';
+    }).join('');
+}
+// cerrarComoNoPaga(id): el correo de seguimiento del cliente dice "No paga"
+// para un folio/T.U. que en el sistema seguía como "⏳ Pendiente" (esperando
+// que confirmaran el monto) — se cierra en $0 para que deje de quedarse en
+// amarillo para siempre. Nunca se hace solo: siempre requiere que el admin
+// dé clic en el botón (ver renderCandidatosNoPaga).
+async function cerrarComoNoPaga(id){
+  var u=usuarioSesion();
+  if(!u||!u.esAdmin){alert('Solo un administrador puede hacer esto.');return;}
+  await cargarIngresos();
+  var v=ingresosDB.find(function(x){return x.id===id;});
+  if(!v){alert('No se encontró esa autorización (puede que ya se haya resuelto).');_candidatosNoPaga=_candidatosNoPaga.filter(function(c){return c.id!==id;});renderCandidatosNoPaga();return;}
+  if(!v.montoPendiente){alert('Esta autorización ya no está pendiente — probablemente ya se resolvió por otro lado.');_candidatosNoPaga=_candidatosNoPaga.filter(function(c){return c.id!==id;});renderCandidatosNoPaga();return;}
+  if(!confirm('¿Cerrar en $0 la autorización "'+(v.observaciones||'')+'" de '+(nombreOp(v.unidad)||v.unidad)+'? Confirma que el cliente ya avisó que esta maniobra NO se paga.'))return;
+  v.subtotal=0;v.subtManiobras=0;v.iva=0;v.total=0;v.montoPendiente=false;
+  v.observaciones=(v.observaciones||'')+' | NO_PAGA confirmado el '+hoy();
+  await window.FB.set('estado','ingresosDB',{data:JSON.stringify(ingresosDB)});
+  _candidatosNoPaga=_candidatosNoPaga.filter(function(c){return c.id!==id;});
+  renderCandidatosNoPaga();
+  renderPendientes();
+}
 // Click en el ícono 💰 de una maniobra reciente: pregunta si ya se depositó
 // y, si confirmas, la desmarca de inmediato (deja de resaltarse en amarillo/
 // negritas). Si dices que no (o cierras el diálogo), no pasa nada — sigue
@@ -749,6 +782,7 @@ const FUNCTION_URL_EXTRAER_MANIOBRAS='https://us-central1-tml-liquidaciones.clou
 // para "revisarBuzonManiobras" (ver instrucciones en functions/index.js).
 const FUNCTION_URL_REVISAR_BUZON='https://us-central1-tml-liquidaciones.cloudfunctions.net/revisarBuzonManiobras';
 let _extraidos=[];
+let _candidatosNoPaga=[];
 let _correosBuzon=[];
 async function cargarCorreosPendientesBuzon(){
   var data=await window.FB.get('estado','correosManiobrasPendientes');
@@ -993,6 +1027,34 @@ function _procesarRenglonesExtraidos(renglones){
   // _crearAutorizacionEnMemoria) — normalmente llega un correo posterior
   // con el monto real para el mismo folio/T.U.
   var noPagaCount=0;
+  // Caso real: Martín cargó al CEDIS León, el correo original decía
+  // "PENDIENTE" (esperando que el cliente confirmara el monto) y luego llegó
+  // un correo de seguimiento diciendo "No paga" para ese mismo folio/T.U. —
+  // antes esa fila de "No paga" solo se descartaba en silencio (líneas de
+  // abajo) y la autorización pendiente se quedaba en amarillo PARA SIEMPRE,
+  // porque nada la resolvía. Aquí, cada renglón "No paga"/"-" se cruza
+  // contra las autorizaciones que sigan con montoPendiente:true (mismo
+  // criterio de identificadores que usa _crearAutorizacionEnMemoria) — si
+  // hay una coincidencia, se ofrece cerrarla en $0 (nunca se hace solo, el
+  // admin decide con el botón de abajo).
+  renglonesSilvia.forEach(function(x){
+    var m=(x.monto==null)?'':String(x.monto).trim().toUpperCase();
+    if(m!=='NO_PAGA'&&m!=='NO PAGA'&&m!=='-')return;
+    var match=_matchOperadorPorNombre(x.operador,x.eco);
+    var ids=[x.folio,x.pedido,x.tu1,x.tu2].map(_normTxt).filter(function(s){return s;});
+    if(ids.length){
+      var existente=ingresosDB.find(function(v){
+        if(!v.esAutorizacionCliente||!v.montoPendiente||v.sustituidoPorXML)return false;
+        if(match&&v.unidad!==match.operadorId)return false;
+        var vIds=_idsDeObservaciones(v.observaciones);
+        return ids.some(function(id){return vIds.indexOf(id)!==-1;});
+      });
+      if(existente&&!_candidatosNoPaga.some(function(c){return c.id===existente.id;})){
+        _candidatosNoPaga.push({id:existente.id,observaciones:existente.observaciones,unidad:existente.unidad,subtotal:existente.subtotal});
+      }
+    }
+  });
+  renderCandidatosNoPaga();
   // Se AGREGA a _extraidos (no se reemplaza) — así, si ya había renglones de
   // un correo anterior sin registrar todavía, no se pierden al cargar otro.
   _extraidos=_extraidos.concat(renglonesSilvia.filter(function(x){
