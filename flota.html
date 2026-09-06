@@ -143,6 +143,7 @@ tr:hover td{background:#fafafa}
     <button class="tab" id="tabBtnRevision" onclick="cambiarTab('revision')">🔍 Revisión de unidad</button>
     <button class="tab" id="tabBtnHistorial" onclick="cambiarTab('historial')">🗂️ Historial de asignaciones</button>
     <button class="tab" id="tabBtnCorregir" onclick="cambiarTab('corregir')">🩹 Corregir clave de operador</button>
+    <button class="tab" id="tabBtnMantenimiento" onclick="cambiarTab('mantenimiento')">🔧 Mantenimiento</button>
   </div>
 
   <!-- OPERADORES -->
@@ -286,6 +287,53 @@ tr:hover td{background:#fafafa}
         <button class="btn btn-out btn-sm" onclick="corPreview()">🔍 Ver qué se movería</button>
       </div>
       <div id="corPreviewWrap" style="margin-top:14px"></div>
+    </div>
+  </div>
+
+  <!-- MANTENIMIENTO -->
+  <div class="tabpanel" id="panelMantenimiento">
+    <div class="card">
+      <div class="card-title">🛠️ Nueva orden de mantenimiento</div>
+      <div class="row">
+        <div class="field" style="min-width:140px"><label>Unidad</label><select id="mtoUnidad" onchange="mtoAlCambiarUnidad()"></select></div>
+        <div class="field" style="min-width:140px"><label>Kilometraje actual</label><input type="number" id="mtoKm" min="0" placeholder="Ej: 152400"></div>
+        <div class="field" style="min-width:180px"><label>Mecánico</label><select id="mtoMecanico"></select></div>
+        <div class="field" style="min-width:140px"><label>Fecha</label><input type="date" id="mtoFecha"></div>
+      </div>
+      <div class="card-title" style="margin-top:16px;font-size:11px">Actividades a realizar</div>
+      <div id="mtoActividades"></div>
+      <div class="row" style="margin-top:6px">
+        <div class="field" style="flex:1;min-width:220px"><label>Otra actividad (opcional)</label><input type="text" id="mtoActividadOtra" placeholder="Ej: cambio de balatas traseras"></div>
+      </div>
+      <div class="card-title" style="margin-top:16px;font-size:11px">Filtros/artículos a entregar (según unidad) <button class="btn btn-out btn-sm" onclick="mtoAgregarArticuloFila()">+ Agregar renglón</button></div>
+      <div class="alert alert-info" id="mtoAvisoCompat" style="display:none"></div>
+      <div class="tbl-wrap"><table><thead><tr><th>Artículo</th><th>Existencia</th><th class="r">Cantidad</th><th></th></tr></thead><tbody id="tbMtoArticulos"></tbody></table></div>
+      <div class="row" style="margin-top:14px">
+        <div class="field" style="flex:1;min-width:220px"><label>Notas</label><input type="text" id="mtoNotas" placeholder="Observaciones para el mecánico"></div>
+      </div>
+      <button class="btn btn-red" style="margin-top:14px" onclick="mtoGuardarYGenerar()">💾 Guardar y generar documentos</button>
+      <div id="mtoInfo" style="margin-top:10px"></div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">🧾 Catálogo de artículos (filtros/aceites) <button class="btn btn-out btn-sm" onclick="mtoAgregarArticulo()">+ Agregar artículo</button></div>
+      <p style="font-size:12px;color:#888;margin-bottom:10px">"Unidades compatibles" son los números económicos separados por coma (ej. "521,522,523,624"). Déjalo vacío si aplica a todas las unidades.</p>
+      <div class="tbl-wrap"><table><thead><tr><th>Nombre</th><th>Tipo</th><th>Compatibles</th><th class="r">Existencia</th><th class="r">Costo</th><th></th></tr></thead><tbody id="tbMtoCatalogo"></tbody></table></div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">👨‍🔧 Mecánicos <button class="btn btn-out btn-sm" onclick="mtoAgregarMecanico()">+ Agregar mecánico</button></div>
+      <div class="tbl-wrap"><table><thead><tr><th>Nombre</th><th>Teléfono</th><th>Notas</th><th></th></tr></thead><tbody id="tbMtoMecanicos"></tbody></table></div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">⏰ Próximo mantenimiento estimado <span class="info-tip">?<span class="info-tip-box">Estimado a partir del último kilometraje que capturaste a mano para cada unidad — no viene de rastreo satelital en vivo, así que puede estar desfasado si no capturas seguido. Se puede conectar más adelante con la app de rastreo satelital si tiene una API disponible, para que la lectura sea más exacta.</span></span></div>
+      <div id="mtoProximos"></div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">🗂️ Historial de mantenimientos <button class="btn btn-out btn-sm" onclick="cargarMantenimiento()">🔄 Recargar</button></div>
+      <div class="tbl-wrap"><table><thead><tr><th>Fecha</th><th>Unidad</th><th class="num">Km</th><th>Mecánico</th><th>Actividades</th><th class="r">Costo artículos</th><th></th></tr></thead><tbody id="tbMtoHistorial"></tbody></table></div>
     </div>
   </div>
 
@@ -449,6 +497,7 @@ function verificarSesionModulo(){
   cargarTodo();
   cargarAsignaciones();
   cargarRevisiones();
+  cargarMantenimiento();
   $('revFecha').value=hoy();
   $('asigFecha').value=hoy();
   renderDanios();
@@ -465,7 +514,7 @@ setTimeout(function(){if(!fbReady){$('fbStatus').textContent='❌ Sin conexión'
 // TABS
 // ══════════════════════════════════════════════
 function cambiarTab(nombre){
-  ['operadores','unidades','asignar','revision','historial','corregir'].forEach(function(t){
+  ['operadores','unidades','asignar','revision','historial','corregir','mantenimiento'].forEach(function(t){
     $('panel'+t.charAt(0).toUpperCase()+t.slice(1)).classList.toggle('active',t===nombre);
     $('tabBtn'+t.charAt(0).toUpperCase()+t.slice(1)).classList.toggle('active',t===nombre);
   });
@@ -1118,6 +1167,323 @@ async function corConfirmar(){
     $('corOrigen').value='';$('corDestino').value='';
     $('corPreviewWrap').innerHTML='';
   }catch(e){console.error('corConfirmar:',e);alert('⚠️ Error al mover: '+e.message);}
+}
+
+// ══════════════════════════════════════════════
+// MANTENIMIENTO — colecciones reales (un documento por artículo/mecánico/
+// orden de mantenimiento), mismo criterio que fletesDB/cxpFacturas: nunca
+// un blob compartido, porque el historial crece indefinidamente. El
+// inventario de artículos se descuenta al guardar la orden (nunca se
+// reconstruye desde el historial, para poder ajustarlo a mano si hace falta
+// por una compra o un conteo físico).
+// ══════════════════════════════════════════════
+var MTO_ARTICULOS=[],MTO_MECANICOS=[],MTO_HISTORIAL=[];
+var MTO_ACTIVIDADES_DEFAULT=[
+  {nombre:'Cambio de aceite de motor',intervaloKm:10000},
+  {nombre:'Cambio de filtro de aceite',intervaloKm:10000},
+  {nombre:'Cambio de filtro de aire',intervaloKm:20000},
+  {nombre:'Cambio de filtro de combustible',intervaloKm:20000},
+  {nombre:'Revisión de frenos',intervaloKm:20000},
+  {nombre:'Rotación de llantas',intervaloKm:10000}
+];
+var _mtoArticuloFilas=[];
+async function cargarMantenimiento(){
+  try{
+    var db=firebase.firestore();
+    var snapArt=await db.collection('mantenimientoArticulos').get();
+    MTO_ARTICULOS=[];snapArt.forEach(function(d){MTO_ARTICULOS.push(Object.assign({id:d.id},d.data()));});
+    MTO_ARTICULOS.sort(function(a,b){return(a.nombre||'').localeCompare(b.nombre||'');});
+    var snapMec=await db.collection('mantenimientoMecanicos').get();
+    MTO_MECANICOS=[];snapMec.forEach(function(d){MTO_MECANICOS.push(Object.assign({id:d.id},d.data()));});
+    MTO_MECANICOS.sort(function(a,b){return(a.nombre||'').localeCompare(b.nombre||'');});
+    var snapHist=await db.collection('mantenimientos').get();
+    MTO_HISTORIAL=[];snapHist.forEach(function(d){MTO_HISTORIAL.push(Object.assign({id:d.id},d.data()));});
+    MTO_HISTORIAL.sort(function(a,b){return(b.fecha||'').localeCompare(a.fecha||'');});
+    renderMtoCatalogo();renderMtoMecanicos();renderMtoHistorial();renderMtoProximos();
+    poblarMtoSelects();
+    if(!$('mtoFecha').value)$('mtoFecha').value=hoy();
+    mtoRenderActividades();
+    if(!_mtoArticuloFilas.length)_mtoArticuloFilas=[{articuloId:'',cantidad:1}];
+    renderMtoArticulosFilas();
+  }catch(e){console.error('cargarMantenimiento:',e);}
+}
+function poblarMtoSelects(){
+  var sUn=$('mtoUnidad');
+  var actual=sUn.value;
+  sUn.innerHTML='<option value="">— Selecciona —</option>'+unidadesRaw.filter(function(u){return u.activa;}).map(function(u){
+    return '<option value="'+u.numero+'">Unidad '+u.numero+'</option>';
+  }).join('');
+  if(actual)sUn.value=actual;
+  var sMec=$('mtoMecanico');
+  var actualMec=sMec.value;
+  sMec.innerHTML='<option value="">— Selecciona —</option>'+MTO_MECANICOS.map(function(m){
+    return '<option value="'+m.id+'">'+m.nombre+'</option>';
+  }).join('');
+  if(actualMec)sMec.value=actualMec;
+}
+function mtoRenderActividades(){
+  $('mtoActividades').innerHTML=MTO_ACTIVIDADES_DEFAULT.map(function(a,i){
+    return '<label style="display:inline-flex;align-items:center;gap:6px;font-size:12px;margin:4px 14px 4px 0"><input type="checkbox" id="mtoAct'+i+'"> '+a.nombre+'</label>';
+  }).join('');
+}
+function mtoActividadesSeleccionadas(){
+  var out=[];
+  MTO_ACTIVIDADES_DEFAULT.forEach(function(a,i){
+    if($('mtoAct'+i).checked)out.push({nombre:a.nombre,intervaloKm:a.intervaloKm});
+  });
+  var otra=($('mtoActividadOtra').value||'').trim();
+  if(otra)out.push({nombre:otra,intervaloKm:null});
+  return out;
+}
+// mtoAlCambiarUnidad: filtra el catálogo de artículos a los compatibles con
+// la unidad elegida (o "todas", si el artículo no trae ninguna unidad
+// marcada) — caso real: eco 521-524 usan un filtro, 526-531 otro, y 533-534
+// otro distinto, así que mostrarle a Esa un catálogo sin filtrar la haría
+// entregar el filtro equivocado por error.
+function mtoAlCambiarUnidad(){
+  renderMtoArticulosFilas();
+}
+function mtoArticulosCompatibles(){
+  var unidad=parseInt($('mtoUnidad').value||0);
+  if(!unidad)return MTO_ARTICULOS;
+  return MTO_ARTICULOS.filter(function(a){
+    return !a.unidadesCompatibles||!a.unidadesCompatibles.length||a.unidadesCompatibles.indexOf(unidad)!==-1;
+  });
+}
+function mtoAgregarArticuloFila(){
+  _mtoArticuloFilas.push({articuloId:'',cantidad:1});
+  renderMtoArticulosFilas();
+}
+function mtoQuitarArticuloFila(i){
+  _mtoArticuloFilas.splice(i,1);
+  if(!_mtoArticuloFilas.length)_mtoArticuloFilas=[{articuloId:'',cantidad:1}];
+  renderMtoArticulosFilas();
+}
+function mtoActualizarFila(i,campo,valor){
+  _mtoArticuloFilas[i][campo]=campo==='cantidad'?parseFloat(valor)||0:valor;
+}
+function renderMtoArticulosFilas(){
+  var compatibles=mtoArticulosCompatibles();
+  var unidad=parseInt($('mtoUnidad').value||0);
+  $('mtoAvisoCompat').style.display=unidad?'block':'none';
+  if(unidad)$('mtoAvisoCompat').textContent='Mostrando solo artículos compatibles con la unidad '+unidad+' (o sin restricción de unidad).';
+  $('tbMtoArticulos').innerHTML=_mtoArticuloFilas.map(function(f,i){
+    var art=MTO_ARTICULOS.find(function(a){return a.id===f.articuloId;});
+    return '<tr><td><select onchange="mtoActualizarFila('+i+',\'articuloId\',this.value)">'
+      +'<option value="">— Selecciona —</option>'
+      +compatibles.map(function(a){return '<option value="'+a.id+'"'+(a.id===f.articuloId?' selected':'')+'>'+a.nombre+'</option>';}).join('')
+      +'</select></td>'
+      +'<td class="num">'+(art?fmtN(art.existencia||0,0):'—')+'</td>'
+      +'<td class="r"><input type="number" min="0" step="1" value="'+f.cantidad+'" style="width:80px;text-align:right" onchange="mtoActualizarFila('+i+',\'cantidad\',this.value)"></td>'
+      +'<td><button class="btn-sm" style="background:none;border:none;cursor:pointer;color:#c1121f" onclick="mtoQuitarArticuloFila('+i+')">✕</button></td></tr>';
+  }).join('');
+}
+async function mtoGuardarYGenerar(){
+  var unidad=parseInt($('mtoUnidad').value||0);
+  var km=parseFloat($('mtoKm').value||0);
+  var mecanicoId=$('mtoMecanico').value;
+  var mecanico=MTO_MECANICOS.find(function(m){return m.id===mecanicoId;});
+  var fecha=$('mtoFecha').value||hoy();
+  var actividades=mtoActividadesSeleccionadas();
+  if(!unidad){alert('Selecciona la unidad.');return;}
+  if(!km){alert('Captura el kilometraje actual.');return;}
+  if(!actividades.length){alert('Marca al menos una actividad a realizar.');return;}
+  var articulosUsados=_mtoArticuloFilas.filter(function(f){return f.articuloId&&f.cantidad>0;}).map(function(f){
+    var art=MTO_ARTICULOS.find(function(a){return a.id===f.articuloId;});
+    return {articuloId:f.articuloId,nombre:art?art.nombre:'',cantidad:f.cantidad,costoUnitario:art?(art.costoUnitario||0):0};
+  });
+  for(var i=0;i<articulosUsados.length;i++){
+    var art=MTO_ARTICULOS.find(function(a){return a.id===articulosUsados[i].articuloId;});
+    if(art&&articulosUsados[i].cantidad>(art.existencia||0)){
+      if(!confirm('⚠️ Vas a entregar '+articulosUsados[i].cantidad+' de "'+art.nombre+'" pero solo hay '+(art.existencia||0)+' en existencia. ¿Continuar de todas formas? (la existencia va a quedar en negativo hasta que ajustes el inventario)'))return;
+    }
+  }
+  var u=usuarioSesion();
+  try{
+    var db=firebase.firestore();
+    var costoTotal=articulosUsados.reduce(function(s,a){return s+(a.cantidad*a.costoUnitario);},0);
+    var ref=await db.collection('mantenimientos').add({
+      unidad:unidad,fecha:fecha,kilometraje:km,
+      mecanicoId:mecanicoId||null,mecanicoNombre:mecanico?mecanico.nombre:'',
+      actividades:actividades,articulos:articulosUsados,costoTotalArticulos:costoTotal,
+      notas:($('mtoNotas').value||'').trim(),
+      capturadoPor:u?(u.nombre||u.usuario):'',creadoEn:new Date().toISOString()
+    });
+    // Descontar inventario — se relee cada artículo justo antes de restar,
+    // para no pisar un ajuste manual que alguien haya hecho mientras se
+    // llenaba este formulario.
+    for(var j=0;j<articulosUsados.length;j++){
+      var refArt=db.collection('mantenimientoArticulos').doc(articulosUsados[j].articuloId);
+      var snapArt=await refArt.get();
+      if(snapArt.exists){
+        var existenciaActual=snapArt.data().existencia||0;
+        await refArt.set({existencia:existenciaActual-articulosUsados[j].cantidad},{merge:true});
+      }
+    }
+    mtoImprimirFiltrosEntregados({id:ref.id,unidad:unidad,fecha:fecha,articulos:articulosUsados,notas:$('mtoNotas').value});
+    mtoImprimirOrdenServicio({id:ref.id,unidad:unidad,fecha:fecha,km:km,mecanico:mecanico?mecanico.nombre:'(sin asignar)',actividades:actividades,notas:$('mtoNotas').value});
+    $('mtoInfo').innerHTML='<div class="alert alert-ok">✅ Orden de mantenimiento registrada para la unidad '+unidad+'.</div>';
+    $('mtoKm').value='';$('mtoNotas').value='';$('mtoActividadOtra').value='';
+    mtoRenderActividades();
+    _mtoArticuloFilas=[{articuloId:'',cantidad:1}];
+    await cargarMantenimiento();
+  }catch(e){console.error('mtoGuardarYGenerar:',e);alert('⚠️ Error al guardar: '+e.message);}
+}
+// Ambas impresiones usan el mismo patrón ya establecido en el sistema
+// (reciboNomina.js): abrir una pestaña nueva con HTML autocontenido y un
+// botón que usa window.print() — el diálogo de impresión del navegador ya
+// sirve como "Guardar como PDF" sin necesitar ninguna librería aparte.
+function _mtoAbrirImpresion(titulo,bodyHtml){
+  var v=window.open('','_blank');
+  if(!v){alert('El navegador bloqueó la ventana nueva — permite ventanas emergentes para este sitio e intenta de nuevo.');return;}
+  v.document.write('<!doctype html><html><head><meta charset="UTF-8"><title>'+titulo+'</title>'
+    +'<style>body{font-family:Arial,sans-serif;color:#1a1a2e;padding:30px;max-width:700px;margin:0 auto}'
+    +'h2{margin-bottom:4px}table{width:100%;border-collapse:collapse;margin-top:14px}'
+    +'th,td{border:1px solid #ccc;padding:6px 8px;font-size:13px;text-align:left}'
+    +'th{background:#1a1a2e;color:#fff}.firma{margin-top:60px;display:flex;gap:40px}'
+    +'.firma div{flex:1;border-top:1.5px solid #1a1a2e;padding-top:6px;font-size:11px;text-align:center;color:#666}'
+    +'.btnPrint{margin-top:24px;padding:10px 22px;font-size:14px;font-weight:700;background:#e63946;color:#fff;border:none;border-radius:6px;cursor:pointer}'
+    +'@media print{.btnPrint{display:none}}</style></head><body>'
+    +bodyHtml
+    +'<button class="btnPrint" onclick="window.print()">🖨️ Imprimir / Guardar como PDF</button>'
+    +'</body></html>');
+  v.document.close();
+}
+function mtoImprimirFiltrosEntregados(o){
+  var filas=o.articulos.map(function(a){return '<tr><td>'+a.nombre+'</td><td>'+a.cantidad+'</td></tr>';}).join('')
+    ||'<tr><td colspan="2" style="color:#888">Sin artículos entregados en esta orden.</td></tr>';
+  var html='<h2>Filtros/artículos entregados</h2>'
+    +'<p>Unidad: <strong>'+o.unidad+'</strong> · Fecha: <strong>'+o.fecha+'</strong> · Orden: '+o.id+'</p>'
+    +(o.notas?'<p>Notas: '+o.notas+'</p>':'')
+    +'<table><thead><tr><th>Artículo</th><th>Cantidad</th></tr></thead><tbody>'+filas+'</tbody></table>'
+    +'<div class="firma"><div>Entrega</div><div>Recibe</div></div>';
+  _mtoAbrirImpresion('Filtros entregados — unidad '+o.unidad,html);
+}
+function mtoImprimirOrdenServicio(o){
+  var filas=o.actividades.map(function(a){return '<tr><td>☐</td><td>'+a.nombre+'</td></tr>';}).join('');
+  var html='<h2>Orden de servicio</h2>'
+    +'<p>Unidad: <strong>'+o.unidad+'</strong> · Kilometraje: <strong>'+fmtN(o.km,0)+'</strong> · Fecha: <strong>'+o.fecha+'</strong></p>'
+    +'<p>Mecánico: <strong>'+o.mecanico+'</strong> · Orden: '+o.id+'</p>'
+    +(o.notas?'<p>Notas: '+o.notas+'</p>':'')
+    +'<table><thead><tr><th style="width:40px">Hecho</th><th>Actividad</th></tr></thead><tbody>'+filas+'</tbody></table>'
+    +'<div class="firma"><div>Entrega unidad</div><div>Firma del mecánico</div></div>';
+  _mtoAbrirImpresion('Orden de servicio — unidad '+o.unidad,html);
+}
+function mtoReimprimir(id){
+  var m=MTO_HISTORIAL.find(function(x){return x.id===id;});
+  if(!m)return;
+  mtoImprimirFiltrosEntregados({id:m.id,unidad:m.unidad,fecha:m.fecha,articulos:m.articulos||[],notas:m.notas});
+  mtoImprimirOrdenServicio({id:m.id,unidad:m.unidad,fecha:m.fecha,km:m.kilometraje,mecanico:m.mecanicoNombre||'(sin asignar)',actividades:m.actividades||[],notas:m.notas});
+}
+function renderMtoHistorial(){
+  $('tbMtoHistorial').innerHTML=MTO_HISTORIAL.map(function(m){
+    var acts=(m.actividades||[]).map(function(a){return a.nombre;}).join(', ');
+    return '<tr><td>'+m.fecha+'</td><td>'+m.unidad+'</td><td class="num">'+fmtN(m.kilometraje,0)+'</td><td style="font-size:12px">'+(m.mecanicoNombre||'—')+'</td>'
+      +'<td style="font-size:12px">'+acts+'</td><td class="r">'+fmt(m.costoTotalArticulos||0)+'</td>'
+      +'<td><button class="btn btn-out btn-sm" onclick="mtoReimprimir(\''+m.id+'\')">🖨️ Reimprimir</button></td></tr>';
+  }).join('');
+}
+// renderMtoProximos: estimado simple con el kilometraje MÁS RECIENTE
+// capturado a mano de cada unidad — ver nota en el info-tip de la tarjeta,
+// esto no sustituye una lectura real de odómetro/GPS.
+function renderMtoProximos(){
+  var porUnidad={};
+  MTO_HISTORIAL.forEach(function(m){
+    // Fusionar, nunca reemplazar el objeto completo — MTO_HISTORIAL no
+    // garantiza que el renglón con el km más alto de una unidad se procese
+    // primero, así que reemplazar de golpe podía borrar el
+    // "ultimasPorActividad" ya calculado de una vuelta anterior del forEach.
+    if(!porUnidad[m.unidad])porUnidad[m.unidad]={km:0,ultimasPorActividad:{}};
+    if(m.kilometraje>porUnidad[m.unidad].km)porUnidad[m.unidad].km=m.kilometraje;
+    (m.actividades||[]).forEach(function(a){
+      if(!a.intervaloKm)return;
+      var prev=porUnidad[m.unidad].ultimasPorActividad[a.nombre];
+      if(!prev||m.kilometraje>prev.km)porUnidad[m.unidad].ultimasPorActividad[a.nombre]={km:m.kilometraje,intervaloKm:a.intervaloKm};
+    });
+  });
+  var filas=[];
+  Object.keys(porUnidad).forEach(function(unidad){
+    var kmActual=porUnidad[unidad].km||0;
+    var porActividad=porUnidad[unidad].ultimasPorActividad||{};
+    Object.keys(porActividad).forEach(function(nombreAct){
+      var info=porActividad[nombreAct];
+      var proximo=info.km+info.intervaloKm;
+      var faltan=proximo-kmActual;
+      filas.push({unidad:unidad,actividad:nombreAct,proximo:proximo,faltan:faltan});
+    });
+  });
+  filas.sort(function(a,b){return a.faltan-b.faltan;});
+  if(!filas.length){$('mtoProximos').innerHTML='<p style="font-size:12px;color:#aaa">Sin suficiente historial todavía para estimar próximos mantenimientos.</p>';return;}
+  $('mtoProximos').innerHTML='<div class="tbl-wrap"><table><thead><tr><th>Unidad</th><th>Actividad</th><th class="r">Km estimado próximo</th><th class="r">Faltan (km)</th></tr></thead><tbody>'
+    +filas.map(function(f){
+      var alerta=f.faltan<=1500;
+      return '<tr'+(alerta?' style="background:#fffbeb"':'')+'><td>'+f.unidad+'</td><td style="font-size:12px">'+f.actividad+'</td><td class="num r">'+fmtN(f.proximo,0)+'</td>'
+        +'<td class="num r">'+(alerta?'⚠️ ':'')+fmtN(f.faltan,0)+'</td></tr>';
+    }).join('')+'</tbody></table></div>';
+}
+async function mtoAgregarArticulo(){
+  var nombre=prompt('Nombre del artículo (ej. "Filtro de aceite Fram PH123"):');
+  if(!nombre)return;
+  var tipo=prompt('Tipo (filtro_aceite / filtro_aire / filtro_combustible / aceite / otro):','filtro_aceite')||'otro';
+  var compatTxt=prompt('Unidades compatibles, separadas por coma (deja vacío si aplica a todas):','')||'';
+  var unidadesCompatibles=compatTxt.split(',').map(function(s){return parseInt(s.trim());}).filter(function(n){return n;});
+  var existencia=parseFloat(prompt('Existencia inicial:','0')||'0');
+  var costoUnitario=parseFloat(prompt('Costo unitario ($):','0')||'0');
+  try{
+    await firebase.firestore().collection('mantenimientoArticulos').add({
+      nombre:nombre.trim(),tipo:tipo.trim(),unidadesCompatibles:unidadesCompatibles,
+      existencia:existencia,costoUnitario:costoUnitario,activo:true
+    });
+    await cargarMantenimiento();
+  }catch(e){alert('⚠️ Error al agregar: '+e.message);}
+}
+async function mtoEditarArticulo(id){
+  var art=MTO_ARTICULOS.find(function(a){return a.id===id;});
+  if(!art)return;
+  var existencia=prompt('Nueva existencia de "'+art.nombre+'":',art.existencia||0);
+  if(existencia===null)return;
+  var costoUnitario=prompt('Nuevo costo unitario ($):',art.costoUnitario||0);
+  if(costoUnitario===null)return;
+  var compatTxt=prompt('Unidades compatibles (separadas por coma, vacío = todas):',(art.unidadesCompatibles||[]).join(','));
+  if(compatTxt===null)return;
+  var unidadesCompatibles=compatTxt.split(',').map(function(s){return parseInt(s.trim());}).filter(function(n){return n;});
+  try{
+    await firebase.firestore().collection('mantenimientoArticulos').doc(id).set({
+      existencia:parseFloat(existencia)||0,costoUnitario:parseFloat(costoUnitario)||0,unidadesCompatibles:unidadesCompatibles
+    },{merge:true});
+    await cargarMantenimiento();
+  }catch(e){alert('⚠️ Error al actualizar: '+e.message);}
+}
+function renderMtoCatalogo(){
+  $('tbMtoCatalogo').innerHTML=MTO_ARTICULOS.map(function(a){
+    return '<tr><td style="font-size:12px">'+a.nombre+'</td><td style="font-size:12px">'+(a.tipo||'')+'</td>'
+      +'<td style="font-size:12px">'+((a.unidadesCompatibles||[]).length?a.unidadesCompatibles.join(', '):'Todas')+'</td>'
+      +'<td class="num r">'+fmtN(a.existencia||0,0)+'</td><td class="r">'+fmt(a.costoUnitario||0)+'</td>'
+      +'<td><button class="btn btn-out btn-sm" onclick="mtoEditarArticulo(\''+a.id+'\')">✏️ Editar</button></td></tr>';
+  }).join('');
+}
+async function mtoAgregarMecanico(){
+  var nombre=prompt('Nombre del mecánico/taller:');
+  if(!nombre)return;
+  var telefono=prompt('Teléfono (opcional):','')||'';
+  var notas=prompt('Notas (opcional):','')||'';
+  try{
+    await firebase.firestore().collection('mantenimientoMecanicos').add({nombre:nombre.trim(),telefono:telefono.trim(),notas:notas.trim(),activo:true});
+    await cargarMantenimiento();
+  }catch(e){alert('⚠️ Error al agregar: '+e.message);}
+}
+function renderMtoMecanicos(){
+  $('tbMtoMecanicos').innerHTML=MTO_MECANICOS.map(function(m){
+    return '<tr><td style="font-size:12px">'+m.nombre+'</td><td style="font-size:12px">'+(m.telefono||'—')+'</td><td style="font-size:12px">'+(m.notas||'—')+'</td>'
+      +'<td><button class="btn-sm" style="background:none;border:none;cursor:pointer;color:#c1121f" onclick="mtoEliminarMecanico(\''+m.id+'\')">✕</button></td></tr>';
+  }).join('');
+}
+async function mtoEliminarMecanico(id){
+  if(!confirm('¿Eliminar este mecánico del catálogo? No borra el historial de órdenes ya generadas.'))return;
+  try{
+    await firebase.firestore().collection('mantenimientoMecanicos').doc(id).delete();
+    await cargarMantenimiento();
+  }catch(e){alert('⚠️ Error al eliminar: '+e.message);}
 }
 </script>
 </body>
