@@ -645,24 +645,58 @@ function _crearProvisionalFleteServer(ingresosDB, operadores, datos) {
   return { ok: true };
 }
 
-// Filtra SILVIA/NO_PAGA (igual que _procesarRenglonesExtraidos), detecta
-// posible corrección (folio repetido con monto real distinto DENTRO del
-// mismo correo), y por cada renglón que quede: si el operador se encontró
-// con seguridad y no hay corrección ambigua, intenta registrarlo directo
+// _cerrarPendienteNoPagaServer: caso real (Martín, CEDIS León) — un correo
+// dice "PENDIENTE" (esperando monto) y un correo POSTERIOR dice "No paga"
+// para el mismo folio/T.U. — antes esa fila de "No paga" simplemente se
+// descartaba y la autorización pendiente se quedaba en amarillo para
+// siempre, porque nada la conectaba con el pendiente existente. Se busca
+// SOLO por identificadores (folio/pedido/T.U.'s), sin exigir que el
+// operador matchee por nombre — el folio/T.U. ya es único de por sí, y
+// exigir el nombre solo arriesgaría no cerrarla por un error de dedo en el
+// correo de seguimiento. Si no hay ninguna Pendiente que coincida, no hace
+// nada (no hay nada que cerrar, no se manda a revisión).
+function _cerrarPendienteNoPagaServer(ingresosDB, x) {
+  const ids = [x.folio, x.pedido, x.tu1, x.tu2].map(_normTxtServer).filter(function (s) { return s; });
+  if (!ids.length) return false;
+  const existente = ingresosDB.find(function (v) {
+    if (!v.esAutorizacionCliente || !v.montoPendiente || v.sustituidoPorXML) return false;
+    const vIds = _idsDeObservacionesServer(v.observaciones);
+    return ids.some(function (id) { return vIds.indexOf(id) !== -1; });
+  });
+  if (!existente) return false;
+  existente.subtotal = 0; existente.subtManiobras = 0; existente.iva = 0; existente.total = 0;
+  existente.montoPendiente = false;
+  existente.observaciones = (existente.observaciones || '') + ' | NO_PAGA confirmado el ' + new Date().toISOString().slice(0, 10);
+  return true;
+}
+
+// Filtra SILVIA (igual que _procesarRenglonesExtraidos), detecta posible
+// corrección (folio repetido con monto real distinto DENTRO del mismo
+// correo), y por cada renglón que quede: si el operador se encontró con
+// seguridad y no hay corrección ambigua, intenta registrarlo directo
 // (ingresosDB en memoria); si algo bloquea el registro o hay cualquier
-// señal de alerta, ese renglón CRUDO se regresa para la lista de pendientes
-// — nunca se inventa ni se fuerza nada, solo se salta el paso manual cuando
-// de verdad no hace falta revisión.
+// señal de alerta, ese renglón CRUDO se regresa para la lista de
+// pendientes — nunca se inventa ni se fuerza nada, solo se salta el paso
+// manual cuando de verdad no hace falta revisión. Los renglones "No paga"
+// se manejan aparte (ver _cerrarPendienteNoPagaServer): mismo criterio
+// automático que ya usa el monto real para sustituir un Pendiente (el
+// correo más reciente manda), aplicado también cuando ese correo dice que
+// ya no se paga — nunca requieren revisión manual.
 function _clasificarYRegistrar(renglonesCrudos, ingresosDB, operadores) {
   const normLinea = function (s) { return (s || '').toString().trim().toUpperCase().normalize('NFD').replace(/[̀-ͯ]/g, ''); };
   const silvia = renglonesCrudos.filter(function (x) {
     const linea = normLinea(x.lineaTransporte);
     return !linea || linea === 'SILVIA';
   });
-  const utiles = silvia.filter(function (x) {
+  const esNoPagaTxt = function (x) {
     const m = (x.monto == null) ? '' : String(x.monto).trim().toUpperCase();
-    return m !== 'NO_PAGA' && m !== 'NO PAGA' && m !== '-';
+    return m === 'NO_PAGA' || m === 'NO PAGA' || m === '-';
+  };
+  let noPagaResueltos = 0;
+  silvia.filter(esNoPagaTxt).forEach(function (x) {
+    if (_cerrarPendienteNoPagaServer(ingresosDB, x)) noPagaResueltos++;
   });
+  const utiles = silvia.filter(function (x) { return !esNoPagaTxt(x); });
   // Folios repetidos con monto real distinto (mismo criterio que
   // maniobras.html: se ignoran las filas PENDIENTE en esta comparación).
   const porFolio = {};
@@ -692,7 +726,7 @@ function _clasificarYRegistrar(renglonesCrudos, ingresosDB, operadores) {
     });
     if (r.ok) registrados++; else pendientes.push(x);
   });
-  return { pendientes: pendientes, registrados: registrados };
+  return { pendientes: pendientes, registrados: registrados, noPagaResueltos: noPagaResueltos };
 }
 
 // node-imap (librería distinta a imapflow — más antigua y probada; imapflow
@@ -779,17 +813,20 @@ function _revisarBuzonCore(apiKey, user, pass) {
         const snapIngresos = await refIngresos.get();
         const ingresosDB = (snapIngresos.exists && snapIngresos.data().data) ? JSON.parse(snapIngresos.data().data) : [];
         let totalRegistrados = 0;
+        let totalNoPagaResueltos = 0;
         encontrados.forEach(function (c) {
           if (c.error || !c.renglones || !c.renglones.length) return;
           const r = _clasificarYRegistrar(c.renglones, ingresosDB, operadores);
           totalRegistrados += r.registrados;
+          totalNoPagaResueltos += r.noPagaResueltos;
           c.renglones = r.pendientes;
         });
-        if (totalRegistrados) {
-          console.log('revisarBuzonManiobras: ' + totalRegistrados + ' renglón(es) registrado(s) automático (sin alertas).');
+        if (totalRegistrados || totalNoPagaResueltos) {
+          console.log('revisarBuzonManiobras: ' + totalRegistrados + ' renglón(es) registrado(s) automático, ' + totalNoPagaResueltos + ' autorización(es) cerrada(s) en $0 por "No paga" (sin alertas).');
           await refIngresos.set({ data: JSON.stringify(ingresosDB) });
         }
         encontrados._totalRegistrados = totalRegistrados;
+        encontrados._totalNoPagaResueltos = totalNoPagaResueltos;
       } catch (e) {
         console.error('revisarBuzonManiobras: error clasificando/registrando renglones limpios (se deja todo pendiente de revisión manual):', e);
       }
@@ -883,7 +920,10 @@ exports.revisarBuzonManiobras = onRequest(
   async (req, res) => {
     try {
       const encontrados = await _revisarBuzonCore(ANTHROPIC_API_KEY.value(), MANIOBRAS_EMAIL_USER.value(), MANIOBRAS_EMAIL_PASS.value());
-      res.json({ ok: true, correosNuevos: encontrados.length, renglonesRegistrados: encontrados._totalRegistrados || 0 });
+      res.json({
+        ok: true, correosNuevos: encontrados.length, renglonesRegistrados: encontrados._totalRegistrados || 0,
+        noPagaResueltos: encontrados._totalNoPagaResueltos || 0
+      });
     } catch (e) {
       console.error('revisarBuzonManiobras:', e);
       res.status(500).json({ error: e.message || 'Error interno del servidor.' });
@@ -905,7 +945,8 @@ exports.revisarBuzonManiobrasProgramado = onSchedule(
     try {
       const encontrados = await _revisarBuzonCore(ANTHROPIC_API_KEY.value(), MANIOBRAS_EMAIL_USER.value(), MANIOBRAS_EMAIL_PASS.value());
       await db.collection('estado').doc('buzonManiobrasEstado').set({
-        ultimaEjecucion: inicio, ok: true, correosNuevos: encontrados.length, renglonesRegistrados: encontrados._totalRegistrados || 0, error: null
+        ultimaEjecucion: inicio, ok: true, correosNuevos: encontrados.length, renglonesRegistrados: encontrados._totalRegistrados || 0,
+        noPagaResueltos: encontrados._totalNoPagaResueltos || 0, error: null
       });
     } catch (e) {
       console.error('revisarBuzonManiobrasProgramado:', e);
