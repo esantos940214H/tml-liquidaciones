@@ -2871,3 +2871,27 @@ exports.wialonProbarReporteMantenimiento = onRequest({ secrets: [WIALON_TOKEN], 
     res.status(500).json({ error: e.message || 'Error interno del servidor.' });
   }
 });
+
+// Camino alterno al módulo de Mantenimiento de Wialon (que Esa no puede
+// habilitar porque la cuenta la administra y paga su proveedor Seguridad360,
+// no ella): en vez de depender de los "Intervalos de servicio" de Wialon,
+// leemos directo el ODÓMETRO de cada unidad (dato básico de rastreo, no
+// requiere ningún módulo de pago extra) y los intervalos (cada cuántos km)
+// los seguimos manejando nosotros mismos en Mantenimiento (flota.html),
+// igual que ya está hecho, solo que alimentado con el km real de Wialon en
+// vez de captura a mano. flags incluye base (1) + contadores/odómetro
+// (1024) — este diagnóstico vuelca el item tal cual para confirmar en qué
+// campo exacto viene el kilometraje antes de escribir el parseo real.
+exports.wialonProbarOdometro = onRequest({ secrets: [WIALON_TOKEN], cors: true, region: 'us-central1', timeoutSeconds: 60 }, async (req, res) => {
+  try {
+    const sid = await _wialonLogin(WIALON_TOKEN.value());
+    const spec = { itemsType: 'avl_unit', propName: 'sys_name', propValueMask: '*', sortType: 'sys_name' };
+    const params = { spec: spec, force: 1, flags: 1 + 1024, from: 0, to: 0 };
+    const d = await _wialonCall(sid, 'core/search_items', params);
+    if (d.error) { res.status(502).json({ error: 'core/search_items falló con código ' + d.error }); return; }
+    res.json({ ok: true, items: d.items || [] });
+  } catch (e) {
+    console.error('wialonProbarOdometro:', e);
+    res.status(500).json({ error: e.message || 'Error interno del servidor.' });
+  }
+});
