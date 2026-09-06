@@ -727,7 +727,13 @@ function _clasificarYRegistrar(renglonesCrudos, ingresosDB, operadores) {
   };
   let noPagaResueltos = 0;
   silvia.filter(esNoPagaTxt).forEach(function (x) {
-    if (_registrarNoPagaServer(ingresosDB, x, operadores)) noPagaResueltos++;
+    const ok = _registrarNoPagaServer(ingresosDB, x, operadores);
+    if (ok) { noPagaResueltos++; }
+    else {
+      console.log('revisarBuzonManiobras: NO PAGA sin resolver — operador="' + (x.operador || '') + '" eco="' + (x.eco || '') +
+        '" folio="' + (x.folio || '') + '" pedido="' + (x.pedido || '') + '" tu1="' + (x.tu1 || '') + '" tu2="' + (x.tu2 || '') +
+        '" — no había Pendiente que cerrar y no se pudo identificar al operador entre ' + operadores.length + ' operador(es) activo(s).');
+    }
   });
   const utiles = silvia.filter(function (x) { return !esNoPagaTxt(x); });
   // Folios repetidos con monto real distinto (mismo criterio que
