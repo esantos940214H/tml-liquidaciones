@@ -2805,3 +2805,28 @@ exports.wialonListarUnidades = onRequest({ secrets: [WIALON_TOKEN], cors: true, 
     res.status(500).json({ error: e.message || 'Error interno del servidor.' });
   }
 });
+
+// Segundo diagnóstico: lista los recursos (avl_resource) y, dentro de cada
+// uno, sus plantillas de reporte (rep) — necesitamos el id del recurso y el
+// id de la plantilla "Upcoming maintenance"/"Próximo mantenimiento" para
+// poder ejecutar report/exec_report después. flags=8193 = base (1) +
+// reportes (8192), según el SDK de Wialon.
+exports.wialonListarPlantillasReporte = onRequest({ secrets: [WIALON_TOKEN], cors: true, region: 'us-central1', timeoutSeconds: 60 }, async (req, res) => {
+  try {
+    const sid = await _wialonLogin(WIALON_TOKEN.value());
+    const spec = { itemsType: 'avl_resource', propName: 'sys_name', propValueMask: '*', sortType: 'sys_name' };
+    const params = { spec: spec, force: 1, flags: 8193, from: 0, to: 0 };
+    const url = 'https://hst-api.wialon.com/wialon/ajax.html?svc=core/search_items&params=' + encodeURIComponent(JSON.stringify(params)) + '&sid=' + sid;
+    const r = await fetch(url);
+    const d = await r.json();
+    if (d.error) { res.status(502).json({ error: 'Wialon core/search_items falló con código ' + d.error }); return; }
+    const recursos = (d.items || []).map(function (rsrc) {
+      const plantillas = Object.keys(rsrc.rep || {}).map(function (k) { return { templateId: rsrc.rep[k].id, nombre: rsrc.rep[k].n }; });
+      return { resourceId: rsrc.id, nombre: rsrc.nm, plantillas: plantillas };
+    });
+    res.json({ ok: true, recursos: recursos });
+  } catch (e) {
+    console.error('wialonListarPlantillasReporte:', e);
+    res.status(500).json({ error: e.message || 'Error interno del servidor.' });
+  }
+});
