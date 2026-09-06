@@ -645,17 +645,27 @@ function _crearProvisionalFleteServer(ingresosDB, operadores, datos) {
   return { ok: true };
 }
 
-// _cerrarPendienteNoPagaServer: caso real (Martín, CEDIS León) — un correo
-// dice "PENDIENTE" (esperando monto) y un correo POSTERIOR dice "No paga"
-// para el mismo folio/T.U. — antes esa fila de "No paga" simplemente se
-// descartaba y la autorización pendiente se quedaba en amarillo para
-// siempre, porque nada la conectaba con el pendiente existente. Se busca
-// SOLO por identificadores (folio/pedido/T.U.'s), sin exigir que el
-// operador matchee por nombre — el folio/T.U. ya es único de por sí, y
+// _registrarNoPagaServer: caso real (Martín, CEDIS León / Irapuato) — un
+// correo dice "NO PAGA" para un T.U. Primero se busca si ya existía una
+// autorización "PENDIENTE" (esperando monto) con ese mismo folio/T.U. — si
+// sí, se cierra en $0 (el correo más reciente manda, igual que cuando llega
+// el monto real). Se busca SOLO por identificadores, sin exigir que el
+// operador matchee por nombre, porque el folio/T.U. ya es único de por sí y
 // exigir el nombre solo arriesgaría no cerrarla por un error de dedo en el
-// correo de seguimiento. Si no hay ninguna Pendiente que coincida, no hace
-// nada (no hay nada que cerrar, no se manda a revisión).
-function _cerrarPendienteNoPagaServer(ingresosDB, x) {
+// correo de seguimiento.
+//
+// Si NO había ninguna Pendiente (caso más común: el "NO PAGA" es la ÚNICA
+// noticia que se recibe de ese T.U., nunca hubo un correo previo) hay que
+// registrar el T.U. de todas formas, en $0 — de lo contrario nunca queda
+// ninguna autorización asociada a ese T.U., y el Archivo Maestro de Fletes
+// (ver matchFleteConAutorizacion en ing.html) nunca la encuentra: la fila
+// del pedido de flete se queda "(sin confirmar)" para siempre, aunque en
+// realidad ya está resuelta (no se cobra nada) — un NO PAGA nunca genera un
+// correo de seguimiento con el monto real. Para esto SÍ hace falta
+// identificar al operador (no se puede registrar un ingreso sin unidad); si
+// no se encuentra, se deja sin resolver (poco común, ya que casi siempre
+// trae el económico).
+function _registrarNoPagaServer(ingresosDB, x, operadores) {
   const ids = [x.folio, x.pedido, x.tu1, x.tu2].map(_normTxtServer).filter(function (s) { return s; });
   if (!ids.length) return false;
   const existente = ingresosDB.find(function (v) {
@@ -663,10 +673,33 @@ function _cerrarPendienteNoPagaServer(ingresosDB, x) {
     const vIds = _idsDeObservacionesServer(v.observaciones);
     return ids.some(function (id) { return vIds.indexOf(id) !== -1; });
   });
-  if (!existente) return false;
-  existente.subtotal = 0; existente.subtManiobras = 0; existente.iva = 0; existente.total = 0;
-  existente.montoPendiente = false;
-  existente.observaciones = (existente.observaciones || '') + ' | NO_PAGA confirmado el ' + new Date().toISOString().slice(0, 10);
+  if (existente) {
+    existente.subtotal = 0; existente.subtManiobras = 0; existente.iva = 0; existente.total = 0;
+    existente.montoPendiente = false;
+    existente.observaciones = (existente.observaciones || '') + ' | NO_PAGA confirmado el ' + new Date().toISOString().slice(0, 10);
+    return true;
+  }
+  const match = _matchOperadorServer(operadores, x.operador, x.eco);
+  if (!match) return false;
+  const idParts = [];
+  if (x.folio) idParts.push('FOLIO:' + x.folio);
+  if (x.pedido) idParts.push('PED:' + x.pedido);
+  if (x.tu1) idParts.push('TU1:' + x.tu1);
+  if (x.tu2) idParts.push('TU2:' + x.tu2);
+  if (!idParts.length) return false;
+  const fecha = x.fecha || new Date().toISOString().slice(0, 10);
+  ingresosDB.push({
+    id: 'buz-nopaga-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8),
+    unidad: match.operadorId, folio: 'MANIOBRAS', fecha: fecha, cliente: 'GRUPO COMERCIAL DSW', tipo: 'maniobra',
+    subtotal: 0, subtFlete: 0, subtManiobras: 0, subtOtros: 0, iva: 0, ret: 0, total: 0,
+    estado: 'sin_liquidar', liqNum: null, origen: 'autorizacion_cliente',
+    ruta: (x.destino || '').trim() ? [{ origen: '', destino: (x.destino || '').trim(), kms: '' }] : [], tienda: (x.tienda || '').trim(),
+    observaciones: idParts.join(' | '), sinFacturaJustificar: true,
+    fechaLimiteJustificacion: _sumarDiasHabilesServer(fecha, 15) + 'T23:59:59', montoPendiente: false,
+    capturadoPor: { usuario: 'buzón automático', nombre: 'Buzón automático (No paga)' },
+    creadoEn: new Date().toISOString(), depositoConfirmado: false,
+    sustituidoPorXML: false, pdfURL: null, esAutorizacionCliente: true
+  });
   return true;
 }
 
@@ -678,7 +711,7 @@ function _cerrarPendienteNoPagaServer(ingresosDB, x) {
 // señal de alerta, ese renglón CRUDO se regresa para la lista de
 // pendientes — nunca se inventa ni se fuerza nada, solo se salta el paso
 // manual cuando de verdad no hace falta revisión. Los renglones "No paga"
-// se manejan aparte (ver _cerrarPendienteNoPagaServer): mismo criterio
+// se manejan aparte (ver _registrarNoPagaServer): mismo criterio
 // automático que ya usa el monto real para sustituir un Pendiente (el
 // correo más reciente manda), aplicado también cuando ese correo dice que
 // ya no se paga — nunca requieren revisión manual.
@@ -694,7 +727,7 @@ function _clasificarYRegistrar(renglonesCrudos, ingresosDB, operadores) {
   };
   let noPagaResueltos = 0;
   silvia.filter(esNoPagaTxt).forEach(function (x) {
-    if (_cerrarPendienteNoPagaServer(ingresosDB, x)) noPagaResueltos++;
+    if (_registrarNoPagaServer(ingresosDB, x, operadores)) noPagaResueltos++;
   });
   const utiles = silvia.filter(function (x) { return !esNoPagaTxt(x); });
   // Folios repetidos con monto real distinto (mismo criterio que
