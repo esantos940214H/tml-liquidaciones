@@ -416,9 +416,9 @@ let unidadesRaw=[];
 let asignacionesLog=[];
 
 // ══════════════════════════════════════════════
-// SESIÓN — este módulo es SOLO ADMIN (no usa permisos[modulo] como los
-// demás, porque no hay una clave de permiso "flota" en el esquema de
-// claims — se gatea directo por esAdmin).
+// SESIÓN — admin siempre entra; además se puede dar el permiso puntual
+// "flota" (claims.permisos.flota) a alguien que no sea admin, igual que
+// los demás módulos (ver _tieneAccesoFlota más abajo y usuarios.html).
 // ══════════════════════════════════════════════
 function tmlSetCookie(name,value,days){
   var expires='';
@@ -475,6 +475,9 @@ function mostrarLoginModulo(){
   $('sessionOverlay').classList.add('show');
   setTimeout(function(){$('sessionUser').focus();},100);
 }
+function _tieneAccesoFlota(u){
+  return !!(u&&(u.esAdmin||(u.permisos&&u.permisos.flota)));
+}
 async function intentarLoginFirebase(){
   var email=($('sessionUser').value||'').trim();
   var pass=$('sessionPass').value||'';
@@ -485,8 +488,8 @@ async function intentarLoginFirebase(){
     await TMLSesion.iniciarSesion(email,pass);
     var u=usuarioSesion();
     if(!u){err.textContent='No se pudo iniciar sesión.';err.style.display='block';return;}
-    if(!u.esAdmin){
-      err.textContent='Solo un administrador puede entrar a Flota.';err.style.display='block';
+    if(!_tieneAccesoFlota(u)){
+      err.textContent='Tu usuario no tiene permiso para entrar a Flota.';err.style.display='block';
       await TMLSesion.cerrarSesion();
       return;
     }
@@ -510,14 +513,14 @@ async function recuperarContrasena(){
 function mostrarSesionEnHeader(){
   var u=usuarioSesion();
   if(!u)return;
-  if($('sesionUsuarioLabel'))$('sesionUsuarioLabel').textContent='👤 '+(u.nombre||u.usuario)+' (admin)';
+  if($('sesionUsuarioLabel'))$('sesionUsuarioLabel').textContent='👤 '+(u.nombre||u.usuario)+(u.esAdmin?' (admin)':'');
   if($('btnCerrarSesion'))$('btnCerrarSesion').style.display='inline';
   if($('btnCambiarPass'))$('btnCambiarPass').style.display='inline';
 }
 function verificarSesionModulo(){
   var u=usuarioSesion();
   if(!u){mostrarLoginModulo();return;}
-  if(!u.esAdmin){
+  if(!_tieneAccesoFlota(u)){
     $('sessionDeniedUser').textContent=u.nombre||u.usuario;
     $('sessionDenied').classList.add('show');
     return;
