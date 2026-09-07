@@ -2967,3 +2967,86 @@ exports.wialonSincronizarOdometrosProgramado = onSchedule(
     }
   }
 );
+
+// ══════════════════════════════════════════════════════════════════════════
+// WIALON → BITÁCORA: cada 15 min revisa los viajes con bitácora abierta
+// (tienen "inicio_viaje", no tienen "cierre_viaje") y, según la velocidad
+// que reporta Wialon, marca automático "conduciendo" o "pausa" — sin que el
+// operador tenga que presionar el botón. NUNCA toca "descanso" ni las
+// categorías de excepción (carga, descarga, retenes, descompostura,
+// percance_vial, bloqueo_carretero, eventos_climatologicos): esas las sigue
+// eligiendo el operador a mano, porque solo él sabe si de verdad está
+// descansando o atendiendo una excepción — no solo si el camión está
+// detenido. Solo transiciona entre los dos estados que sí se pueden inferir
+// con seguridad del GPS, y solo si el último evento ya era uno de esos dos
+// (o el inicio del viaje) — si el operador ya marcó otra cosa a mano, se
+// respeta y no se pisa.
+// Una sola llamada a Wialon por corrida (para TODAS las unidades a la vez),
+// igual criterio que wialonSincronizarOdometros, para no gastar más cuota
+// de la API de la necesaria.
+const WIALON_VELOCIDAD_CONDUCIENDO = 5; // km/h
+async function _wialonActualizarBitacorasCore() {
+  const snapBit = await db.collection('bitacoras').get();
+  const abiertas = [];
+  snapBit.forEach(function (d) {
+    const eventos = d.data().eventos || [];
+    if (!eventos.length) return;
+    const tieneInicio = eventos.some(function (e) { return e.tipo === 'inicio_viaje'; });
+    const tieneCierre = eventos.some(function (e) { return e.tipo === 'cierre_viaje'; });
+    const ultimo = eventos[eventos.length - 1];
+    if (tieneInicio && !tieneCierre && ['inicio_viaje', 'conduciendo', 'pausa'].indexOf(ultimo.tipo) !== -1) {
+      abiertas.push({ id: d.id, ultimoTipo: ultimo.tipo });
+    }
+  });
+  if (!abiertas.length) return { totalAbiertas: 0, actualizadas: 0, sinUnidad: 0, sinWialon: 0 };
+
+  const sid = await _wialonLogin(WIALON_TOKEN.value());
+  const spec = { itemsType: 'avl_unit', propName: 'sys_name', propValueMask: '*', sortType: 'sys_name' };
+  const d = await _wialonCall(sid, 'core/search_items', { spec: spec, force: 1, flags: 1, from: 0, to: 0 });
+  const velocidadPorWialonId = {};
+  (d.items || []).forEach(function (it) { velocidadPorWialonId[it.id] = (it.pos && it.pos.s != null) ? it.pos.s : null; });
+
+  let actualizadas = 0, sinUnidad = 0, sinWialon = 0;
+  for (const bit of abiertas) {
+    const fleteSnap = await db.collection('fletesDB').doc(bit.id).get();
+    if (!fleteSnap.exists || !fleteSnap.data().economico) { sinUnidad++; continue; }
+    const economico = _normEconomicoServer(fleteSnap.data().economico);
+    const odoSnap = await db.collection('mantenimientoOdometroWialon').doc(String(economico)).get();
+    if (!odoSnap.exists || !odoSnap.data().wialonId) { sinWialon++; continue; }
+    const velocidad = velocidadPorWialonId[odoSnap.data().wialonId];
+    if (velocidad == null) continue;
+    const nuevoTipo = velocidad > WIALON_VELOCIDAD_CONDUCIENDO ? 'conduciendo' : 'pausa';
+    if (bit.ultimoTipo === nuevoTipo) continue; // ya está en el estado correcto, no duplicar
+    const ahora = new Date().toISOString();
+    const ref = db.collection('bitacoras').doc(bit.id);
+    await db.runTransaction(async function (tx) {
+      const snap = await tx.get(ref);
+      const eventos = (snap.exists && Array.isArray(snap.data().eventos)) ? snap.data().eventos : [];
+      if (eventos.length && !eventos[eventos.length - 1].fin) eventos[eventos.length - 1].fin = ahora;
+      eventos.push({ tipo: nuevoTipo, inicio: ahora, fin: null, origen: 'wialon_auto' });
+      tx.set(ref, { ordenEmbarque: bit.id, eventos: eventos }, { merge: true });
+    });
+    actualizadas++;
+  }
+  return { totalAbiertas: abiertas.length, actualizadas: actualizadas, sinUnidad: sinUnidad, sinWialon: sinWialon };
+}
+exports.wialonActualizarBitacoras = onRequest({ secrets: [WIALON_TOKEN], cors: true, region: 'us-central1', timeoutSeconds: 120 }, async (req, res) => {
+  try {
+    const r = await _wialonActualizarBitacorasCore();
+    res.json(Object.assign({ ok: true }, r));
+  } catch (e) {
+    console.error('wialonActualizarBitacoras:', e);
+    res.status(500).json({ error: e.message || 'Error interno del servidor.' });
+  }
+});
+exports.wialonActualizarBitacorasProgramado = onSchedule(
+  { schedule: '*/15 * * * *', timeZone: 'America/Mexico_City', secrets: [WIALON_TOKEN], region: 'us-central1', timeoutSeconds: 120 },
+  async () => {
+    try {
+      const r = await _wialonActualizarBitacorasCore();
+      if (r.actualizadas) console.log('wialonActualizarBitacorasProgramado:', JSON.stringify(r));
+    } catch (e) {
+      console.error('wialonActualizarBitacorasProgramado:', e);
+    }
+  }
+);
