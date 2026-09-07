@@ -14,14 +14,105 @@ header{background:#1a1a2e;color:#fff;padding:14px 24px;display:flex;align-items:
 .nav a{color:#aaa;text-decoration:none;font-size:12px;padding:6px 12px;border-radius:5px;border:1px solid #333;transition:all .15s}
 .nav a:hover{color:#fff;border-color:#555}
 .nav a.active{color:#fff;background:#e63946;border-color:#e63946}
-.container{max-width:700px;margin:0 auto;padding:20px 16px}
+.container{max-width:1000px;margin:0 auto;padding:20px 16px}
+.card{background:#fff;border-radius:10px;box-shadow:0 2px 12px rgba(0,0,0,.07);padding:20px 24px;margin-bottom:16px}
+.card-title{font-size:12px;font-weight:700;color:#1a1a2e;margin-bottom:14px;text-transform:uppercase;letter-spacing:1px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px}
+.field{display:flex;flex-direction:column;gap:4px}
+.field label{font-size:11px;font-weight:700;color:#666;text-transform:uppercase;letter-spacing:.5px}
+.field input,.field select{border:1.5px solid #dde;border-radius:6px;padding:8px 10px;font-size:13px;color:#1a1a2e;background:#fafafa;width:100%}
+.field input:focus,.field select:focus{outline:none;border-color:#e63946}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end}
+.btn{padding:8px 18px;border-radius:6px;border:none;font-size:12px;font-weight:700;cursor:pointer;transition:all .15s;text-transform:uppercase;letter-spacing:.5px}
+.btn-red{background:#e63946;color:#fff}.btn-red:hover{background:#c1121f}
+.btn-dark{background:#1a1a2e;color:#fff}.btn-dark:hover{background:#0d0d1a}
+.btn-out{background:#fff;color:#1a1a2e;border:1.5px solid #1a1a2e}.btn-out:hover{background:#f0f2f5}
+.btn-sm{padding:5px 11px;font-size:11px}
+.alert{padding:9px 13px;border-radius:7px;font-size:12px;margin-bottom:10px}
+.alert-info{background:#e8f4fd;color:#0369a1;border:1px solid #bae6fd}
+.alert-ok{background:#d1e7dd;color:#0a5233;border:1px solid #a3cfbb}
+.alert-warn{background:#fffbeb;color:#92400e;border:1px solid #fde68a}
+.alert-err{background:#fdeaea;color:#8b1e2b;border:1px solid #f3c1c6}
+.tbl-wrap{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:13px;min-width:560px}
+th{background:#1a1a2e;color:#fff;padding:8px 10px;font-size:11px;text-transform:uppercase;letter-spacing:.7px;text-align:left;font-weight:600}
+td{padding:7px 10px;border-bottom:1px solid #f0f0f0;vertical-align:middle}
+tr:last-child td{border-bottom:none}
+tr:hover td{background:#fafafa}
+.badge{display:inline-block;border-radius:4px;padding:2px 8px;font-size:10px;font-weight:700;white-space:nowrap}
+.bg-green{background:#d1e7dd;color:#0a5233;border:1px solid #a3cfbb}
+.bg-red{background:#fdeaea;color:#8b1e2b;border:1px solid #f3c1c6}
+.bg-gray{background:#f0f2f5;color:#555;border:1px solid #dde}
+.fb-status{font-size:11px;color:#aaa}
+.fb-ok{color:#2d6a4f}.fb-err{color:#e63946}
+.permisos-grupo{margin-top:14px}
+.permisos-grupo-titulo{font-size:11px;font-weight:700;color:#666;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px}
+.permisos-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:6px 14px}
+.chk{display:flex;align-items:center;gap:6px;font-size:12px;color:#333}
+.chk input{width:15px;height:15px}
+@media(max-width:600px){.row{flex-direction:column;align-items:stretch}}
+
+/* ── SESIÓN (login por módulo) ── */
+.session-overlay{position:fixed;inset:0;background:#1a1a2e;z-index:999999;display:none;align-items:center;justify-content:center}
+.session-overlay.show{display:flex}
+.session-box{background:#fff;border-radius:14px;padding:36px;width:320px;box-shadow:0 20px 60px rgba(0,0,0,.4);text-align:center}
+.session-logo{font-size:20px;font-weight:800;margin-bottom:4px;color:#1a1a2e}
+.session-logo span{color:#e63946}
+.session-modulo{font-size:13px;color:#666;margin-bottom:18px;font-weight:700}
+.session-input{width:100%;border:1.5px solid #dde;border-radius:8px;padding:10px 14px;font-size:14px;margin-bottom:10px;outline:none}
+.session-input:focus{border-color:#e63946}
+.session-btn{width:100%;padding:11px;background:#e63946;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer}
+.session-btn:hover{background:#c1121f}
+.session-err{color:#e63946;font-size:12px;margin-top:8px}
+.session-user-label{font-size:11px;color:#aaa}
+.session-logout{font-size:11px;color:#aaa;text-decoration:underline;cursor:pointer;background:none;border:none}
+.session-logout:hover{color:#fff}
 </style>
 <script>if(window!==window.top)document.documentElement.className+=' in-iframe';</script>
 </head>
 <body>
+
+<!-- OVERLAY DE SESIÓN -->
+<div class="session-overlay" id="sessionOverlay">
+  <div class="session-box">
+    <div class="session-logo">MUDANZAS <span>TML</span></div>
+    <div class="session-modulo" id="sessionModuloLabel">Iniciar sesión — Usuarios</div>
+    <input type="email" id="sessionUser" class="session-input" placeholder="Email" autocomplete="username" onkeydown="if(event.key==='Enter')document.getElementById('sessionPass').focus()">
+    <input type="password" id="sessionPass" class="session-input" placeholder="Contraseña" autocomplete="current-password" onkeydown="if(event.key==='Enter')intentarLoginFirebase()">
+    <button class="session-btn" onclick="intentarLoginFirebase()">Entrar</button>
+    <div class="session-err" id="sessionErr" style="display:none"></div>
+    <div style="margin-top:10px"><a href="#" onclick="recuperarContrasena();return false;" style="color:#aaa;font-size:11px">¿Olvidaste tu contraseña?</a></div>
+    <div class="session-err" id="sessionRecupMsg" style="display:none"></div>
+  </div>
+</div>
+<div class="session-overlay" id="sessionDenied">
+  <div class="session-box">
+    <div class="session-logo">MUDANZAS <span>TML</span></div>
+    <div class="session-modulo">⛔ Solo un administrador puede entrar a este módulo.</div>
+    <div style="font-size:12px;color:#888;margin-bottom:16px">Sesión iniciada como <strong id="sessionDeniedUser"></strong></div>
+    <button class="session-btn" onclick="cerrarSesionTML()">Cerrar sesión</button>
+  </div>
+</div>
+<div class="session-overlay" id="modalCambiarPass">
+  <div class="session-box">
+    <div class="session-logo">MUDANZAS <span>TML</span></div>
+    <div class="session-modulo">🔑 Cambiar contraseña</div>
+    <input type="password" id="cpActual" class="session-input" placeholder="Contraseña actual" autocomplete="current-password">
+    <input type="password" id="cpNueva" class="session-input" placeholder="Contraseña nueva (mínimo 6 caracteres)" autocomplete="new-password">
+    <input type="password" id="cpConfirmar" class="session-input" placeholder="Confirmar contraseña nueva" autocomplete="new-password" onkeydown="if(event.key==='Enter')confirmarCambiarPass()">
+    <button class="session-btn" onclick="confirmarCambiarPass()">Guardar</button>
+    <button class="session-logout" style="margin-top:10px" onclick="cerrarModalCambiarPass()">Cancelar</button>
+    <div class="session-err" id="cpErr" style="display:none"></div>
+    <div class="session-err" id="cpOk" style="display:none;color:#2d6a4f">✅ Contraseña actualizada.</div>
+  </div>
+</div>
+
 <header>
   <div class="logo">MUDANZAS <span>TML</span> <span style="font-size:13px;font-weight:400;color:#aaa;margin-left:8px">· Usuarios</span></div>
   <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+    <span class="session-user-label" id="sesionUsuarioLabel"></span>
+    <button class="session-logout" id="btnCambiarPass" onclick="abrirModalCambiarPass()" style="display:none">🔑 Cambiar contraseña</button>
+    <button class="session-logout" id="btnCerrarSesion" onclick="cerrarSesionTML()" style="display:none">Cerrar sesión</button>
+    <span class="fb-status" id="fbStatus">⏳ Conectando...</span>
     <nav class="nav">
       <a href="https://anticipos.mudanzastml.mx">📋 Anticipos</a>
       <a href="https://cxc.mudanzastml.mx">📄 Ingresos</a>
@@ -39,7 +130,364 @@ header{background:#1a1a2e;color:#fff;padding:14px 24px;display:flex;align-items:
   </div>
 </header>
 
-<div class="container"></div>
+<div class="container">
 
+  <div class="card">
+    <div class="card-title" id="formTitulo">➕ Nuevo usuario</div>
+    <div class="row">
+      <div class="field" style="flex:1;min-width:200px"><label>Nombre completo</label><input type="text" id="uNombre" placeholder="Ej: Karla Morales Sanchez"></div>
+      <div class="field" style="flex:1;min-width:200px"><label>Email</label><input type="email" id="uEmail" placeholder="nombre@mudandote.mx" autocomplete="off"></div>
+      <div class="field" style="min-width:160px"><label>Rol</label>
+        <select id="uRol" onchange="onCambioRol()">
+          <option value="admin">admin</option>
+          <option value="cobranza">cobranza</option>
+          <option value="operaciones">operaciones</option>
+          <option value="nomina">nomina</option>
+          <option value="consulta">consulta</option>
+        </select>
+      </div>
+    </div>
+    <div class="row" style="margin-top:10px">
+      <div class="field" style="min-width:220px"><label id="uPassLabel">Contraseña temporal</label><input type="text" id="uPass" placeholder="Mínimo 6 caracteres" autocomplete="new-password"></div>
+    </div>
+
+    <div id="wrapPermisos">
+      <div class="permisos-grupo">
+        <div class="permisos-grupo-titulo">Módulos a los que puede entrar</div>
+        <div class="permisos-grid" id="permisosModulo"></div>
+      </div>
+      <div class="permisos-grupo">
+        <div class="permisos-grupo-titulo">Candados de acción (puede editar/subir en...)</div>
+        <div class="permisos-grid" id="permisosAccion"></div>
+      </div>
+      <div class="permisos-grupo">
+        <div class="permisos-grupo-titulo">Solo consulta (aunque tenga acceso al módulo)</div>
+        <div class="permisos-grid" id="permisosSoloVer"></div>
+      </div>
+    </div>
+    <div class="alert alert-info" id="avisoAdmin" style="display:none;margin-top:14px">Un usuario con rol "admin" tiene acceso automático a todo — no hace falta marcar permisos.</div>
+
+    <div class="row" style="margin-top:16px">
+      <button class="btn btn-red" onclick="guardarUsuario()">💾 Guardar usuario</button>
+      <button class="btn btn-out" id="btnCancelarEdicion" onclick="limpiarFormulario()" style="display:none">Cancelar edición</button>
+    </div>
+    <div id="uInfo" style="margin-top:10px"></div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">👤 Usuarios de oficina <button class="btn btn-out btn-sm" onclick="cargarUsuarios()">🔄 Recargar</button></div>
+    <div class="tbl-wrap"><table>
+      <thead><tr><th>Nombre</th><th>Email</th><th>Rol</th><th>Estado</th><th></th></tr></thead>
+      <tbody id="tbUsuarios"></tbody>
+    </table></div>
+  </div>
+
+</div>
+
+<!-- Firebase compat -->
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+<!-- Firebase Auth (login del módulo — ver shared/sesion.js) -->
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
+<script src="shared/sesion.js"></script>
+<script>
+window._fbInit=false;
+window._fbCallbacks=[];
+window.onFBReady=function(cb){if(window._fbInit)cb();else window._fbCallbacks.push(cb);};
+(function(){
+  try{
+    var cfg={apiKey:"AIzaSyDqlhREJFVFLGzz7bVlPcNl1Uba9HI3r8s",authDomain:"tml-liquidaciones.firebaseapp.com",
+      projectId:"tml-liquidaciones",storageBucket:"tml-liquidaciones.firebasestorage.app",
+      messagingSenderId:"268455373953",appId:"1:268455373953:web:ad359c5dbcba9f53557180"};
+    if(!firebase.apps.length)firebase.initializeApp(cfg);
+    firebase.firestore();
+    window._fbInit=true;
+    window._fbCallbacks.forEach(function(cb){try{cb();}catch(e){console.error(e);}});
+    window._fbCallbacks=[];
+  }catch(e){console.error('Firebase init error:',e);}
+})();
+</script>
+
+<script>
+const $=id=>document.getElementById(id);
+let fbReady=false;
+let usuariosRaw=[];
+let uidEnEdicion='';
+
+const FUNCTION_URL_USUARIOS_LISTAR='https://us-central1-tml-liquidaciones.cloudfunctions.net/usuariosListar';
+const FUNCTION_URL_USUARIOS_GUARDAR='https://us-central1-tml-liquidaciones.cloudfunctions.net/usuariosGuardar';
+const FUNCTION_URL_USUARIOS_CAMBIAR_ESTADO='https://us-central1-tml-liquidaciones.cloudfunctions.net/usuariosCambiarEstado';
+
+// Mismas claves que admin/crear-usuarios.js y functions/index.js
+// (_CLAVES_PERMISO_MODULO/_ACCION/_SOLO_VER) — si se agrega un permiso
+// nuevo en el futuro, agregarlo en LOS TRES lugares para que coincidan.
+const PERMISOS_MODULO=[
+  {clave:'ant',label:'Anticipos'},{clave:'ing',label:'Ingresos'},{clave:'liq',label:'Liquidaciones'},
+  {clave:'nom',label:'Nómina'},{clave:'inc',label:'Incidentes'},{clave:'hist',label:'Historial'},
+  {clave:'autoriz',label:'Autorizaciones'},{clave:'precarga',label:'Pre-carga'},{clave:'proveedores',label:'Proveedores (CxP)'}
+];
+const PERMISOS_ACCION=[
+  {clave:'anticipos_editar',label:'Anticipos'},{clave:'ingresos_editar',label:'Ingresos'},
+  {clave:'incidentes_editar',label:'Incidentes'},{clave:'casetas_editar',label:'Casetas'}
+];
+const PERMISOS_SOLO_VER=[
+  {clave:'ant_solo_ver',label:'Anticipos (solo ver)'},{clave:'liq_solo_ver',label:'Liquidaciones (solo ver)'}
+];
+
+function _pintarGrupoPermisos(contenedorId,lista){
+  $(contenedorId).innerHTML=lista.map(function(p){
+    return '<label class="chk"><input type="checkbox" data-permiso="'+p.clave+'"> '+p.label+'</label>';
+  }).join('');
+}
+_pintarGrupoPermisos('permisosModulo',PERMISOS_MODULO);
+_pintarGrupoPermisos('permisosAccion',PERMISOS_ACCION);
+_pintarGrupoPermisos('permisosSoloVer',PERMISOS_SOLO_VER);
+
+function onCambioRol(){
+  var esAdmin=$('uRol').value==='admin';
+  $('wrapPermisos').style.display=esAdmin?'none':'block';
+  $('avisoAdmin').style.display=esAdmin?'block':'none';
+}
+onCambioRol();
+
+function leerPermisosFormulario(){
+  var permisos={};
+  document.querySelectorAll('#wrapPermisos input[data-permiso]').forEach(function(el){
+    permisos[el.getAttribute('data-permiso')]=el.checked;
+  });
+  return permisos;
+}
+function pintarPermisosFormulario(permisos){
+  document.querySelectorAll('#wrapPermisos input[data-permiso]').forEach(function(el){
+    el.checked=!!(permisos&&permisos[el.getAttribute('data-permiso')]);
+  });
+}
+
+// ══════════════════════════════════════════════
+// SESIÓN — este módulo es SOLO ADMIN, igual que Flota.
+// ══════════════════════════════════════════════
+function tmlGetCookie(name){
+  var m=document.cookie.match('(^|;\\s*)'+name+'=([^;]*)');
+  return m?decodeURIComponent(m[2]):null;
+}
+function tmlDeleteCookie(name){
+  document.cookie=name+'=;expires=Thu, 01 Jan 1970 00:00:00 GMT;domain=.mudanzastml.mx;path=/;SameSite=Lax;Secure';
+}
+function usuarioSesion(){
+  try{return JSON.parse(tmlGetCookie('tml_user')||'null');}catch(e){return null;}
+}
+async function cerrarSesionTML(){
+  if(window.TMLSesion) await TMLSesion.cerrarSesion();
+  else tmlDeleteCookie('tml_user');
+  location.reload();
+}
+function abrirModalCambiarPass(){
+  $('cpActual').value='';$('cpNueva').value='';$('cpConfirmar').value='';
+  $('cpErr').style.display='none';$('cpOk').style.display='none';
+  $('modalCambiarPass').classList.add('show');
+  setTimeout(function(){$('cpActual').focus();},100);
+}
+function cerrarModalCambiarPass(){
+  $('modalCambiarPass').classList.remove('show');
+}
+async function confirmarCambiarPass(){
+  var actual=$('cpActual').value||'';
+  var nueva=$('cpNueva').value||'';
+  var confirmar=$('cpConfirmar').value||'';
+  var err=$('cpErr'),ok=$('cpOk');
+  err.style.display='none';ok.style.display='none';
+  if(!actual||!nueva||!confirmar){err.textContent='Llena los tres campos.';err.style.display='block';return;}
+  if(nueva.length<6){err.textContent='La contraseña nueva debe tener al menos 6 caracteres.';err.style.display='block';return;}
+  if(nueva!==confirmar){err.textContent='La confirmación no coincide con la contraseña nueva.';err.style.display='block';return;}
+  try{
+    await TMLSesion.cambiarContrasena(actual,nueva);
+    ok.style.display='block';
+    setTimeout(function(){cerrarModalCambiarPass();},1500);
+  }catch(e){
+    var msg='No se pudo cambiar la contraseña.';
+    if(e.code==='auth/wrong-password'||e.code==='auth/invalid-credential')msg='La contraseña actual no es correcta.';
+    else if(e.code==='auth/weak-password')msg='La contraseña nueva es muy débil (mínimo 6 caracteres).';
+    else if(e.code==='auth/requires-recent-login')msg='Tu sesión es muy antigua — cierra sesión, vuelve a entrar, e intenta de nuevo.';
+    err.textContent=msg;err.style.display='block';
+  }
+}
+function mostrarLoginModulo(){
+  $('sessionModuloLabel').textContent='Iniciar sesión — Usuarios';
+  $('sessionOverlay').classList.add('show');
+  setTimeout(function(){$('sessionUser').focus();},100);
+}
+async function intentarLoginFirebase(){
+  var email=($('sessionUser').value||'').trim();
+  var pass=$('sessionPass').value||'';
+  var err=$('sessionErr');
+  err.style.display='none';
+  if(!email||!pass){err.textContent='Ingresa tu email y contraseña.';err.style.display='block';return;}
+  try{
+    await TMLSesion.iniciarSesion(email,pass);
+    var u=usuarioSesion();
+    if(!u){err.textContent='No se pudo iniciar sesión.';err.style.display='block';return;}
+    if(!u.esAdmin){
+      err.textContent='Solo un administrador puede entrar a Usuarios.';err.style.display='block';
+      await TMLSesion.cerrarSesion();
+      return;
+    }
+    $('sessionOverlay').classList.remove('show');
+    mostrarSesionEnHeader();
+  }catch(e){
+    err.textContent='No se pudo iniciar sesión: '+(e.message||e.code||'error desconocido');err.style.display='block';
+  }
+}
+async function recuperarContrasena(){
+  var email=($('sessionUser').value||'').trim();
+  var msg=$('sessionRecupMsg');
+  if(!email){msg.style.color='#e63946';msg.textContent='Escribe tu email arriba y da clic de nuevo.';msg.style.display='block';return;}
+  try{
+    await TMLSesion.enviarCorreoRecuperacion(email);
+    msg.style.color='#2d6a4f';msg.textContent='✅ Te enviamos un correo a '+email+' con instrucciones para restablecer tu contraseña.';msg.style.display='block';
+  }catch(e){
+    msg.style.color='#e63946';msg.textContent='No se pudo enviar el correo: '+(e.message||e.code||'error desconocido');msg.style.display='block';
+  }
+}
+function mostrarSesionEnHeader(){
+  var u=usuarioSesion();
+  if(!u)return;
+  if($('sesionUsuarioLabel'))$('sesionUsuarioLabel').textContent='👤 '+(u.nombre||u.usuario)+' (admin)';
+  if($('btnCerrarSesion'))$('btnCerrarSesion').style.display='inline';
+  if($('btnCambiarPass'))$('btnCambiarPass').style.display='inline';
+}
+function verificarSesionModulo(){
+  var u=usuarioSesion();
+  if(!u){mostrarLoginModulo();return;}
+  if(!u.esAdmin){
+    $('sessionDeniedUser').textContent=u.nombre||u.usuario;
+    $('sessionDenied').classList.add('show');
+    return;
+  }
+  mostrarSesionEnHeader();
+  cargarUsuarios();
+}
+window.onFBReady(function(){
+  fbReady=true;
+  $('fbStatus').textContent='✅ Conectado';
+  $('fbStatus').className='fb-status fb-ok';
+  verificarSesionModulo();
+});
+setTimeout(function(){if(!fbReady){$('fbStatus').textContent='❌ Sin conexión';$('fbStatus').className='fb-status fb-err';}},6000);
+
+// ══════════════════════════════════════════════
+// LLAMADAS A LAS CLOUD FUNCTIONS (con el ID token de Firebase Auth)
+// ══════════════════════════════════════════════
+async function _llamarFuncion(url,metodo,body){
+  var user=firebase.auth().currentUser;
+  if(!user)throw new Error('Tu sesión expiró, vuelve a entrar.');
+  var token=await user.getIdToken();
+  var resp=await fetch(url,{
+    method:metodo,
+    headers:{'Content-Type':'application/json','Authorization':'Bearer '+token},
+    body:body?JSON.stringify(body):undefined
+  });
+  var datos=await resp.json().catch(function(){return{};});
+  if(!resp.ok)throw new Error(datos.error||'Error del servidor ('+resp.status+').');
+  return datos;
+}
+
+async function cargarUsuarios(){
+  try{
+    var datos=await _llamarFuncion(FUNCTION_URL_USUARIOS_LISTAR,'GET');
+    usuariosRaw=datos.usuarios||[];
+    renderUsuarios();
+  }catch(e){
+    console.error('cargarUsuarios:',e);
+    $('tbUsuarios').innerHTML='<tr><td colspan="5">⚠️ '+e.message+'</td></tr>';
+  }
+}
+
+function renderUsuarios(){
+  $('tbUsuarios').innerHTML=usuariosRaw.map(function(u){
+    var estadoBadge=u.disabled?'<span class="badge bg-red">Inactivo</span>':'<span class="badge bg-green">Activo</span>';
+    return '<tr>'+
+      '<td>'+(u.nombre||'—')+'</td>'+
+      '<td>'+u.email+'</td>'+
+      '<td>'+(u.rol||'—')+'</td>'+
+      '<td>'+estadoBadge+'</td>'+
+      '<td>'+
+        '<button class="btn btn-out btn-sm" onclick="editarUsuario(\''+u.uid+'\')">✏️ Editar</button> '+
+        '<button class="btn btn-out btn-sm" onclick="cambiarEstadoUsuario(\''+u.uid+'\','+(!u.disabled)+')">'+(u.disabled?'✅ Activar':'⛔ Desactivar')+'</button>'+
+      '</td>'+
+    '</tr>';
+  }).join('')||'<tr><td colspan="5">Sin usuarios.</td></tr>';
+}
+
+function editarUsuario(uid){
+  var u=usuariosRaw.find(function(x){return x.uid===uid;});
+  if(!u)return;
+  uidEnEdicion=uid;
+  $('formTitulo').textContent='✏️ Editando: '+(u.nombre||u.email);
+  $('uNombre').value=u.nombre||'';
+  $('uEmail').value=u.email||'';
+  $('uEmail').disabled=true;
+  $('uRol').value=u.rol||'consulta';
+  $('uPassLabel').textContent='Nueva contraseña (opcional — deja vacío para no cambiarla)';
+  $('uPass').value='';
+  pintarPermisosFormulario(u.permisos);
+  onCambioRol();
+  $('btnCancelarEdicion').style.display='inline';
+  $('uInfo').innerHTML='';
+  window.scrollTo({top:0,behavior:'smooth'});
+}
+
+function limpiarFormulario(){
+  uidEnEdicion='';
+  $('formTitulo').textContent='➕ Nuevo usuario';
+  $('uNombre').value='';
+  $('uEmail').value='';
+  $('uEmail').disabled=false;
+  $('uRol').value='admin';
+  $('uPassLabel').textContent='Contraseña temporal';
+  $('uPass').value='';
+  pintarPermisosFormulario({});
+  onCambioRol();
+  $('btnCancelarEdicion').style.display='none';
+  $('uInfo').innerHTML='';
+}
+
+async function guardarUsuario(){
+  var nombre=($('uNombre').value||'').trim();
+  var email=($('uEmail').value||'').trim().toLowerCase();
+  var rol=$('uRol').value;
+  var passwordTemporal=($('uPass').value||'').trim();
+  var info=$('uInfo');
+  info.innerHTML='';
+  if(!nombre||!email){info.innerHTML='<div class="alert alert-err">Escribe nombre y email.</div>';return;}
+  if(!uidEnEdicion&&!passwordTemporal){info.innerHTML='<div class="alert alert-err">Un usuario nuevo necesita una contraseña temporal.</div>';return;}
+  try{
+    await _llamarFuncion(FUNCTION_URL_USUARIOS_GUARDAR,'POST',{
+      uid:uidEnEdicion||undefined,
+      email:email,nombre:nombre,rol:rol,
+      permisos:leerPermisosFormulario(),
+      passwordTemporal:passwordTemporal||undefined
+    });
+    info.innerHTML='<div class="alert alert-ok">✅ Guardado. '+(uidEnEdicion?'':'Dile a la persona su email y su contraseña temporal para que inicie sesión y la cambie.')+'</div>';
+    limpiarFormulario();
+    await cargarUsuarios();
+  }catch(e){
+    console.error('guardarUsuario:',e);
+    info.innerHTML='<div class="alert alert-err">⚠️ '+e.message+'</div>';
+  }
+}
+
+async function cambiarEstadoUsuario(uid,disabled){
+  var u=usuariosRaw.find(function(x){return x.uid===uid;});
+  var nombre=u?(u.nombre||u.email):uid;
+  var accion=disabled?'desactivar':'activar';
+  if(!confirm((disabled?'⛔':'✅')+' ¿Seguro que quieres '+accion+' a '+nombre+'?'+(disabled?' No podrá iniciar sesión hasta que la reactives.':'')))return;
+  try{
+    await _llamarFuncion(FUNCTION_URL_USUARIOS_CAMBIAR_ESTADO,'POST',{uid:uid,disabled:disabled});
+    await cargarUsuarios();
+  }catch(e){
+    alert('⚠️ '+e.message);
+  }
+}
+</script>
 </body>
 </html>
