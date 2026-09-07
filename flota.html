@@ -324,6 +324,13 @@ tr:hover td{background:#fafafa}
     <div class="card">
       <div class="card-title">📦 Entradas de inventario (facturas de compra)</div>
       <p style="font-size:12px;color:#888;margin-bottom:10px">Registra aquí cuando entre inventario nuevo al almacén (compra de filtros/aceite) — suma a la existencia del artículo, nunca la reemplaza.</p>
+      <div class="field" style="max-width:320px;margin-bottom:14px"><label>Subir factura (XML) — empareja por No. de parte</label><input type="file" id="entXmlArchivo" accept=".xml" onchange="mtoSubirFacturaXML(event)"></div>
+      <div id="entXmlWrap" style="display:none;margin-bottom:16px">
+        <div id="entXmlInfo" style="margin-bottom:8px"></div>
+        <div class="tbl-wrap"><table><thead><tr><th></th><th>Descripción (factura)</th><th>No. parte</th><th class="r">Cantidad</th><th class="r">Costo unitario</th><th>Artículo</th></tr></thead><tbody id="tbEntXml"></tbody></table></div>
+        <button class="btn btn-red btn-sm" style="margin-top:10px" onclick="mtoRegistrarEntradasXML()">💾 Registrar las marcadas</button>
+      </div>
+      <div class="card-title" style="font-size:11px">O captúralo a mano</div>
       <div class="row">
         <div class="field" style="min-width:200px"><label>Artículo</label><select id="entArticulo"></select></div>
         <div class="field" style="min-width:100px"><label>Cantidad</label><input type="number" id="entCantidad" min="0" step="1"></div>
@@ -1596,10 +1603,29 @@ function poblarMtoSelectEntrada(){
   }).join('');
   if(actual)s.value=actual;
 }
-// mtoRegistrarEntradaInventario: SUMA a la existencia (nunca la reemplaza)
-// — se relee el artículo justo antes de escribir, para no pisar otra
-// entrada o un ajuste manual que haya pasado mientras se llenaba el
-// formulario. El costo unitario solo se actualiza si se llenó ese campo.
+// _mtoAplicarEntrada: núcleo compartido entre la captura a mano y el
+// registro en lote desde el XML — SUMA a la existencia (nunca la
+// reemplaza), releyendo el artículo justo antes de escribir para no pisar
+// otro movimiento concurrente. costoUnitario null/undefined = no cambiarlo.
+async function _mtoAplicarEntrada(articuloId,cantidad,costoUnitario,factura,proveedor,fecha){
+  var db=firebase.firestore();
+  var refArt=db.collection('mantenimientoArticulos').doc(articuloId);
+  var snapArt=await refArt.get();
+  if(!snapArt.exists)throw new Error('No se encontró el artículo.');
+  var art=snapArt.data();
+  var existenciaNueva=(art.existencia||0)+cantidad;
+  var campos={existencia:existenciaNueva};
+  if(costoUnitario!=null)campos.costoUnitario=costoUnitario;
+  await refArt.set(campos,{merge:true});
+  var u=usuarioSesion();
+  await db.collection('mantenimientoEntradasInventario').add({
+    articuloId:articuloId,articuloNombre:art.nombre,cantidad:cantidad,
+    costoUnitario:campos.costoUnitario!=null?campos.costoUnitario:(art.costoUnitario||0),
+    factura:factura||'',proveedor:proveedor||'',fecha:fecha||hoy(),
+    capturadoPor:u?(u.nombre||u.usuario):'',creadoEn:new Date().toISOString()
+  });
+  return{nombre:art.nombre,existenciaNueva:existenciaNueva};
+}
 async function mtoRegistrarEntradaInventario(){
   var articuloId=$('entArticulo').value;
   var cantidad=parseFloat($('entCantidad').value||0);
@@ -1610,24 +1636,80 @@ async function mtoRegistrarEntradaInventario(){
   if(!articuloId){alert('Selecciona el artículo.');return;}
   if(!cantidad||cantidad<=0){alert('Captura la cantidad recibida.');return;}
   try{
-    var db=firebase.firestore();
-    var refArt=db.collection('mantenimientoArticulos').doc(articuloId);
-    var snapArt=await refArt.get();
-    if(!snapArt.exists){alert('No se encontró el artículo.');return;}
-    var art=snapArt.data();
-    var existenciaNueva=(art.existencia||0)+cantidad;
-    var campos={existencia:existenciaNueva};
-    if(costoTxt!==''&&costoTxt!=null)campos.costoUnitario=parseFloat(costoTxt)||0;
-    await refArt.set(campos,{merge:true});
-    var u=usuarioSesion();
-    await db.collection('mantenimientoEntradasInventario').add({
-      articuloId:articuloId,articuloNombre:art.nombre,cantidad:cantidad,
-      costoUnitario:campos.costoUnitario!=null?campos.costoUnitario:(art.costoUnitario||0),
-      factura:factura,proveedor:proveedor,fecha:fecha,
-      capturadoPor:u?(u.nombre||u.usuario):'',creadoEn:new Date().toISOString()
-    });
-    $('entInfo').innerHTML='<div class="alert alert-ok">✅ Entrada registrada — nueva existencia de "'+art.nombre+'": '+fmtN(existenciaNueva,0)+'.</div>';
+    var costoUnitario=(costoTxt!==''&&costoTxt!=null)?(parseFloat(costoTxt)||0):null;
+    var r=await _mtoAplicarEntrada(articuloId,cantidad,costoUnitario,factura,proveedor,fecha);
+    $('entInfo').innerHTML='<div class="alert alert-ok">✅ Entrada registrada — nueva existencia de "'+r.nombre+'": '+fmtN(r.existenciaNueva,0)+'.</div>';
     $('entCantidad').value='';$('entCosto').value='';$('entFactura').value='';$('entProveedor').value='';
+    await cargarMantenimiento();
+  }catch(e){alert('⚠️ Error al registrar: '+e.message);}
+}
+// mtoSubirFacturaXML: lee el CFDI, saca folio/proveedor/fecha del
+// Comprobante/Emisor y cada Concepto con su NoIdentificacion — ese campo es
+// donde los proveedores ponen el número de parte en la factura. Empareja
+// contra el catálogo (comparando numeroParte normalizado) y muestra todo
+// para revisar/corregir antes de registrar nada — nunca se guarda solo.
+var _entXmlConceptos=[],_entXmlMeta=null;
+function _mtoNormNoParte(s){return(s||'').toString().trim().toUpperCase();}
+async function mtoSubirFacturaXML(ev){
+  var file=(ev.target.files||[])[0];
+  if(!file)return;
+  try{
+    var text=await file.text();
+    var doc=new DOMParser().parseFromString(text,'text/xml');
+    var comp=doc.querySelector('Comprobante');
+    if(!comp){alert('⚠️ No se pudo leer el XML (no es un CFDI válido).');return;}
+    var emisor=doc.querySelector('Emisor');
+    _entXmlMeta={
+      folio:(comp.getAttribute('Serie')?comp.getAttribute('Serie')+'-':'')+(comp.getAttribute('Folio')||''),
+      fecha:(comp.getAttribute('Fecha')||'').slice(0,10),
+      proveedor:emisor?(emisor.getAttribute('Nombre')||''):''
+    };
+    _entXmlConceptos=Array.from(doc.querySelectorAll('Concepto')).map(function(c){
+      var noParte=_mtoNormNoParte(c.getAttribute('NoIdentificacion'));
+      var match=noParte?MTO_ARTICULOS.find(function(a){return _mtoNormNoParte(a.numeroParte)===noParte;}):null;
+      return{
+        descripcion:c.getAttribute('Descripcion')||'',noParte:c.getAttribute('NoIdentificacion')||'',
+        cantidad:parseFloat(c.getAttribute('Cantidad')||0),costoUnitario:parseFloat(c.getAttribute('ValorUnitario')||0),
+        articuloId:match?match.id:'',incluir:!!match
+      };
+    });
+    renderMtoEntradasXML();
+  }catch(e){alert('⚠️ Error al leer el XML: '+e.message);}
+}
+function mtoEntXmlActualizar(i,campo,valor){
+  if(campo==='articuloId')_entXmlConceptos[i].incluir=!!valor;
+  _entXmlConceptos[i][campo]=valor;
+}
+function renderMtoEntradasXML(){
+  var wrap=$('entXmlWrap');
+  if(!_entXmlConceptos.length){wrap.style.display='none';return;}
+  wrap.style.display='block';
+  var sinMatch=_entXmlConceptos.filter(function(c){return !c.articuloId;}).length;
+  $('entXmlInfo').innerHTML='<div class="alert '+(sinMatch?'alert-warn':'alert-ok')+'">Factura '+(_entXmlMeta.folio||'—')+' — '+(_entXmlMeta.proveedor||'sin nombre')+' ('+_entXmlMeta.fecha+'). '
+    +(sinMatch?'⚠️ '+sinMatch+' renglón(es) sin artículo compatible en el catálogo — elígelo a mano o dalos de alta primero, o desmárcalos.':'✅ Todos los renglones emparejaron por número de parte.')+'</div>';
+  $('tbEntXml').innerHTML=_entXmlConceptos.map(function(c,i){
+    return '<tr><td><input type="checkbox" '+(c.incluir?'checked':'')+' onchange="mtoEntXmlActualizar('+i+',\'incluir\',this.checked)"></td>'
+      +'<td style="font-size:12px">'+c.descripcion+'</td><td class="num">'+(c.noParte||'—')+'</td>'
+      +'<td class="num r">'+fmtN(c.cantidad,0)+'</td><td class="r">'+fmt(c.costoUnitario)+'</td>'
+      +'<td><select onchange="mtoEntXmlActualizar('+i+',\'articuloId\',this.value);this.value?_entXmlConceptos['+i+'].incluir=true:0">'
+      +'<option value="">— Sin emparejar —</option>'
+      +MTO_ARTICULOS.map(function(a){return '<option value="'+a.id+'"'+(a.id===c.articuloId?' selected':'')+'>'+a.nombre+(a.numeroParte?' ('+a.numeroParte+')':'')+'</option>';}).join('')
+      +'</select></td></tr>';
+  }).join('');
+}
+async function mtoRegistrarEntradasXML(){
+  var seleccionados=_entXmlConceptos.filter(function(c){return c.incluir&&c.articuloId&&c.cantidad>0;});
+  if(!seleccionados.length){alert('No hay ningún renglón marcado con artículo asignado.');return;}
+  if(!confirm('¿Registrar '+seleccionados.length+' entrada(s) de inventario de esta factura?'))return;
+  try{
+    for(var i=0;i<seleccionados.length;i++){
+      var c=seleccionados[i];
+      await _mtoAplicarEntrada(c.articuloId,c.cantidad,c.costoUnitario||null,_entXmlMeta.folio,_entXmlMeta.proveedor,_entXmlMeta.fecha);
+    }
+    alert('✅ Se registraron '+seleccionados.length+' entrada(s).');
+    _entXmlConceptos=[];_entXmlMeta=null;
+    $('entXmlArchivo').value='';
+    $('entXmlWrap').style.display='none';
     await cargarMantenimiento();
   }catch(e){alert('⚠️ Error al registrar: '+e.message);}
 }
