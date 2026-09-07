@@ -327,7 +327,7 @@ tr:hover td{background:#fafafa}
     </div>
 
     <div class="card">
-      <div class="card-title">🎯 Ciclo de mantenimiento por unidad <span class="info-tip">?<span class="info-tip-box">El contador de Wialon (cnm) NO es el odómetro real del camión — solo cuenta desde que se instaló el rastreador, y no dice en qué punto del ciclo de servicio va cada camión. El kilómetro base de cada unidad se fija solo: (1) a mano con "Configurar/Editar", idealmente con el kilometraje real que te confirme el operador, o (2) automático, cada vez que registras un mantenimiento real arriba (usa el km que capturaste en esa orden).</span></span></div>
+      <div class="card-title">🎯 Ciclo de mantenimiento por unidad <span class="info-tip">?<span class="info-tip-box">El contador de Wialon (cnm) NO es el odómetro real del camión — solo cuenta desde que se instaló el rastreador, y no dice en qué punto del ciclo de servicio va cada camión. El kilómetro base de cada unidad se fija solo: (1) a mano con "Configurar/Editar", idealmente con el kilometraje real que te confirme el operador, o (2) automático, cada vez que registras un mantenimiento real arriba (usa el km que capturaste en esa orden).</span></span> <button class="btn btn-out btn-sm" onclick="mtoActualizarIntervalos25k()">🔧 Poner intervalo en 25,000 (529 en 14,000) a las ya configuradas</button></div>
       <div class="tbl-wrap"><table><thead><tr><th>Unidad</th><th class="num">Km base</th><th class="num">Intervalo</th><th class="num">Próximo servicio (km Wialon)</th><th class="num">Km Wialon actual</th><th class="num">Faltan</th><th></th></tr></thead><tbody id="tbMtoCiclos"></tbody></table></div>
     </div>
 
@@ -1355,7 +1355,7 @@ async function mtoGuardarYGenerar(){
     var cicloExistente=MTO_CICLOS[String(unidad)];
     await db.collection('mantenimientoCicloUnidad').doc(String(unidad)).set({
       economico:unidad,kmBase:km,fechaBase:fecha,
-      intervaloKm:cicloExistente?cicloExistente.intervaloKm:(unidad===529?14000:20000),
+      intervaloKm:cicloExistente?cicloExistente.intervaloKm:(unidad===529?14000:25000),
       definidoPor:u?(u.nombre||u.usuario):''
     });
     mtoImprimirFiltrosEntregados({id:ref.id,unidad:unidad,fecha:fecha,articulos:articulosUsados,notas:$('mtoNotas').value});
@@ -1424,6 +1424,28 @@ function renderMtoHistorial(){
 // renderMtoProximos: estimado simple con el kilometraje MÁS RECIENTE
 // capturado a mano de cada unidad — ver nota en el info-tip de la tarjeta,
 // esto no sustituye una lectura real de odómetro/GPS.
+// mtoActualizarIntervalos25k: ajuste puntual pedido por Esa — sube a 25,000
+// km el intervalo de todas las unidades que YA tienen un ciclo configurado
+// (la 529 se queda en 14,000). Solo toca "intervaloKm", nunca kmBase — el
+// "próximo servicio" se recalcula solo (kmBase+intervaloKm).
+async function mtoActualizarIntervalos25k(){
+  var unidades=Object.keys(MTO_CICLOS);
+  if(!unidades.length){alert('No hay ninguna unidad con ciclo configurado todavía.');return;}
+  if(!confirm('¿Cambiar el intervalo a 25,000 km en '+unidades.length+' unidad(es) configurada(s) (la 529 se queda en 14,000)?'))return;
+  try{
+    var db=firebase.firestore();
+    var cambiados=0;
+    for(var i=0;i<unidades.length;i++){
+      var economico=unidades[i];
+      var nuevoIntervalo=parseInt(economico)===529?14000:25000;
+      if(MTO_CICLOS[economico].intervaloKm===nuevoIntervalo)continue;
+      await db.collection('mantenimientoCicloUnidad').doc(economico).set({intervaloKm:nuevoIntervalo},{merge:true});
+      cambiados++;
+    }
+    alert('✅ Se actualizó el intervalo de '+cambiados+' unidad(es).');
+    await cargarMantenimiento();
+  }catch(e){alert('⚠️ Error al actualizar: '+e.message);}
+}
 async function mtoEditarCiclo(economico){
   var ciclo=MTO_CICLOS[String(economico)]||{};
   var kmBase=prompt('Km base (kilómetro cero) para la unidad '+economico+':',ciclo.kmBase!=null?ciclo.kmBase:'');
