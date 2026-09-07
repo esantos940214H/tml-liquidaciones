@@ -3050,3 +3050,117 @@ exports.wialonActualizarBitacorasProgramado = onSchedule(
     }
   }
 );
+
+// ══════════════════════════════════════════════════════════════════════════
+// GESTIÓN DE USUARIOS (usuarios.html) — alta, edición de permisos, y
+// activar/desactivar cuentas de OFICINA en Firebase Authentication. Solo
+// puede llamar esto una sesión con claims.rol==='admin' (_verificarAdmin
+// reutiliza _verificarSesionFirebase, definida arriba junto a
+// extraerOrdenEmbarqueSellada). A propósito NUNCA se borra una cuenta desde
+// aquí — solo se desactiva (disabled:true, reversible), para no perder la
+// trazabilidad de quién capturó qué (capturadoPor en otras colecciones sigue
+// ligado al mismo nombre/email aunque la cuenta esté inactiva). Las cuentas
+// de operadores (claims.rol==='operador', ver loginOperador) no son
+// "usuarios de oficina" y se excluyen de la lista.
+// ══════════════════════════════════════════════════════════════════════════
+const _CLAVES_PERMISO_MODULO = ['ant', 'ing', 'liq', 'nom', 'inc', 'hist', 'autoriz', 'precarga', 'proveedores'];
+const _CLAVES_PERMISO_ACCION = ['anticipos_editar', 'ingresos_editar', 'incidentes_editar', 'casetas_editar'];
+const _CLAVES_PERMISO_SOLO_VER = ['ant_solo_ver', 'liq_solo_ver'];
+
+async function _verificarAdmin(req) {
+  const decoded = await _verificarSesionFirebase(req);
+  if (decoded.rol !== 'admin') throw new Error('Solo un administrador puede hacer esto.');
+  return decoded;
+}
+
+exports.usuariosListar = onRequest({ cors: true, region: 'us-central1' }, async (req, res) => {
+  try {
+    await _verificarAdmin(req);
+    const lista = [];
+    let pageToken;
+    do {
+      const resultado = await admin.auth().listUsers(1000, pageToken);
+      resultado.users.forEach(function (u) {
+        const claims = u.customClaims || {};
+        if (claims.rol === 'operador') return;
+        lista.push({
+          uid: u.uid,
+          email: u.email || '',
+          nombre: u.displayName || '',
+          disabled: !!u.disabled,
+          rol: claims.rol || '',
+          permisos: claims.permisos || {}
+        });
+      });
+      pageToken = resultado.pageToken;
+    } while (pageToken);
+    lista.sort(function (a, b) { return (a.nombre || a.email).localeCompare(b.nombre || b.email); });
+    res.json({ usuarios: lista });
+  } catch (e) {
+    console.error('usuariosListar:', e);
+    res.status(/administrador|sesión/.test(e.message || '') ? 403 : 500).json({ error: e.message || 'Error interno del servidor.' });
+  }
+});
+
+exports.usuariosGuardar = onRequest({ cors: true, region: 'us-central1' }, async (req, res) => {
+  if (req.method !== 'POST') { res.status(405).json({ error: 'Método no permitido, usa POST.' }); return; }
+  try {
+    await _verificarAdmin(req);
+    const body = req.body || {};
+    const email = String(body.email || '').trim().toLowerCase();
+    const nombre = String(body.nombre || '').trim();
+    const rol = String(body.rol || '').trim();
+    const permisosEntrada = body.permisos || {};
+    const passwordTemporal = body.passwordTemporal ? String(body.passwordTemporal) : '';
+    let uid = body.uid ? String(body.uid) : '';
+
+    if (!email || !nombre || !rol) { res.status(400).json({ error: 'Faltan email, nombre o rol.' }); return; }
+    if (!uid && !passwordTemporal) { res.status(400).json({ error: 'Un usuario nuevo necesita una contraseña temporal.' }); return; }
+    if (passwordTemporal && passwordTemporal.length < 6) { res.status(400).json({ error: 'La contraseña temporal debe tener al menos 6 caracteres.' }); return; }
+
+    const permisos = {};
+    _CLAVES_PERMISO_MODULO.concat(_CLAVES_PERMISO_ACCION, _CLAVES_PERMISO_SOLO_VER).forEach(function (clave) {
+      permisos[clave] = !!permisosEntrada[clave];
+    });
+
+    let userRecord;
+    if (uid) {
+      userRecord = await admin.auth().getUser(uid);
+      if (userRecord.email !== email) { res.status(400).json({ error: 'No se puede cambiar el email de una cuenta ya existente.' }); return; }
+      const datosActualizar = { displayName: nombre };
+      if (passwordTemporal) datosActualizar.password = passwordTemporal;
+      await admin.auth().updateUser(uid, datosActualizar);
+    } else {
+      try {
+        userRecord = await admin.auth().getUserByEmail(email);
+        await admin.auth().updateUser(userRecord.uid, { displayName: nombre, password: passwordTemporal });
+      } catch (e) {
+        if (e.code !== 'auth/user-not-found') throw e;
+        userRecord = await admin.auth().createUser({ email: email, password: passwordTemporal, displayName: nombre });
+      }
+      uid = userRecord.uid;
+    }
+
+    await admin.auth().setCustomUserClaims(uid, { rol: rol, permisos: permisos });
+    res.json({ ok: true, uid: uid });
+  } catch (e) {
+    console.error('usuariosGuardar:', e);
+    res.status(/administrador|sesión/.test(e.message || '') ? 403 : 500).json({ error: e.message || 'Error interno del servidor.' });
+  }
+});
+
+exports.usuariosCambiarEstado = onRequest({ cors: true, region: 'us-central1' }, async (req, res) => {
+  if (req.method !== 'POST') { res.status(405).json({ error: 'Método no permitido, usa POST.' }); return; }
+  try {
+    const decoded = await _verificarAdmin(req);
+    const uid = String((req.body && req.body.uid) || '').trim();
+    const disabled = !!(req.body && req.body.disabled);
+    if (!uid) { res.status(400).json({ error: 'Falta el uid.' }); return; }
+    if (uid === decoded.uid && disabled) { res.status(400).json({ error: 'No puedes desactivar tu propia cuenta.' }); return; }
+    await admin.auth().updateUser(uid, { disabled: disabled });
+    res.json({ ok: true });
+  } catch (e) {
+    console.error('usuariosCambiarEstado:', e);
+    res.status(/administrador|sesión/.test(e.message || '') ? 403 : 500).json({ error: e.message || 'Error interno del servidor.' });
+  }
+});

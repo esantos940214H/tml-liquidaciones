@@ -215,18 +215,18 @@
   //
   // claims.permisos ya trae, desde admin/crear-usuarios.js, TANTO los
   // permisos de VER un módulo completo (ant, ing, liq, nom, inc, hist,
-  // autoriz, precarga — mismas claves que el objeto "permisos" del login
-  // viejo en Firestore/usuarios) COMO los candados de ACCIÓN dentro de un
-  // módulo (anticipos_editar, ingresos_editar, incidentes_editar,
-  // casetas_editar). Aquí solo se copian las 8 claves de "ver módulo" al
-  // puente — los candados de acción los revisa cada módulo migrado
-  // directamente con tienePermiso(), no a través de esta cookie.
+  // autoriz, precarga, proveedores — mismas claves que el objeto "permisos"
+  // del login viejo en Firestore/usuarios) COMO los candados de ACCIÓN
+  // dentro de un módulo (anticipos_editar, ingresos_editar,
+  // incidentes_editar, casetas_editar). Aquí solo se copian las claves de
+  // "ver módulo" al puente — los candados de acción los revisa cada módulo
+  // migrado directamente con tienePermiso(), no a través de esta cookie.
   async function _escribirCookiePuente(user) {
     var resultado = await user.getIdTokenResult();
     var claims = resultado.claims || {};
     var esAdmin = claims.rol === 'admin';
     var permisosClaim = claims.permisos || {};
-    var CLAVES_MODULO = ['ant', 'ing', 'liq', 'nom', 'inc', 'hist', 'autoriz', 'precarga'];
+    var CLAVES_MODULO = ['ant', 'ing', 'liq', 'nom', 'inc', 'hist', 'autoriz', 'precarga', 'proveedores'];
     var permisosPuente = {};
     CLAVES_MODULO.forEach(function (clave) {
       permisosPuente[clave] = esAdmin || !!permisosClaim[clave];
