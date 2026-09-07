@@ -224,7 +224,8 @@ const FUNCTION_URL_USUARIOS_CAMBIAR_ESTADO='https://us-central1-tml-liquidacione
 const PERMISOS_MODULO=[
   {clave:'ant',label:'Anticipos'},{clave:'ing',label:'Ingresos'},{clave:'liq',label:'Liquidaciones'},
   {clave:'nom',label:'Nómina'},{clave:'inc',label:'Incidentes'},{clave:'hist',label:'Historial'},
-  {clave:'autoriz',label:'Autorizaciones'},{clave:'precarga',label:'Pre-carga'},{clave:'proveedores',label:'Proveedores (CxP)'}
+  {clave:'autoriz',label:'Autorizaciones'},{clave:'precarga',label:'Pre-carga'},{clave:'proveedores',label:'Proveedores (CxP)'},
+  {clave:'flota',label:'Flota'}
 ];
 const PERMISOS_ACCION=[
   {clave:'anticipos_editar',label:'Anticipos'},{clave:'ingresos_editar',label:'Ingresos'},
@@ -378,6 +379,7 @@ setTimeout(function(){if(!fbReady){$('fbStatus').textContent='❌ Sin conexión'
 // LLAMADAS A LAS CLOUD FUNCTIONS (con el ID token de Firebase Auth)
 // ══════════════════════════════════════════════
 async function _llamarFuncion(url,metodo,body){
+  if(window.TMLSesion)await TMLSesion.esperarSesion();
   var user=firebase.auth().currentUser;
   if(!user)throw new Error('Tu sesión expiró, vuelve a entrar.');
   var token=await user.getIdToken();

@@ -226,7 +226,7 @@
     var claims = resultado.claims || {};
     var esAdmin = claims.rol === 'admin';
     var permisosClaim = claims.permisos || {};
-    var CLAVES_MODULO = ['ant', 'ing', 'liq', 'nom', 'inc', 'hist', 'autoriz', 'precarga', 'proveedores'];
+    var CLAVES_MODULO = ['ant', 'ing', 'liq', 'nom', 'inc', 'hist', 'autoriz', 'precarga', 'proveedores', 'flota'];
     var permisosPuente = {};
     CLAVES_MODULO.forEach(function (clave) {
       permisosPuente[clave] = esAdmin || !!permisosClaim[clave];

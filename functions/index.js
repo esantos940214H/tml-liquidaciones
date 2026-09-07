@@ -3063,7 +3063,7 @@ exports.wialonActualizarBitacorasProgramado = onSchedule(
 // de operadores (claims.rol==='operador', ver loginOperador) no son
 // "usuarios de oficina" y se excluyen de la lista.
 // ══════════════════════════════════════════════════════════════════════════
-const _CLAVES_PERMISO_MODULO = ['ant', 'ing', 'liq', 'nom', 'inc', 'hist', 'autoriz', 'precarga', 'proveedores'];
+const _CLAVES_PERMISO_MODULO = ['ant', 'ing', 'liq', 'nom', 'inc', 'hist', 'autoriz', 'precarga', 'proveedores', 'flota'];
 const _CLAVES_PERMISO_ACCION = ['anticipos_editar', 'ingresos_editar', 'incidentes_editar', 'casetas_editar'];
 const _CLAVES_PERMISO_SOLO_VER = ['ant_solo_ver', 'liq_solo_ver'];
 
