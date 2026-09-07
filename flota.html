@@ -318,7 +318,24 @@ tr:hover td{background:#fafafa}
     <div class="card">
       <div class="card-title">🧾 Catálogo de artículos (filtros/aceites) <button class="btn btn-out btn-sm" onclick="mtoAgregarArticulo()">+ Agregar artículo</button></div>
       <p style="font-size:12px;color:#888;margin-bottom:10px">"Unidades compatibles" son los números económicos separados por coma (ej. "521,522,523,624"). Déjalo vacío si aplica a todas las unidades.</p>
-      <div class="tbl-wrap"><table><thead><tr><th>Nombre</th><th>Tipo</th><th>Compatibles</th><th class="r">Existencia</th><th class="r">Costo</th><th></th></tr></thead><tbody id="tbMtoCatalogo"></tbody></table></div>
+      <div class="tbl-wrap"><table><thead><tr><th>Nombre</th><th>Tipo</th><th>No. de parte</th><th>Compatibles</th><th class="r">Existencia</th><th class="r">Costo</th><th></th></tr></thead><tbody id="tbMtoCatalogo"></tbody></table></div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">📦 Entradas de inventario (facturas de compra)</div>
+      <p style="font-size:12px;color:#888;margin-bottom:10px">Registra aquí cuando entre inventario nuevo al almacén (compra de filtros/aceite) — suma a la existencia del artículo, nunca la reemplaza.</p>
+      <div class="row">
+        <div class="field" style="min-width:200px"><label>Artículo</label><select id="entArticulo"></select></div>
+        <div class="field" style="min-width:100px"><label>Cantidad</label><input type="number" id="entCantidad" min="0" step="1"></div>
+        <div class="field" style="min-width:120px"><label>Costo unitario ($, opcional)</label><input type="number" id="entCosto" min="0" step="0.01" placeholder="Deja vacío para no cambiarlo"></div>
+        <div class="field" style="min-width:140px"><label>No. de factura</label><input type="text" id="entFactura" placeholder="Ej: A-1234"></div>
+        <div class="field" style="min-width:160px"><label>Proveedor</label><input type="text" id="entProveedor"></div>
+        <div class="field" style="min-width:130px"><label>Fecha</label><input type="date" id="entFecha"></div>
+      </div>
+      <button class="btn btn-red" style="margin-top:10px" onclick="mtoRegistrarEntradaInventario()">💾 Registrar entrada</button>
+      <div id="entInfo" style="margin-top:10px"></div>
+      <div class="card-title" style="margin-top:16px;font-size:11px">Historial de entradas</div>
+      <div class="tbl-wrap"><table><thead><tr><th>Fecha</th><th>Artículo</th><th class="r">Cantidad</th><th>Factura</th><th>Proveedor</th></tr></thead><tbody id="tbMtoEntradas"></tbody></table></div>
     </div>
 
     <div class="card">
@@ -1198,6 +1215,7 @@ var _mtoArticuloFilas=[];
 // lo último capturado a mano.
 var MTO_ODOMETRO_WIALON={};
 var MTO_CICLOS={}; // {economico: {kmBase, intervaloKm, fechaBase}}
+var MTO_ENTRADAS=[];
 async function cargarMantenimiento(){
   try{
     var db=firebase.firestore();
@@ -1220,8 +1238,12 @@ async function cargarMantenimiento(){
       var snapCiclos=await db.collection('mantenimientoCicloUnidad').get();
       snapCiclos.forEach(function(d){MTO_CICLOS[d.id]=d.data();});
     }catch(e){console.error('mantenimientoCicloUnidad:',e);}
-    renderMtoCatalogo();renderMtoMecanicos();renderMtoHistorial();renderMtoProximos();renderMtoCiclos();
-    poblarMtoSelects();
+    var snapEnt=await db.collection('mantenimientoEntradasInventario').get();
+    MTO_ENTRADAS=[];snapEnt.forEach(function(d){MTO_ENTRADAS.push(Object.assign({id:d.id},d.data()));});
+    MTO_ENTRADAS.sort(function(a,b){return(b.fecha||'').localeCompare(a.fecha||'');});
+    renderMtoCatalogo();renderMtoMecanicos();renderMtoHistorial();renderMtoProximos();renderMtoCiclos();renderMtoEntradas();
+    poblarMtoSelects();poblarMtoSelectEntrada();
+    if(!$('entFecha').value)$('entFecha').value=hoy();
     if(!$('mtoFecha').value)$('mtoFecha').value=hoy();
     mtoRenderActividades();
     if(!_mtoArticuloFilas.length)_mtoArticuloFilas=[{articuloId:'',cantidad:1}];
@@ -1525,13 +1547,14 @@ async function mtoAgregarArticulo(){
   var nombre=prompt('Nombre del artículo (ej. "Filtro de aceite Fram PH123"):');
   if(!nombre)return;
   var tipo=prompt('Tipo (filtro_aceite / filtro_aire / filtro_combustible / aceite / otro):','filtro_aceite')||'otro';
+  var numeroParte=(prompt('Número de parte (opcional):','')||'').trim();
   var compatTxt=prompt('Unidades compatibles, separadas por coma (deja vacío si aplica a todas):','')||'';
   var unidadesCompatibles=compatTxt.split(',').map(function(s){return parseInt(s.trim());}).filter(function(n){return n;});
   var existencia=parseFloat(prompt('Existencia inicial:','0')||'0');
   var costoUnitario=parseFloat(prompt('Costo unitario ($):','0')||'0');
   try{
     await firebase.firestore().collection('mantenimientoArticulos').add({
-      nombre:nombre.trim(),tipo:tipo.trim(),unidadesCompatibles:unidadesCompatibles,
+      nombre:nombre.trim(),tipo:tipo.trim(),numeroParte:numeroParte,unidadesCompatibles:unidadesCompatibles,
       existencia:existencia,costoUnitario:costoUnitario,activo:true
     });
     await cargarMantenimiento();
@@ -1540,7 +1563,9 @@ async function mtoAgregarArticulo(){
 async function mtoEditarArticulo(id){
   var art=MTO_ARTICULOS.find(function(a){return a.id===id;});
   if(!art)return;
-  var existencia=prompt('Nueva existencia de "'+art.nombre+'":',art.existencia||0);
+  var numeroParte=prompt('Número de parte de "'+art.nombre+'":',art.numeroParte||'');
+  if(numeroParte===null)return;
+  var existencia=prompt('Nueva existencia:',art.existencia||0);
   if(existencia===null)return;
   var costoUnitario=prompt('Nuevo costo unitario ($):',art.costoUnitario||0);
   if(costoUnitario===null)return;
@@ -1549,7 +1574,7 @@ async function mtoEditarArticulo(id){
   var unidadesCompatibles=compatTxt.split(',').map(function(s){return parseInt(s.trim());}).filter(function(n){return n;});
   try{
     await firebase.firestore().collection('mantenimientoArticulos').doc(id).set({
-      existencia:parseFloat(existencia)||0,costoUnitario:parseFloat(costoUnitario)||0,unidadesCompatibles:unidadesCompatibles
+      numeroParte:numeroParte.trim(),existencia:parseFloat(existencia)||0,costoUnitario:parseFloat(costoUnitario)||0,unidadesCompatibles:unidadesCompatibles
     },{merge:true});
     await cargarMantenimiento();
   }catch(e){alert('⚠️ Error al actualizar: '+e.message);}
@@ -1557,9 +1582,60 @@ async function mtoEditarArticulo(id){
 function renderMtoCatalogo(){
   $('tbMtoCatalogo').innerHTML=MTO_ARTICULOS.map(function(a){
     return '<tr><td style="font-size:12px">'+a.nombre+'</td><td style="font-size:12px">'+(a.tipo||'')+'</td>'
+      +'<td style="font-size:12px" class="num">'+(a.numeroParte||'—')+'</td>'
       +'<td style="font-size:12px">'+((a.unidadesCompatibles||[]).length?a.unidadesCompatibles.join(', '):'Todas')+'</td>'
       +'<td class="num r">'+fmtN(a.existencia||0,0)+'</td><td class="r">'+fmt(a.costoUnitario||0)+'</td>'
       +'<td><button class="btn btn-out btn-sm" onclick="mtoEditarArticulo(\''+a.id+'\')">✏️ Editar</button></td></tr>';
+  }).join('');
+}
+function poblarMtoSelectEntrada(){
+  var s=$('entArticulo');
+  var actual=s.value;
+  s.innerHTML='<option value="">— Selecciona —</option>'+MTO_ARTICULOS.map(function(a){
+    return '<option value="'+a.id+'">'+a.nombre+(a.numeroParte?' ('+a.numeroParte+')':'')+'</option>';
+  }).join('');
+  if(actual)s.value=actual;
+}
+// mtoRegistrarEntradaInventario: SUMA a la existencia (nunca la reemplaza)
+// — se relee el artículo justo antes de escribir, para no pisar otra
+// entrada o un ajuste manual que haya pasado mientras se llenaba el
+// formulario. El costo unitario solo se actualiza si se llenó ese campo.
+async function mtoRegistrarEntradaInventario(){
+  var articuloId=$('entArticulo').value;
+  var cantidad=parseFloat($('entCantidad').value||0);
+  var costoTxt=$('entCosto').value;
+  var factura=($('entFactura').value||'').trim();
+  var proveedor=($('entProveedor').value||'').trim();
+  var fecha=$('entFecha').value||hoy();
+  if(!articuloId){alert('Selecciona el artículo.');return;}
+  if(!cantidad||cantidad<=0){alert('Captura la cantidad recibida.');return;}
+  try{
+    var db=firebase.firestore();
+    var refArt=db.collection('mantenimientoArticulos').doc(articuloId);
+    var snapArt=await refArt.get();
+    if(!snapArt.exists){alert('No se encontró el artículo.');return;}
+    var art=snapArt.data();
+    var existenciaNueva=(art.existencia||0)+cantidad;
+    var campos={existencia:existenciaNueva};
+    if(costoTxt!==''&&costoTxt!=null)campos.costoUnitario=parseFloat(costoTxt)||0;
+    await refArt.set(campos,{merge:true});
+    var u=usuarioSesion();
+    await db.collection('mantenimientoEntradasInventario').add({
+      articuloId:articuloId,articuloNombre:art.nombre,cantidad:cantidad,
+      costoUnitario:campos.costoUnitario!=null?campos.costoUnitario:(art.costoUnitario||0),
+      factura:factura,proveedor:proveedor,fecha:fecha,
+      capturadoPor:u?(u.nombre||u.usuario):'',creadoEn:new Date().toISOString()
+    });
+    $('entInfo').innerHTML='<div class="alert alert-ok">✅ Entrada registrada — nueva existencia de "'+art.nombre+'": '+fmtN(existenciaNueva,0)+'.</div>';
+    $('entCantidad').value='';$('entCosto').value='';$('entFactura').value='';$('entProveedor').value='';
+    await cargarMantenimiento();
+  }catch(e){alert('⚠️ Error al registrar: '+e.message);}
+}
+function renderMtoEntradas(){
+  $('tbMtoEntradas').innerHTML=MTO_ENTRADAS.map(function(e){
+    return '<tr><td>'+e.fecha+'</td><td style="font-size:12px">'+(e.articuloNombre||'')+'</td>'
+      +'<td class="num r">'+fmtN(e.cantidad,0)+'</td><td style="font-size:12px">'+(e.factura||'—')+'</td>'
+      +'<td style="font-size:12px">'+(e.proveedor||'—')+'</td></tr>';
   }).join('');
 }
 async function mtoAgregarMecanico(){
