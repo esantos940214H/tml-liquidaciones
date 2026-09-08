@@ -1258,7 +1258,20 @@ function normUnidad(u){
   //    explícito, parseInt sobre puro texto da 0 y esos litros/casetas se
   //    perderían silenciosamente (no se le atribuían a ninguna unidad).
   const TARJETAS={
-    // Edenred (tarjeta → económico)
+    // Edenred — tarjetas REEMITIDAS (sep-2026) para que el número de
+    // tarjeta coincida con el económico: en el reporte llegan como 5
+    // dígitos con ceros a la izquierda (ej. "00521"). Para 527/528/529/
+    // 531-534 esto YA coincide con su económico real vía el fallback de
+    // abajo (parseInt), no necesitan entrada aquí. Para 521/522/523/524/
+    // 526 SÍ hace falta, porque esas unidades se guardan internamente como
+    // 4521-4526 (prefijo "4"), no como su número corto.
+    '00521':4521,
+    '00522':4522,
+    '00523':4523,
+    '00524':4524,
+    '00526':4526,
+    // Edenred — tarjetas VIEJAS (antes de la reemisión), se dejan por si
+    // aparece algún reporte histórico con los números anteriores.
     '42BC9V':529,
     '00002':4521,
     '00004':4523,
