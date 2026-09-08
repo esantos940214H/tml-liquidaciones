@@ -1250,6 +1250,42 @@ async function reabrirLiquidacion(){
         });
       }
     });
+    // Liberar cargos de Flota (mantenimiento/daños de checklist) que esta
+    // liquidación marcó "aplicado" — mismo patrón que incidentes, un solo
+    // doc blob (estado/cargosFlotaDB). Antes esto no se liberaba al
+    // reabrir, así que esos cargos desaparecían del reporte (ya no
+    // aparecían "pendiente" para esta unidad, pero tampoco pertenecían ya
+    // a ninguna liquidación activa).
+    const cfRes=await window.FB.get('estado','cargosFlotaDB');
+    let cfDB=(cfRes&&cfRes.data)?JSON.parse(cfRes.data):{};
+    if(Array.isArray(cfDB))cfDB={};
+    var nCF=0;
+    Object.keys(cfDB).forEach(function(key){
+      if(parseInt(key)===parseInt(opIdL)){
+        (cfDB[key]||[]).forEach(function(a){
+          if(a.liqNum===l.num){a.estado='pendiente';a.liqNum=null;nCF++;}
+        });
+      }
+    });
+
+    // Liberar facturas de proveedor (Cuentas por Pagar) prorrateadas a esta
+    // unidad — cxpFacturas es una colección real (un doc por factura, con
+    // un arreglo "prorrateo" adentro), así que se relee fresca cada
+    // factura tocada y se escribe de vuelta, igual que hace
+    // cerrarLiquidacion(). Mismo hueco que cargosFlotaDB: nunca se
+    // liberaba al reabrir.
+    var cxpTodas=await window.FB.getAll('cxpFacturas');
+    var nCxp=0,cxpTocadas=[];
+    cxpTodas.forEach(function(fx){
+      var cambiado=false;
+      (fx.prorrateo||[]).forEach(function(p){
+        if(p.liqNum===l.num&&parseInt(p.unidad)===parseInt(opIdL)){
+          p.aplicado=false;p.liqNum=null;nCxp++;cambiado=true;
+        }
+      });
+      if(cambiado)cxpTocadas.push(fx);
+    });
+
     liqReab.reabierta=true;
     liqReab.anticiposIncluidos=idsAntLiberados;
     liqReab.viajesIncluidos=idsViajesLiberados;
@@ -1288,17 +1324,19 @@ async function reabrirLiquidacion(){
       window.FB.set('estado','ingresosDB',{data:JSON.stringify(ingDB)}),
       window.FB.set('estado','incidentesDB',{data:JSON.stringify(incDB)}),
       window.FB.set('estado','nominaDB',{data:JSON.stringify(nomDB)}),
+      window.FB.set('estado','cargosFlotaDB',{data:JSON.stringify(cfDB)}),
       window.FB.set('estado','arrastres',{data:JSON.stringify(arrDB)}),
       window.FB.set('liqActivas',String(opIdL),{data:JSON.stringify(liqReab)}),
+    ].concat(cxpTocadas.map(function(fx){return window.FB.set('cxpFacturas',fx.id,{prorrateo:fx.prorrateo});})).concat([
       // Borrar el registro de "cerrada" en Historial — una liquidación no
       // puede aparecer como cerrada Y activa al mismo tiempo. Antes esto no
       // se borraba nunca, así que después de reabrir se veían DOS
       // liquidaciones con el mismo número (una cerrada "fantasma" y la
       // activa de verdad).
       window.FB.del('historial','liq-'+l.num+'-'+opIdL),
-    ]);
+    ]));
 
-    alert('🔓 Liquidación #'+l.num+' reabierta.\n'+nA+' anticipo(s), '+nV+' viaje(s)'+(nN?', '+nN+' recibo(s) de nómina':'')+(nI?' y '+nI+' incidente(s)':'')+' quedaron pendientes otra vez e incluidos en la liquidación.\n\nSi hay anticipos, viajes o recibos de nómina NUEVOS registrados después del cierre original, no se van a jalar solos — vas a poder insertarlos a propósito con un botón dentro del módulo de Liquidaciones.\n\nAbriendo el módulo de Liquidaciones para editarla...');
+    alert('🔓 Liquidación #'+l.num+' reabierta.\n'+nA+' anticipo(s), '+nV+' viaje(s)'+(nN?', '+nN+' recibo(s) de nómina':'')+(nI?' y '+nI+' incidente(s)':'')+(nCF?', '+nCF+' cargo(s) de flota':'')+(nCxp?' y '+nCxp+' factura(s) de proveedor':'')+' quedaron pendientes otra vez e incluidos en la liquidación.\n\nSi hay anticipos, viajes o recibos de nómina NUEVOS registrados después del cierre original, no se van a jalar solos — vas a poder insertarlos a propósito con un botón dentro del módulo de Liquidaciones.\n\nAbriendo el módulo de Liquidaciones para editarla...');
     location.href='https://liquidaciones.mudanzastml.mx/?liqOp='+opIdL;
   }catch(e){
     console.error('reabrirLiquidacion:',e);
