@@ -1207,6 +1207,20 @@ async function diagnosticarLiqActiva(){
       });
       html+='</tbody></table></div>';
     }
+    // Mismo detalle para CADA ingreso/viaje de esta clave — para ver a mano
+    // con qué liqNum quedó cada uno (puede ser el de una liquidación previa
+    // ya cerrada legítimamente, o puede ser un liqNum "huérfano" que ya no
+    // corresponde a ninguna liquidación real, lo que explicaría un reporte
+    // en $0.00 pese a que el viaje sigue existiendo).
+    if(ingDeEstaClave.length){
+      html+='<div style="margin-top:14px;font-weight:700;font-size:12px">Detalle de los '+ingDeEstaClave.length+' ingresos/viajes de la clave '+clave+':</div>';
+      html+='<div class="tbl-wrap"><table><thead><tr><th>ID</th><th>Folio</th><th>Fecha</th><th class="r">Total</th><th>Estado</th><th>liqNum</th></tr></thead><tbody>';
+      ingDeEstaClave.slice().sort(function(a,b){return(b.liqNum||0)-(a.liqNum||0);}).forEach(function(v){
+        html+='<tr'+(v.estado==='sin_liquidar'?' style="background:#fffbeb"':'')+'><td style="font-size:10px">'+(v.id||'')+'</td><td>'+(v.folio||'')+'</td><td>'+(v.fecha||'')+'</td>'
+          +'<td class="r">'+(v.total||0).toFixed(2)+'</td><td>'+(v.estado||'')+'</td><td>'+(v.liqNum!=null?v.liqNum:'—')+'</td></tr>';
+      });
+      html+='</tbody></table></div>';
+    }
     out.innerHTML=html;
   }catch(e){console.error('diagnosticarLiqActiva:',e);out.innerHTML='<span style="color:#c1121f">Error: '+e.message+'</span>';}
 }
