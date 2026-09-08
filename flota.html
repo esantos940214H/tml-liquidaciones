@@ -303,9 +303,9 @@ tr:hover td{background:#fafafa}
       <div class="card-title" style="margin-top:16px;font-size:11px">Actividades a realizar</div>
       <div id="mtoActividades"></div>
       <div class="row" style="margin-top:6px">
-        <div class="field" style="flex:1;min-width:220px"><label>Otra actividad (opcional)</label><input type="text" id="mtoActividadOtra" placeholder="Ej: cambio de balatas traseras"></div>
+        <div class="field" style="flex:1;min-width:220px"><label>Otro tipo de mantenimiento o reparación (opcional)</label><input type="text" id="mtoActividadOtra" placeholder="Ej: cambio de balatas traseras, reparación de suspensión, etc."></div>
       </div>
-      <div class="card-title" style="margin-top:16px;font-size:11px">Filtros/artículos a entregar (según unidad) <button class="btn btn-out btn-sm" onclick="mtoAgregarArticuloFila()">+ Agregar renglón</button></div>
+      <div class="card-title" style="margin-top:16px;font-size:11px">Refacciones/artículos que lleva (según unidad) <button class="btn btn-out btn-sm" onclick="mtoAgregarArticuloFila()">+ Agregar renglón</button></div>
       <div class="alert alert-info" id="mtoAvisoCompat" style="display:none"></div>
       <div class="tbl-wrap"><table><thead><tr><th>Artículo</th><th>Existencia</th><th class="r">Cantidad</th><th></th></tr></thead><tbody id="tbMtoArticulos"></tbody></table></div>
       <div class="row" style="margin-top:14px">
@@ -358,6 +358,11 @@ tr:hover td{background:#fafafa}
     <div class="card">
       <div class="card-title">⏰ Próximo mantenimiento por actividad (histórico) <span class="info-tip">?<span class="info-tip-box">Estimado a partir de la última vez que registraste cada actividad en el historial de mantenimientos — es un detalle más fino que el ciclo general de arriba, pero solo funciona para unidades con historial ya capturado.</span></span></div>
       <div id="mtoProximos"></div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">🛒 Filtros/refacciones no entregados (pendientes de comprar) <span class="info-tip">?<span class="info-tip-box">Cuando una orden de mantenimiento pide más de lo que hay en existencia, esa parte NO se entrega ni se descuenta — queda aquí como pendiente, con su número de parte, para llevar el registro de qué se ha tenido que comprar por falta de inventario. Márcalo "Comprado" en cuanto llegue al almacén; si además quieres que sume a la existencia, regístralo también en "Entradas de inventario" arriba.</span></span></div>
+      <div class="tbl-wrap"><table><thead><tr><th>Fecha</th><th>Unidad</th><th>Artículo</th><th>No. de parte</th><th class="r">Cantidad</th><th>Estado</th><th></th></tr></thead><tbody id="tbMtoFaltantes"></tbody></table></div>
     </div>
 
     <div class="card">
@@ -1202,11 +1207,28 @@ async function corConfirmar(){
 // por una compra o un conteo físico).
 // ══════════════════════════════════════════════
 var MTO_ARTICULOS=[],MTO_MECANICOS=[],MTO_HISTORIAL=[];
+// Algunas "actividades" son en realidad PAQUETES que agrupan varias tareas
+// que siempre se hacen juntas (pedido explícito de Esa) — al marcarlas se
+// expanden a sus sub-actividades individuales (mtoActividadesSeleccionadas),
+// así el checklist impreso para el mecánico las muestra una por una, y
+// "Próximo mantenimiento por actividad" sigue funcionando igual de fino.
 var MTO_ACTIVIDADES_DEFAULT=[
-  {nombre:'Cambio de aceite de motor',intervaloKm:10000},
-  {nombre:'Cambio de filtro de aceite',intervaloKm:10000},
-  {nombre:'Cambio de filtro de aire',intervaloKm:20000},
-  {nombre:'Cambio de filtro de combustible',intervaloKm:20000},
+  {nombre:'Mantenimiento preventivo',
+   detalle:'Incluye: cambio de aceite de motor, filtro de aceite, filtro de diesel, filtro separador de combustible y filtro de aire.',
+   subActividades:[
+     {nombre:'Cambio de aceite de motor',intervaloKm:10000},
+     {nombre:'Cambio de filtro de aceite',intervaloKm:10000},
+     {nombre:'Cambio de filtro de diesel',intervaloKm:20000},
+     {nombre:'Cambio de filtro separador de combustible',intervaloKm:20000},
+     {nombre:'Cambio de filtro de aire',intervaloKm:20000}
+   ]},
+  {nombre:'Cambio de filtro secador, lavado y engrasado',
+   detalle:'Incluye: cambio de filtro secador, lavado y engrasado.',
+   subActividades:[
+     {nombre:'Cambio de filtro secador',intervaloKm:20000},
+     {nombre:'Lavado',intervaloKm:null},
+     {nombre:'Engrasado',intervaloKm:10000}
+   ]},
   {nombre:'Revisión de frenos',intervaloKm:20000},
   {nombre:'Rotación de llantas',intervaloKm:10000}
 ];
@@ -1243,7 +1265,7 @@ async function cargarMantenimiento(){
     var snapEnt=await db.collection('mantenimientoEntradasInventario').get();
     MTO_ENTRADAS=[];snapEnt.forEach(function(d){MTO_ENTRADAS.push(Object.assign({id:d.id},d.data()));});
     MTO_ENTRADAS.sort(function(a,b){return(b.fecha||'').localeCompare(a.fecha||'');});
-    renderMtoCatalogo();renderMtoMecanicos();renderMtoHistorial();renderMtoProximos();renderMtoCiclos();renderMtoEntradas();
+    renderMtoCatalogo();renderMtoMecanicos();renderMtoHistorial();renderMtoProximos();renderMtoCiclos();renderMtoEntradas();renderMtoFaltantes();
     poblarMtoSelects();poblarMtoSelectEntrada();
     if(!$('entFecha').value)$('entFecha').value=hoy();
     if(!$('mtoFecha').value)$('mtoFecha').value=hoy();
@@ -1268,13 +1290,16 @@ function poblarMtoSelects(){
 }
 function mtoRenderActividades(){
   $('mtoActividades').innerHTML=MTO_ACTIVIDADES_DEFAULT.map(function(a,i){
-    return '<label style="display:inline-flex;align-items:center;gap:6px;font-size:12px;margin:4px 14px 4px 0"><input type="checkbox" id="mtoAct'+i+'"> '+a.nombre+'</label>';
+    var tip=a.detalle?' <span class="info-tip">?<span class="info-tip-box">'+a.detalle+'</span></span>':'';
+    return '<label style="display:inline-flex;align-items:center;gap:6px;font-size:12px;margin:4px 14px 4px 0"><input type="checkbox" id="mtoAct'+i+'"> '+a.nombre+'</label>'+tip;
   }).join('');
 }
 function mtoActividadesSeleccionadas(){
   var out=[];
   MTO_ACTIVIDADES_DEFAULT.forEach(function(a,i){
-    if($('mtoAct'+i).checked)out.push({nombre:a.nombre,intervaloKm:a.intervaloKm});
+    if(!$('mtoAct'+i).checked)return;
+    if(a.subActividades)a.subActividades.forEach(function(s){out.push({nombre:s.nombre,intervaloKm:s.intervaloKm});});
+    else out.push({nombre:a.nombre,intervaloKm:a.intervaloKm});
   });
   var otra=($('mtoActividadOtra').value||'').trim();
   if(otra)out.push({nombre:otra,intervaloKm:null});
@@ -1456,6 +1481,38 @@ function renderMtoHistorial(){
       +'<td style="font-size:12px">'+acts+avisoFaltantes+'</td><td class="r">'+fmt(m.costoTotalArticulos||0)+'</td>'
       +'<td><button class="btn btn-out btn-sm" onclick="mtoReimprimir(\''+m.id+'\')">🖨️ Reimprimir</button></td></tr>';
   }).join('');
+}
+// _mtoTodosFaltantes: junta articulosFaltantes de TODO el historial en una
+// sola lista plana, más reciente primero — cada renglón recuerda de qué
+// mantenimiento/índice viene, para poder marcarlo "comprado" sin tocar los
+// demás renglones de ese mismo mantenimiento.
+function _mtoTodosFaltantes(){
+  var out=[];
+  MTO_HISTORIAL.forEach(function(m){
+    (m.articulosFaltantes||[]).forEach(function(a,i){
+      out.push({mantenimientoId:m.id,indice:i,fecha:m.fecha,unidad:m.unidad,nombre:a.nombre,numeroParte:a.numeroParte,cantidad:a.cantidad,comprado:!!a.comprado});
+    });
+  });
+  out.sort(function(a,b){return(b.fecha||'').localeCompare(a.fecha||'');});
+  return out;
+}
+function renderMtoFaltantes(){
+  var lista=_mtoTodosFaltantes();
+  $('tbMtoFaltantes').innerHTML=lista.map(function(f){
+    return '<tr><td>'+f.fecha+'</td><td>'+f.unidad+'</td><td style="font-size:12px">'+f.nombre+'</td>'
+      +'<td class="num">'+(f.numeroParte||'—')+'</td><td class="r">'+f.cantidad+'</td>'
+      +'<td>'+(f.comprado?'<span class="badge bg-green">Comprado</span>':'<span class="badge bg-yellow">Pendiente</span>')+'</td>'
+      +'<td><button class="btn btn-out btn-sm" onclick="mtoMarcarFaltanteComprado(\''+f.mantenimientoId+'\','+f.indice+','+(!f.comprado)+')">'+(f.comprado?'↩️ Deshacer':'✅ Marcar comprado')+'</button></td></tr>';
+  }).join('')||'<tr><td colspan="7" style="color:#888">Sin pendientes 🎉</td></tr>';
+}
+async function mtoMarcarFaltanteComprado(mantenimientoId,indice,comprado){
+  try{
+    var m=MTO_HISTORIAL.find(function(x){return x.id===mantenimientoId;});
+    if(!m||!m.articulosFaltantes||!m.articulosFaltantes[indice])return;
+    var faltantes=m.articulosFaltantes.map(function(a,i){return i===indice?Object.assign({},a,{comprado:comprado}):a;});
+    await firebase.firestore().collection('mantenimientos').doc(mantenimientoId).set({articulosFaltantes:faltantes},{merge:true});
+    await cargarMantenimiento();
+  }catch(e){alert('⚠️ Error al actualizar: '+e.message);}
 }
 // renderMtoProximos: estimado simple con el kilometraje MÁS RECIENTE
 // capturado a mano de cada unidad — ver nota en el info-tip de la tarjeta,
