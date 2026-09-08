@@ -296,7 +296,7 @@ tr:hover td{background:#fafafa}
       </div>
       <div id="ddecResumen" style="display:none;margin-top:10px"></div>
     </div>
-    <button class="btn btn-red" onclick="iniciarLiquidacion()">Iniciar liquidación →</button>
+    <button class="btn btn-red" id="btnIniciarLiq" onclick="iniciarLiquidacion()">Iniciar liquidación →</button>
   </div>
   <div id="liqInfo" style="display:none"></div>
   <div id="satValidandoInfo" style="display:none;margin-top:8px"></div>
@@ -2210,6 +2210,16 @@ function eliminarIngreso(id){
 // ══════════════════════════════════════════════
 // 2: LIQUIDACIÓN
 // ══════════════════════════════════════════════
+// actualizarBotonIniciarLiq: si el operador elegido en el combo ya tiene
+// SU liquidación cargada aquí, el botón avisa que un clic solo actualiza
+// el encabezado (fechas/kms/litros ECM/rendimiento) — nunca crea otra ni
+// sobreescribe nada — en vez de decir "Iniciar" como si fuera nueva.
+function actualizarBotonIniciarLiq(){
+  var btn=$('btnIniciarLiq');
+  if(!btn)return;
+  var opId=parseInt(($('liqOp')&&$('liqOp').value)||0);
+  btn.textContent=(opId&&liq&&liq.opId===opId)?'🔄 Actualizar liquidación (encabezado)':'Iniciar liquidación →';
+}
 async function onLiqOpChange(){
   const opId=parseInt($('liqOp').value||0);
   const op=OPERADORES.find(function(o){return o.operadorId===opId;});
@@ -2269,6 +2279,7 @@ async function onLiqOpChange(){
       }
     }catch(e){console.error('onLiqOpChange (cargar activa remota):',e);}
   }
+  actualizarBotonIniciarLiq();
 }
 // Se llama cuando cambia la unidad manejada (independiente del operador) —
 // solo refresca la previsualización del arrastre de diesel, que pertenece
@@ -2808,6 +2819,7 @@ async function iniciarLiquidacion(){
     liq=JSON.parse(_remotaData);
     restaurarUILiquidacion();
     suscribirLiqActiva(opId);
+    actualizarBotonIniciarLiq();
     alert('⚠️ '+op.nombre+' ya tiene una liquidación activa (#'+liq.num+'), abierta en otra sesión. Se cargó aquí para continuar editándola.');
     return;
   }
@@ -2888,6 +2900,7 @@ async function iniciarLiquidacion(){
   guardarEstado();
   suscribirLiqActiva(opId);
   validarCFDIsSATLiquidacion();
+  actualizarBotonIniciarLiq();
  }catch(e){
   console.error('iniciarLiquidacion error:',e);
   var _detalle=(e.stack||'').split('\n').slice(0,4).join('\n');
@@ -2975,6 +2988,7 @@ function eliminarLiquidacionActual(){
   if($('liqRend'))$('liqRend').value='';
   if($('liqInfo')){$('liqInfo').style.display='none';$('liqInfo').innerHTML='';}
   if($('liqPreview'))$('liqPreview').style.display='none';
+  actualizarBotonIniciarLiq();
   guardarEstado();
   alert('🗑️ Liquidación #'+num+' eliminada. Los anticipos e ingresos de '+opNombre+' quedaron libres.');
 }
@@ -5293,6 +5307,7 @@ async function cerrarLiquidacion(){
   if($('liqInfo'))$('liqInfo').style.display='none';
   if($('liqNum'))$('liqNum').value=''; // se recalcula por operador al elegir uno nuevo (onLiqOpChange)
   actualizarBadges();
+  actualizarBotonIniciarLiq();
   guardarEstado();
   showTab(0);
 }
