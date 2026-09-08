@@ -657,25 +657,45 @@ function _crearProvisionalFleteServer(ingresosDB, operadores, datos) {
 // exigir el nombre solo arriesgaría no cerrarla por un error de dedo en el
 // correo de seguimiento.
 //
-// Si NO había ninguna Pendiente (caso más común: el "NO PAGA" es la ÚNICA
-// noticia que se recibe de ese T.U., nunca hubo un correo previo) hay que
-// registrar el T.U. de todas formas, en $0 — de lo contrario nunca queda
-// ninguna autorización asociada a ese T.U., y el Archivo Maestro de Fletes
-// (ver matchFleteConAutorizacion en ing.html) nunca la encuentra: la fila
-// del pedido de flete se queda "(sin confirmar)" para siempre, aunque en
-// realidad ya está resuelta (no se cobra nada) — un NO PAGA nunca genera un
-// correo de seguimiento con el monto real. Para esto SÍ hace falta
-// identificar al operador (no se puede registrar un ingreso sin unidad); si
-// no se encuentra, se deja sin resolver (poco común, ya que casi siempre
-// trae el económico).
+// Si no hay ninguna Pendiente, TAMBIÉN se busca una autorización ya
+// CONFIRMADA (con monto real, no pendiente) que comparta alguno de estos
+// identificadores — caso real: llegó un correo con monto real ($3,500),
+// y el "NO PAGA" de seguimiento vino con un folio distinto pero el MISMO
+// T.U. (el cliente no siempre repite el folio exacto al corregir). Antes
+// esto no se buscaba, así que quedaban DOS registros: el monto original sin
+// corregir y un "NO PAGA" en $0 aparte, ambos visibles como pendientes de
+// depositar. Solo se hace este segundo match si hay EXACTAMENTE UNA
+// coincidencia (no dos) — con dos coincidencias podría ser el caso legítimo
+// de dos tramos (CEDIS + destino final) con el mismo T.U., y ahí no se debe
+// adivinar cuál corregir: se registra un renglón nuevo en $0, como antes.
+//
+// Si NO había ninguna Pendiente NI ninguna Confirmada única (caso más común:
+// el "NO PAGA" es la ÚNICA noticia que se recibe de ese T.U., nunca hubo un
+// correo previo) hay que registrar el T.U. de todas formas, en $0 — de lo
+// contrario nunca queda ninguna autorización asociada a ese T.U., y el
+// Archivo Maestro de Fletes (ver matchFleteConAutorizacion en ing.html)
+// nunca la encuentra: la fila del pedido de flete se queda "(sin
+// confirmar)" para siempre, aunque en realidad ya está resuelta (no se
+// cobra nada) — un NO PAGA nunca genera un correo de seguimiento con el
+// monto real. Para esto SÍ hace falta identificar al operador (no se puede
+// registrar un ingreso sin unidad); si no se encuentra, se deja sin
+// resolver (poco común, ya que casi siempre trae el económico).
 function _registrarNoPagaServer(ingresosDB, x, operadores) {
   const ids = [x.folio, x.pedido, x.tu1, x.tu2].map(_normTxtServer).filter(function (s) { return s; });
   if (!ids.length) return false;
-  const existente = ingresosDB.find(function (v) {
+  let existente = ingresosDB.find(function (v) {
     if (!v.esAutorizacionCliente || !v.montoPendiente || v.sustituidoPorXML) return false;
     const vIds = _idsDeObservacionesServer(v.observaciones);
     return ids.some(function (id) { return vIds.indexOf(id) !== -1; });
   });
+  if (!existente) {
+    const confirmadasQueCoinciden = ingresosDB.filter(function (v) {
+      if (!v.esAutorizacionCliente || v.montoPendiente || v.sustituidoPorXML) return false;
+      const vIds = _idsDeObservacionesServer(v.observaciones);
+      return ids.some(function (id) { return vIds.indexOf(id) !== -1; });
+    });
+    if (confirmadasQueCoinciden.length === 1) existente = confirmadasQueCoinciden[0];
+  }
   if (existente) {
     existente.subtotal = 0; existente.subtManiobras = 0; existente.iva = 0; existente.total = 0;
     existente.montoPendiente = false;
