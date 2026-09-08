@@ -1194,6 +1194,19 @@ async function diagnosticarLiqActiva(){
     html+='<tr><td colspan="2" style="background:#f0f2f5;font-weight:700">ingresosDB con unidad='+clave+'</td></tr>';
     html+='<tr><td>Total registrados / sin liquidar</td><td>'+ingDeEstaClave.length+' / '+ingPend.length+'</td></tr>';
     html+='</tbody></table></div>';
+    // Detalle completo de CADA anticipo de esta clave (no solo el conteo) —
+    // para ver a mano si alguno quedó con el monto en $0 por error, o con
+    // un liqNum de una liquidación que ya no existe.
+    if(antDeEstaClave.length){
+      html+='<div style="margin-top:14px;font-weight:700;font-size:12px">Detalle de los '+antDeEstaClave.length+' anticipos de la clave '+clave+':</div>';
+      html+='<div class="tbl-wrap"><table><thead><tr><th>ID</th><th>Concepto</th><th class="r">Monto</th><th>Estado</th><th>liqNum</th><th>Extra</th></tr></thead><tbody>';
+      antDeEstaClave.slice().sort(function(a,b){return(b.liqNum||0)-(a.liqNum||0);}).forEach(function(a){
+        html+='<tr'+(a.estado==='pendiente'?' style="background:#fffbeb"':'')+'><td style="font-size:10px">'+(a.id||'')+'</td><td>'+(a.concepto||'')+'</td>'
+          +'<td class="r">'+(a.monto||0).toFixed(2)+'</td><td>'+(a.estado||'')+'</td><td>'+(a.liqNum!=null?a.liqNum:'—')+'</td>'
+          +'<td style="font-size:10px">'+(a.enRevisionReapertura?'⚠️ enRevisionReapertura':'')+'</td></tr>';
+      });
+      html+='</tbody></table></div>';
+    }
     out.innerHTML=html;
   }catch(e){console.error('diagnosticarLiqActiva:',e);out.innerHTML='<span style="color:#c1121f">Error: '+e.message+'</span>';}
 }
