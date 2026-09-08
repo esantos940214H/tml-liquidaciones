@@ -1413,7 +1413,7 @@ function mtoActividadesSeleccionadasMOP(){
   if(!unidad||MOP_UNIDADES_APLICABLES.indexOf(unidad)===-1||!km)return[];
   var r=mtoOperacionesAplicablesMOP(unidad,km);
   return r.operaciones.filter(function(op){return _mtoMOPSeleccion[op.numero];}).map(function(op){
-    return{nombre:op.numero+' — '+op.titulo,intervaloKm:null,esMOP:true,grupo:op.grupo,specClave:op.specClave||'',procedimiento:'',refaccionesSugeridas:''};
+    return{nombre:op.numero+' — '+op.titulo,intervaloKm:null,esMOP:true,grupo:op.grupo,procedimiento:op.procedimientoResumen||'',refaccionesSugeridas:''};
   });
 }
 // mtoGruposActividades: agrupa MTO_ACTIVIDADES por "paquete" — una entrada
@@ -1860,14 +1860,23 @@ function mtoImprimirOrdenServicio(o){
     if(!porGrupoMOP[g])porGrupoMOP[g]=[];
     porGrupoMOP[g].push(a);
   });
+  // IMPORTANTE: aquí va el procedimiento RESUMIDO COMPLETO (todos los pasos
+  // numerados y advertencias, ver extraerResumen al generar
+  // shared/mopFreightlinerM2.js) — nunca un dato suelto. Se acomoda en 2
+  // columnas y letra chica para ahorrar espacio, pero sin omitir ningún
+  // paso ni par de apriete; si un checkpoint trae muchas operaciones (M4/
+  // M5), la orden simplemente ocupa más de una hoja — primero completo,
+  // después compacto, nunca al revés.
   var htmlMOP=mop.length
     ?'<h3 style="margin-top:20px">Mantenimiento programado (manual Freightliner M2 / motor MBE900)</h3>'
       +'<div style="column-count:2;column-gap:18px;font-size:11px">'
       +Object.keys(porGrupoMOP).map(function(g){
-        return '<div style="break-inside:avoid;margin-bottom:8px"><strong>'+g+'</strong>'
+        return '<div style="break-inside:avoid;margin-bottom:10px"><strong>'+g+'</strong>'
           +porGrupoMOP[g].map(function(a){
-            return '<div style="display:flex;gap:5px;margin:3px 0;line-height:1.3"><span>☐</span><span>'+a.nombre
-              +(a.specClave?' <em style="color:#555">— '+a.specClave+'</em>':'')+'</span></div>';
+            return '<div style="margin:5px 0;line-height:1.35;border-bottom:1px solid #eee;padding-bottom:4px">'
+              +'<div>☐ <strong>'+a.nombre+'</strong></div>'
+              +(a.procedimiento?'<div style="white-space:pre-line;margin-left:14px">'+a.procedimiento+'</div>':'')
+              +'</div>';
           }).join('')+'</div>';
       }).join('')
       +'</div>'
