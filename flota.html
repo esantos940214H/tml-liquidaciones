@@ -1345,7 +1345,8 @@ async function mtoGuardarYGenerar(){
   for(var i=0;i<articulosUsados.length;i++){
     var art=MTO_ARTICULOS.find(function(a){return a.id===articulosUsados[i].articuloId;});
     if(art&&articulosUsados[i].cantidad>(art.existencia||0)){
-      if(!confirm('⚠️ Vas a entregar '+articulosUsados[i].cantidad+' de "'+art.nombre+'" pero solo hay '+(art.existencia||0)+' en existencia. ¿Continuar de todas formas? (la existencia va a quedar en negativo hasta que ajustes el inventario)'))return;
+      alert('⛔ No puedes generar esta orden: quieres entregar '+articulosUsados[i].cantidad+' de "'+art.nombre+'" pero solo hay '+(art.existencia||0)+' en existencia. Registra primero una entrada de inventario, o ajusta la cantidad.');
+      return;
     }
   }
   var u=usuarioSesion();
