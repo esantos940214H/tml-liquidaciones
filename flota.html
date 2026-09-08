@@ -314,9 +314,14 @@ tr:hover td{background:#fafafa}
       <div class="card-title">🛠️ Nueva orden de mantenimiento</div>
       <div class="row">
         <div class="field" style="min-width:140px"><label>Unidad</label><select id="mtoUnidad" onchange="mtoAlCambiarUnidad()"></select></div>
-        <div class="field" style="min-width:140px"><label>Kilometraje actual</label><input type="number" id="mtoKm" min="0" placeholder="Ej: 152400"></div>
+        <div class="field" style="min-width:140px"><label>Kilometraje actual</label><input type="number" id="mtoKm" min="0" placeholder="Ej: 152400" oninput="mtoRenderMOP()"></div>
         <div class="field" style="min-width:180px"><label>Mecánico</label><select id="mtoMecanico"></select></div>
         <div class="field" style="min-width:140px"><label>Fecha</label><input type="date" id="mtoFecha"></div>
+      </div>
+      <div id="mtoMOPWrap" style="display:none;margin-top:16px">
+        <div class="card-title" style="font-size:11px">🔧 Mantenimiento programado (manual oficial Freightliner M2 + motor MBE900) <span class="info-tip">?<span class="info-tip-box">Solo aplica a las unidades 521-524, 526-527, 531-532. El sistema calcula solo, según el kilometraje, qué operaciones tocan hoy (Horario III) — chasis y motor van en calendarios separados, cada uno con sus propios niveles. Las que aparecen aquí ya se marcan también en "Actividades a realizar" para que salgan en la orden impresa.</span></span></div>
+        <div class="alert alert-info" id="mtoMOPInfo"></div>
+        <div id="mtoMOPLista"></div>
       </div>
       <div class="card-title" style="margin-top:16px;font-size:11px">Actividades a realizar</div>
       <div id="mtoActividades"></div>
@@ -407,6 +412,10 @@ tr:hover td{background:#fafafa}
 <script src="shared/sesion.js"></script>
 <script src="shared/autoActualizar.js"></script>
 <script src="shared/operadores.js"></script>
+<!-- Catálogo oficial de mantenimiento Freightliner Business Class M2 (chasis +
+     motor Mercedes-Benz MBE 906/926), extraído del manual — ver
+     mtoMigrarOperacionesMOPSiVacio() más abajo. -->
+<script src="shared/mopFreightlinerM2.js"></script>
 <script>
 window._fbInit=false;
 window._fbCallbacks=[];
@@ -1233,6 +1242,22 @@ async function corConfirmar(){
 // por una compra o un conteo físico).
 // ══════════════════════════════════════════════
 var MTO_ARTICULOS=[],MTO_MECANICOS=[],MTO_HISTORIAL=[];
+// ══════════════════════════════════════════════
+// MOP FREIGHTLINER M2 + MOTOR MBE900 — manual oficial, solo para las
+// unidades confirmadas con este modelo/motor. Chasis y motor son DOS
+// calendarios independientes (mismo tipo de cálculo, números distintos):
+// cada uno dispara sus niveles cuando el kilometraje recorrido desde el
+// "kilometraje base" (mantenimientoMOPBase) es múltiplo exacto de su
+// intervalo — así no hace falta guardar las 32 filas de la tabla del
+// manual, solo los intervalos base de cada nivel (ver mtoCalcularNivelesMOP).
+// Horario III confirmado por Esa (transporte de larga distancia).
+// ══════════════════════════════════════════════
+var MOP_UNIDADES_APLICABLES=[521,522,523,524,526,527,531,532];
+var MOP_INTERVALOS_CHASIS={M1:16000,M2:32000,M3:64000,M4:128000,M5:256000};
+var MOP_INTERVALOS_MOTOR={M1:32000,M2:96000,M3:128000};
+var MTO_OPERACIONES_MOP=[]; // catálogo de las 91 operaciones (chasis+motor)
+var MTO_MOP_BASE={}; // {economico: {kmIM, fechaIM}}
+var _mtoMOPSeleccion={}; // {numeroOperacion: true/false} — checkboxes del checklist actual
 // Catálogo de actividades de mantenimiento — vive en Firestore
 // (mantenimientoActividades), NO hardcodeado, para que Esa pueda dar de
 // alta/editar actividades (con su procedimiento e intervalo) desde la
@@ -1285,6 +1310,105 @@ async function mtoCorregirTiposActividadesViejos(){
     await db.collection('mantenimientoActividades').doc(a.id).set({tipoArticulo:nuevo},{merge:true});
     a.tipoArticulo=nuevo;
   }
+}
+// mtoMigrarOperacionesMOPSiVacio: siembra las 91 operaciones del manual
+// (window.MOP_FREIGHTLINER_M2_SEED, ver shared/mopFreightlinerM2.js) una
+// sola vez, si la colección está vacía. doc id = sistema+'_'+numero (ej.
+// "chasis_01-01", "motor_MB-05") para que sea estable y no se dupliquen si
+// se corre otra vez.
+async function mtoMigrarOperacionesMOPSiVacio(){
+  var db=firebase.firestore();
+  var snap=await db.collection('mantenimientoOperacionesMOP').limit(1).get();
+  if(!snap.empty)return;
+  var semilla=window.MOP_FREIGHTLINER_M2_SEED||[];
+  if(!semilla.length)return;
+  for(var i=0;i<semilla.length;i+=400){
+    var batch=db.batch();
+    semilla.slice(i,i+400).forEach(function(op){
+      var id=op.sistema+'_'+op.numero;
+      batch.set(db.collection('mantenimientoOperacionesMOP').doc(id),op);
+    });
+    await batch.commit();
+  }
+}
+// mtoCalcularNivelesMOP: dado el km recorrido desde el kilometraje base (IM)
+// y el juego de intervalos de un calendario (chasis o motor), regresa qué
+// niveles tocan en el checkpoint más cercano — igual que la tabla de
+// "secuencia" del manual, pero calculado (múltiplos exactos), sin guardar
+// 32 filas. Tolerancia de ±1500 km alrededor del checkpoint más cercano,
+// mismo espíritu que el candado de kilometraje ya existente.
+function mtoCalcularNivelesMOP(kmDesdeBase,intervalos){
+  var base=intervalos.M1;
+  if(!base||kmDesdeBase<0)return{checkpoint:0,niveles:[]};
+  var checkpoint=Math.round(kmDesdeBase/base)*base;
+  if(checkpoint===0)return{checkpoint:0,niveles:[]};
+  var fuera=Math.abs(kmDesdeBase-checkpoint)>1500;
+  var niveles=[];
+  Object.keys(intervalos).forEach(function(nivel){
+    if(checkpoint%intervalos[nivel]===0)niveles.push(nivel);
+  });
+  return{checkpoint:checkpoint,niveles:niveles,fueraDeVentana:fuera};
+}
+// mtoOperacionesAplicablesMOP: junta las operaciones de chasis+motor que
+// tocan en este kilometraje. Primera vez (sin kilometraje base todavía) se
+// trata como "IM y M1" del chasis (igual que el paso 1 de la tabla del
+// manual) y nada de motor todavía.
+function mtoOperacionesAplicablesMOP(unidad,km){
+  var base=MTO_MOP_BASE[String(unidad)];
+  var esPrimeraVez=!base||base.kmIM==null;
+  var nivelesChasis,nivelesMotor,checkpoint=0;
+  if(esPrimeraVez){
+    nivelesChasis=['IM','M1'];
+    nivelesMotor=[];
+  }else{
+    var kmDesdeBase=km-base.kmIM;
+    var rChasis=mtoCalcularNivelesMOP(kmDesdeBase,MOP_INTERVALOS_CHASIS);
+    var rMotor=mtoCalcularNivelesMOP(kmDesdeBase,MOP_INTERVALOS_MOTOR);
+    nivelesChasis=rChasis.niveles;nivelesMotor=rMotor.niveles;checkpoint=rChasis.checkpoint;
+  }
+  var operaciones=MTO_OPERACIONES_MOP.filter(function(op){
+    var niveles=op.sistema==='chasis'?nivelesChasis:nivelesMotor;
+    return niveles.some(function(n){return op.niveles[n];});
+  });
+  return{esPrimeraVez:esPrimeraVez,nivelesChasis:nivelesChasis,nivelesMotor:nivelesMotor,checkpoint:checkpoint,operaciones:operaciones};
+}
+function mtoRenderMOP(){
+  var unidad=parseInt($('mtoUnidad').value||0);
+  var km=parseFloat($('mtoKm').value||0);
+  var wrap=$('mtoMOPWrap');
+  if(!unidad||MOP_UNIDADES_APLICABLES.indexOf(unidad)===-1||!km){
+    wrap.style.display='none';
+    _mtoMOPSeleccion={};
+    return;
+  }
+  wrap.style.display='block';
+  var r=mtoOperacionesAplicablesMOP(unidad,km);
+  var base=MTO_MOP_BASE[String(unidad)];
+  $('mtoMOPInfo').innerHTML=r.esPrimeraVez
+    ?'Primera vez que se registra un mantenimiento programado para esta unidad — este kilometraje ('+fmtN(km,0)+' km) queda como base (kilometraje 0 del manual). Se aplica IM y M1 del chasis.'
+    :'Kilometraje base: '+fmtN(base.kmIM,0)+' km · Recorridos: '+fmtN(km-base.kmIM,0)+' km · Niveles chasis: '+(r.nivelesChasis.join(', ')||'ninguno')+' · Niveles motor: '+(r.nivelesMotor.join(', ')||'ninguno');
+  var porGrupo={};
+  r.operaciones.forEach(function(op){
+    var g=op.grupo;
+    if(!porGrupo[g])porGrupo[g]=[];
+    porGrupo[g].push(op);
+    if(_mtoMOPSeleccion[op.numero]===undefined)_mtoMOPSeleccion[op.numero]=true;
+  });
+  $('mtoMOPLista').innerHTML=Object.keys(porGrupo).map(function(g){
+    return '<div style="margin-top:10px"><strong style="font-size:12px">'+g+'</strong>'
+      +porGrupo[g].map(function(op){
+        return '<label style="display:flex;align-items:flex-start;gap:6px;font-size:12px;margin:4px 0"><input type="checkbox" '+(_mtoMOPSeleccion[op.numero]?'checked':'')+' onchange="_mtoMOPSeleccion[\''+op.numero+'\']=this.checked"> <span>'+op.numero+' — '+op.titulo+'</span></label>';
+      }).join('')+'</div>';
+  }).join('')||'<p style="font-size:12px;color:#888">No hay operaciones programadas para este kilometraje.</p>';
+}
+function mtoActividadesSeleccionadasMOP(){
+  var unidad=parseInt($('mtoUnidad').value||0);
+  var km=parseFloat($('mtoKm').value||0);
+  if(!unidad||MOP_UNIDADES_APLICABLES.indexOf(unidad)===-1||!km)return[];
+  var r=mtoOperacionesAplicablesMOP(unidad,km);
+  return r.operaciones.filter(function(op){return _mtoMOPSeleccion[op.numero];}).map(function(op){
+    return{nombre:op.numero+' — '+op.titulo,intervaloKm:null,procedimiento:op.procedimientoResumen||'',refaccionesSugeridas:op.notas||''};
+  });
 }
 // mtoGruposActividades: agrupa MTO_ACTIVIDADES por "paquete" — una entrada
 // por grupo (o por actividad suelta si no tiene paquete), en el mismo orden
@@ -1400,6 +1524,11 @@ async function cargarMantenimiento(){
     await mtoCorregirTiposActividadesViejos();
     MTO_ACTIVIDADES_TODAS.sort(function(a,b){return(a.orden||0)-(b.orden||0);});
     MTO_ACTIVIDADES=MTO_ACTIVIDADES_TODAS.filter(function(a){return a.activo!==false;});
+    await mtoMigrarOperacionesMOPSiVacio();
+    var snapMOP=await db.collection('mantenimientoOperacionesMOP').get();
+    MTO_OPERACIONES_MOP=[];snapMOP.forEach(function(d){MTO_OPERACIONES_MOP.push(d.data());});
+    var snapMOPBase=await db.collection('mantenimientoMOPBase').get();
+    MTO_MOP_BASE={};snapMOPBase.forEach(function(d){MTO_MOP_BASE[d.id]=d.data();});
     renderMtoCatalogo();renderMtoMecanicos();renderMtoHistorial();renderMtoProximos();renderMtoCiclos();renderMtoEntradas();renderMtoFaltantes();renderMtoCatalogoActividades();
     poblarMtoSelects();poblarMtoSelectEntrada();
     if(!$('entFecha').value)$('entFecha').value=hoy();
@@ -1407,6 +1536,8 @@ async function cargarMantenimiento(){
     mtoRenderActividades();
     if(!_mtoArticuloFilas.length)_mtoArticuloFilas=[{articuloId:'',cantidad:1}];
     renderMtoArticulosFilas();
+    _mtoMOPSeleccion={};
+    mtoRenderMOP();
   }catch(e){console.error('cargarMantenimiento:',e);}
 }
 function poblarMtoSelects(){
@@ -1452,6 +1583,8 @@ function mtoAlCambiarUnidad(){
   var unidad=parseInt($('mtoUnidad').value||0);
   var odo=unidad?MTO_ODOMETRO_WIALON[String(unidad)]:null;
   if(odo&&odo.km!=null)$('mtoKm').value=odo.km;
+  _mtoMOPSeleccion={};
+  mtoRenderMOP();
 }
 function mtoArticulosCompatibles(){
   var unidad=parseInt($('mtoUnidad').value||0);
@@ -1560,7 +1693,7 @@ async function mtoGuardarYGenerar(){
   var mecanicoId=$('mtoMecanico').value;
   var mecanico=MTO_MECANICOS.find(function(m){return m.id===mecanicoId;});
   var fecha=$('mtoFecha').value||hoy();
-  var actividades=mtoActividadesSeleccionadas();
+  var actividades=mtoActividadesSeleccionadas().concat(mtoActividadesSeleccionadasMOP());
   if(!unidad){alert('Selecciona la unidad.');return;}
   if(!km){alert('Captura el kilometraje actual.');return;}
   if(!actividades.length){alert('Marca al menos una actividad a realizar.');return;}
@@ -1639,6 +1772,15 @@ async function mtoGuardarYGenerar(){
       intervaloKm:cicloExistente?cicloExistente.intervaloKm:(unidad===529?14000:25000),
       definidoPor:u?(u.nombre||u.usuario):''
     });
+    // Kilometraje base del manual Freightliner M2 (mantenimientoMOPBase) —
+    // solo se fija UNA vez, la primera vez que se registra un mantenimiento
+    // programado para esta unidad; después nunca se toca (a diferencia del
+    // ciclo simple de arriba, este es el "kilómetro 0" fijo del manual, no
+    // se reinicia con cada visita).
+    if(MOP_UNIDADES_APLICABLES.indexOf(unidad)!==-1&&(!MTO_MOP_BASE[String(unidad)]||MTO_MOP_BASE[String(unidad)].kmIM==null)){
+      await db.collection('mantenimientoMOPBase').doc(String(unidad)).set({kmIM:km,fechaIM:fecha,definidoPor:u?(u.nombre||u.usuario):''});
+    }
+    _mtoMOPSeleccion={};
     mtoImprimirFiltrosEntregados({id:ref.id,unidad:unidad,fecha:fecha,articulos:articulosEntregables,notas:$('mtoNotas').value});
     mtoImprimirOrdenServicio({id:ref.id,unidad:unidad,fecha:fecha,km:km,mecanico:mecanico?mecanico.nombre:'(sin asignar)',actividades:actividades,notas:$('mtoNotas').value,faltantes:articulosFaltantes});
     var avisoFaltantes=articulosFaltantes.length
@@ -1735,7 +1877,7 @@ function renderMtoHistorial(){
 // inventario), mantenimientoMecanicos ni mantenimientoActividades — esos
 // quedan intactos a propósito. Doble confirmación porque es permanente.
 async function mtoBorrarHistorialPruebas(){
-  if(!confirm('⚠️ Esto borra PERMANENTEMENTE:\n\n- Todo el historial de órdenes de mantenimiento ('+MTO_HISTORIAL.length+')\n- Los ciclos de mantenimiento por unidad ('+Object.keys(MTO_CICLOS).length+')\n- El registro de entradas de inventario ('+MTO_ENTRADAS.length+') — la existencia actual del catálogo NO se toca\n\nNO se borra: el catálogo de artículos/inventario, los mecánicos, ni el catálogo de actividades.\n\n¿Seguro que quieres continuar?'))return;
+  if(!confirm('⚠️ Esto borra PERMANENTEMENTE:\n\n- Todo el historial de órdenes de mantenimiento ('+MTO_HISTORIAL.length+')\n- Los ciclos de mantenimiento por unidad ('+Object.keys(MTO_CICLOS).length+')\n- El kilometraje base del manual Freightliner M2 ('+Object.keys(MTO_MOP_BASE).length+')\n- El registro de entradas de inventario ('+MTO_ENTRADAS.length+') — la existencia actual del catálogo NO se toca\n\nNO se borra: el catálogo de artículos/inventario, los mecánicos, ni los catálogos de actividades/operaciones MOP.\n\n¿Seguro que quieres continuar?'))return;
   if(!confirm('Última confirmación — esto NO se puede deshacer. ¿Borrar todo lo anterior?'))return;
   try{
     var db=firebase.firestore();
@@ -1749,7 +1891,8 @@ async function mtoBorrarHistorialPruebas(){
     var n1=await borrarColeccion('mantenimientos');
     var n2=await borrarColeccion('mantenimientoCicloUnidad');
     var n3=await borrarColeccion('mantenimientoEntradasInventario');
-    alert('✅ Listo. Se borraron '+n1+' órdenes, '+n2+' ciclos y '+n3+' entradas. El inventario, mecánicos y catálogo de actividades quedaron intactos.');
+    var n4=await borrarColeccion('mantenimientoMOPBase');
+    alert('✅ Listo. Se borraron '+n1+' órdenes, '+n2+' ciclos, '+n3+' entradas y '+n4+' kilometrajes base MOP. El inventario, mecánicos y catálogos de actividades quedaron intactos.');
     await cargarMantenimiento();
   }catch(e){alert('⚠️ Error al borrar: '+e.message);}
 }
