@@ -1584,6 +1584,52 @@ async function cargarEstado(){
               guardarEstado();
             }
           }catch(e){console.error('Auto-reparación de liq.reabierta:',e);}
+        } else if(liq.reabierta&&!(liq.anticiposIncluidos&&liq.anticiposIncluidos.length)&&!(liq.viajesIncluidos&&liq.viajesIncluidos.length)){
+          // Caso distinto al de arriba: liq.reabierta SÍ quedó en true, pero
+          // anticiposIncluidos/viajesIncluidos quedaron en [] (arreglo vacío,
+          // no ausente) — esto pasaba cuando reabrirLiquidacion() se corría
+          // DOS VECES sobre la misma liquidación antes de que existiera el
+          // candado que ahora lo evita en hist.html (ver comentario ahí:
+          // "NO recalcular nada" si ya está activa). La primera vez liberó
+          // los anticipos/viajes (les quitó el liqNum, quedaron "pendiente"/
+          // "sin_liquidar"); la segunda vez ya no encontró ninguno con
+          // liqNum===liq.num (porque ya se los había quitado) y sobrescribió
+          // las listas con arreglos vacíos, dejando el reporte en $0.00 pese
+          // a que los anticipos/viajes siguen intactos en Firebase. Se
+          // reconstruyen las listas buscando los que están pendientes/sin
+          // liquidar Y sin ningún liqNum asignado (nadie más los reclama).
+          try{
+            var _opIdChk2=liq.opId||liq.unidad;
+            var _aChk2=await window.FB.get('estado','anticiposDB');
+            var _antDBChk2=(_aChk2&&_aChk2.data)?JSON.parse(_aChk2.data):{};
+            if(Array.isArray(_antDBChk2))_antDBChk2={};
+            var _idsA2=[];
+            Object.keys(_antDBChk2).forEach(function(k){
+              if(parseInt(k)===parseInt(_opIdChk2)){
+                (_antDBChk2[k]||[]).forEach(function(a){if(a.estado==='pendiente'&&a.liqNum==null)_idsA2.push(a.id);});
+              }
+            });
+            var _iChk2=await window.FB.get('estado','ingresosDB');
+            var _ingDBChk2=(_iChk2&&_iChk2.data)?JSON.parse(_iChk2.data):[];
+            var _idsV2=[];
+            _ingDBChk2.forEach(function(v){if(parseInt(v.unidad)===parseInt(_opIdChk2)&&v.estado==='sin_liquidar'&&v.liqNum==null)_idsV2.push(v.id);});
+            var _nChk2=await window.FB.get('estado','nominaDB');
+            var _nomDBChk2=(_nChk2&&_nChk2.data)?JSON.parse(_nChk2.data):{};
+            if(Array.isArray(_nomDBChk2))_nomDBChk2={};
+            var _idsN2=[];
+            Object.keys(_nomDBChk2).forEach(function(k){
+              if(parseInt(k)===parseInt(_opIdChk2)){
+                (_nomDBChk2[k]||[]).forEach(function(n){if(n.estado==='pendiente'&&n.liqNum==null)_idsN2.push(n.id);});
+              }
+            });
+            if(_idsA2.length||_idsV2.length||_idsN2.length){
+              liq.anticiposIncluidos=_idsA2;
+              liq.viajesIncluidos=_idsV2;
+              liq.nominaIncluidos=_idsN2;
+              console.warn('liq.reabierta (listas vacías) auto-reparado: '+_idsA2.length+' anticipos, '+_idsV2.length+' viajes y '+_idsN2.length+' recibos de nómina recuperados.');
+              guardarEstado();
+            }
+          }catch(e){console.error('Auto-reparación de listas vacías en liq.reabierta:',e);}
         }
         restaurarUILiquidacion();
       }
