@@ -306,7 +306,9 @@ tr:hover td{background:#fafafa}
         <div class="field" style="flex:1;min-width:220px"><label>Otro tipo de mantenimiento o reparación (opcional)</label><input type="text" id="mtoActividadOtra" placeholder="Ej: cambio de balatas traseras, reparación de suspensión, etc."></div>
       </div>
       <div class="card-title" style="margin-top:16px;font-size:11px">Refacciones/artículos que lleva (según unidad) <button class="btn btn-out btn-sm" onclick="mtoAgregarArticuloFila()">+ Agregar renglón</button></div>
+      <p style="font-size:12px;color:#888;margin-bottom:6px">Al marcar una actividad de filtro y elegir la unidad, el sistema agrega solo el filtro correcto si lo encuentra en el catálogo (según "Tipo" y "Compatibles").</p>
       <div class="alert alert-info" id="mtoAvisoCompat" style="display:none"></div>
+      <div class="alert alert-warn" id="mtoAvisoAuto" style="display:none"></div>
       <div class="tbl-wrap"><table><thead><tr><th>Artículo</th><th>Existencia</th><th class="r">Cantidad</th><th></th></tr></thead><tbody id="tbMtoArticulos"></tbody></table></div>
       <div class="row" style="margin-top:14px">
         <div class="field" style="flex:1;min-width:220px"><label>Notas</label><input type="text" id="mtoNotas" placeholder="Observaciones para el mecánico"></div>
@@ -1284,10 +1286,22 @@ function poblarMtoSelects(){
   }).join('');
   if(actualMec)sMec.value=actualMec;
 }
+// MTO_TIPO_POR_ACTIVIDAD: qué "tipo" del catálogo (mtoAgregarArticulo/
+// mtoEditarArticulo, ver MTO_TIPOS_VALIDOS) cubre cada actividad — permite
+// que mtoSincronizarFilasAutomaticas() sepa qué buscar en el catálogo sin
+// adivinar por el nombre.
+var MTO_TIPO_POR_ACTIVIDAD={
+  'Cambio de aceite de motor':'aceite',
+  'Cambio de filtro de aceite':'filtro_aceite',
+  'Cambio de filtro de diesel':'filtro_diesel',
+  'Cambio de filtro separador de combustible':'filtro_separador',
+  'Cambio de filtro de aire':'filtro_aire',
+  'Cambio de filtro secador':'filtro_secador'
+};
 function mtoRenderActividades(){
   $('mtoActividades').innerHTML=MTO_ACTIVIDADES_DEFAULT.map(function(a,i){
     var tip=a.detalle?' <span class="info-tip">?<span class="info-tip-box">'+a.detalle+'</span></span>':'';
-    return '<label style="display:inline-flex;align-items:center;gap:6px;font-size:12px;margin:4px 14px 4px 0"><input type="checkbox" id="mtoAct'+i+'"> '+a.nombre+'</label>'+tip;
+    return '<label style="display:inline-flex;align-items:center;gap:6px;font-size:12px;margin:4px 14px 4px 0"><input type="checkbox" id="mtoAct'+i+'" onchange="mtoSincronizarFilasAutomaticas()"> '+a.nombre+'</label>'+tip;
   }).join('');
 }
 function mtoActividadesSeleccionadas(){
@@ -1307,7 +1321,7 @@ function mtoActividadesSeleccionadas(){
 // otro distinto, así que mostrarle a Esa un catálogo sin filtrar la haría
 // entregar el filtro equivocado por error.
 function mtoAlCambiarUnidad(){
-  renderMtoArticulosFilas();
+  mtoSincronizarFilasAutomaticas();
   // Precarga el kilometraje real de Wialon (si existe) — sigue siendo
   // editable, por si el dato está desfasado o la unidad no trae GPS.
   var unidad=parseInt($('mtoUnidad').value||0);
@@ -1320,6 +1334,54 @@ function mtoArticulosCompatibles(){
   return MTO_ARTICULOS.filter(function(a){
     return !a.unidadesCompatibles||!a.unidadesCompatibles.length||a.unidadesCompatibles.indexOf(unidad)!==-1;
   });
+}
+// mtoSincronizarFilasAutomaticas: se llama cada vez que cambia la unidad o
+// se marca/desmarca una actividad. Para cada tipo de filtro que las
+// actividades marcadas requieren, busca en el catálogo el(los) artículo(s)
+// de ese tipo compatibles con la unidad elegida: si hay EXACTAMENTE UNO, lo
+// agrega solo (marcado auto:true, para poder quitarlo/reemplazarlo si la
+// actividad se desmarca); si hay 0 o más de 1, NO ADIVINA — deja un aviso
+// para que se elija a mano, igual que antes. Nunca toca renglones que la
+// propia Esa agregó a mano con "+ Agregar renglón".
+function mtoTiposNecesarios(){
+  var tipos=[];
+  MTO_ACTIVIDADES_DEFAULT.forEach(function(a,i){
+    if(!$('mtoAct'+i)||!$('mtoAct'+i).checked)return;
+    var nombres=a.subActividades?a.subActividades.map(function(s){return s.nombre;}):[a.nombre];
+    nombres.forEach(function(nombreAct){
+      var tipo=MTO_TIPO_POR_ACTIVIDAD[nombreAct];
+      if(tipo&&tipos.indexOf(tipo)===-1)tipos.push(tipo);
+    });
+  });
+  return tipos;
+}
+function mtoSincronizarFilasAutomaticas(){
+  var unidad=parseInt($('mtoUnidad').value||0);
+  var tiposNecesarios=mtoTiposNecesarios();
+  _mtoArticuloFilas=_mtoArticuloFilas.filter(function(f){return !f.auto||tiposNecesarios.indexOf(f.tipo)!==-1;});
+  var avisos=[];
+  tiposNecesarios.forEach(function(tipo){
+    if(_mtoArticuloFilas.some(function(f){return f.auto&&f.tipo===tipo;}))return;
+    if(!unidad){avisos.push('Selecciona la unidad para que el sistema busque solo el filtro tipo "'+tipo+'".');return;}
+    var candidatos=MTO_ARTICULOS.filter(function(a){
+      return (a.tipo||'').toLowerCase()===tipo&&(!a.unidadesCompatibles||!a.unidadesCompatibles.length||a.unidadesCompatibles.indexOf(unidad)!==-1);
+    });
+    if(candidatos.length===1){
+      _mtoArticuloFilas.push({articuloId:candidatos[0].id,cantidad:1,auto:true,tipo:tipo});
+    }else if(candidatos.length===0){
+      avisos.push('⚠️ No hay ningún artículo tipo "'+tipo+'" en el catálogo compatible con la unidad '+unidad+' — agrégalo a mano en el renglón, o da de alta el artículo en el catálogo de abajo.');
+    }else{
+      avisos.push('⚠️ Hay '+candidatos.length+' artículos tipo "'+tipo+'" compatibles con la unidad '+unidad+' — elige el correcto a mano en el renglón (no se puede adivinar cuál).');
+    }
+  });
+  _mtoArticuloFilas=_mtoArticuloFilas.filter(function(f){return f.articuloId||f.auto;});
+  if(!_mtoArticuloFilas.length)_mtoArticuloFilas=[{articuloId:'',cantidad:1}];
+  renderMtoArticulosFilas();
+  var elAviso=$('mtoAvisoAuto');
+  if(elAviso){
+    if(avisos.length){elAviso.style.display='block';elAviso.innerHTML=avisos.join('<br>');}
+    else elAviso.style.display='none';
+  }
 }
 function mtoAgregarArticuloFila(){
   _mtoArticuloFilas.push({articuloId:'',cantidad:1});
@@ -1610,10 +1672,28 @@ function renderMtoProximos(){
         +'<td class="num r">'+(alerta?'⚠️ ':'')+fmtN(f.faltan,0)+'</td></tr>';
     }).join('')+'</tbody></table></div>';
 }
+// MTO_TIPOS_VALIDOS: a propósito una lista FIJA (no texto libre) — el
+// emparejamiento automático de mtoSincronizarFilasAutomaticas() busca por
+// este campo exacto, así que un tipo mal escrito ("Filtro_Aceite " con
+// espacio, "filtroaceite", etc.) haría que nunca encontrara el filtro
+// correcto. "otro" es la salida para cualquier artículo que no entra en
+// ninguna categoría — esos nunca se auto-agregan, siempre a mano.
+var MTO_TIPOS_VALIDOS=['aceite','filtro_aceite','filtro_aire','filtro_diesel','filtro_separador','filtro_secador','otro'];
+function _mtoPedirTipo(valorActual){
+  var msg='Tipo — usa EXACTAMENTE una de estas palabras (así el sistema puede encontrarlo solo):\n'+MTO_TIPOS_VALIDOS.join(', ')+'\n\n("otro" si no aplica ninguna — ese tipo nunca se auto-agrega, siempre se elige a mano)';
+  while(true){
+    var raw=prompt(msg,valorActual||'otro');
+    if(raw===null)return null;
+    var tipo=raw.trim().toLowerCase();
+    if(MTO_TIPOS_VALIDOS.indexOf(tipo)!==-1)return tipo;
+    alert('⚠️ "'+raw+'" no es válido. Usa exactamente una de: '+MTO_TIPOS_VALIDOS.join(', '));
+  }
+}
 async function mtoAgregarArticulo(){
   var nombre=prompt('Nombre del artículo (ej. "Filtro de aceite Fram PH123"):');
   if(!nombre)return;
-  var tipo=prompt('Tipo (filtro_aceite / filtro_aire / filtro_combustible / aceite / otro):','filtro_aceite')||'otro';
+  var tipo=_mtoPedirTipo('filtro_aceite');
+  if(tipo===null)return;
   var numeroParte=(prompt('Número de parte (opcional):','')||'').trim();
   var compatTxt=prompt('Unidades compatibles, separadas por coma (deja vacío si aplica a todas):','')||'';
   var unidadesCompatibles=compatTxt.split(',').map(function(s){return parseInt(s.trim());}).filter(function(n){return n;});
@@ -1621,7 +1701,7 @@ async function mtoAgregarArticulo(){
   var costoUnitario=parseFloat(prompt('Costo unitario ($):','0')||'0');
   try{
     await firebase.firestore().collection('mantenimientoArticulos').add({
-      nombre:nombre.trim(),tipo:tipo.trim(),numeroParte:numeroParte,unidadesCompatibles:unidadesCompatibles,
+      nombre:nombre.trim(),tipo:tipo,numeroParte:numeroParte,unidadesCompatibles:unidadesCompatibles,
       existencia:existencia,costoUnitario:costoUnitario,activo:true
     });
     await cargarMantenimiento();
@@ -1630,6 +1710,8 @@ async function mtoAgregarArticulo(){
 async function mtoEditarArticulo(id){
   var art=MTO_ARTICULOS.find(function(a){return a.id===id;});
   if(!art)return;
+  var tipo=_mtoPedirTipo(art.tipo||'otro');
+  if(tipo===null)return;
   var numeroParte=prompt('Número de parte de "'+art.nombre+'":',art.numeroParte||'');
   if(numeroParte===null)return;
   var existencia=prompt('Nueva existencia:',art.existencia||0);
@@ -1641,7 +1723,7 @@ async function mtoEditarArticulo(id){
   var unidadesCompatibles=compatTxt.split(',').map(function(s){return parseInt(s.trim());}).filter(function(n){return n;});
   try{
     await firebase.firestore().collection('mantenimientoArticulos').doc(id).set({
-      numeroParte:numeroParte.trim(),existencia:parseFloat(existencia)||0,costoUnitario:parseFloat(costoUnitario)||0,unidadesCompatibles:unidadesCompatibles
+      tipo:tipo,numeroParte:numeroParte.trim(),existencia:parseFloat(existencia)||0,costoUnitario:parseFloat(costoUnitario)||0,unidadesCompatibles:unidadesCompatibles
     },{merge:true});
     await cargarMantenimiento();
   }catch(e){alert('⚠️ Error al actualizar: '+e.message);}
