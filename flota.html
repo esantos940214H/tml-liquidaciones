@@ -363,8 +363,8 @@ tr:hover td{background:#fafafa}
     </div>
 
     <div class="card">
-      <div class="card-title">🛒 Filtros/refacciones no entregados (pendientes de comprar) <span class="info-tip">?<span class="info-tip-box">Cuando una orden de mantenimiento pide más de lo que hay en existencia, esa parte NO se entrega ni se descuenta — queda aquí como pendiente, con su número de parte, para llevar el registro de qué se ha tenido que comprar por falta de inventario. Márcalo "Comprado" en cuanto llegue al almacén; si además quieres que sume a la existencia, regístralo también en "Entradas de inventario" arriba.</span></span></div>
-      <div class="tbl-wrap"><table><thead><tr><th>Fecha</th><th>Unidad</th><th>Artículo</th><th>No. de parte</th><th class="r">Cantidad</th><th>Estado</th><th></th></tr></thead><tbody id="tbMtoFaltantes"></tbody></table></div>
+      <div class="card-title">🛒 Filtros/refacciones no entregados (pendientes de comprar) <span class="info-tip">?<span class="info-tip-box">Solo informativo: cuando una orden de mantenimiento pide más de lo que hay en existencia, esa parte NO se entrega ni se descuenta — queda aquí registrada, con su número de parte, para llevar el historial de qué se ha tenido que comprar por falta de inventario. Para que salga de esta lista, registra la compra en "Entradas de inventario" (arriba) y vuelve a generar/entregar ese filtro en una próxima orden.</span></span></div>
+      <div class="tbl-wrap"><table><thead><tr><th>Fecha</th><th>Unidad</th><th>Artículo</th><th>No. de parte</th><th class="r">Cantidad</th></tr></thead><tbody id="tbMtoFaltantes"></tbody></table></div>
     </div>
 
     <div class="card">
@@ -1425,6 +1425,30 @@ async function mtoGuardarYGenerar(){
   if(!unidad){alert('Selecciona la unidad.');return;}
   if(!km){alert('Captura el kilometraje actual.');return;}
   if(!actividades.length){alert('Marca al menos una actividad a realizar.');return;}
+  // Candado de kilometraje — SOLO aplica cuando se marca "Mantenimiento
+  // preventivo" (el paquete que rige el ciclo general de servicio de la
+  // unidad, ver tarjeta "Ciclo de mantenimiento"). Si ya había un ciclo
+  // registrado para esta unidad, compara los km recorridos desde el último
+  // servicio contra el intervalo configurado (25,000 por default, 14,000
+  // para la 529): más de 2,000 km ANTES de tiempo, bloquea (probable error
+  // de captura); más de 1,000 km TARDE, deja continuar pero lo marca como
+  // incidencia — nunca se bloquea por llegar tarde, solo por adelantado.
+  var esPreventivo=MTO_ACTIVIDADES_DEFAULT.some(function(a,i){return a.nombre==='Mantenimiento preventivo'&&$('mtoAct'+i)&&$('mtoAct'+i).checked;});
+  var incidenciaKilometraje=null;
+  if(esPreventivo){
+    var cicloPrevio=MTO_CICLOS[String(unidad)];
+    if(cicloPrevio&&cicloPrevio.kmBase!=null){
+      var intervaloVigente=cicloPrevio.intervaloKm||(unidad===529?14000:25000);
+      var kmRecorrido=km-cicloPrevio.kmBase;
+      if(kmRecorrido<intervaloVigente-2000){
+        alert('⛔ No se puede registrar: esta unidad lleva solo '+fmtN(kmRecorrido,0)+' km desde su último mantenimiento preventivo (kilometraje base '+fmtN(cicloPrevio.kmBase,0)+'), y el intervalo es cada '+fmtN(intervaloVigente,0)+' km. Es muy pronto — revisa el kilometraje capturado.');
+        return;
+      }
+      if(kmRecorrido>intervaloVigente+1000){
+        incidenciaKilometraje={kmRecorrido:kmRecorrido,intervaloVigente:intervaloVigente,kmBaseAnterior:cicloPrevio.kmBase};
+      }
+    }
+  }
   var articulosUsados=_mtoArticuloFilas.filter(function(f){return f.articuloId&&f.cantidad>0;}).map(function(f){
     var art=MTO_ARTICULOS.find(function(a){return a.id===f.articuloId;});
     return {articuloId:f.articuloId,nombre:art?art.nombre:'',cantidad:f.cantidad,costoUnitario:art?(art.costoUnitario||0):0,numeroParte:art?(art.numeroParte||''):'',existencia:art?(art.existencia||0):0};
@@ -1444,6 +1468,7 @@ async function mtoGuardarYGenerar(){
       unidad:unidad,fecha:fecha,kilometraje:km,
       mecanicoId:mecanicoId||null,mecanicoNombre:mecanico?mecanico.nombre:'',
       actividades:actividades,articulos:articulosEntregables,articulosFaltantes:articulosFaltantes,costoTotalArticulos:costoTotal,
+      incidenciaKilometraje:incidenciaKilometraje,
       notas:($('mtoNotas').value||'').trim(),
       capturadoPor:u?(u.nombre||u.usuario):'',creadoEn:new Date().toISOString()
     });
@@ -1475,7 +1500,10 @@ async function mtoGuardarYGenerar(){
     var avisoFaltantes=articulosFaltantes.length
       ?' ⚠️ No se entregó (falta comprar): '+articulosFaltantes.map(function(a){return a.nombre+(a.numeroParte?' (No. parte '+a.numeroParte+')':'')+' x'+a.cantidad;}).join(', ')+'.'
       :'';
-    $('mtoInfo').innerHTML='<div class="alert '+(articulosFaltantes.length?'alert-warn':'alert-ok')+'">✅ Orden de mantenimiento registrada para la unidad '+unidad+'.'+avisoFaltantes+'</div>';
+    var avisoIncidencia=incidenciaKilometraje
+      ?' 🚨 INCIDENCIA: se hizo '+fmtN(incidenciaKilometraje.kmRecorrido-incidenciaKilometraje.intervaloVigente,0)+' km más tarde de lo debido (cada '+fmtN(incidenciaKilometraje.intervaloVigente,0)+' km).'
+      :'';
+    $('mtoInfo').innerHTML='<div class="alert '+(incidenciaKilometraje?'alert-err':(articulosFaltantes.length?'alert-warn':'alert-ok'))+'">✅ Orden de mantenimiento registrada para la unidad '+unidad+'.'+avisoFaltantes+avisoIncidencia+'</div>';
     $('mtoKm').value='';$('mtoNotas').value='';$('mtoActividadOtra').value='';
     mtoRenderActividades();
     _mtoArticuloFilas=[{articuloId:'',cantidad:1}];
@@ -1539,20 +1567,21 @@ function renderMtoHistorial(){
     var acts=(m.actividades||[]).map(function(a){return a.nombre;}).join(', ');
     var faltantes=m.articulosFaltantes||[];
     var avisoFaltantes=faltantes.length?' <span class="badge bg-yellow" title="'+faltantes.map(function(a){return a.nombre+(a.numeroParte?' ('+a.numeroParte+')':'');}).join(', ').replace(/"/g,'&quot;')+'">⚠️ faltan '+faltantes.length+'</span>':'';
+    var inc=m.incidenciaKilometraje;
+    var avisoIncidencia=inc?' <span class="badge bg-red" title="Se hizo '+fmtN(inc.kmRecorrido,0)+' km después del anterior, '+fmtN(inc.kmRecorrido-inc.intervaloVigente,0)+' km tarde">🚨 tardío</span>':'';
     return '<tr><td>'+m.fecha+'</td><td>'+m.unidad+'</td><td class="num">'+fmtN(m.kilometraje,0)+'</td><td style="font-size:12px">'+(m.mecanicoNombre||'—')+'</td>'
-      +'<td style="font-size:12px">'+acts+avisoFaltantes+'</td><td class="r">'+fmt(m.costoTotalArticulos||0)+'</td>'
+      +'<td style="font-size:12px">'+acts+avisoFaltantes+avisoIncidencia+'</td><td class="r">'+fmt(m.costoTotalArticulos||0)+'</td>'
       +'<td><button class="btn btn-out btn-sm" onclick="mtoReimprimir(\''+m.id+'\')">🖨️ Reimprimir</button></td></tr>';
   }).join('');
 }
 // _mtoTodosFaltantes: junta articulosFaltantes de TODO el historial en una
-// sola lista plana, más reciente primero — cada renglón recuerda de qué
-// mantenimiento/índice viene, para poder marcarlo "comprado" sin tocar los
-// demás renglones de ese mismo mantenimiento.
+// sola lista plana, más reciente primero — puramente informativa (registro
+// de qué se ha tenido que comprar por falta de inventario), sin acciones.
 function _mtoTodosFaltantes(){
   var out=[];
   MTO_HISTORIAL.forEach(function(m){
-    (m.articulosFaltantes||[]).forEach(function(a,i){
-      out.push({mantenimientoId:m.id,indice:i,fecha:m.fecha,unidad:m.unidad,nombre:a.nombre,numeroParte:a.numeroParte,cantidad:a.cantidad,comprado:!!a.comprado});
+    (m.articulosFaltantes||[]).forEach(function(a){
+      out.push({fecha:m.fecha,unidad:m.unidad,nombre:a.nombre,numeroParte:a.numeroParte,cantidad:a.cantidad});
     });
   });
   out.sort(function(a,b){return(b.fecha||'').localeCompare(a.fecha||'');});
@@ -1562,19 +1591,8 @@ function renderMtoFaltantes(){
   var lista=_mtoTodosFaltantes();
   $('tbMtoFaltantes').innerHTML=lista.map(function(f){
     return '<tr><td>'+f.fecha+'</td><td>'+f.unidad+'</td><td style="font-size:12px">'+f.nombre+'</td>'
-      +'<td class="num">'+(f.numeroParte||'—')+'</td><td class="r">'+f.cantidad+'</td>'
-      +'<td>'+(f.comprado?'<span class="badge bg-green">Comprado</span>':'<span class="badge bg-yellow">Pendiente</span>')+'</td>'
-      +'<td><button class="btn btn-out btn-sm" onclick="mtoMarcarFaltanteComprado(\''+f.mantenimientoId+'\','+f.indice+','+(!f.comprado)+')">'+(f.comprado?'↩️ Deshacer':'✅ Marcar comprado')+'</button></td></tr>';
-  }).join('')||'<tr><td colspan="7" style="color:#888">Sin pendientes 🎉</td></tr>';
-}
-async function mtoMarcarFaltanteComprado(mantenimientoId,indice,comprado){
-  try{
-    var m=MTO_HISTORIAL.find(function(x){return x.id===mantenimientoId;});
-    if(!m||!m.articulosFaltantes||!m.articulosFaltantes[indice])return;
-    var faltantes=m.articulosFaltantes.map(function(a,i){return i===indice?Object.assign({},a,{comprado:comprado}):a;});
-    await firebase.firestore().collection('mantenimientos').doc(mantenimientoId).set({articulosFaltantes:faltantes},{merge:true});
-    await cargarMantenimiento();
-  }catch(e){alert('⚠️ Error al actualizar: '+e.message);}
+      +'<td class="num">'+(f.numeroParte||'—')+'</td><td class="r">'+f.cantidad+'</td></tr>';
+  }).join('')||'<tr><td colspan="5" style="color:#888">Sin pendientes 🎉</td></tr>';
 }
 // renderMtoProximos: estimado simple con el kilometraje MÁS RECIENTE
 // capturado a mano de cada unidad — ver nota en el info-tip de la tarjeta,
