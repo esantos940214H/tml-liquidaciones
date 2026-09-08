@@ -206,6 +206,16 @@ tr:hover td{background:#fafafa}
     </div>
   </div>
 
+  <!-- HERRAMIENTA DE UN SOLO USO: recuperar cargos de Flota/CxP perdidos al
+       reabrir una liquidación ANTES de que se corrigiera ese bug (ver
+       reabrirLiquidacion) — admin-only, oculto por default en
+       verificarSesionModulo. -->
+  <div class="card no-print" id="cardRecuperarReapertura" style="display:none;border:1.5px solid #e63946">
+    <div class="card-title" style="color:#e63946">🩹 Recuperar cargos perdidos al reabrir (una sola vez)</div>
+    <p style="font-size:12px;color:#666;margin-bottom:10px">Antes de corregir el bug, reabrir una liquidación NO liberaba los cargos de Flota ni las facturas de Proveedores (CxP) — se quedaban marcados como aplicados a un folio que ya no existe. Esto los libera para que vuelvan a estar "pendientes" y se puedan incluir de nuevo en la liquidación activa de ese operador.</p>
+    <button class="btn btn-out btn-sm" style="border-color:#e63946;color:#e63946" onclick="recuperarCargosPerdidosReapertura()">🩹 Recuperar cargos de una liquidación reabierta</button>
+  </div>
+
   <!-- REPORTES -->
   <div class="card no-print" id="cardReportes">
     <div class="card-title">📊 Reportes</div>
@@ -601,6 +611,7 @@ function verificarSesionModulo(){
     return;
   }
   mostrarSesionEnHeader();
+  if($('cardRecuperarReapertura'))$('cardRecuperarReapertura').style.display=u.esAdmin?'block':'none';
 }
 window.onFBReady(verificarSesionModulo);
 
@@ -1082,6 +1093,54 @@ function imprimirDetalle(){
 // liquidación editable a partir del snapshot guardado, y lo deja como la
 // liquidación activa del sistema para seguir trabajando en el módulo de
 // Liquidaciones.
+// recuperarCargosPerdidosReapertura: herramienta de UN SOLO USO para
+// liquidaciones que ya se reabrieron ANTES de corregir el bug de arriba —
+// esos cargos de Flota/facturas CxP se quedaron marcados "aplicado" con un
+// número de liquidación que ya no existe (se borró de Historial al
+// reabrir), así que ya no hay ningún registro visible que apunte a ellos
+// salvo el propio número de folio y el operador. Se pide a mano porque la
+// liquidación afectada ya no está en Historial (está activa/reabierta) —
+// no hay de dónde tomarlo automáticamente.
+async function recuperarCargosPerdidosReapertura(){
+  var u=usuarioSesion();
+  if(!u||!u.esAdmin){alert('Solo un administrador puede usar esto.');return;}
+  var liqNumTxt=prompt('Número de folio de la liquidación que se reabrió (ej. 6):');
+  if(liqNumTxt===null)return;
+  var liqNum=parseInt(liqNumTxt);
+  if(!liqNum){alert('Número de liquidación inválido.');return;}
+  var opIdTxt=prompt('Identidad del operador (el número, ej. 4522 — se ve en la URL de Liquidaciones, ?liqOp=):');
+  if(opIdTxt===null)return;
+  var opIdL=parseInt(opIdTxt);
+  if(!opIdL){alert('Operador inválido.');return;}
+  if(!confirm('¿Buscar y liberar los cargos de Flota y facturas de Proveedor marcados con la liquidación #'+liqNum+' del operador '+opIdL+'?\n\nEsto los pone "pendiente" otra vez para poder incluirlos en la liquidación activa.'))return;
+  try{
+    var cfRes=await window.FB.get('estado','cargosFlotaDB');
+    var cfDB=(cfRes&&cfRes.data)?JSON.parse(cfRes.data):{};
+    if(Array.isArray(cfDB))cfDB={};
+    var nCF=0;
+    Object.keys(cfDB).forEach(function(key){
+      if(parseInt(key)===opIdL){
+        (cfDB[key]||[]).forEach(function(a){
+          if(a.liqNum===liqNum){a.estado='pendiente';a.liqNum=null;nCF++;}
+        });
+      }
+    });
+    var cxpTodas=await window.FB.getAll('cxpFacturas');
+    var nCxp=0,cxpTocadas=[];
+    cxpTodas.forEach(function(fx){
+      var cambiado=false;
+      (fx.prorrateo||[]).forEach(function(p){
+        if(p.liqNum===liqNum&&parseInt(p.unidad)===opIdL){
+          p.aplicado=false;p.liqNum=null;nCxp++;cambiado=true;
+        }
+      });
+      if(cambiado)cxpTocadas.push(fx);
+    });
+    if(!nCF&&!nCxp){alert('No se encontró ningún cargo de Flota ni factura de Proveedor marcado con la liquidación #'+liqNum+' de ese operador. No había nada que liberar (revisa que el número y el operador sean correctos).');return;}
+    await Promise.all([window.FB.set('estado','cargosFlotaDB',{data:JSON.stringify(cfDB)})].concat(cxpTocadas.map(function(fx){return window.FB.set('cxpFacturas',fx.id,{prorrateo:fx.prorrateo});})));
+    alert('✅ Liberados: '+nCF+' cargo(s) de Flota y '+nCxp+' factura(s) de Proveedor.\n\nAhora ve al módulo de Liquidaciones — deberían aparecer otra vez como pendientes en la liquidación activa de ese operador.');
+  }catch(e){console.error('recuperarCargosPerdidosReapertura:',e);alert('⚠️ Error: '+e.message);}
+}
 async function reabrirLiquidacion(){
   const u=usuarioSesion();
   if(!u||!u.esAdmin){alert('Solo un administrador puede reabrir una liquidación.');return;}
