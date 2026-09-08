@@ -1340,35 +1340,35 @@ async function mtoGuardarYGenerar(){
   if(!actividades.length){alert('Marca al menos una actividad a realizar.');return;}
   var articulosUsados=_mtoArticuloFilas.filter(function(f){return f.articuloId&&f.cantidad>0;}).map(function(f){
     var art=MTO_ARTICULOS.find(function(a){return a.id===f.articuloId;});
-    return {articuloId:f.articuloId,nombre:art?art.nombre:'',cantidad:f.cantidad,costoUnitario:art?(art.costoUnitario||0):0};
+    return {articuloId:f.articuloId,nombre:art?art.nombre:'',cantidad:f.cantidad,costoUnitario:art?(art.costoUnitario||0):0,numeroParte:art?(art.numeroParte||''):'',existencia:art?(art.existencia||0):0};
   });
-  for(var i=0;i<articulosUsados.length;i++){
-    var art=MTO_ARTICULOS.find(function(a){return a.id===articulosUsados[i].articuloId;});
-    if(art&&articulosUsados[i].cantidad>(art.existencia||0)){
-      alert('⛔ No puedes generar esta orden: quieres entregar '+articulosUsados[i].cantidad+' de "'+art.nombre+'" pero solo hay '+(art.existencia||0)+' en existencia. Registra primero una entrada de inventario, o ajusta la cantidad.');
-      return;
-    }
-  }
+  // No bloquea la orden completa por falta de inventario: lo que SÍ hay se
+  // entrega y descuenta normal; lo que no alcanza NO se entrega (no se
+  // descuenta, queda en $0 costo) y en vez de eso se anota como "pendiente
+  // de comprar" (con su número de parte) en la orden de servicio, para que
+  // el mecánico/operador sepa exactamente qué pieza conseguir.
+  var articulosEntregables=articulosUsados.filter(function(a){return a.cantidad<=a.existencia;});
+  var articulosFaltantes=articulosUsados.filter(function(a){return a.cantidad>a.existencia;});
   var u=usuarioSesion();
   try{
     var db=firebase.firestore();
-    var costoTotal=articulosUsados.reduce(function(s,a){return s+(a.cantidad*a.costoUnitario);},0);
+    var costoTotal=articulosEntregables.reduce(function(s,a){return s+(a.cantidad*a.costoUnitario);},0);
     var ref=await db.collection('mantenimientos').add({
       unidad:unidad,fecha:fecha,kilometraje:km,
       mecanicoId:mecanicoId||null,mecanicoNombre:mecanico?mecanico.nombre:'',
-      actividades:actividades,articulos:articulosUsados,costoTotalArticulos:costoTotal,
+      actividades:actividades,articulos:articulosEntregables,articulosFaltantes:articulosFaltantes,costoTotalArticulos:costoTotal,
       notas:($('mtoNotas').value||'').trim(),
       capturadoPor:u?(u.nombre||u.usuario):'',creadoEn:new Date().toISOString()
     });
     // Descontar inventario — se relee cada artículo justo antes de restar,
     // para no pisar un ajuste manual que alguien haya hecho mientras se
-    // llenaba este formulario.
-    for(var j=0;j<articulosUsados.length;j++){
-      var refArt=db.collection('mantenimientoArticulos').doc(articulosUsados[j].articuloId);
+    // llenaba este formulario. Solo lo entregable (nunca los faltantes).
+    for(var j=0;j<articulosEntregables.length;j++){
+      var refArt=db.collection('mantenimientoArticulos').doc(articulosEntregables[j].articuloId);
       var snapArt=await refArt.get();
       if(snapArt.exists){
         var existenciaActual=snapArt.data().existencia||0;
-        await refArt.set({existencia:existenciaActual-articulosUsados[j].cantidad},{merge:true});
+        await refArt.set({existencia:existenciaActual-articulosEntregables[j].cantidad},{merge:true});
       }
     }
     // El mantenimiento que se acaba de registrar SÍ es un punto de partida
@@ -1383,9 +1383,12 @@ async function mtoGuardarYGenerar(){
       intervaloKm:cicloExistente?cicloExistente.intervaloKm:(unidad===529?14000:25000),
       definidoPor:u?(u.nombre||u.usuario):''
     });
-    mtoImprimirFiltrosEntregados({id:ref.id,unidad:unidad,fecha:fecha,articulos:articulosUsados,notas:$('mtoNotas').value});
-    mtoImprimirOrdenServicio({id:ref.id,unidad:unidad,fecha:fecha,km:km,mecanico:mecanico?mecanico.nombre:'(sin asignar)',actividades:actividades,notas:$('mtoNotas').value});
-    $('mtoInfo').innerHTML='<div class="alert alert-ok">✅ Orden de mantenimiento registrada para la unidad '+unidad+'.</div>';
+    mtoImprimirFiltrosEntregados({id:ref.id,unidad:unidad,fecha:fecha,articulos:articulosEntregables,notas:$('mtoNotas').value});
+    mtoImprimirOrdenServicio({id:ref.id,unidad:unidad,fecha:fecha,km:km,mecanico:mecanico?mecanico.nombre:'(sin asignar)',actividades:actividades,notas:$('mtoNotas').value,faltantes:articulosFaltantes});
+    var avisoFaltantes=articulosFaltantes.length
+      ?' ⚠️ No se entregó (falta comprar): '+articulosFaltantes.map(function(a){return a.nombre+(a.numeroParte?' (No. parte '+a.numeroParte+')':'')+' x'+a.cantidad;}).join(', ')+'.'
+      :'';
+    $('mtoInfo').innerHTML='<div class="alert '+(articulosFaltantes.length?'alert-warn':'alert-ok')+'">✅ Orden de mantenimiento registrada para la unidad '+unidad+'.'+avisoFaltantes+'</div>';
     $('mtoKm').value='';$('mtoNotas').value='';$('mtoActividadOtra').value='';
     mtoRenderActividades();
     _mtoArticuloFilas=[{articuloId:'',cantidad:1}];
@@ -1424,11 +1427,17 @@ function mtoImprimirFiltrosEntregados(o){
 }
 function mtoImprimirOrdenServicio(o){
   var filas=o.actividades.map(function(a){return '<tr><td>☐</td><td>'+a.nombre+'</td></tr>';}).join('');
+  var faltantes=o.faltantes||[];
+  var filasFaltantes=faltantes.map(function(a){return '<tr><td>'+a.nombre+'</td><td>'+(a.numeroParte||'—')+'</td><td>'+a.cantidad+'</td></tr>';}).join('');
   var html='<h2>Orden de servicio</h2>'
     +'<p>Unidad: <strong>'+o.unidad+'</strong> · Kilometraje: <strong>'+fmtN(o.km,0)+'</strong> · Fecha: <strong>'+o.fecha+'</strong></p>'
     +'<p>Mecánico: <strong>'+o.mecanico+'</strong> · Orden: '+o.id+'</p>'
     +(o.notas?'<p>Notas: '+o.notas+'</p>':'')
     +'<table><thead><tr><th style="width:40px">Hecho</th><th>Actividad</th></tr></thead><tbody>'+filas+'</tbody></table>'
+    +(faltantes.length
+      ?'<h3 style="color:#c1121f;margin-top:20px">⚠️ Pendiente de comprar (no había en inventario)</h3>'
+        +'<table><thead><tr><th>Artículo</th><th>No. de parte</th><th>Cantidad</th></tr></thead><tbody>'+filasFaltantes+'</tbody></table>'
+      :'')
     +'<div class="firma"><div>Entrega unidad</div><div>Firma del mecánico</div></div>';
   _mtoAbrirImpresion('Orden de servicio — unidad '+o.unidad,html);
 }
@@ -1436,13 +1445,15 @@ function mtoReimprimir(id){
   var m=MTO_HISTORIAL.find(function(x){return x.id===id;});
   if(!m)return;
   mtoImprimirFiltrosEntregados({id:m.id,unidad:m.unidad,fecha:m.fecha,articulos:m.articulos||[],notas:m.notas});
-  mtoImprimirOrdenServicio({id:m.id,unidad:m.unidad,fecha:m.fecha,km:m.kilometraje,mecanico:m.mecanicoNombre||'(sin asignar)',actividades:m.actividades||[],notas:m.notas});
+  mtoImprimirOrdenServicio({id:m.id,unidad:m.unidad,fecha:m.fecha,km:m.kilometraje,mecanico:m.mecanicoNombre||'(sin asignar)',actividades:m.actividades||[],notas:m.notas,faltantes:m.articulosFaltantes||[]});
 }
 function renderMtoHistorial(){
   $('tbMtoHistorial').innerHTML=MTO_HISTORIAL.map(function(m){
     var acts=(m.actividades||[]).map(function(a){return a.nombre;}).join(', ');
+    var faltantes=m.articulosFaltantes||[];
+    var avisoFaltantes=faltantes.length?' <span class="badge bg-yellow" title="'+faltantes.map(function(a){return a.nombre+(a.numeroParte?' ('+a.numeroParte+')':'');}).join(', ').replace(/"/g,'&quot;')+'">⚠️ faltan '+faltantes.length+'</span>':'';
     return '<tr><td>'+m.fecha+'</td><td>'+m.unidad+'</td><td class="num">'+fmtN(m.kilometraje,0)+'</td><td style="font-size:12px">'+(m.mecanicoNombre||'—')+'</td>'
-      +'<td style="font-size:12px">'+acts+'</td><td class="r">'+fmt(m.costoTotalArticulos||0)+'</td>'
+      +'<td style="font-size:12px">'+acts+avisoFaltantes+'</td><td class="r">'+fmt(m.costoTotalArticulos||0)+'</td>'
       +'<td><button class="btn btn-out btn-sm" onclick="mtoReimprimir(\''+m.id+'\')">🖨️ Reimprimir</button></td></tr>';
   }).join('');
 }
