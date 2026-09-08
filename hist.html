@@ -1108,11 +1108,12 @@ async function recuperarCargosPerdidosReapertura(){
   if(liqNumTxt===null)return;
   var liqNum=parseInt(liqNumTxt);
   if(!liqNum){alert('Número de liquidación inválido.');return;}
-  var opIdTxt=prompt('Identidad del operador (el número, ej. 4522 — se ve en la URL de Liquidaciones, ?liqOp=):');
-  if(opIdTxt===null)return;
-  var opIdL=parseInt(opIdTxt);
-  if(!opIdL){alert('Operador inválido.');return;}
-  if(!confirm('¿Buscar y liberar los cargos de Flota y facturas de Proveedor marcados con la liquidación #'+liqNum+' del operador '+opIdL+'?\n\nEsto los pone "pendiente" otra vez para poder incluirlos en la liquidación activa.'))return;
+  var claveTxt=(prompt('Clave del operador (ej. OPE-002) — NO el número de unidad/económico, que puede estar mal ligado a la liquidación:')||'').trim();
+  if(!claveTxt)return;
+  var opEncontrado=OPERADORES.find(function(o){return (o.clave||'').toUpperCase()===claveTxt.toUpperCase();});
+  if(!opEncontrado){alert('No se encontró ningún operador con la clave "'+claveTxt+'". Revisa que esté escrita igual que en el catálogo (Flota → Operadores).');return;}
+  var opIdL=parseInt(opEncontrado.operadorId);
+  if(!confirm('Operador encontrado: '+opEncontrado.nombre+' (clave '+opEncontrado.clave+', identidad '+opIdL+').\n\n¿Buscar y liberar los cargos de Flota y facturas de Proveedor marcados con la liquidación #'+liqNum+' de este operador?\n\nEsto los pone "pendiente" otra vez para poder incluirlos en la liquidación activa.'))return;
   try{
     var cfRes=await window.FB.get('estado','cargosFlotaDB');
     var cfDB=(cfRes&&cfRes.data)?JSON.parse(cfRes.data):{};
