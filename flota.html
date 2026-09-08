@@ -1252,8 +1252,8 @@ async function mtoMigrarActividadesSiVacio(){
   var semilla=[
     {nombre:'Cambio de aceite de motor',paquete:'Mantenimiento preventivo',intervaloKm:25000,tipoArticulo:'aceite',orden:1},
     {nombre:'Cambio de filtro de aceite',paquete:'Mantenimiento preventivo',intervaloKm:25000,tipoArticulo:'filtro_aceite',orden:2},
-    {nombre:'Cambio de filtro de diesel',paquete:'Mantenimiento preventivo',intervaloKm:25000,tipoArticulo:'filtro_diesel',orden:3},
-    {nombre:'Cambio de filtro separador de combustible',paquete:'Mantenimiento preventivo',intervaloKm:25000,tipoArticulo:'filtro_separador',orden:4},
+    {nombre:'Cambio de filtro de diesel',paquete:'Mantenimiento preventivo',intervaloKm:25000,tipoArticulo:'filtro_combustible',orden:3},
+    {nombre:'Cambio de filtro separador de combustible',paquete:'Mantenimiento preventivo',intervaloKm:25000,tipoArticulo:'filtro_separador_agua',orden:4},
     {nombre:'Cambio de filtro de aire',paquete:'Mantenimiento preventivo',intervaloKm:25000,tipoArticulo:'filtro_aire',orden:5},
     {nombre:'Cambio de filtro secador',paquete:'',intervaloKm:100000,tipoArticulo:'filtro_secador',orden:6},
     {nombre:'Lavado',paquete:'Lavado y engrasado',intervaloKm:null,tipoArticulo:'',orden:7},
@@ -1267,6 +1267,24 @@ async function mtoMigrarActividadesSiVacio(){
     batch.set(ref,Object.assign({procedimiento:'',refaccionesSugeridas:'',activo:true},a));
   });
   await batch.commit();
+}
+// mtoCorregirTiposActividadesViejos: corrección de una sola vez — las
+// primeras actividades sembradas usaban "filtro_diesel"/"filtro_separador",
+// pero el catálogo real de Esa ya traía esos artículos con tipo
+// "filtro_combustible"/"filtro_separador_agua" (mismo filtro físico, nombre
+// distinto), así que nunca se encontraban. Corrige en Firestore (y en
+// memoria) cualquier actividad que todavía tenga el tipo viejo — no toca
+// nada más de la actividad, solo ese campo.
+var _MTO_TIPOS_RENOMBRADOS={filtro_diesel:'filtro_combustible',filtro_separador:'filtro_separador_agua'};
+async function mtoCorregirTiposActividadesViejos(){
+  var db=firebase.firestore();
+  for(var i=0;i<MTO_ACTIVIDADES_TODAS.length;i++){
+    var a=MTO_ACTIVIDADES_TODAS[i];
+    var nuevo=_MTO_TIPOS_RENOMBRADOS[a.tipoArticulo];
+    if(!nuevo)continue;
+    await db.collection('mantenimientoActividades').doc(a.id).set({tipoArticulo:nuevo},{merge:true});
+    a.tipoArticulo=nuevo;
+  }
 }
 // mtoGruposActividades: agrupa MTO_ACTIVIDADES por "paquete" — una entrada
 // por grupo (o por actividad suelta si no tiene paquete), en el mismo orden
@@ -1379,6 +1397,7 @@ async function cargarMantenimiento(){
     await mtoMigrarActividadesSiVacio();
     var snapAct=await db.collection('mantenimientoActividades').get();
     MTO_ACTIVIDADES_TODAS=[];snapAct.forEach(function(d){MTO_ACTIVIDADES_TODAS.push(Object.assign({id:d.id},d.data()));});
+    await mtoCorregirTiposActividadesViejos();
     MTO_ACTIVIDADES_TODAS.sort(function(a,b){return(a.orden||0)-(b.orden||0);});
     MTO_ACTIVIDADES=MTO_ACTIVIDADES_TODAS.filter(function(a){return a.activo!==false;});
     renderMtoCatalogo();renderMtoMecanicos();renderMtoHistorial();renderMtoProximos();renderMtoCiclos();renderMtoEntradas();renderMtoFaltantes();renderMtoCatalogoActividades();
@@ -1834,7 +1853,7 @@ function renderMtoProximos(){
 // espacio, "filtroaceite", etc.) haría que nunca encontrara el filtro
 // correcto. "otro" es la salida para cualquier artículo que no entra en
 // ninguna categoría — esos nunca se auto-agregan, siempre a mano.
-var MTO_TIPOS_VALIDOS=['aceite','filtro_aceite','filtro_aire','filtro_diesel','filtro_separador','filtro_secador','otro'];
+var MTO_TIPOS_VALIDOS=['aceite','filtro_aceite','filtro_aire','filtro_combustible','filtro_separador_agua','filtro_secador','otro'];
 function _mtoPedirTipo(valorActual){
   var msg='Tipo — usa EXACTAMENTE una de estas palabras (así el sistema puede encontrarlo solo):\n'+MTO_TIPOS_VALIDOS.join(', ')+'\n\n("otro" si no aplica ninguna — ese tipo nunca se auto-agrega, siempre se elige a mano)';
   while(true){
