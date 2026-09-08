@@ -1316,10 +1316,15 @@ async function mtoCorregirTiposActividadesViejos(){
 // sola vez, si la colección está vacía. doc id = sistema+'_'+numero (ej.
 // "chasis_01-01", "motor_MB-05") para que sea estable y no se dupliquen si
 // se corre otra vez.
+// mtoMigrarOperacionesMOPSiVacio: a diferencia del catálogo de actividades
+// simple (que solo se siembra una vez y después se edita a mano desde la
+// pantalla), este catálogo se ACTUALIZA cada vez que carga el módulo,
+// sobrescribiendo con lo que traiga shared/mopFreightlinerM2.js — es
+// contenido oficial del manual, no algo que Esa vaya a editar a mano
+// aquí, así que cuando se corrija el archivo (como hoy: quinta rueda,
+// GNC/GNL, etc.) se refleja solo, sin migraciones especiales cada vez.
 async function mtoMigrarOperacionesMOPSiVacio(){
   var db=firebase.firestore();
-  var snap=await db.collection('mantenimientoOperacionesMOP').limit(1).get();
-  if(!snap.empty)return;
   var semilla=window.MOP_FREIGHTLINER_M2_SEED||[];
   if(!semilla.length)return;
   for(var i=0;i<semilla.length;i+=400){
@@ -1367,6 +1372,7 @@ function mtoOperacionesAplicablesMOP(unidad,km){
     nivelesChasis=rChasis.niveles;nivelesMotor=rMotor.niveles;checkpoint=rChasis.checkpoint;
   }
   var operaciones=MTO_OPERACIONES_MOP.filter(function(op){
+    if(op.noAplica)return false;
     var niveles=op.sistema==='chasis'?nivelesChasis:nivelesMotor;
     return niveles.some(function(n){return op.niveles[n];});
   });
@@ -1407,7 +1413,7 @@ function mtoActividadesSeleccionadasMOP(){
   if(!unidad||MOP_UNIDADES_APLICABLES.indexOf(unidad)===-1||!km)return[];
   var r=mtoOperacionesAplicablesMOP(unidad,km);
   return r.operaciones.filter(function(op){return _mtoMOPSeleccion[op.numero];}).map(function(op){
-    return{nombre:op.numero+' — '+op.titulo,intervaloKm:null,procedimiento:op.procedimientoResumen||'',refaccionesSugeridas:op.notas||''};
+    return{nombre:op.numero+' — '+op.titulo,intervaloKm:null,esMOP:true,grupo:op.grupo,specClave:op.specClave||'',procedimiento:'',refaccionesSugeridas:''};
   });
 }
 // mtoGruposActividades: agrupa MTO_ACTIVIDADES por "paquete" — una entrada
@@ -1832,18 +1838,48 @@ function mtoImprimirOrdenServicio(o){
   // explícito de Esa: "los mecánicos luego no leen, pero que no tengan forma
   // de errar". Las refacciones sugeridas son solo informativas, en letra
   // normal, aparte del checklist de artículos entregados de arriba.
-  var filas=o.actividades.map(function(a){
+  //
+  // Las actividades que vienen del manual MOP (esMOP:true) son muchas
+  // (pueden ser 20-40 de golpe en un checkpoint alto) — imprimirlas una por
+  // una en bloque grande haría una orden de decenas de páginas que nadie
+  // lee. Van aparte, en una tabla compacta a 2 columnas (checkbox + nombre
+  // + el dato clave si trae un par de apriete/capacidad específica), para
+  // que quepan en una hoja. El procedimiento completo de cada una queda
+  // guardado en el sistema (Catálogo de actividades) por si hace falta
+  // consultarlo — aquí solo el checklist.
+  var simples=(o.actividades||[]).filter(function(a){return !a.esMOP;});
+  var mop=(o.actividades||[]).filter(function(a){return a.esMOP;});
+  var filas=simples.map(function(a){
     var proc=a.procedimiento?('<div style="font-size:16px;font-weight:700;margin-top:6px;line-height:1.5;white-space:pre-line">'+a.procedimiento+'</div>'):'';
     var ref=a.refaccionesSugeridas?('<div style="font-size:12px;color:#555;margin-top:4px">Refacciones sugeridas: '+a.refaccionesSugeridas+'</div>'):'';
     return '<tr><td style="vertical-align:top">☐</td><td><div style="font-size:18px;font-weight:800">'+a.nombre+'</div>'+proc+ref+'</td></tr>';
   }).join('');
+  var porGrupoMOP={};
+  mop.forEach(function(a){
+    var g=a.grupo||'Otro';
+    if(!porGrupoMOP[g])porGrupoMOP[g]=[];
+    porGrupoMOP[g].push(a);
+  });
+  var htmlMOP=mop.length
+    ?'<h3 style="margin-top:20px">Mantenimiento programado (manual Freightliner M2 / motor MBE900)</h3>'
+      +'<div style="column-count:2;column-gap:18px;font-size:11px">'
+      +Object.keys(porGrupoMOP).map(function(g){
+        return '<div style="break-inside:avoid;margin-bottom:8px"><strong>'+g+'</strong>'
+          +porGrupoMOP[g].map(function(a){
+            return '<div style="display:flex;gap:5px;margin:3px 0;line-height:1.3"><span>☐</span><span>'+a.nombre
+              +(a.specClave?' <em style="color:#555">— '+a.specClave+'</em>':'')+'</span></div>';
+          }).join('')+'</div>';
+      }).join('')
+      +'</div>'
+    :'';
   var faltantes=o.faltantes||[];
   var filasFaltantes=faltantes.map(function(a){return '<tr><td>'+a.nombre+'</td><td>'+(a.numeroParte||'—')+'</td><td>'+a.cantidad+'</td></tr>';}).join('');
   var html='<h2>Orden de servicio</h2>'
     +'<p>Unidad: <strong>'+o.unidad+'</strong> · Kilometraje: <strong>'+fmtN(o.km,0)+'</strong> · Fecha: <strong>'+o.fecha+'</strong></p>'
     +'<p>Mecánico: <strong>'+o.mecanico+'</strong> · Orden: '+o.id+'</p>'
     +(o.notas?'<p>Notas: '+o.notas+'</p>':'')
-    +'<table><thead><tr><th style="width:40px">Hecho</th><th>Actividad</th></tr></thead><tbody>'+filas+'</tbody></table>'
+    +(filas?'<table><thead><tr><th style="width:40px">Hecho</th><th>Actividad</th></tr></thead><tbody>'+filas+'</tbody></table>':'')
+    +htmlMOP
     +(faltantes.length
       ?'<h3 style="color:#c1121f;margin-top:20px">⚠️ Pendiente de comprar (no había en inventario)</h3>'
         +'<table><thead><tr><th>Artículo</th><th>No. de parte</th><th>Cantidad</th></tr></thead><tbody>'+filasFaltantes+'</tbody></table>'
