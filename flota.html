@@ -1444,11 +1444,23 @@ function mtoArticulosCompatibles(){
 // mtoSincronizarFilasAutomaticas: se llama cada vez que cambia la unidad o
 // se marca/desmarca una actividad. Para cada tipo de filtro que las
 // actividades marcadas requieren, busca en el catálogo el(los) artículo(s)
-// de ese tipo compatibles con la unidad elegida: si hay EXACTAMENTE UNO, lo
-// agrega solo (marcado auto:true, para poder quitarlo/reemplazarlo si la
-// actividad se desmarca); si hay 0 o más de 1, NO ADIVINA — deja un aviso
-// para que se elija a mano, igual que antes. Nunca toca renglones que la
-// propia Esa agregó a mano con "+ Agregar renglón".
+// de ese tipo compatibles con la unidad elegida:
+//  - Si hay EXACTAMENTE UNO, lo agrega solo (auto:true) — se entrega y
+//    descuenta normal (o queda como faltante si no hay existencia, ver
+//    mtoGuardarYGenerar).
+//  - Si hay MÁS DE UNO, no adivina cuál es el correcto — deja un aviso para
+//    elegirlo a mano en el renglón.
+//  - Si hay CERO (no existe en el catálogo, o ninguno está marcado
+//    compatible con esta unidad), Esa pidió explícitamente que NO se omita
+//    en silencio: se agrega igual a "pendiente de comprar" (con el número
+//    de parte de algún artículo de ese tipo si existe en el catálogo para
+//    otra unidad, o sin número si no hay ninguno) — así sale en la Orden de
+//    Servicio impresa para que se compre, aunque hoy no haya ni el
+//    artículo dado de alta. Nunca se entrega ni se descuenta, es solo
+//    informativo hasta que se dé de alta/corrija el artículo correcto.
+// Nunca toca renglones que la propia Esa agregó a mano con "+ Agregar
+// renglón".
+var _mtoFaltantesSinCatalogo=[];
 function mtoTiposNecesarios(){
   var tipos=[];
   mtoGruposActividades().forEach(function(g,i){
@@ -1463,6 +1475,7 @@ function mtoSincronizarFilasAutomaticas(){
   var unidad=parseInt($('mtoUnidad').value||0);
   var tiposNecesarios=mtoTiposNecesarios();
   _mtoArticuloFilas=_mtoArticuloFilas.filter(function(f){return !f.auto||tiposNecesarios.indexOf(f.tipo)!==-1;});
+  _mtoFaltantesSinCatalogo=[];
   var avisos=[];
   tiposNecesarios.forEach(function(tipo){
     if(_mtoArticuloFilas.some(function(f){return f.auto&&f.tipo===tipo;}))return;
@@ -1473,7 +1486,14 @@ function mtoSincronizarFilasAutomaticas(){
     if(candidatos.length===1){
       _mtoArticuloFilas.push({articuloId:candidatos[0].id,cantidad:1,auto:true,tipo:tipo});
     }else if(candidatos.length===0){
-      avisos.push('⚠️ No hay ningún artículo tipo "'+tipo+'" en el catálogo compatible con la unidad '+unidad+' — agrégalo a mano en el renglón, o da de alta el artículo en el catálogo de abajo.');
+      var cualquieraDelTipo=MTO_ARTICULOS.filter(function(a){return (a.tipo||'').toLowerCase()===tipo;});
+      if(cualquieraDelTipo.length){
+        _mtoFaltantesSinCatalogo.push({nombre:cualquieraDelTipo[0].nombre,numeroParte:cualquieraDelTipo[0].numeroParte||'',cantidad:1});
+        avisos.push('⚠️ "'+cualquieraDelTipo[0].nombre+'" (tipo "'+tipo+'") no está marcado compatible con la unidad '+unidad+' — se agregó igual a "pendiente de comprar" con ese número de parte, pero CONFIRMA que sea el correcto para esta unidad antes de comprarlo.');
+      }else{
+        _mtoFaltantesSinCatalogo.push({nombre:'Filtro tipo "'+tipo+'" (sin dar de alta en el catálogo)',numeroParte:'',cantidad:1});
+        avisos.push('⚠️ No existe ningún artículo tipo "'+tipo+'" en el catálogo — se agregó igual a "pendiente de comprar" sin número de parte. Date de alta el artículo correcto en el catálogo en cuanto lo identifiques.');
+      }
     }else{
       avisos.push('⚠️ Hay '+candidatos.length+' artículos tipo "'+tipo+'" compatibles con la unidad '+unidad+' — elige el correcto a mano en el renglón (no se puede adivinar cuál).');
     }
@@ -1559,7 +1579,12 @@ async function mtoGuardarYGenerar(){
   // de comprar" (con su número de parte) en la orden de servicio, para que
   // el mecánico/operador sepa exactamente qué pieza conseguir.
   var articulosEntregables=articulosUsados.filter(function(a){return a.cantidad<=a.existencia;});
-  var articulosFaltantes=articulosUsados.filter(function(a){return a.cantidad>a.existencia;});
+  // Se suman los que sí están en el catálogo pero sin existencia suficiente,
+  // MÁS los que ni siquiera están en el catálogo (o no compatibles con esta
+  // unidad) que mtoSincronizarFilasAutomaticas ya detectó — ambos casos son
+  // "no se puede entregar hoy, hay que comprarlo", así que van juntos a la
+  // misma lista de pendientes en la orden impresa.
+  var articulosFaltantes=articulosUsados.filter(function(a){return a.cantidad>a.existencia;}).concat(_mtoFaltantesSinCatalogo);
   var u=usuarioSesion();
   try{
     var db=firebase.firestore();
@@ -1607,6 +1632,7 @@ async function mtoGuardarYGenerar(){
     $('mtoKm').value='';$('mtoNotas').value='';$('mtoActividadOtra').value='';
     mtoRenderActividades();
     _mtoArticuloFilas=[{articuloId:'',cantidad:1}];
+    _mtoFaltantesSinCatalogo=[];
     await cargarMantenimiento();
   }catch(e){console.error('mtoGuardarYGenerar:',e);alert('⚠️ Error al guardar: '+e.message);}
 }
