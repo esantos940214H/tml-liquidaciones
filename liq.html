@@ -2918,29 +2918,38 @@ function actualizarBotonEliminarLiq(){
   if(wrapCorregir)wrapCorregir.style.display=(liq&&u&&u.esAdmin)?'block':'none';
 }
 
-// Corrige la clave (opId/unidad) de la liquidación ABIERTA actualmente —
+// Corrige la CLAVE/IDENTIDAD (opId) de la liquidación ABIERTA actualmente —
 // para cuando se abrió con un operador que YA HABÍA SIDO reasignado de
-// unidad (o se reasignó después) y quedó ligada a una clave donde ya no
+// unidad (o se reasignó después) y quedó ligada a una identidad donde ya no
 // están sus anticipos/ingresos/nómina. Mueve el documento liqActivas de la
 // clave vieja a la nueva; NO toca anticiposDB/ingresosDB/nominaDB — para
 // mover esos, usar "🩹 Corregir clave de operador" en Flota.
+//
+// BUG CORREGIDO (caso real: liq #6 de Andrés María Ramos/OPE-002): esta
+// función ponía liq.unidad=nueva junto con liq.opId=nueva, como si fueran
+// lo mismo — pero "unidad" es el VEHÍCULO manejado ese periodo (ej. 527,
+// se usa para el arrastre de diesel/casetas por camión) y "opId" es la
+// IDENTIDAD del operador (ej. 4522, se usa para sus anticipos/ingresos) —
+// dos cosas completamente distintas. Sobrescribir la unidad real del
+// camión con el número de identidad del operador rompía el arrastre de
+// diesel/casetas y dejaba el reporte en números sin sentido. Ahora
+// SOLO se corrige opId — liq.unidad nunca se toca aquí.
 async function corregirClaveLiquidacionActiva(){
   if(!liq){alert('No hay liquidación activa.');return;}
   var u=usuarioSesion();
   if(!u||!u.esAdmin){alert('Solo un administrador puede hacer esto.');return;}
-  var actual=liq.opId||liq.unidad;
-  var nuevaTxt=prompt('Esta liquidación (#'+liq.num+' de '+liq.op.nombre+') está guardada con la clave '+actual+'.\n\n¿A qué clave debe quedar? (el número donde SÍ están sus anticipos, ingresos y recibos de nómina — revísalo en esos módulos antes de escribirlo aquí)',actual);
+  var actual=liq.opId;
+  var nuevaTxt=prompt('Esta liquidación (#'+liq.num+' de '+liq.op.nombre+') está guardada con la clave/identidad '+actual+' (la unidad manejada, '+liq.unidad+', NO se toca — esto solo corrige la identidad del operador para sus anticipos/ingresos).\n\n¿A qué clave/identidad debe quedar? (el número donde SÍ están sus anticipos, ingresos y recibos de nómina — revísalo en esos módulos antes de escribirlo aquí)',actual);
   if(nuevaTxt===null)return;
   var nueva=parseInt(nuevaTxt||0);
   if(!nueva){alert('Escribe un número válido.');return;}
   if(nueva===actual){alert('Es la misma clave — no hay nada que corregir.');return;}
-  if(!confirm('¿Mover esta liquidación de la clave '+actual+' a la clave '+nueva+'?\n\nEsto NO mueve ni borra anticipos/ingresos/nómina (eso se hace en Flota) — solo corrige a qué clave queda ligada ESTA liquidación que ya tenías abierta, para que busque en el lugar correcto.'))return;
+  if(!confirm('¿Mover esta liquidación de la identidad '+actual+' a la identidad '+nueva+'?\n\nLa unidad manejada ('+liq.unidad+') se queda igual. Esto NO mueve ni borra anticipos/ingresos/nómina (eso se hace en Flota) — solo corrige a qué identidad queda ligada ESTA liquidación que ya tenías abierta, para que busque en el lugar correcto.'))return;
   try{
     liq.opId=nueva;
-    liq.unidad=nueva;
     await window.FB.set('liqActivas',String(nueva),{data:JSON.stringify(liq)});
     await window.FB.del('liqActivas',String(actual));
-    alert('✅ Liquidación movida a la clave '+nueva+'. La página se va a recargar.');
+    alert('✅ Liquidación movida a la identidad '+nueva+' (unidad manejada sigue siendo '+liq.unidad+'). La página se va a recargar.');
     location.href=location.pathname+'?liqOp='+nueva;
   }catch(e){console.error('corregirClaveLiquidacionActiva:',e);alert('⚠️ Error al corregir: '+e.message);}
 }

@@ -206,6 +206,19 @@ tr:hover td{background:#fafafa}
     </div>
   </div>
 
+  <!-- DIAGNÓSTICO DE SOLO LECTURA: ver qué hay guardado hoy en liqActivas/
+       {clave} sin tocar nada — para casos como el de Andrés María Ramos,
+       donde no se sabe con certeza a qué clave quedó movida la liquidación
+       después de usar "corregir clave de liquidación" hace semanas. -->
+  <div class="card no-print" id="cardDiagnosticoLiqActiva" style="display:none;border:1.5px solid #1a1a2e">
+    <div class="card-title">🔍 Ver datos crudos de una liquidación activa (solo lectura, no cambia nada)</div>
+    <div class="row">
+      <div class="field"><label>Clave a revisar (ej. 4522, 527, o la que sea)</label><input type="number" id="diagClave" placeholder="Ej: 4522"></div>
+      <button class="btn btn-out btn-sm" onclick="diagnosticarLiqActiva()">🔍 Ver</button>
+    </div>
+    <div id="diagLiqActivaOut" style="margin-top:10px;font-size:12px"></div>
+  </div>
+
   <!-- HERRAMIENTA DE UN SOLO USO: recuperar cargos de Flota/CxP perdidos al
        reabrir una liquidación ANTES de que se corrigiera ese bug (ver
        reabrirLiquidacion) — admin-only, oculto por default en
@@ -612,6 +625,7 @@ function verificarSesionModulo(){
   }
   mostrarSesionEnHeader();
   if($('cardRecuperarReapertura'))$('cardRecuperarReapertura').style.display=u.esAdmin?'block':'none';
+  if($('cardDiagnosticoLiqActiva'))$('cardDiagnosticoLiqActiva').style.display=u.esAdmin?'block':'none';
 }
 window.onFBReady(verificarSesionModulo);
 
@@ -1141,6 +1155,47 @@ async function recuperarCargosPerdidosReapertura(){
     await Promise.all([window.FB.set('estado','cargosFlotaDB',{data:JSON.stringify(cfDB)})].concat(cxpTocadas.map(function(fx){return window.FB.set('cxpFacturas',fx.id,{prorrateo:fx.prorrateo});})));
     alert('✅ Liberados: '+nCF+' cargo(s) de Flota y '+nCxp+' factura(s) de Proveedor.\n\nAhora ve al módulo de Liquidaciones — deberían aparecer otra vez como pendientes en la liquidación activa de ese operador.');
   }catch(e){console.error('recuperarCargosPerdidosReapertura:',e);alert('⚠️ Error: '+e.message);}
+}
+// diagnosticarLiqActiva: SOLO LECTURA — no escribe nada en ningún lado.
+// Muestra tal cual lo que hay guardado en liqActivas/{clave}, más cuántos
+// anticipos/ingresos hay archivados bajo esa misma clave — para diagnosticar
+// a qué número quedó movida una liquidación (ej. después de usar "corregir
+// clave de liquidación", que solo mueve el doc de liqActivas, nunca
+// anticiposDB/ingresosDB) sin arriesgar otro movimiento a ciegas.
+async function diagnosticarLiqActiva(){
+  var clave=parseInt(($('diagClave')&&$('diagClave').value)||0);
+  var out=$('diagLiqActivaOut');
+  if(!clave){out.innerHTML='<span style="color:#c1121f">Escribe una clave.</span>';return;}
+  out.innerHTML='Buscando...';
+  try{
+    var activaData=await window.FB.get('liqActivas',String(clave));
+    var liqAct=(activaData&&activaData.data)?JSON.parse(activaData.data):null;
+    var [aRes,iRes]=await Promise.all([window.FB.get('estado','anticiposDB'),window.FB.get('estado','ingresosDB')]);
+    var antDB=(aRes&&aRes.data)?JSON.parse(aRes.data):{};
+    if(Array.isArray(antDB))antDB={};
+    var ingDB=(iRes&&iRes.data)?JSON.parse(iRes.data):[];
+    var antDeEstaClave=antDB[clave]||antDB[String(clave)]||[];
+    var antPend=antDeEstaClave.filter(function(a){return a.estado==='pendiente';});
+    var ingDeEstaClave=ingDB.filter(function(v){return parseInt(v.unidad)===clave;});
+    var ingPend=ingDeEstaClave.filter(function(v){return v.estado==='sin_liquidar';});
+    var html='<div class="tbl-wrap"><table><tbody>';
+    html+='<tr><td><strong>liqActivas/'+clave+'</strong></td><td>'+(liqAct?'✅ existe':'❌ no hay ninguna liquidación activa con esta clave')+'</td></tr>';
+    if(liqAct){
+      html+='<tr><td>Folio (num)</td><td>#'+liqAct.num+'</td></tr>';
+      html+='<tr><td>opId guardado</td><td>'+liqAct.opId+'</td></tr>';
+      html+='<tr><td>unidad guardada</td><td>'+liqAct.unidad+(liqAct.opId===liqAct.unidad?' ⚠️ igual al opId — probable rastro del bug de "corregir clave"':'')+'</td></tr>';
+      html+='<tr><td>Operador (op.nombre)</td><td>'+(liqAct.op?liqAct.op.nombre:'—')+' · clave '+(liqAct.op?liqAct.op.clave:'—')+'</td></tr>';
+      html+='<tr><td>Periodo</td><td>'+liqAct.salida+' al '+liqAct.llegada+'</td></tr>';
+      html+='<tr><td>Diesel: lts arrastre ant. / final</td><td>'+((liqAct.diesel&&liqAct.diesel.ltsIni)||0)+' / '+((liqAct.diesel&&liqAct.diesel.ltsFinal)||0)+'</td></tr>';
+      html+='<tr><td>Autopistas / Gastos / GastosXML capturados</td><td>'+(liqAct.autopistas||[]).length+' / '+(liqAct.gastos||[]).length+' / '+(liqAct.gastosXML||[]).length+'</td></tr>';
+    }
+    html+='<tr><td colspan="2" style="background:#f0f2f5;font-weight:700">anticiposDB['+clave+']</td></tr>';
+    html+='<tr><td>Total registrados / pendientes</td><td>'+antDeEstaClave.length+' / '+antPend.length+' (suma pendiente: '+antPend.reduce(function(s,a){return s+(a.monto||0);},0).toFixed(2)+')</td></tr>';
+    html+='<tr><td colspan="2" style="background:#f0f2f5;font-weight:700">ingresosDB con unidad='+clave+'</td></tr>';
+    html+='<tr><td>Total registrados / sin liquidar</td><td>'+ingDeEstaClave.length+' / '+ingPend.length+'</td></tr>';
+    html+='</tbody></table></div>';
+    out.innerHTML=html;
+  }catch(e){console.error('diagnosticarLiqActiva:',e);out.innerHTML='<span style="color:#c1121f">Error: '+e.message+'</span>';}
 }
 async function reabrirLiquidacion(){
   const u=usuarioSesion();
