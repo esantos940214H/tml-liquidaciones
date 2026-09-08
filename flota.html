@@ -392,7 +392,7 @@ tr:hover td{background:#fafafa}
     </div>
 
     <div class="card">
-      <div class="card-title">🗂️ Historial de mantenimientos <button class="btn btn-out btn-sm" onclick="cargarMantenimiento()">🔄 Recargar</button></div>
+      <div class="card-title">🗂️ Historial de mantenimientos <span><button class="btn btn-out btn-sm" onclick="cargarMantenimiento()">🔄 Recargar</button> <button class="btn btn-out btn-sm" style="color:#c1121f;border-color:#c1121f" onclick="mtoBorrarHistorialPruebas()">🧹 Borrar historial de pruebas</button></span></div>
       <div class="tbl-wrap"><table><thead><tr><th>Fecha</th><th>Unidad</th><th class="num">Km</th><th>Mecánico</th><th>Actividades</th><th class="r">Costo artículos</th><th></th></tr></thead><tbody id="tbMtoHistorial"></tbody></table></div>
     </div>
   </div>
@@ -1726,6 +1726,32 @@ function renderMtoHistorial(){
       +'<td style="font-size:12px">'+acts+avisoFaltantes+avisoIncidencia+'</td><td class="r">'+fmt(m.costoTotalArticulos||0)+'</td>'
       +'<td><button class="btn btn-out btn-sm" onclick="mtoReimprimir(\''+m.id+'\')">🖨️ Reimprimir</button></td></tr>';
   }).join('');
+}
+// mtoBorrarHistorialPruebas: botón admin-only para limpiar las pruebas
+// hechas mientras se armaba el módulo — SOLO borra mantenimientos
+// (historial de órdenes), mantenimientoCicloUnidad (km base/intervalo por
+// unidad) y mantenimientoEntradasInventario (el registro de entradas, NO la
+// existencia actual). NUNCA toca mantenimientoArticulos (catálogo/
+// inventario), mantenimientoMecanicos ni mantenimientoActividades — esos
+// quedan intactos a propósito. Doble confirmación porque es permanente.
+async function mtoBorrarHistorialPruebas(){
+  if(!confirm('⚠️ Esto borra PERMANENTEMENTE:\n\n- Todo el historial de órdenes de mantenimiento ('+MTO_HISTORIAL.length+')\n- Los ciclos de mantenimiento por unidad ('+Object.keys(MTO_CICLOS).length+')\n- El registro de entradas de inventario ('+MTO_ENTRADAS.length+') — la existencia actual del catálogo NO se toca\n\nNO se borra: el catálogo de artículos/inventario, los mecánicos, ni el catálogo de actividades.\n\n¿Seguro que quieres continuar?'))return;
+  if(!confirm('Última confirmación — esto NO se puede deshacer. ¿Borrar todo lo anterior?'))return;
+  try{
+    var db=firebase.firestore();
+    async function borrarColeccion(nombreCol){
+      var snap=await db.collection(nombreCol).get();
+      var ops=[];
+      snap.forEach(function(d){ops.push(d.ref.delete());});
+      await Promise.all(ops);
+      return ops.length;
+    }
+    var n1=await borrarColeccion('mantenimientos');
+    var n2=await borrarColeccion('mantenimientoCicloUnidad');
+    var n3=await borrarColeccion('mantenimientoEntradasInventario');
+    alert('✅ Listo. Se borraron '+n1+' órdenes, '+n2+' ciclos y '+n3+' entradas. El inventario, mecánicos y catálogo de actividades quedaron intactos.');
+    await cargarMantenimiento();
+  }catch(e){alert('⚠️ Error al borrar: '+e.message);}
 }
 // _mtoTodosFaltantes: junta articulosFaltantes de TODO el historial en una
 // sola lista plana, más reciente primero — puramente informativa (registro
