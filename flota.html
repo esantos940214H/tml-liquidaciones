@@ -1225,8 +1225,12 @@ var MTO_ACTIVIDADES_DEFAULT=[
      {nombre:'Cambio de filtro de aire',intervaloKm:20000}
    ]},
   {nombre:'Cambio de filtro secador',intervaloKm:20000},
-  {nombre:'Lavado',intervaloKm:null},
-  {nombre:'Engrasado',intervaloKm:10000},
+  {nombre:'Lavado y engrasado',
+   detalle:'Incluye: lavado y engrasado.',
+   subActividades:[
+     {nombre:'Lavado',intervaloKm:null},
+     {nombre:'Engrasado',intervaloKm:10000}
+   ]},
   {nombre:'Revisión de frenos',intervaloKm:20000},
   {nombre:'Rotación de llantas',intervaloKm:10000}
 ];
