@@ -224,9 +224,9 @@ tr:hover td{background:#fafafa}
        reabrirLiquidacion) — admin-only, oculto por default en
        verificarSesionModulo. -->
   <div class="card no-print" id="cardRecuperarReapertura" style="display:none;border:1.5px solid #e63946">
-    <div class="card-title" style="color:#e63946">🩹 Recuperar cargos perdidos al reabrir (una sola vez)</div>
-    <p style="font-size:12px;color:#666;margin-bottom:10px">Antes de corregir el bug, reabrir una liquidación NO liberaba los cargos de Flota ni las facturas de Proveedores (CxP) — se quedaban marcados como aplicados a un folio que ya no existe. Esto los libera para que vuelvan a estar "pendientes" y se puedan incluir de nuevo en la liquidación activa de ese operador.</p>
-    <button class="btn btn-out btn-sm" style="border-color:#e63946;color:#e63946" onclick="recuperarCargosPerdidosReapertura()">🩹 Recuperar cargos de una liquidación reabierta</button>
+    <div class="card-title" style="color:#e63946">🩹 Recuperar todo lo perdido al reabrir (una sola vez)</div>
+    <p style="font-size:12px;color:#666;margin-bottom:10px">Antes de corregir el bug, reabrir una liquidación no siempre liberaba todo lo que seguía marcado con ese folio (anticipos, ingresos/viajes, nómina, cargos de Flota, facturas de Proveedores) — se quedaban "liquidados" a un folio que ya se reabrió. Esto busca todo lo que sigue marcado con el número de folio que indiques, para ese operador, y lo libera para que vuelva a estar "pendiente"/"sin_liquidar" y se pueda incluir de nuevo en la liquidación activa.</p>
+    <button class="btn btn-out btn-sm" style="border-color:#e63946;color:#e63946" onclick="recuperarCargosPerdidosReapertura()">🩹 Recuperar todo lo de una liquidación reabierta</button>
   </div>
 
   <!-- REPORTES -->
@@ -1127,8 +1127,38 @@ async function recuperarCargosPerdidosReapertura(){
   var opEncontrado=OPERADORES.find(function(o){return (o.clave||'').toUpperCase()===claveTxt.toUpperCase();});
   if(!opEncontrado){alert('No se encontró ningún operador con la clave "'+claveTxt+'". Revisa que esté escrita igual que en el catálogo (Flota → Operadores).');return;}
   var opIdL=parseInt(opEncontrado.operadorId);
-  if(!confirm('Operador encontrado: '+opEncontrado.nombre+' (clave '+opEncontrado.clave+', identidad '+opIdL+').\n\n¿Buscar y liberar los cargos de Flota y facturas de Proveedor marcados con la liquidación #'+liqNum+' de este operador?\n\nEsto los pone "pendiente" otra vez para poder incluirlos en la liquidación activa.'))return;
+  if(!confirm('Operador encontrado: '+opEncontrado.nombre+' (clave '+opEncontrado.clave+', identidad '+opIdL+').\n\n¿Buscar y liberar TODO lo que quedó marcado con la liquidación #'+liqNum+' de este operador (anticipos, ingresos/viajes, nómina, cargos de Flota y facturas de Proveedor)?\n\nEsto los pone "pendiente"/"sin_liquidar" otra vez para poder incluirlos en la liquidación activa.'))return;
   try{
+    var antRes2=await window.FB.get('estado','anticiposDB');
+    var antDB2=(antRes2&&antRes2.data)?JSON.parse(antRes2.data):{};
+    if(Array.isArray(antDB2))antDB2={};
+    var nA2=0;
+    var _conceptoSaldoPropio2='Saldo en contra liq #'+liqNum;
+    Object.keys(antDB2).forEach(function(key){
+      if(parseInt(key)===opIdL){
+        (antDB2[key]||[]).forEach(function(a){
+          if(a.concepto===_conceptoSaldoPropio2)return;
+          if(a.liqNum===liqNum&&a.estado!=='pendiente'){a.estado='pendiente';a.liqNum=null;nA2++;}
+        });
+      }
+    });
+    var ingRes2=await window.FB.get('estado','ingresosDB');
+    var ingDB2=(ingRes2&&ingRes2.data)?JSON.parse(ingRes2.data):[];
+    var nV2=0;
+    ingDB2.forEach(function(v){
+      if(parseInt(v.unidad)===opIdL&&v.liqNum===liqNum&&v.estado!=='sin_liquidar'){v.estado='sin_liquidar';v.liqNum=null;nV2++;}
+    });
+    var nomRes2=await window.FB.get('estado','nominaDB');
+    var nomDB2=(nomRes2&&nomRes2.data)?JSON.parse(nomRes2.data):{};
+    if(Array.isArray(nomDB2))nomDB2={};
+    var nN2=0;
+    Object.keys(nomDB2).forEach(function(key){
+      if(parseInt(key)===opIdL){
+        (nomDB2[key]||[]).forEach(function(n){
+          if(n.liqNum===liqNum&&n.estado!=='pendiente'){n.estado='pendiente';n.liqNum=null;nN2++;}
+        });
+      }
+    });
     var cfRes=await window.FB.get('estado','cargosFlotaDB');
     var cfDB=(cfRes&&cfRes.data)?JSON.parse(cfRes.data):{};
     if(Array.isArray(cfDB))cfDB={};
@@ -1151,9 +1181,14 @@ async function recuperarCargosPerdidosReapertura(){
       });
       if(cambiado)cxpTocadas.push(fx);
     });
-    if(!nCF&&!nCxp){alert('No se encontró ningún cargo de Flota ni factura de Proveedor marcado con la liquidación #'+liqNum+' de ese operador. No había nada que liberar (revisa que el número y el operador sean correctos).');return;}
-    await Promise.all([window.FB.set('estado','cargosFlotaDB',{data:JSON.stringify(cfDB)})].concat(cxpTocadas.map(function(fx){return window.FB.set('cxpFacturas',fx.id,{prorrateo:fx.prorrateo});})));
-    alert('✅ Liberados: '+nCF+' cargo(s) de Flota y '+nCxp+' factura(s) de Proveedor.\n\nAhora ve al módulo de Liquidaciones — deberían aparecer otra vez como pendientes en la liquidación activa de ese operador.');
+    if(!nA2&&!nV2&&!nN2&&!nCF&&!nCxp){alert('No se encontró nada marcado con la liquidación #'+liqNum+' de ese operador. No había nada que liberar (revisa que el número y el operador sean correctos).');return;}
+    await Promise.all([
+      window.FB.set('estado','anticiposDB',{data:JSON.stringify(antDB2)}),
+      window.FB.set('estado','ingresosDB',{data:JSON.stringify(ingDB2)}),
+      window.FB.set('estado','nominaDB',{data:JSON.stringify(nomDB2)}),
+      window.FB.set('estado','cargosFlotaDB',{data:JSON.stringify(cfDB)}),
+    ].concat(cxpTocadas.map(function(fx){return window.FB.set('cxpFacturas',fx.id,{prorrateo:fx.prorrateo});})));
+    alert('✅ Liberados: '+nA2+' anticipo(s), '+nV2+' viaje(s)/ingreso(s), '+nN2+' recibo(s) de nómina, '+nCF+' cargo(s) de Flota y '+nCxp+' factura(s) de Proveedor.\n\nAhora ve al módulo de Liquidaciones — deberían aparecer otra vez como pendientes en la liquidación activa de ese operador.');
   }catch(e){console.error('recuperarCargosPerdidosReapertura:',e);alert('⚠️ Error: '+e.message);}
 }
 // diagnosticarLiqActiva: SOLO LECTURA — no escribe nada en ningún lado.
