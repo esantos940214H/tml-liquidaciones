@@ -624,8 +624,14 @@ function verificarSesionModulo(){
     return;
   }
   mostrarSesionEnHeader();
-  if($('cardRecuperarReapertura'))$('cardRecuperarReapertura').style.display=u.esAdmin?'block':'none';
-  if($('cardDiagnosticoLiqActiva'))$('cardDiagnosticoLiqActiva').style.display=u.esAdmin?'block':'none';
+  // Las tarjetas de recuperación/diagnóstico de liquidaciones reabiertas se
+  // dejan siempre ocultas (ya se usaron para el caso de liq #6/OPE-002) —
+  // las funciones recuperarCargosPerdidosReapertura() y
+  // diagnosticarLiqActiva() siguen disponibles en el sistema por si vuelven
+  // a hacer falta; para reactivar los botones basta con volver a poner
+  // u.esAdmin en las dos líneas de abajo.
+  if($('cardRecuperarReapertura'))$('cardRecuperarReapertura').style.display='none';
+  if($('cardDiagnosticoLiqActiva'))$('cardDiagnosticoLiqActiva').style.display='none';
 }
 window.onFBReady(verificarSesionModulo);
 
