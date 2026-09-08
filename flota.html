@@ -534,14 +534,6 @@ function verificarSesionModulo(){
   $('asigFecha').value=hoy();
   renderDanios();
 }
-window.onFBReady(function(){
-  fbReady=true;
-  $('fbStatus').textContent='✅ Conectado';
-  $('fbStatus').className='fb-status fb-ok';
-  verificarSesionModulo();
-});
-setTimeout(function(){if(!fbReady){$('fbStatus').textContent='❌ Sin conexión';$('fbStatus').className='fb-status fb-err';}},6000);
-
 // ══════════════════════════════════════════════
 // TABS
 // ══════════════════════════════════════════════
@@ -1746,6 +1738,24 @@ async function mtoEliminarMecanico(id){
     await cargarMantenimiento();
   }catch(e){alert('⚠️ Error al eliminar: '+e.message);}
 }
+
+// window.onFBReady se registra AQUÍ, al final del script, a propósito: si
+// Firebase ya estaba listo (_fbInit=true) al llegar a esta línea, el
+// callback se ejecuta DE INMEDIATO y en cadena llama a
+// verificarSesionModulo() → renderDanios()/cargarRevisiones()/
+// cargarMantenimiento(), que dependen de variables (let _daniosActuales,
+// revisionesLog, MTO_ARTICULOS...) declaradas más arriba en este mismo
+// script. Si este bloque se registrara ANTES de esas declaraciones (como
+// estaba antes), el callback se dispara a la mitad de la pasada inicial
+// del script, cuando esas variables aún están en su "zona muerta" —
+// "Cannot access '...' before initialization" — y todo Flota se rompe.
+window.onFBReady(function(){
+  fbReady=true;
+  $('fbStatus').textContent='✅ Conectado';
+  $('fbStatus').className='fb-status fb-ok';
+  verificarSesionModulo();
+});
+setTimeout(function(){if(!fbReady){$('fbStatus').textContent='❌ Sin conexión';$('fbStatus').className='fb-status fb-err';}},6000);
 </script>
 </body>
 </html>
