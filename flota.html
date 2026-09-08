@@ -110,6 +110,24 @@ tr:hover td{background:#fafafa}
   </div>
 </div>
 
+<div class="session-overlay" id="modalActividad">
+  <div class="session-box" style="width:480px;max-width:92vw;text-align:left">
+    <div class="session-modulo" id="modalActividadTitulo">➕ Nueva actividad</div>
+    <div class="field" style="margin-bottom:10px"><label>Nombre</label><input type="text" id="maNombre" class="session-input" style="margin-bottom:0" placeholder="Ej: Cambio de filtro de aire"></div>
+    <div class="field" style="margin-bottom:10px"><label>Paquete (opcional — mismo texto agrupa varias bajo una sola casilla)</label><input type="text" id="maPaquete" class="session-input" style="margin-bottom:0" placeholder="Ej: Mantenimiento preventivo"></div>
+    <div class="row" style="margin-bottom:10px">
+      <div class="field" style="flex:1"><label>Intervalo (km, vacío = sin seguimiento por km)</label><input type="number" id="maIntervalo" class="session-input" style="margin-bottom:0"></div>
+      <div class="field" style="flex:1"><label>Tipo de artículo (para auto-agregar filtro)</label><select id="maTipo" class="session-input" style="margin-bottom:0"></select></div>
+    </div>
+    <div class="field" style="margin-bottom:10px"><label>Procedimiento (se imprime en letra grande — resumido, pasos cortos, que no dé lugar a error)</label><textarea id="maProcedimiento" rows="5" style="width:100%;border:1.5px solid #dde;border-radius:8px;padding:10px;font-size:13px;font-family:inherit"></textarea></div>
+    <div class="field" style="margin-bottom:10px"><label>Refacciones sugeridas (solo informativo)</label><textarea id="maRefacciones" rows="2" style="width:100%;border:1.5px solid #dde;border-radius:8px;padding:10px;font-size:13px;font-family:inherit"></textarea></div>
+    <label style="display:flex;align-items:center;gap:6px;font-size:12px;margin-bottom:14px"><input type="checkbox" id="maActivo" checked style="width:auto"> Activa (aparece en la lista de actividades a marcar)</label>
+    <button class="session-btn" onclick="mtoGuardarActividad()">Guardar</button>
+    <button class="session-logout" style="margin-top:10px" onclick="mtoCerrarModalActividad()">Cancelar</button>
+    <div class="session-err" id="maErr" style="display:none"></div>
+  </div>
+</div>
+
 <header>
   <div class="logo">MUDANZAS <span>TML</span> <span style="font-size:13px;font-weight:400;color:#aaa;margin-left:8px">· Flota</span></div>
   <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
@@ -321,6 +339,12 @@ tr:hover td{background:#fafafa}
       <div class="card-title">🧾 Catálogo de artículos (filtros/aceites) <button class="btn btn-out btn-sm" onclick="mtoAgregarArticulo()">+ Agregar artículo</button></div>
       <p style="font-size:12px;color:#888;margin-bottom:10px">"Unidades compatibles" son los números económicos separados por coma (ej. "521,522,523,624"). Déjalo vacío si aplica a todas las unidades.</p>
       <div class="tbl-wrap"><table><thead><tr><th>Nombre</th><th>Tipo</th><th>No. de parte</th><th>Compatibles</th><th class="r">Existencia</th><th class="r">Costo</th><th></th></tr></thead><tbody id="tbMtoCatalogo"></tbody></table></div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">📋 Catálogo de actividades de mantenimiento <button class="btn btn-out btn-sm" onclick="mtoAbrirModalActividad(null)">+ Agregar actividad</button></div>
+      <p style="font-size:12px;color:#888;margin-bottom:10px">Actividades con el mismo "Paquete" se marcan juntas con una sola casilla arriba (ej. "Mantenimiento preventivo"). El procedimiento se imprime en letra grande en la Orden de Servicio; las refacciones sugeridas son solo informativas.</p>
+      <div class="tbl-wrap"><table><thead><tr><th>Nombre</th><th>Paquete</th><th class="num">Intervalo (km)</th><th>Tipo artículo</th><th>Estado</th><th></th></tr></thead><tbody id="tbMtoCatalogoActividades"></tbody></table></div>
     </div>
 
     <div class="card">
@@ -1209,31 +1233,116 @@ async function corConfirmar(){
 // por una compra o un conteo físico).
 // ══════════════════════════════════════════════
 var MTO_ARTICULOS=[],MTO_MECANICOS=[],MTO_HISTORIAL=[];
-// Algunas "actividades" son en realidad PAQUETES que agrupan varias tareas
-// que siempre se hacen juntas (pedido explícito de Esa) — al marcarlas se
-// expanden a sus sub-actividades individuales (mtoActividadesSeleccionadas),
-// así el checklist impreso para el mecánico las muestra una por una, y
-// "Próximo mantenimiento por actividad" sigue funcionando igual de fino.
-var MTO_ACTIVIDADES_DEFAULT=[
-  {nombre:'Mantenimiento preventivo',
-   detalle:'Incluye: cambio de aceite de motor, filtro de aceite, filtro de diesel, filtro separador de combustible y filtro de aire.',
-   subActividades:[
-     {nombre:'Cambio de aceite de motor',intervaloKm:25000},
-     {nombre:'Cambio de filtro de aceite',intervaloKm:25000},
-     {nombre:'Cambio de filtro de diesel',intervaloKm:25000},
-     {nombre:'Cambio de filtro separador de combustible',intervaloKm:25000},
-     {nombre:'Cambio de filtro de aire',intervaloKm:25000}
-   ]},
-  {nombre:'Cambio de filtro secador',intervaloKm:100000},
-  {nombre:'Lavado y engrasado',
-   detalle:'Incluye: lavado y engrasado.',
-   subActividades:[
-     {nombre:'Lavado',intervaloKm:null},
-     {nombre:'Engrasado',intervaloKm:25000}
-   ]},
-  {nombre:'Revisión de frenos',intervaloKm:25000},
-  {nombre:'Rotación de llantas',intervaloKm:25000}
-];
+// Catálogo de actividades de mantenimiento — vive en Firestore
+// (mantenimientoActividades), NO hardcodeado, para que Esa pueda dar de
+// alta/editar actividades (con su procedimiento e intervalo) desde la
+// pantalla "Catálogo de actividades de mantenimiento" sin depender de un
+// cambio de código cada vez. Cada renglón es una actividad "hoja"; varias
+// hojas con el mismo campo "paquete" (no vacío) se agrupan y se marcan
+// juntas con una sola casilla (ver mtoGruposActividades) — así se pueden
+// armar combos como "Mantenimiento preventivo" (aceite+filtros) sin volver
+// a tocar código. mtoMigrarActividadesSiVacio() siembra la lista inicial
+// una sola vez, la primera vez que la colección esté vacía.
+var MTO_ACTIVIDADES_TODAS=[]; // catálogo completo (incluye inactivas) — para administrar
+var MTO_ACTIVIDADES=[]; // solo activas — las que se muestran como checkboxes
+async function mtoMigrarActividadesSiVacio(){
+  var db=firebase.firestore();
+  var snap=await db.collection('mantenimientoActividades').limit(1).get();
+  if(!snap.empty)return;
+  var semilla=[
+    {nombre:'Cambio de aceite de motor',paquete:'Mantenimiento preventivo',intervaloKm:25000,tipoArticulo:'aceite',orden:1},
+    {nombre:'Cambio de filtro de aceite',paquete:'Mantenimiento preventivo',intervaloKm:25000,tipoArticulo:'filtro_aceite',orden:2},
+    {nombre:'Cambio de filtro de diesel',paquete:'Mantenimiento preventivo',intervaloKm:25000,tipoArticulo:'filtro_diesel',orden:3},
+    {nombre:'Cambio de filtro separador de combustible',paquete:'Mantenimiento preventivo',intervaloKm:25000,tipoArticulo:'filtro_separador',orden:4},
+    {nombre:'Cambio de filtro de aire',paquete:'Mantenimiento preventivo',intervaloKm:25000,tipoArticulo:'filtro_aire',orden:5},
+    {nombre:'Cambio de filtro secador',paquete:'',intervaloKm:100000,tipoArticulo:'filtro_secador',orden:6},
+    {nombre:'Lavado',paquete:'Lavado y engrasado',intervaloKm:null,tipoArticulo:'',orden:7},
+    {nombre:'Engrasado',paquete:'Lavado y engrasado',intervaloKm:25000,tipoArticulo:'',orden:8},
+    {nombre:'Revisión de frenos',paquete:'',intervaloKm:25000,tipoArticulo:'',orden:9},
+    {nombre:'Rotación de llantas',paquete:'',intervaloKm:25000,tipoArticulo:'',orden:10}
+  ];
+  var batch=db.batch();
+  semilla.forEach(function(a){
+    var ref=db.collection('mantenimientoActividades').doc();
+    batch.set(ref,Object.assign({procedimiento:'',refaccionesSugeridas:'',activo:true},a));
+  });
+  await batch.commit();
+}
+// mtoGruposActividades: agrupa MTO_ACTIVIDADES por "paquete" — una entrada
+// por grupo (o por actividad suelta si no tiene paquete), en el mismo orden
+// en que aparecen. El índice de este arreglo es el que usan los checkboxes
+// (id="mtoAct"+i), así que SIEMPRE hay que recalcularlo igual (mismo orden)
+// entre el render y la lectura — nunca cachearlo de un lado y leerlo de otro.
+function mtoGruposActividades(){
+  var grupos=[],vistos={};
+  MTO_ACTIVIDADES.forEach(function(a){
+    var clave=a.paquete?('pq:'+a.paquete):('u:'+a.id);
+    if(vistos[clave])return;
+    vistos[clave]=true;
+    var filas=a.paquete?MTO_ACTIVIDADES.filter(function(x){return x.paquete===a.paquete;}):[a];
+    grupos.push({
+      nombre:a.paquete||a.nombre,
+      detalle:a.paquete?('Incluye: '+filas.map(function(f){return f.nombre;}).join(', ')+'.'):'',
+      filas:filas
+    });
+  });
+  return grupos;
+}
+var _maEditandoId='';
+function mtoAbrirModalActividad(id){
+  _maEditandoId=id||'';
+  var a=id?MTO_ACTIVIDADES_TODAS.find(function(x){return x.id===id;}):null;
+  $('modalActividadTitulo').textContent=a?('✏️ Editando: '+a.nombre):'➕ Nueva actividad';
+  $('maNombre').value=a?a.nombre:'';
+  $('maPaquete').value=a?(a.paquete||''):'';
+  $('maIntervalo').value=(a&&a.intervaloKm!=null)?a.intervaloKm:'';
+  $('maTipo').innerHTML='<option value="">— No aplica —</option>'+MTO_TIPOS_VALIDOS.filter(function(t){return t!=='otro';}).map(function(t){
+    return '<option value="'+t+'"'+(a&&a.tipoArticulo===t?' selected':'')+'>'+t+'</option>';
+  }).join('');
+  $('maProcedimiento').value=a?(a.procedimiento||''):'';
+  $('maRefacciones').value=a?(a.refaccionesSugeridas||''):'';
+  $('maActivo').checked=!a||a.activo!==false;
+  $('maErr').style.display='none';
+  $('modalActividad').classList.add('show');
+  setTimeout(function(){$('maNombre').focus();},100);
+}
+function mtoCerrarModalActividad(){
+  $('modalActividad').classList.remove('show');
+}
+async function mtoGuardarActividad(){
+  var nombre=($('maNombre').value||'').trim();
+  if(!nombre){$('maErr').textContent='Escribe el nombre de la actividad.';$('maErr').style.display='block';return;}
+  var datos={
+    nombre:nombre,
+    paquete:($('maPaquete').value||'').trim(),
+    intervaloKm:$('maIntervalo').value!==''?(parseFloat($('maIntervalo').value)||0):null,
+    tipoArticulo:$('maTipo').value||'',
+    procedimiento:($('maProcedimiento').value||'').trim(),
+    refaccionesSugeridas:($('maRefacciones').value||'').trim(),
+    activo:$('maActivo').checked
+  };
+  try{
+    var db=firebase.firestore();
+    if(_maEditandoId){
+      await db.collection('mantenimientoActividades').doc(_maEditandoId).set(datos,{merge:true});
+    }else{
+      var maxOrden=MTO_ACTIVIDADES_TODAS.reduce(function(m,a){return Math.max(m,a.orden||0);},0);
+      datos.orden=maxOrden+1;
+      await db.collection('mantenimientoActividades').add(datos);
+    }
+    mtoCerrarModalActividad();
+    await cargarMantenimiento();
+  }catch(e){$('maErr').textContent='Error al guardar: '+e.message;$('maErr').style.display='block';}
+}
+function renderMtoCatalogoActividades(){
+  $('tbMtoCatalogoActividades').innerHTML=MTO_ACTIVIDADES_TODAS.map(function(a){
+    return '<tr><td style="font-size:12px">'+a.nombre+'</td><td style="font-size:12px">'+(a.paquete||'—')+'</td>'
+      +'<td class="num">'+(a.intervaloKm!=null?fmtN(a.intervaloKm,0):'—')+'</td>'
+      +'<td style="font-size:12px">'+(a.tipoArticulo||'—')+'</td>'
+      +'<td>'+(a.activo!==false?'<span class="badge bg-green">Activa</span>':'<span class="badge bg-gray">Inactiva</span>')+'</td>'
+      +'<td><button class="btn btn-out btn-sm" onclick="mtoAbrirModalActividad(\''+a.id+'\')">✏️ Editar</button></td></tr>';
+  }).join('')||'<tr><td colspan="6" style="color:#888">Sin actividades todavía.</td></tr>';
+}
 var _mtoArticuloFilas=[];
 // MTO_ODOMETRO_WIALON: {economico: {km, actualizadoEn}} — sincronizado 1x/día
 // desde Wialon (functions/index.js → wialonSincronizarOdometrosProgramado),
@@ -1267,7 +1376,12 @@ async function cargarMantenimiento(){
     var snapEnt=await db.collection('mantenimientoEntradasInventario').get();
     MTO_ENTRADAS=[];snapEnt.forEach(function(d){MTO_ENTRADAS.push(Object.assign({id:d.id},d.data()));});
     MTO_ENTRADAS.sort(function(a,b){return(b.fecha||'').localeCompare(a.fecha||'');});
-    renderMtoCatalogo();renderMtoMecanicos();renderMtoHistorial();renderMtoProximos();renderMtoCiclos();renderMtoEntradas();renderMtoFaltantes();
+    await mtoMigrarActividadesSiVacio();
+    var snapAct=await db.collection('mantenimientoActividades').get();
+    MTO_ACTIVIDADES_TODAS=[];snapAct.forEach(function(d){MTO_ACTIVIDADES_TODAS.push(Object.assign({id:d.id},d.data()));});
+    MTO_ACTIVIDADES_TODAS.sort(function(a,b){return(a.orden||0)-(b.orden||0);});
+    MTO_ACTIVIDADES=MTO_ACTIVIDADES_TODAS.filter(function(a){return a.activo!==false;});
+    renderMtoCatalogo();renderMtoMecanicos();renderMtoHistorial();renderMtoProximos();renderMtoCiclos();renderMtoEntradas();renderMtoFaltantes();renderMtoCatalogoActividades();
     poblarMtoSelects();poblarMtoSelectEntrada();
     if(!$('entFecha').value)$('entFecha').value=hoy();
     if(!$('mtoFecha').value)$('mtoFecha').value=hoy();
@@ -1290,33 +1404,21 @@ function poblarMtoSelects(){
   }).join('');
   if(actualMec)sMec.value=actualMec;
 }
-// MTO_TIPO_POR_ACTIVIDAD: qué "tipo" del catálogo (mtoAgregarArticulo/
-// mtoEditarArticulo, ver MTO_TIPOS_VALIDOS) cubre cada actividad — permite
-// que mtoSincronizarFilasAutomaticas() sepa qué buscar en el catálogo sin
-// adivinar por el nombre.
-var MTO_TIPO_POR_ACTIVIDAD={
-  'Cambio de aceite de motor':'aceite',
-  'Cambio de filtro de aceite':'filtro_aceite',
-  'Cambio de filtro de diesel':'filtro_diesel',
-  'Cambio de filtro separador de combustible':'filtro_separador',
-  'Cambio de filtro de aire':'filtro_aire',
-  'Cambio de filtro secador':'filtro_secador'
-};
 function mtoRenderActividades(){
-  $('mtoActividades').innerHTML=MTO_ACTIVIDADES_DEFAULT.map(function(a,i){
-    var tip=a.detalle?' <span class="info-tip">?<span class="info-tip-box">'+a.detalle+'</span></span>':'';
-    return '<label style="display:inline-flex;align-items:center;gap:6px;font-size:12px;margin:4px 14px 4px 0"><input type="checkbox" id="mtoAct'+i+'" onchange="mtoSincronizarFilasAutomaticas()"> '+a.nombre+'</label>'+tip;
+  var grupos=mtoGruposActividades();
+  $('mtoActividades').innerHTML=grupos.map(function(g,i){
+    var tip=g.detalle?' <span class="info-tip">?<span class="info-tip-box">'+g.detalle+'</span></span>':'';
+    return '<label style="display:inline-flex;align-items:center;gap:6px;font-size:12px;margin:4px 14px 4px 0"><input type="checkbox" id="mtoAct'+i+'" onchange="mtoSincronizarFilasAutomaticas()"> '+g.nombre+'</label>'+tip;
   }).join('');
 }
 function mtoActividadesSeleccionadas(){
   var out=[];
-  MTO_ACTIVIDADES_DEFAULT.forEach(function(a,i){
-    if(!$('mtoAct'+i).checked)return;
-    if(a.subActividades)a.subActividades.forEach(function(s){out.push({nombre:s.nombre,intervaloKm:s.intervaloKm});});
-    else out.push({nombre:a.nombre,intervaloKm:a.intervaloKm});
+  mtoGruposActividades().forEach(function(g,i){
+    if(!$('mtoAct'+i)||!$('mtoAct'+i).checked)return;
+    g.filas.forEach(function(f){out.push({nombre:f.nombre,intervaloKm:f.intervaloKm,procedimiento:f.procedimiento||'',refaccionesSugeridas:f.refaccionesSugeridas||''});});
   });
   var otra=($('mtoActividadOtra').value||'').trim();
-  if(otra)out.push({nombre:otra,intervaloKm:null});
+  if(otra)out.push({nombre:otra,intervaloKm:null,procedimiento:'',refaccionesSugeridas:''});
   return out;
 }
 // mtoAlCambiarUnidad: filtra el catálogo de artículos a los compatibles con
@@ -1349,12 +1451,10 @@ function mtoArticulosCompatibles(){
 // propia Esa agregó a mano con "+ Agregar renglón".
 function mtoTiposNecesarios(){
   var tipos=[];
-  MTO_ACTIVIDADES_DEFAULT.forEach(function(a,i){
+  mtoGruposActividades().forEach(function(g,i){
     if(!$('mtoAct'+i)||!$('mtoAct'+i).checked)return;
-    var nombres=a.subActividades?a.subActividades.map(function(s){return s.nombre;}):[a.nombre];
-    nombres.forEach(function(nombreAct){
-      var tipo=MTO_TIPO_POR_ACTIVIDAD[nombreAct];
-      if(tipo&&tipos.indexOf(tipo)===-1)tipos.push(tipo);
+    g.filas.forEach(function(f){
+      if(f.tipoArticulo&&tipos.indexOf(f.tipoArticulo)===-1)tipos.push(f.tipoArticulo);
     });
   });
   return tipos;
@@ -1433,7 +1533,7 @@ async function mtoGuardarYGenerar(){
   // para la 529): más de 2,000 km ANTES de tiempo, bloquea (probable error
   // de captura); más de 1,000 km TARDE, deja continuar pero lo marca como
   // incidencia — nunca se bloquea por llegar tarde, solo por adelantado.
-  var esPreventivo=MTO_ACTIVIDADES_DEFAULT.some(function(a,i){return a.nombre==='Mantenimiento preventivo'&&$('mtoAct'+i)&&$('mtoAct'+i).checked;});
+  var esPreventivo=mtoGruposActividades().some(function(g,i){return g.nombre==='Mantenimiento preventivo'&&$('mtoAct'+i)&&$('mtoAct'+i).checked;});
   var incidenciaKilometraje=null;
   if(esPreventivo){
     var cicloPrevio=MTO_CICLOS[String(unidad)];
@@ -1541,7 +1641,15 @@ function mtoImprimirFiltrosEntregados(o){
   _mtoAbrirImpresion('Filtros entregados — unidad '+o.unidad,html);
 }
 function mtoImprimirOrdenServicio(o){
-  var filas=o.actividades.map(function(a){return '<tr><td>☐</td><td>'+a.nombre+'</td></tr>';}).join('');
+  // El procedimiento se imprime GRANDE y en pasos cortos a propósito — pedido
+  // explícito de Esa: "los mecánicos luego no leen, pero que no tengan forma
+  // de errar". Las refacciones sugeridas son solo informativas, en letra
+  // normal, aparte del checklist de artículos entregados de arriba.
+  var filas=o.actividades.map(function(a){
+    var proc=a.procedimiento?('<div style="font-size:16px;font-weight:700;margin-top:6px;line-height:1.5;white-space:pre-line">'+a.procedimiento+'</div>'):'';
+    var ref=a.refaccionesSugeridas?('<div style="font-size:12px;color:#555;margin-top:4px">Refacciones sugeridas: '+a.refaccionesSugeridas+'</div>'):'';
+    return '<tr><td style="vertical-align:top">☐</td><td><div style="font-size:18px;font-weight:800">'+a.nombre+'</div>'+proc+ref+'</td></tr>';
+  }).join('');
   var faltantes=o.faltantes||[];
   var filasFaltantes=faltantes.map(function(a){return '<tr><td>'+a.nombre+'</td><td>'+(a.numeroParte||'—')+'</td><td>'+a.cantidad+'</td></tr>';}).join('');
   var html='<h2>Orden de servicio</h2>'
