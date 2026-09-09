@@ -319,7 +319,7 @@ tr:hover td{background:#fafafa}
         <div class="field" style="min-width:140px"><label>Fecha</label><input type="date" id="mtoFecha"></div>
       </div>
       <div id="mtoMOPWrap" style="display:none;margin-top:16px">
-        <div class="card-title" style="font-size:11px">🔧 Mantenimiento programado (manual oficial Freightliner M2 + motor MBE900) <span class="info-tip">?<span class="info-tip-box">Solo aplica a las unidades 521-524, 526-527, 531-532. El sistema calcula solo, según el kilometraje, qué operaciones tocan hoy (Horario III) — chasis y motor van en calendarios separados, cada uno con sus propios niveles. Las que aparecen aquí ya se marcan también en "Actividades a realizar" para que salgan en la orden impresa.</span></span></div>
+        <div class="card-title" style="font-size:11px">🔧 Mantenimiento programado (manual oficial Freightliner M2 + motor MBE900) <span class="info-tip">?<span class="info-tip-box">Solo aplica a las unidades 521-524, 526-527, 531-532. El sistema calcula solo, según el kilometraje, qué operaciones tocan hoy (Horario III) — chasis y motor van en calendarios separados, cada uno con sus propios niveles. Todo lo que aparece aquí YA se incluye en la orden (no hay nada que marcar); si alguna implica cambio de aceite o filtro, también se agrega y descuenta sola del inventario abajo.</span></span></div>
         <div class="alert alert-info" id="mtoMOPInfo"></div>
         <div id="mtoMOPLista"></div>
       </div>
@@ -329,7 +329,7 @@ tr:hover td{background:#fafafa}
         <div class="field" style="flex:1;min-width:220px"><label>Otro tipo de mantenimiento o reparación (opcional)</label><input type="text" id="mtoActividadOtra" placeholder="Ej: cambio de balatas traseras, reparación de suspensión, etc."></div>
       </div>
       <div class="card-title" style="margin-top:16px;font-size:11px">Refacciones/artículos que lleva (según unidad) <button class="btn btn-out btn-sm" onclick="mtoAgregarArticuloFila()">+ Agregar renglón</button></div>
-      <p style="font-size:12px;color:#888;margin-bottom:6px">Al marcar una actividad de filtro y elegir la unidad, el sistema agrega solo el filtro correcto si lo encuentra en el catálogo (según "Tipo" y "Compatibles").</p>
+      <p style="font-size:12px;color:#888;margin-bottom:6px">Se agregan solos: por el mantenimiento programado (arriba, según kilometraje) y por cualquier actividad de filtro que marques abajo — el sistema busca el artículo correcto en el catálogo (según "Tipo" y "Compatibles") para la unidad elegida. Solo agrega un renglón a mano si es algo fuera de lo normal.</p>
       <div class="alert alert-info" id="mtoAvisoCompat" style="display:none"></div>
       <div class="alert alert-warn" id="mtoAvisoAuto" style="display:none"></div>
       <div class="tbl-wrap"><table><thead><tr><th>Artículo</th><th>Existencia</th><th class="r">Cantidad</th><th></th></tr></thead><tbody id="tbMtoArticulos"></tbody></table></div>
@@ -1257,7 +1257,24 @@ var MOP_INTERVALOS_CHASIS={M1:16000,M2:32000,M3:64000,M4:128000,M5:256000};
 var MOP_INTERVALOS_MOTOR={M1:32000,M2:96000,M3:128000};
 var MTO_OPERACIONES_MOP=[]; // catálogo de las 91 operaciones (chasis+motor)
 var MTO_MOP_BASE={}; // {economico: {kmIM, fechaIM}}
-var _mtoMOPSeleccion={}; // {numeroOperacion: true/false} — checkboxes del checklist actual
+// MOP_TIPO_ARTICULO_POR_OPERACION: qué operación del manual implica cambiar
+// qué tipo de artículo del inventario (MTO_TIPOS_VALIDOS) — así, cuando el
+// kilometraje dice que hoy toca esa operación, el sistema ya sabe solo qué
+// filtro/aceite buscar en el catálogo (ver mtoTiposNecesarios), sin que Esa
+// tenga que marcarlo a mano en "Actividades a realizar". Clave =
+// sistema+'_'+numero (mismo id que el doc en mantenimientoOperacionesMOP).
+// Solo se mapean operaciones que de verdad SUSTITUYEN una pieza (no las de
+// "inspección" o "limpieza" de un elemento reutilizable, que no consumen
+// inventario) — el resto de las 91 operaciones se sigue mostrando en la
+// lista informativa, solo no dispara ningún renglón de artículo.
+var MOP_TIPO_ARTICULO_POR_OPERACION={
+  'motor_MB-05':['aceite','filtro_aceite'], // Cambio de aceite y filtro del motor — todos los niveles de motor
+  'motor_MB-04':['filtro_combustible'],     // Cambio del elemento principal del filtro de combustible
+  'chasis_47-02':['filtro_separador_agua'], // Reemplazo del elemento del separador de combustible y agua
+  'chasis_09-01':['filtro_aire'],           // Inspección y reemplazo del filtro de aire
+  'chasis_42-02':['filtro_secador'],        // Reemplazo del cartucho desecante (Bendix)
+  'chasis_42-15':['filtro_secador']         // Reemplazo del cartucho desecante (WABCO System Saver)
+};
 // Catálogo de actividades de mantenimiento — vive en Firestore
 // (mantenimientoActividades), NO hardcodeado, para que Esa pueda dar de
 // alta/editar actividades (con su procedimiento e intervalo) desde la
@@ -1384,37 +1401,59 @@ function mtoRenderMOP(){
   var wrap=$('mtoMOPWrap');
   if(!unidad||MOP_UNIDADES_APLICABLES.indexOf(unidad)===-1||!km){
     wrap.style.display='none';
-    _mtoMOPSeleccion={};
+    mtoSincronizarFilasAutomaticas();
     return;
   }
   wrap.style.display='block';
   var r=mtoOperacionesAplicablesMOP(unidad,km);
   var base=MTO_MOP_BASE[String(unidad)];
-  $('mtoMOPInfo').innerHTML=r.esPrimeraVez
+  $('mtoMOPInfo').innerHTML=(r.esPrimeraVez
     ?'Primera vez que se registra un mantenimiento programado para esta unidad — este kilometraje ('+fmtN(km,0)+' km) queda como base (kilometraje 0 del manual). Se aplica IM y M1 del chasis.'
-    :'Kilometraje base: '+fmtN(base.kmIM,0)+' km · Recorridos: '+fmtN(km-base.kmIM,0)+' km · Niveles chasis: '+(r.nivelesChasis.join(', ')||'ninguno')+' · Niveles motor: '+(r.nivelesMotor.join(', ')||'ninguno');
+    :'Kilometraje base: '+fmtN(base.kmIM,0)+' km · Recorridos: '+fmtN(km-base.kmIM,0)+' km · Niveles chasis: '+(r.nivelesChasis.join(', ')||'ninguno')+' · Niveles motor: '+(r.nivelesMotor.join(', ')||'ninguno'))
+    +' — todo lo de abajo se agrega solo a la orden, no hay nada que marcar.';
   var porGrupo={};
   r.operaciones.forEach(function(op){
     var g=op.grupo;
     if(!porGrupo[g])porGrupo[g]=[];
     porGrupo[g].push(op);
-    if(_mtoMOPSeleccion[op.numero]===undefined)_mtoMOPSeleccion[op.numero]=true;
   });
+  // Ya no son checkboxes: TODA operación que el kilometraje diga que aplica
+  // se incluye automáticamente (ver mtoActividadesSeleccionadasMOP) — esta
+  // lista es solo para que Esa vea qué se va a hacer, no para elegir.
   $('mtoMOPLista').innerHTML=Object.keys(porGrupo).map(function(g){
     return '<div style="margin-top:10px"><strong style="font-size:12px">'+g+'</strong>'
       +porGrupo[g].map(function(op){
-        return '<label style="display:flex;align-items:flex-start;gap:6px;font-size:12px;margin:4px 0"><input type="checkbox" '+(_mtoMOPSeleccion[op.numero]?'checked':'')+' onchange="_mtoMOPSeleccion[\''+op.numero+'\']=this.checked"> <span>'+op.numero+' — '+op.titulo+'</span></label>';
+        return '<div style="display:flex;align-items:flex-start;gap:6px;font-size:12px;margin:4px 0">☑ <span>'+op.numero+' — '+op.titulo+'</span></div>';
       }).join('')+'</div>';
   }).join('')||'<p style="font-size:12px;color:#888">No hay operaciones programadas para este kilometraje.</p>';
+  mtoSincronizarFilasAutomaticas();
 }
+// mtoActividadesSeleccionadasMOP: TODAS las operaciones que el kilometraje
+// diga que aplican hoy — ya no depende de que se hayan marcado casillas
+// (ver mtoRenderMOP), el kilometraje es la única fuente de verdad.
 function mtoActividadesSeleccionadasMOP(){
   var unidad=parseInt($('mtoUnidad').value||0);
   var km=parseFloat($('mtoKm').value||0);
   if(!unidad||MOP_UNIDADES_APLICABLES.indexOf(unidad)===-1||!km)return[];
   var r=mtoOperacionesAplicablesMOP(unidad,km);
-  return r.operaciones.filter(function(op){return _mtoMOPSeleccion[op.numero];}).map(function(op){
+  return r.operaciones.map(function(op){
     return{nombre:op.numero+' — '+op.titulo,intervaloKm:null,esMOP:true,grupo:op.grupo,procedimiento:op.procedimientoResumen||'',refaccionesSugeridas:''};
   });
+}
+// mtoTiposArticuloDeMOP: tipos de artículo (aceite/filtros) que las
+// operaciones MOP vigentes para esta unidad+kilometraje ya implican por sí
+// solas, sin que nadie las marque — ver MOP_TIPO_ARTICULO_POR_OPERACION.
+function mtoTiposArticuloDeMOP(){
+  var unidad=parseInt($('mtoUnidad').value||0);
+  var km=parseFloat($('mtoKm').value||0);
+  if(!unidad||MOP_UNIDADES_APLICABLES.indexOf(unidad)===-1||!km)return[];
+  var r=mtoOperacionesAplicablesMOP(unidad,km);
+  var tipos=[];
+  r.operaciones.forEach(function(op){
+    var lista=MOP_TIPO_ARTICULO_POR_OPERACION[op.sistema+'_'+op.numero]||[];
+    lista.forEach(function(t){if(tipos.indexOf(t)===-1)tipos.push(t);});
+  });
+  return tipos;
 }
 // mtoGruposActividades: agrupa MTO_ACTIVIDADES por "paquete" — una entrada
 // por grupo (o por actividad suelta si no tiene paquete), en el mismo orden
@@ -1542,7 +1581,6 @@ async function cargarMantenimiento(){
     mtoRenderActividades();
     if(!_mtoArticuloFilas.length)_mtoArticuloFilas=[{articuloId:'',cantidad:1}];
     renderMtoArticulosFilas();
-    _mtoMOPSeleccion={};
     mtoRenderMOP();
   }catch(e){console.error('cargarMantenimiento:',e);}
 }
@@ -1589,7 +1627,6 @@ function mtoAlCambiarUnidad(){
   var unidad=parseInt($('mtoUnidad').value||0);
   var odo=unidad?MTO_ODOMETRO_WIALON[String(unidad)]:null;
   if(odo&&odo.km!=null)$('mtoKm').value=odo.km;
-  _mtoMOPSeleccion={};
   mtoRenderMOP();
 }
 function mtoArticulosCompatibles(){
@@ -1627,6 +1664,9 @@ function mtoTiposNecesarios(){
       if(f.tipoArticulo&&tipos.indexOf(f.tipoArticulo)===-1)tipos.push(f.tipoArticulo);
     });
   });
+  // Los que ya implica el kilometraje MOP (aceite/filtros de la operación
+  // oficial vigente) — se agregan solos, sin depender de ninguna casilla.
+  mtoTiposArticuloDeMOP().forEach(function(t){if(tipos.indexOf(t)===-1)tipos.push(t);});
   return tipos;
 }
 function mtoSincronizarFilasAutomaticas(){
@@ -1703,15 +1743,18 @@ async function mtoGuardarYGenerar(){
   if(!unidad){alert('Selecciona la unidad.');return;}
   if(!km){alert('Captura el kilometraje actual.');return;}
   if(!actividades.length){alert('Marca al menos una actividad a realizar.');return;}
-  // Candado de kilometraje — SOLO aplica cuando se marca "Mantenimiento
-  // preventivo" (el paquete que rige el ciclo general de servicio de la
-  // unidad, ver tarjeta "Ciclo de mantenimiento"). Si ya había un ciclo
-  // registrado para esta unidad, compara los km recorridos desde el último
-  // servicio contra el intervalo configurado (25,000 por default, 14,000
-  // para la 529): más de 2,000 km ANTES de tiempo, bloquea (probable error
-  // de captura); más de 1,000 km TARDE, deja continuar pero lo marca como
-  // incidencia — nunca se bloquea por llegar tarde, solo por adelantado.
-  var esPreventivo=mtoGruposActividades().some(function(g,i){return g.nombre==='Mantenimiento preventivo'&&$('mtoAct'+i)&&$('mtoAct'+i).checked;});
+  // Candado de kilometraje — aplica cuando se marca "Mantenimiento
+  // preventivo" a mano (unidades sin MOP) O cuando el kilometraje mismo dice
+  // que hoy toca un mantenimiento programado del manual (unidades MOP, ya
+  // sin casilla que marcar — ver mtoActividadesSeleccionadasMOP). Si ya
+  // había un ciclo registrado para esta unidad, compara los km recorridos
+  // desde el último servicio contra el intervalo configurado (25,000 por
+  // default, 14,000 para la 529): más de 2,000 km ANTES de tiempo, bloquea
+  // (probable error de captura); más de 1,000 km TARDE, deja continuar pero
+  // lo marca como incidencia — nunca se bloquea por llegar tarde, solo por
+  // adelantado.
+  var esPreventivo=mtoGruposActividades().some(function(g,i){return g.nombre==='Mantenimiento preventivo'&&$('mtoAct'+i)&&$('mtoAct'+i).checked;})
+    ||(MOP_UNIDADES_APLICABLES.indexOf(unidad)!==-1&&mtoActividadesSeleccionadasMOP().length>0);
   var incidenciaKilometraje=null;
   if(esPreventivo){
     var cicloPrevio=MTO_CICLOS[String(unidad)];
@@ -1786,7 +1829,6 @@ async function mtoGuardarYGenerar(){
     if(MOP_UNIDADES_APLICABLES.indexOf(unidad)!==-1&&(!MTO_MOP_BASE[String(unidad)]||MTO_MOP_BASE[String(unidad)].kmIM==null)){
       await db.collection('mantenimientoMOPBase').doc(String(unidad)).set({kmIM:km,fechaIM:fecha,definidoPor:u?(u.nombre||u.usuario):''});
     }
-    _mtoMOPSeleccion={};
     mtoImprimirFiltrosEntregados({id:ref.id,unidad:unidad,fecha:fecha,articulos:articulosEntregables,notas:$('mtoNotas').value});
     mtoImprimirOrdenServicio({id:ref.id,unidad:unidad,fecha:fecha,km:km,mecanico:mecanico?mecanico.nombre:'(sin asignar)',actividades:actividades,notas:$('mtoNotas').value,faltantes:articulosFaltantes});
     var avisoFaltantes=articulosFaltantes.length
