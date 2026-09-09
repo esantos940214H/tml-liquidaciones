@@ -325,8 +325,10 @@ tr:hover td{background:#fafafa}
         <div class="alert alert-info" id="mtoMOPInfo"></div>
         <div id="mtoMOPLista"></div>
       </div>
-      <div class="card-title" style="margin-top:16px;font-size:11px">Actividades a realizar</div>
-      <div id="mtoActividades"></div>
+      <div id="mtoActividadesWrap">
+        <div class="card-title" style="margin-top:16px;font-size:11px">Actividades a realizar</div>
+        <div id="mtoActividades"></div>
+      </div>
       <div class="row" style="margin-top:6px">
         <div class="field" style="flex:1;min-width:220px"><label>Otro tipo de mantenimiento o reparación (opcional)</label><input type="text" id="mtoActividadOtra" placeholder="Ej: cambio de balatas traseras, reparación de suspensión, etc."></div>
       </div>
@@ -1389,7 +1391,12 @@ function mtoOperacionesAplicablesMOP(unidad,km){
   var nivelesChasis,nivelesMotor,checkpoint=0,diff=0,muyTemprano=false,vencido=false;
   if(esPrimeraVez){
     nivelesChasis=['IM','M1'];
-    nivelesMotor=[];
+    // También se hace el M1 de motor en esta primera visita (aceite y
+    // filtro, MB-05) aunque el manual no lo pida hasta los 32,000 km — así
+    // la unidad "arranca en ceros" con aceite/filtro nuevo desde el punto
+    // que se toma como kilometraje base, y no hace falta marcarlo a mano
+    // (pedido explícito de Esa: nada de casillas, ni siquiera la primera vez).
+    nivelesMotor=['M1'];
   }else{
     var kmDesdeBase=km-base.kmIM;
     var rChasis=mtoCalcularNivelesMOP(kmDesdeBase,MOP_INTERVALOS_CHASIS);
@@ -1431,6 +1438,12 @@ function mtoRenderMOP(){
   var unidad=parseInt($('mtoUnidad').value||0);
   var km=parseFloat($('mtoKm').value||0);
   var wrap=$('mtoMOPWrap');
+  // Las "Actividades a realizar" de casilla (Mantenimiento preventivo,
+  // Lavado, etc.) son el sistema viejo, sin calendario — para las unidades
+  // con MOP ya no hacen falta (todo sale del kilometraje), así que se
+  // ocultan por completo. Para el resto de la flota (sin manual oficial)
+  // siguen siendo la única forma de marcar qué se hizo.
+  if($('mtoActividadesWrap'))$('mtoActividadesWrap').style.display=(unidad&&MOP_UNIDADES_APLICABLES.indexOf(unidad)!==-1)?'none':'block';
   if(!unidad||MOP_UNIDADES_APLICABLES.indexOf(unidad)===-1||!km){
     wrap.style.display='none';
     mtoSincronizarFilasAutomaticas();
@@ -1440,7 +1453,7 @@ function mtoRenderMOP(){
   var r=mtoOperacionesAplicablesMOP(unidad,km);
   var base=MTO_MOP_BASE[String(unidad)];
   var infoTexto=r.esPrimeraVez
-    ?'Primera vez que se registra un mantenimiento programado para esta unidad — este kilometraje ('+fmtN(km,0)+' km) queda como base (kilometraje 0 del manual). Se aplica IM y M1 del chasis.'
+    ?'Primera vez que se registra un mantenimiento programado para esta unidad — este kilometraje ('+fmtN(km,0)+' km) queda como base (kilometraje 0 del manual). Se aplica IM y M1 del chasis, más aceite y filtro de motor (para arrancar el conteo con aceite nuevo).'
     :'Kilometraje base: '+fmtN(base.kmIM,0)+' km · Recorridos: '+fmtN(km-base.kmIM,0)+' km · Niveles chasis: '+(r.nivelesChasis.join(', ')||'ninguno')+' · Niveles motor: '+(r.nivelesMotor.join(', ')||'ninguno');
   infoTexto+=' — todo lo de abajo se agrega solo a la orden, no hay nada que marcar.';
   var elInfo=$('mtoMOPInfo');
