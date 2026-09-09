@@ -34,6 +34,7 @@ header{background:#1a1a2e;color:#fff;padding:14px 24px;display:flex;align-items:
 .alert-info{background:#e8f4fd;color:#0369a1;border:1px solid #bae6fd}
 .alert-ok{background:#d1e7dd;color:#0a5233;border:1px solid #a3cfbb}
 .alert-warn{background:#fffbeb;color:#92400e;border:1px solid #fde68a}
+.alert-err{background:#fde8e8;color:#9b1c1c;border:1px solid #f8b4b4}
 .tbl-wrap{overflow-x:auto}
 table{width:100%;border-collapse:collapse;font-size:13px;min-width:640px}
 th{background:#1a1a2e;color:#fff;padding:8px 10px;font-size:11px;text-transform:uppercase;letter-spacing:.7px;text-align:left;font-weight:600}
@@ -318,6 +319,7 @@ tr:hover td{background:#fafafa}
         <div class="field" style="min-width:180px"><label>Mecánico</label><select id="mtoMecanico"></select></div>
         <div class="field" style="min-width:140px"><label>Fecha</label><input type="date" id="mtoFecha"></div>
       </div>
+      <div class="alert alert-warn" id="mtoAvisoVencidas" style="display:none;margin-top:10px"></div>
       <div id="mtoMOPWrap" style="display:none;margin-top:16px">
         <div class="card-title" style="font-size:11px">🔧 Mantenimiento programado (manual oficial Freightliner M2 + motor MBE900) <span class="info-tip">?<span class="info-tip-box">Solo aplica a las unidades 521-524, 526-527, 531-532. El sistema calcula solo, según el kilometraje, qué operaciones tocan hoy (Horario III) — chasis y motor van en calendarios separados, cada uno con sus propios niveles. Todo lo que aparece aquí YA se incluye en la orden (no hay nada que marcar); si alguna implica cambio de aceite o filtro, también se agrega y descuenta sola del inventario abajo.</span></span></div>
         <div class="alert alert-info" id="mtoMOPInfo"></div>
@@ -1357,28 +1359,34 @@ async function mtoMigrarOperacionesMOPSiVacio(){
 // y el juego de intervalos de un calendario (chasis o motor), regresa qué
 // niveles tocan en el checkpoint más cercano — igual que la tabla de
 // "secuencia" del manual, pero calculado (múltiplos exactos), sin guardar
-// 32 filas. Tolerancia de ±1500 km alrededor del checkpoint más cercano,
-// mismo espíritu que el candado de kilometraje ya existente.
+// 32 filas. "diff" = km recorridos de más (positivo, va tarde) o de menos
+// (negativo, va adelantado) respecto al checkpoint. Regla de Esa: se puede
+// generar la orden desde 1,000 km ANTES del checkpoint (diff>=-1000); si
+// faltan más de 1,000 km todavía, no se debe dejar generar. No hay límite
+// de "tarde" — si ya se pasó, se debe poder registrar siempre, solo se
+// marca como vencida en otras pantallas (ver mtoUnidadesVencidas).
 function mtoCalcularNivelesMOP(kmDesdeBase,intervalos){
   var base=intervalos.M1;
-  if(!base||kmDesdeBase<0)return{checkpoint:0,niveles:[]};
+  if(!base||kmDesdeBase<0)return{checkpoint:0,niveles:[],diff:0};
   var checkpoint=Math.round(kmDesdeBase/base)*base;
-  if(checkpoint===0)return{checkpoint:0,niveles:[]};
-  var fuera=Math.abs(kmDesdeBase-checkpoint)>1500;
+  if(checkpoint===0)return{checkpoint:0,niveles:[],diff:0};
+  var diff=kmDesdeBase-checkpoint;
   var niveles=[];
   Object.keys(intervalos).forEach(function(nivel){
     if(checkpoint%intervalos[nivel]===0)niveles.push(nivel);
   });
-  return{checkpoint:checkpoint,niveles:niveles,fueraDeVentana:fuera};
+  return{checkpoint:checkpoint,niveles:niveles,diff:diff,muyTemprano:diff<-1000,vencido:diff>1000};
 }
 // mtoOperacionesAplicablesMOP: junta las operaciones de chasis+motor que
 // tocan en este kilometraje. Primera vez (sin kilometraje base todavía) se
 // trata como "IM y M1" del chasis (igual que el paso 1 de la tabla del
-// manual) y nada de motor todavía.
+// manual) y nada de motor todavía. muyTemprano/vencido/diff se toman del
+// calendario de CHASIS (más fino, cada 16,000 km — el de motor solo agrega
+// niveles adicionales sobre el mismo checkpoint, ver homologación).
 function mtoOperacionesAplicablesMOP(unidad,km){
   var base=MTO_MOP_BASE[String(unidad)];
   var esPrimeraVez=!base||base.kmIM==null;
-  var nivelesChasis,nivelesMotor,checkpoint=0;
+  var nivelesChasis,nivelesMotor,checkpoint=0,diff=0,muyTemprano=false,vencido=false;
   if(esPrimeraVez){
     nivelesChasis=['IM','M1'];
     nivelesMotor=[];
@@ -1387,13 +1395,37 @@ function mtoOperacionesAplicablesMOP(unidad,km){
     var rChasis=mtoCalcularNivelesMOP(kmDesdeBase,MOP_INTERVALOS_CHASIS);
     var rMotor=mtoCalcularNivelesMOP(kmDesdeBase,MOP_INTERVALOS_MOTOR);
     nivelesChasis=rChasis.niveles;nivelesMotor=rMotor.niveles;checkpoint=rChasis.checkpoint;
+    diff=rChasis.diff;muyTemprano=rChasis.muyTemprano;vencido=rChasis.vencido;
   }
   var operaciones=MTO_OPERACIONES_MOP.filter(function(op){
     if(op.noAplica)return false;
     var niveles=op.sistema==='chasis'?nivelesChasis:nivelesMotor;
     return niveles.some(function(n){return op.niveles[n];});
   });
-  return{esPrimeraVez:esPrimeraVez,nivelesChasis:nivelesChasis,nivelesMotor:nivelesMotor,checkpoint:checkpoint,operaciones:operaciones};
+  return{esPrimeraVez:esPrimeraVez,nivelesChasis:nivelesChasis,nivelesMotor:nivelesMotor,checkpoint:checkpoint,
+    diff:diff,muyTemprano:muyTemprano,vencido:vencido,operaciones:operaciones};
+}
+// mtoDiagnosticoMOPUnidad: igual que mtoOperacionesAplicablesMOP pero
+// usando el kilometraje de Wialon (no el capturado a mano en el formulario)
+// — para poder marcar unidades vencidas en el selector/tablas aunque nadie
+// haya abierto todavía el formulario de "Nueva orden". Regresa null si la
+// unidad no tiene MOP, o no hay odómetro/base todavía para calcular.
+function mtoDiagnosticoMOPUnidad(unidad){
+  if(MOP_UNIDADES_APLICABLES.indexOf(unidad)===-1)return null;
+  var odo=MTO_ODOMETRO_WIALON[String(unidad)];
+  if(!odo||odo.km==null)return null;
+  var base=MTO_MOP_BASE[String(unidad)];
+  if(!base||base.kmIM==null)return null;
+  return mtoOperacionesAplicablesMOP(unidad,odo.km);
+}
+// mtoUnidadesVencidas: unidades MOP cuyo checkpoint ya se pasó por más de
+// 1,000 km según el odómetro real de Wialon — para el aviso emergente y las
+// marcas en amarillo (ver cargarMantenimiento/poblarMtoSelects/renderMtoCiclos).
+function mtoUnidadesVencidas(){
+  return MOP_UNIDADES_APLICABLES.map(function(u){
+    var r=mtoDiagnosticoMOPUnidad(u);
+    return r&&r.vencido?{unidad:u,diff:r.diff,checkpoint:r.checkpoint}:null;
+  }).filter(Boolean);
 }
 function mtoRenderMOP(){
   var unidad=parseInt($('mtoUnidad').value||0);
@@ -1407,10 +1439,21 @@ function mtoRenderMOP(){
   wrap.style.display='block';
   var r=mtoOperacionesAplicablesMOP(unidad,km);
   var base=MTO_MOP_BASE[String(unidad)];
-  $('mtoMOPInfo').innerHTML=(r.esPrimeraVez
+  var infoTexto=r.esPrimeraVez
     ?'Primera vez que se registra un mantenimiento programado para esta unidad — este kilometraje ('+fmtN(km,0)+' km) queda como base (kilometraje 0 del manual). Se aplica IM y M1 del chasis.'
-    :'Kilometraje base: '+fmtN(base.kmIM,0)+' km · Recorridos: '+fmtN(km-base.kmIM,0)+' km · Niveles chasis: '+(r.nivelesChasis.join(', ')||'ninguno')+' · Niveles motor: '+(r.nivelesMotor.join(', ')||'ninguno'))
-    +' — todo lo de abajo se agrega solo a la orden, no hay nada que marcar.';
+    :'Kilometraje base: '+fmtN(base.kmIM,0)+' km · Recorridos: '+fmtN(km-base.kmIM,0)+' km · Niveles chasis: '+(r.nivelesChasis.join(', ')||'ninguno')+' · Niveles motor: '+(r.nivelesMotor.join(', ')||'ninguno');
+  infoTexto+=' — todo lo de abajo se agrega solo a la orden, no hay nada que marcar.';
+  var elInfo=$('mtoMOPInfo');
+  if(!r.esPrimeraVez&&r.muyTemprano){
+    infoTexto+=' ⛔ Faltan '+fmtN(-r.diff,0)+' km para el próximo checkpoint ('+fmtN(r.checkpoint,0)+' km desde la base) — todavía es muy pronto, no se puede generar la orden hasta estar a 1,000 km o menos.';
+    elInfo.className='alert alert-err';
+  }else if(!r.esPrimeraVez&&r.vencido){
+    infoTexto+=' 🚨 VENCIDO: ya se pasaron '+fmtN(r.diff,0)+' km del checkpoint ('+fmtN(r.checkpoint,0)+' km desde la base) — se puede generar la orden, pero ya debió haberse hecho antes.';
+    elInfo.className='alert alert-warn';
+  }else{
+    elInfo.className='alert alert-info';
+  }
+  elInfo.innerHTML=infoTexto;
   var porGrupo={};
   r.operaciones.forEach(function(op){
     var g=op.grupo;
@@ -1582,13 +1625,16 @@ async function cargarMantenimiento(){
     if(!_mtoArticuloFilas.length)_mtoArticuloFilas=[{articuloId:'',cantidad:1}];
     renderMtoArticulosFilas();
     mtoRenderMOP();
+    mtoAvisarVencidasEmergente();
   }catch(e){console.error('cargarMantenimiento:',e);}
 }
 function poblarMtoSelects(){
+  var vencidas=mtoUnidadesVencidas();
   var sUn=$('mtoUnidad');
   var actual=sUn.value;
   sUn.innerHTML='<option value="">— Selecciona —</option>'+unidadesRaw.filter(function(u){return u.activa;}).map(function(u){
-    return '<option value="'+u.numero+'">Unidad '+u.numero+'</option>';
+    var v=vencidas.find(function(x){return x.unidad===u.numero;});
+    return '<option value="'+u.numero+'"'+(v?' style="background:#fff3cd;color:#7a4a00"':'')+'>'+(v?'⚠️ ':'')+'Unidad '+u.numero+(v?' — vencida ('+fmtN(v.diff,0)+' km)':'')+'</option>';
   }).join('');
   if(actual)sUn.value=actual;
   var sMec=$('mtoMecanico');
@@ -1597,6 +1643,30 @@ function poblarMtoSelects(){
     return '<option value="'+m.id+'">'+m.nombre+'</option>';
   }).join('');
   if(actualMec)sMec.value=actualMec;
+  mtoRenderAvisoVencidas(vencidas);
+}
+// mtoRenderAvisoVencidas: además del mensaje emergente (ver
+// cargarMantenimiento), deja fijo en pantalla un aviso amarillo con qué
+// unidades ya se pasaron de su próximo checkpoint MOP por más de 1,000 km
+// — así no depende de que alguien no haya cerrado el popup a tiempo.
+function mtoRenderAvisoVencidas(vencidas){
+  var el=$('mtoAvisoVencidas');
+  if(!el)return;
+  if(!vencidas.length){el.style.display='none';return;}
+  el.style.display='block';
+  el.innerHTML='⚠️ <strong>'+vencidas.length+' unidad(es) con mantenimiento vencido:</strong> '
+    +vencidas.map(function(v){return 'Unidad '+v.unidad+' (pasó '+fmtN(v.diff,0)+' km su checkpoint de '+fmtN(v.checkpoint,0)+' km)';}).join(' · ');
+}
+// mtoAvisarVencidasEmergente: popup — se dispara cada vez que se carga el
+// módulo (login, recargar, después de guardar una orden), a propósito para
+// que sea "molesto" y no se olvide, tal como lo pidió Esa. No se guarda
+// bandera de "ya se mostró" — si sigue vencida, sigue avisando.
+function mtoAvisarVencidasEmergente(){
+  var vencidas=mtoUnidadesVencidas();
+  if(!vencidas.length)return;
+  alert('🚨 MANTENIMIENTO VENCIDO 🚨\n\n'+vencidas.map(function(v){
+    return 'Unidad '+v.unidad+': pasó '+fmtN(v.diff,0)+' km de su checkpoint ('+fmtN(v.checkpoint,0)+' km desde la base).';
+  }).join('\n')+'\n\nPrograma su servicio lo antes posible.');
 }
 function mtoRenderActividades(){
   var grupos=mtoGruposActividades();
@@ -1743,16 +1813,27 @@ async function mtoGuardarYGenerar(){
   if(!unidad){alert('Selecciona la unidad.');return;}
   if(!km){alert('Captura el kilometraje actual.');return;}
   if(!actividades.length){alert('Marca al menos una actividad a realizar.');return;}
-  // Candado de kilometraje — aplica cuando se marca "Mantenimiento
-  // preventivo" a mano (unidades sin MOP) O cuando el kilometraje mismo dice
-  // que hoy toca un mantenimiento programado del manual (unidades MOP, ya
-  // sin casilla que marcar — ver mtoActividadesSeleccionadasMOP). Si ya
-  // había un ciclo registrado para esta unidad, compara los km recorridos
-  // desde el último servicio contra el intervalo configurado (25,000 por
-  // default, 14,000 para la 529): más de 2,000 km ANTES de tiempo, bloquea
-  // (probable error de captura); más de 1,000 km TARDE, deja continuar pero
-  // lo marca como incidencia — nunca se bloquea por llegar tarde, solo por
-  // adelantado.
+  // Candado de kilometraje MOP (unidades 521-524, 526-527, 531-532): no se
+  // puede generar la orden si todavía faltan más de 1,000 km para el
+  // próximo checkpoint del manual — ver mtoCalcularNivelesMOP. Si ya se
+  // pasó (vencido), SÍ se deja generar (nunca se bloquea por llegar tarde).
+  if(MOP_UNIDADES_APLICABLES.indexOf(unidad)!==-1){
+    var rMOP=mtoOperacionesAplicablesMOP(unidad,km);
+    if(rMOP.muyTemprano){
+      alert('⛔ No se puede generar: todavía faltan '+fmtN(-rMOP.diff,0)+' km para el próximo checkpoint del manual ('+fmtN(rMOP.checkpoint,0)+' km desde la base de esta unidad). Se puede generar desde 1,000 km antes. Revisa el kilometraje capturado.');
+      return;
+    }
+  }
+  // Candado de kilometraje del ciclo general — aplica cuando se marca
+  // "Mantenimiento preventivo" a mano (unidades sin MOP) O cuando el
+  // kilometraje mismo dice que hoy toca un mantenimiento programado del
+  // manual (unidades MOP, ya sin casilla que marcar — ver
+  // mtoActividadesSeleccionadasMOP). Si ya había un ciclo registrado para
+  // esta unidad, compara los km recorridos desde el último servicio contra
+  // el intervalo configurado (25,000 por default, 14,000 para la 529): más
+  // de 1,000 km ANTES de tiempo, bloquea (probable error de captura); más
+  // de 1,000 km TARDE, deja continuar pero lo marca como incidencia —
+  // nunca se bloquea por llegar tarde, solo por adelantado.
   var esPreventivo=mtoGruposActividades().some(function(g,i){return g.nombre==='Mantenimiento preventivo'&&$('mtoAct'+i)&&$('mtoAct'+i).checked;})
     ||(MOP_UNIDADES_APLICABLES.indexOf(unidad)!==-1&&mtoActividadesSeleccionadasMOP().length>0);
   var incidenciaKilometraje=null;
@@ -1761,8 +1842,8 @@ async function mtoGuardarYGenerar(){
     if(cicloPrevio&&cicloPrevio.kmBase!=null){
       var intervaloVigente=cicloPrevio.intervaloKm||(unidad===529?14000:25000);
       var kmRecorrido=km-cicloPrevio.kmBase;
-      if(kmRecorrido<intervaloVigente-2000){
-        alert('⛔ No se puede registrar: esta unidad lleva solo '+fmtN(kmRecorrido,0)+' km desde su último mantenimiento preventivo (kilometraje base '+fmtN(cicloPrevio.kmBase,0)+'), y el intervalo es cada '+fmtN(intervaloVigente,0)+' km. Es muy pronto — revisa el kilometraje capturado.');
+      if(kmRecorrido<intervaloVigente-1000){
+        alert('⛔ No se puede registrar: esta unidad lleva solo '+fmtN(kmRecorrido,0)+' km desde su último mantenimiento preventivo (kilometraje base '+fmtN(cicloPrevio.kmBase,0)+'), y el intervalo es cada '+fmtN(intervaloVigente,0)+' km. Se puede registrar desde 1,000 km antes — revisa el kilometraje capturado.');
         return;
       }
       if(kmRecorrido>intervaloVigente+1000){
@@ -1866,12 +1947,12 @@ function _mtoAbrirImpresion(titulo,bodyHtml){
   v.document.close();
 }
 function mtoImprimirFiltrosEntregados(o){
-  var filas=o.articulos.map(function(a){return '<tr><td>'+a.nombre+'</td><td>'+a.cantidad+'</td></tr>';}).join('')
-    ||'<tr><td colspan="2" style="color:#888">Sin artículos entregados en esta orden.</td></tr>';
+  var filas=o.articulos.map(function(a){return '<tr><td>'+a.nombre+'</td><td>'+(a.numeroParte||'—')+'</td><td>'+a.cantidad+'</td></tr>';}).join('')
+    ||'<tr><td colspan="3" style="color:#888">Sin artículos entregados en esta orden.</td></tr>';
   var html='<h2>Filtros/artículos entregados</h2>'
     +'<p>Unidad: <strong>'+o.unidad+'</strong> · Fecha: <strong>'+o.fecha+'</strong> · Orden: '+o.id+'</p>'
     +(o.notas?'<p>Notas: '+o.notas+'</p>':'')
-    +'<table><thead><tr><th>Artículo</th><th>Cantidad</th></tr></thead><tbody>'+filas+'</tbody></table>'
+    +'<table><thead><tr><th>Artículo</th><th>No. de parte</th><th>Cantidad</th></tr></thead><tbody>'+filas+'</tbody></table>'
     +'<div class="firma"><div>Entrega</div><div>Recibe</div></div>';
   _mtoAbrirImpresion('Filtros entregados — unidad '+o.unidad,html);
 }
