@@ -1574,13 +1574,14 @@ function mtoOperacionesAplicablesMOP(unidad,km){
   var nivelesChasis,nivelesMotor,checkpoint=0,diff=0,muyTemprano=false,vencido=false;
   if(esPrimeraVez){
     nivelesChasis=['IM','M1'];
-    // También se hacen M1 y M2 de motor en esta primera visita (aceite y
-    // filtro del motor MB-05, y filtro de diesel MB-04) aunque el manual no
-    // los pida hasta los 32,000/96,000 km — así la unidad "arranca en
-    // ceros" con aceite y filtros nuevos desde el punto que se toma como
-    // kilometraje base, y no hace falta marcarlo a mano (pedido explícito
-    // de Esa: nada de casillas, ni siquiera la primera vez).
-    nivelesMotor=['M1','M2'];
+    // También se hace M1 de motor en esta primera visita (aceite y filtro
+    // del motor MB-05) aunque el manual no lo pida hasta los 32,000 km —
+    // así la unidad "arranca en ceros" con aceite nuevo desde el punto que
+    // se toma como kilometraje base, sin marcarlo a mano. El filtro de
+    // diesel/separador (MB-03/MB-04/47-02) ya no hace falta forzarlo aquí
+    // aparte — con M1 de motor presente, la regla del cliente de abajo los
+    // agrega solos.
+    nivelesMotor=['M1'];
   }else{
     var kmDesdeBase=km-base.kmIM;
     var rChasis=mtoCalcularNivelesMOP(kmDesdeBase,MOP_INTERVALOS_CHASIS);
@@ -1593,6 +1594,24 @@ function mtoOperacionesAplicablesMOP(unidad,km){
     var niveles=op.sistema==='chasis'?nivelesChasis:nivelesMotor;
     return niveles.some(function(n){return op.niveles[n];});
   });
+  // Regla de negocio del CLIENTE (no del manual oficial, ver
+  // Prompt_Cambio_Filtros.md) — cada vez que toca M1 de motor (cambio de
+  // aceite, MB-05, cada 32,000 km) también se cambian el filtro de diesel
+  // completo (MB-03 prefiltro + MB-04 principal) y el separador de
+  // combustible/agua (47-02), aunque su nivel oficial del manual sea
+  // M2/M3 (MB-03/MB-04) o M4 (47-02) y todavía no toque. Decisión
+  // explícita: son refacciones baratas frente al resto, más simple que
+  // llevar 3 calendarios cruzados. Si ya estaban incluidas por su propio
+  // nivel oficial, no se duplican — solo se marcan como "por regla del
+  // cliente" cuando la única razón de incluirlas fue esta, para que quede
+  // constancia en la orden (auditoría) de que no fue el nivel oficial.
+  if(nivelesMotor.indexOf('M1')!==-1){
+    ['motor_MB-03','motor_MB-04','chasis_47-02'].forEach(function(id){
+      if(operaciones.some(function(o){return o.sistema+'_'+o.numero===id;}))return;
+      var op=MTO_OPERACIONES_MOP.find(function(o){return o.sistema+'_'+o.numero===id&&!o.noAplica;});
+      if(op)operaciones.push(Object.assign({},op,{porReglaCliente:true}));
+    });
+  }
   return{esPrimeraVez:esPrimeraVez,nivelesChasis:nivelesChasis,nivelesMotor:nivelesMotor,checkpoint:checkpoint,
     diff:diff,muyTemprano:muyTemprano,vencido:vencido,operaciones:operaciones};
 }
@@ -1755,7 +1774,8 @@ function mtoActividadesSeleccionadasMOP(){
   var r=mtoOperacionesAplicablesMOP(unidad,km);
   return r.operaciones.map(function(op){
     var soloRevision=mtoEsRevisionSinEspecificacion(op);
-    return{nombre:op.numero+' — '+op.titulo,intervaloKm:null,esMOP:true,grupo:op.grupo,
+    var nombre=op.numero+' — '+op.titulo+(op.porReglaCliente?' (regla: cada cambio de aceite — no es el nivel oficial de este checkpoint)':'');
+    return{nombre:nombre,intervaloKm:null,esMOP:true,grupo:op.grupo,
       procedimiento:soloRevision?'':(op.procedimientoResumen||''),refaccionesSugeridas:''};
   });
 }
