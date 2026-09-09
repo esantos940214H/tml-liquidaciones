@@ -1714,13 +1714,33 @@ function mtoRenderFreightlinerMOP(unidad,km){
 // mtoActividadesSeleccionadasMOP: TODAS las operaciones que el kilometraje
 // diga que aplican hoy — ya no depende de que se hayan marcado casillas
 // (ver mtoRenderMOP), el kilometraje es la única fuente de verdad.
+// mtoEsRevisionSinEspecificacion: pedido de Esa para acortar la orden
+// impresa — una operación titulada "Inspección/Revisión/Verificación/
+// Comprobación" se deja SOLO con el nombre (sin procedimiento) únicamente
+// si su texto no trae ninguna cifra técnica real (par de apriete, presión,
+// holgura, capacidad, temperatura). Si trae aunque sea un dato de esos, se
+// queda con el procedimiento completo — aunque diga "Inspección", ese dato
+// es justo lo que hace falta para saber si algo pasa o no (ej. "42-13
+// Inspección de los frenos" trae el par exacto de las tuercas de rueda).
+// Las operaciones que SÍ implican trabajo real (cambiar/reemplazar/
+// lubricar/ajustar/apretar) siempre se quedan completas, sin importar esto.
+var MOP_TITULO_REVISION_RE=/^(Inspecci[oó]n|Revisi[oó]n|Verificaci[oó]n|Comprobaci[oó]n)/i;
+var MOP_CIFRA_TECNICA_RE=/N·m|N\.m|\bNm\b|psi|kPa|lbf|torque|par de apriete|°C|°F|cuartos|litros|\bL\b|\bgal\b|rpm|mm\)|pulg\)|mm\s|pulg\s/i;
+function mtoEsRevisionSinEspecificacion(op){
+  if(!MOP_TITULO_REVISION_RE.test(op.titulo))return false;
+  var texto=op.procedimientoResumen||'';
+  if(texto.length<=100)return false; // ya es corta de por sí, no hace falta tocarla
+  return!MOP_CIFRA_TECNICA_RE.test(texto);
+}
 function mtoActividadesSeleccionadasMOP(){
   var unidad=parseInt($('mtoUnidad').value||0);
   var km=parseFloat($('mtoKm').value||0);
   if(!unidad||MOP_UNIDADES_APLICABLES.indexOf(unidad)===-1||!km)return[];
   var r=mtoOperacionesAplicablesMOP(unidad,km);
   return r.operaciones.map(function(op){
-    return{nombre:op.numero+' — '+op.titulo,intervaloKm:null,esMOP:true,grupo:op.grupo,procedimiento:op.procedimientoResumen||'',refaccionesSugeridas:''};
+    var soloRevision=mtoEsRevisionSinEspecificacion(op);
+    return{nombre:op.numero+' — '+op.titulo,intervaloKm:null,esMOP:true,grupo:op.grupo,
+      procedimiento:soloRevision?'':(op.procedimientoResumen||''),refaccionesSugeridas:''};
   });
 }
 // mtoTiposArticuloDeMOP: tipos de artículo (aceite/filtros) que las
