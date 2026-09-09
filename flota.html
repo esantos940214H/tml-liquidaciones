@@ -1336,9 +1336,16 @@ function vwPasoActual(unidad,km){
   return{esPrimeraVez:false,paso:paso,revision:fila.revision,complementarios:comp,km:checkpoint,checkpoint:checkpoint,
     diff:diff,muyTemprano:diff<-1000,vencido:diff>1000,fueraDeTabla:false};
 }
-// vwChecklistDeTipo: texto verbatim del checklist oficial para "L"/"MP1"/
-// "MP2"/"Asentamiento" (ver shared/mopVWDelivery9170.js) — nunca se resume.
-function vwChecklistDeTipo(revision){
+// vwChecklistEstructuradoDeTipo: el checklist oficial de "L"/"MP1"/"MP2"/
+// "Asentamiento" ya separado renglón por renglón (ver
+// shared/mopVWDelivery9170.js → checklistsEstructurados), con cada uno
+// clasificado como "trabajo" (cambiar/sustituir/reapretar/lubricar/limpiar/
+// ajustar/drenar — consume tiempo real de mano de obra) o "verificacion"
+// (solo revisar/comprobar un nivel, estado o funcionamiento). Es la MISMA
+// palabra oficial del checklist, nunca se resume — la clasificación solo
+// decide qué tanto espacio ocupa en la orden impresa (ver
+// VW_PROCEDIMIENTO_POR_ITEM/mtoImprimirOrdenServicio), no qué se hace.
+function vwChecklistEstructuradoDeTipo(revision){
   var mapaTitulo={
     'Asentamiento':'Revisión de Asentamiento (entre 1,000 y 5,000 km, única vez)',
     'L':'Revisión de Lubricación (L) — cada 30,000 km (Grupo II)',
@@ -1346,35 +1353,77 @@ function vwChecklistDeTipo(revision){
     'MP2':'Revisión MP2 — la más completa, en la secuencia L, MP1, L, MP2 (ver tabla de kilometraje, sección 2)'
   };
   var titulo=mapaTitulo[revision];
-  var fila=(window.VW_DELIVERY_9170_SEED&&window.VW_DELIVERY_9170_SEED.checklists||[]).find(function(c){return c.tipo===titulo;});
-  return fila?fila.checklist:'';
+  var estructurado=window.VW_DELIVERY_9170_SEED&&window.VW_DELIVERY_9170_SEED.checklistsEstructurados;
+  return(estructurado&&estructurado[titulo])||[];
 }
 function vwProcedimientoDe(nombre){
   var fila=(window.VW_DELIVERY_9170_SEED&&window.VW_DELIVERY_9170_SEED.procedimientos||[]).find(function(p){return p.nombre===nombre;});
   return fila?fila.procedimiento:'';
 }
-// vwActividadesDelPaso: junta el checklist de la revisión vigente más los
-// complementarios (OT/OD/CRT/RV) en el mismo formato {nombre,procedimiento,
-// esMOP:false} que ya imprime mtoImprimirOrdenServicio en bloque grande —
-// aquí cada "actividad" es un checklist completo, no una operación suelta.
+// VW_PROCEDIMIENTO_POR_ITEM: qué renglones "trabajo" del checklist tienen un
+// procedimiento paso a paso detallado en shared/mopVWDelivery9170.js
+// (Procedimientos.csv) — se le pega ese procedimiento completo en la orden
+// impresa; los que no aparecen aquí quedan solo con el texto oficial del
+// checklist (tampoco se resumen ni se inventa un procedimiento que no
+// venía en los archivos). Coincidencia por substring del inicio del
+// renglón, no por igualdad exacta (el mismo texto se repite casi igual en
+// L/MP1/MP2 con variaciones mínimas de mayúsculas/preposición).
+var VW_PROCEDIMIENTO_POR_ITEM=[
+  {buscar:'aceite de motor y filtro de aceite: cambiar',nombreProc:'Cambio del aceite lubricante y del filtro (MP: aceite de motor y filtro de aceite)'},
+  {buscar:'aceite del motor y filtro de aceite: cambiar',nombreProc:'Cambio del aceite lubricante y del filtro (MP: aceite de motor y filtro de aceite)'},
+  {buscar:'filtro separador de agua',nombreProc:'Sistema de combustible'},
+  {buscar:'filtro principal de combustible',nombreProc:'Sistema de combustible'},
+  {buscar:'filtro de aire del motor: cambiar elemento',nombreProc:'Filtro de aire'},
+  {buscar:'filtro de aire del motor - elemento',nombreProc:'Filtro de aire'},
+  {buscar:'sistema de enfriamiento: cambiar el líquido',nombreProc:'Líquido de enfriamiento del motor'},
+  {buscar:'filtro coalescente de aire: cambiar elemento',nombreProc:'Sistema de freno a aire (9-170/11-180) — SÍ aplica a esta flota'},
+  {buscar:'embrague: cambiar fluido',nombreProc:'Fluido del embrague (todos los modelos) / Fluido del freno (6-160)'},
+  {buscar:'pernos maestro del eje delantero: lubricar',nombreProc:'Eje delantero (9-170/11-180) — pin-maestro y diferencial'}
+];
+function vwProcedimientoParaItem(texto){
+  var t=texto.toLowerCase();
+  var m=VW_PROCEDIMIENTO_POR_ITEM.find(function(x){return t.indexOf(x.buscar)!==-1;});
+  return m?vwProcedimientoDe(m.nombreProc):'';
+}
+// vwActividadesDelPaso: cada renglón del checklist vigente (uno por uno, no
+// un solo bloque) más los complementarios (OT/OD/CRT/RV), en el formato
+// {nombre,procedimiento,esMOP:true,grupo} que ya imprime
+// mtoImprimirOrdenServicio en la tabla compacta de 2 columnas — los
+// "trabajo" traen su procedimiento detallado pegado cuando existe (ver
+// arriba) y van marcados con 🔧; los "verificacion" solo el texto oficial,
+// una línea, sin procedimiento aparte.
 function vwActividadesDelPaso(unidad,km){
   var r=vwPasoActual(unidad,km);
   var out=[];
   if(r.fueraDeTabla){
-    out.push({nombre:'⚠️ Kilometraje fuera de la tabla oficial (paso '+r.paso+')',procedimiento:'La tabla que compartió Esa llega hasta el paso 47 (1,380,000 km). Hay que ampliarla con el patrón real del manual antes de seguir generando órdenes automáticas para esta unidad a partir de este kilometraje — por ahora, registra el mantenimiento a mano.',esMOP:false});
+    out.push({nombre:'⚠️ Kilometraje fuera de la tabla oficial (paso '+r.paso+')',procedimiento:'La tabla que compartió Esa llega hasta el paso 47 (1,380,000 km). Hay que ampliarla con el patrón real del manual antes de seguir generando órdenes automáticas para esta unidad a partir de este kilometraje — por ahora, registra el mantenimiento a mano.',esMOP:true,grupo:'⚠️ Fuera de tabla'});
     return out;
+  }
+  function agregarChecklist(revision,tituloGrupo){
+    vwChecklistEstructuradoDeTipo(revision).forEach(function(seccion){
+      seccion.items.forEach(function(it){
+        var esTrabajo=it.tipo==='trabajo';
+        out.push({
+          nombre:(esTrabajo?'🔧 ':'')+it.texto,
+          procedimiento:esTrabajo?vwProcedimientoParaItem(it.texto):'',
+          esMOP:true,
+          grupo:tituloGrupo+' — '+(seccion.seccion||'General')
+        });
+      });
+    });
   }
   if(r.esPrimeraVez){
-    out.push({nombre:'Revisión de Asentamiento (entre 1,000 y 5,000 km, única vez) — VW Delivery 9-170',procedimiento:vwChecklistDeTipo('Asentamiento'),esMOP:false});
-    out.push({nombre:'Revisión de Lubricación (L) — VW Delivery 9-170 (kilometraje base, para arrancar con aceite y filtro nuevos)',procedimiento:vwChecklistDeTipo('L'),esMOP:false});
+    agregarChecklist('Asentamiento','Revisión de Asentamiento (VW Delivery 9-170)');
+    agregarChecklist('L','Revisión L — aceite/filtro nuevos (VW Delivery 9-170, kilometraje base)');
     return out;
   }
-  out.push({nombre:'Revisión '+r.revision+' — VW Delivery 9-170 (paso '+r.paso+', '+fmtN(r.checkpoint,0)+' km desde la base)',procedimiento:vwChecklistDeTipo(r.revision),esMOP:false});
+  agregarChecklist(r.revision,'Revisión '+r.revision+' — VW Delivery 9-170 (paso '+r.paso+', '+fmtN(r.checkpoint,0)+' km desde la base)');
   r.complementarios.forEach(function(c){
-    if(c==='OT')out.push({nombre:'Cambio de aceite de la caja de cambios (OT)',procedimiento:vwProcedimientoDe('Aceite de la caja de cambios (transmisión)'),esMOP:false});
-    else if(c==='OD')out.push({nombre:'Cambio de aceite del diferencial / eje trasero (OD)',procedimiento:vwProcedimientoDe('Eje delantero (9-170/11-180) — pin-maestro y diferencial'),esMOP:false});
-    else if(c==='CRT')out.push({nombre:'Verificación del cubo con rodamiento de la rueda trasera (CRT)',procedimiento:'Verificar ruido y vibración con las ruedas libres del suelo (ver checklist MP2).',esMOP:false});
-    else if(c==='RV')out.push({nombre:'Regulación de válvulas del motor (RV)',procedimiento:'⚠️ PENDIENTE: el procedimiento paso a paso (holguras, torques) todavía no está disponible — falta el manual técnico/taller del motor Cummins ISF 3.8. Por ahora solo verificar si el kilometraje actual requiere la regulación y, si aplica, coordinar con un Distribuidor Autorizado o el proveedor del motor.',esMOP:false});
+    var grupo='Servicios complementarios (VW Delivery 9-170)';
+    if(c==='OT')out.push({nombre:'🔧 Cambio de aceite de la caja de cambios (OT)',procedimiento:vwProcedimientoDe('Aceite de la caja de cambios (transmisión)'),esMOP:true,grupo:grupo});
+    else if(c==='OD')out.push({nombre:'🔧 Cambio de aceite del diferencial / eje trasero (OD)',procedimiento:vwProcedimientoDe('Eje delantero (9-170/11-180) — pin-maestro y diferencial'),esMOP:true,grupo:grupo});
+    else if(c==='CRT')out.push({nombre:'Verificación del cubo con rodamiento de la rueda trasera (CRT)',procedimiento:'Verificar ruido y vibración con las ruedas libres del suelo (ver checklist MP2).',esMOP:true,grupo:grupo});
+    else if(c==='RV')out.push({nombre:'⚠️ Regulación de válvulas del motor (RV) — PENDIENTE',procedimiento:'El procedimiento paso a paso (holguras, torques) todavía no está disponible — falta el manual técnico/taller del motor Cummins ISF 3.8. Por ahora solo verificar si el kilometraje actual requiere la regulación y, si aplica, coordinar con un Distribuidor Autorizado o el proveedor del motor.',esMOP:true,grupo:grupo});
   });
   return out;
 }
@@ -2217,8 +2266,13 @@ function mtoImprimirOrdenServicio(o){
   // paso ni par de apriete; si un checkpoint trae muchas operaciones (M4/
   // M5), la orden simplemente ocupa más de una hoja — primero completo,
   // después compacto, nunca al revés.
+  // El título depende de qué manual trae esta orden (nunca se mezclan
+  // Freightliner y VW en la misma unidad) — se detecta por el nombre del
+  // grupo, sin necesidad de otro campo extra en cada actividad.
+  var esOrdenVW=mop.some(function(a){return(a.grupo||'').indexOf('VW Delivery')!==-1;});
+  var tituloMOP=esOrdenVW?'Mantenimiento programado (plan oficial VW Delivery 9-170 + motor Cummins ISF 3.8) — 🔧 = requiere mano de obra, con checklist se resuelve solo verificando':'Mantenimiento programado (manual Freightliner M2 / motor MBE900)';
   var htmlMOP=mop.length
-    ?'<h3 style="margin-top:20px">Mantenimiento programado (manual Freightliner M2 / motor MBE900)</h3>'
+    ?'<h3 style="margin-top:20px">'+tituloMOP+'</h3>'
       +'<div style="column-count:2;column-gap:18px;font-size:11px">'
       +Object.keys(porGrupoMOP).map(function(g){
         return '<div style="break-inside:avoid;margin-bottom:10px"><strong>'+g+'</strong>'
