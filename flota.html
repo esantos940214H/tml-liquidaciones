@@ -1547,9 +1547,14 @@ async function mtoMigrarOperacionesMOPSiVacio(){
 // marca como vencida en otras pantallas (ver mtoUnidadesVencidas).
 function mtoCalcularNivelesMOP(kmDesdeBase,intervalos){
   var base=intervalos.M1;
-  if(!base||kmDesdeBase<0)return{checkpoint:0,niveles:[],diff:0};
+  if(!base||kmDesdeBase<0)return{checkpoint:0,niveles:[],diff:0,muyTemprano:false,vencido:false};
   var checkpoint=Math.round(kmDesdeBase/base)*base;
-  if(checkpoint===0)return{checkpoint:0,niveles:[],diff:0};
+  // Justo después de fijar el kilometraje base (kmDesdeBase≈0) redondeaba
+  // a checkpoint=0 y reportaba "faltan 0 km" — como si ya tocara de
+  // nuevo el mismo día que se hizo el servicio. El primer checkpoint real
+  // nunca es 0, es el propio intervalo (M1) — se aclara aquí para que
+  // "faltan" muestre lo que de verdad falta (ej. 16,000 km), no 0.
+  if(checkpoint<base)checkpoint=base;
   var diff=kmDesdeBase-checkpoint;
   var niveles=[];
   Object.keys(intervalos).forEach(function(nivel){
