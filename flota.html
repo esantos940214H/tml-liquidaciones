@@ -321,7 +321,7 @@ tr:hover td{background:#fafafa}
       </div>
       <div class="alert alert-warn" id="mtoAvisoVencidas" style="display:none;margin-top:10px"></div>
       <div id="mtoMOPWrap" style="display:none;margin-top:16px">
-        <div class="card-title" style="font-size:11px">🔧 <span id="mtoMOPTitulo">Mantenimiento programado</span> <span class="info-tip">?<span class="info-tip-box">Unidades 521-524, 526-527, 531-532: manual oficial Freightliner M2 + motor MBE900 (chasis y motor en calendarios separados). Unidad 529: plan oficial VW Delivery 9-170 + motor Cummins ISF 3.8 (secuencia L/MP1/MP2 cada 30,000 km). En ambos casos el sistema calcula solo, según el kilometraje, qué toca hoy — todo lo que aparece aquí YA se incluye en la orden (no hay nada que marcar); si algo implica cambio de aceite o filtro, también se agrega y descuenta solo del inventario abajo.</span></span></div>
+        <div class="card-title" style="font-size:11px">🔧 <span id="mtoMOPTitulo">Mantenimiento programado</span> <span class="info-tip">?<span class="info-tip-box">Unidades 4521, 4522, 523, 524, 4526, 527, 531, 532: manual oficial Freightliner M2 + motor MBE900 (chasis y motor en calendarios separados). Unidad 529: plan oficial VW Delivery 9-170 + motor Cummins ISF 3.8 (secuencia L/MP1/MP2 cada 30,000 km). En ambos casos el sistema calcula solo, según el kilometraje, qué toca hoy — todo lo que aparece aquí YA se incluye en la orden (no hay nada que marcar); si algo implica cambio de aceite o filtro, también se agrega y descuenta solo del inventario abajo.</span></span></div>
         <div class="alert alert-info" id="mtoMOPInfo"></div>
         <div id="mtoMOPLista"></div>
       </div>
@@ -1261,8 +1261,17 @@ var MTO_ARTICULOS=[],MTO_MECANICOS=[],MTO_HISTORIAL=[];
 // intervalo — así no hace falta guardar las 32 filas de la tabla del
 // manual, solo los intervalos base de cada nivel (ver mtoCalcularNivelesMOP).
 // Horario III confirmado por Esa (transporte de larga distancia).
+//
+// 521/522/526 vs 4521/4522/4526: son el MISMO camión duplicado en el
+// catálogo de Unidades bajo dos números (error de captura al nombrarlos,
+// no son 5 camiones extra — confirmado por Esa). Aquí se usa el número que
+// SÍ tiene rastreo Wialon activo (4521/4522/4526), para que el kilometraje
+// se precargue solo; el "521/522/526" sin GPS se deja fuera para no llevar
+// dos kilometrajes base independientes del mismo camión. 523 y 524 no
+// tienen GPS en ninguno de sus dos números — se quedan con su número
+// normal (sin el "4") hasta que se les instale rastreador.
 // ══════════════════════════════════════════════
-var MOP_UNIDADES_APLICABLES=[521,522,523,524,526,527,531,532];
+var MOP_UNIDADES_APLICABLES=[4521,4522,523,524,4526,527,531,532];
 var MOP_INTERVALOS_CHASIS={M1:16000,M2:32000,M3:64000,M4:128000,M5:256000};
 var MOP_INTERVALOS_MOTOR={M1:32000,M2:96000,M3:128000};
 var MTO_OPERACIONES_MOP=[]; // catálogo de las 91 operaciones (chasis+motor)
@@ -2065,7 +2074,7 @@ async function mtoGuardarYGenerar(){
   if(!unidad){alert('Selecciona la unidad.');return;}
   if(!km){alert('Captura el kilometraje actual.');return;}
   if(!actividades.length){alert('Marca al menos una actividad a realizar.');return;}
-  // Candado de kilometraje MOP (unidades 521-524, 526-527, 531-532): no se
+  // Candado de kilometraje MOP (unidades 4521, 4522, 523, 524, 4526, 527, 531, 532): no se
   // puede generar la orden si todavía faltan más de 1,000 km para el
   // próximo checkpoint del manual — ver mtoCalcularNivelesMOP. Si ya se
   // pasó (vencido), SÍ se deja generar (nunca se bloquea por llegar tarde).
