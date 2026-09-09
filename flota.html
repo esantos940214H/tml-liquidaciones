@@ -1391,12 +1391,13 @@ function mtoOperacionesAplicablesMOP(unidad,km){
   var nivelesChasis,nivelesMotor,checkpoint=0,diff=0,muyTemprano=false,vencido=false;
   if(esPrimeraVez){
     nivelesChasis=['IM','M1'];
-    // También se hace el M1 de motor en esta primera visita (aceite y
-    // filtro, MB-05) aunque el manual no lo pida hasta los 32,000 km — así
-    // la unidad "arranca en ceros" con aceite/filtro nuevo desde el punto
-    // que se toma como kilometraje base, y no hace falta marcarlo a mano
-    // (pedido explícito de Esa: nada de casillas, ni siquiera la primera vez).
-    nivelesMotor=['M1'];
+    // También se hacen M1 y M2 de motor en esta primera visita (aceite y
+    // filtro del motor MB-05, y filtro de diesel MB-04) aunque el manual no
+    // los pida hasta los 32,000/96,000 km — así la unidad "arranca en
+    // ceros" con aceite y filtros nuevos desde el punto que se toma como
+    // kilometraje base, y no hace falta marcarlo a mano (pedido explícito
+    // de Esa: nada de casillas, ni siquiera la primera vez).
+    nivelesMotor=['M1','M2'];
   }else{
     var kmDesdeBase=km-base.kmIM;
     var rChasis=mtoCalcularNivelesMOP(kmDesdeBase,MOP_INTERVALOS_CHASIS);
@@ -1453,7 +1454,7 @@ function mtoRenderMOP(){
   var r=mtoOperacionesAplicablesMOP(unidad,km);
   var base=MTO_MOP_BASE[String(unidad)];
   var infoTexto=r.esPrimeraVez
-    ?'Primera vez que se registra un mantenimiento programado para esta unidad — este kilometraje ('+fmtN(km,0)+' km) queda como base (kilometraje 0 del manual). Se aplica IM y M1 del chasis, más aceite y filtro de motor (para arrancar el conteo con aceite nuevo).'
+    ?'Primera vez que se registra un mantenimiento programado para esta unidad — este kilometraje ('+fmtN(km,0)+' km) queda como base (kilometraje 0 del manual). Se aplica IM y M1 del chasis, más aceite, filtro de motor y filtro de diesel (para arrancar el conteo con todo nuevo).'
     :'Kilometraje base: '+fmtN(base.kmIM,0)+' km · Recorridos: '+fmtN(km-base.kmIM,0)+' km · Niveles chasis: '+(r.nivelesChasis.join(', ')||'ninguno')+' · Niveles motor: '+(r.nivelesMotor.join(', ')||'ninguno');
   infoTexto+=' — todo lo de abajo se agrega solo a la orden, no hay nada que marcar.';
   var elInfo=$('mtoMOPInfo');
