@@ -1830,26 +1830,30 @@ async function mtoGuardarYGenerar(){
   // puede generar la orden si todavía faltan más de 1,000 km para el
   // próximo checkpoint del manual — ver mtoCalcularNivelesMOP. Si ya se
   // pasó (vencido), SÍ se deja generar (nunca se bloquea por llegar tarde).
+  var incidenciaKilometrajeMOP=null;
   if(MOP_UNIDADES_APLICABLES.indexOf(unidad)!==-1){
     var rMOP=mtoOperacionesAplicablesMOP(unidad,km);
     if(rMOP.muyTemprano){
       alert('⛔ No se puede generar: todavía faltan '+fmtN(-rMOP.diff,0)+' km para el próximo checkpoint del manual ('+fmtN(rMOP.checkpoint,0)+' km desde la base de esta unidad). Se puede generar desde 1,000 km antes. Revisa el kilometraje capturado.');
       return;
     }
+    if(rMOP.vencido){
+      incidenciaKilometrajeMOP={kmRecorrido:rMOP.checkpoint+rMOP.diff,intervaloVigente:rMOP.checkpoint,kmBaseAnterior:MTO_MOP_BASE[String(unidad)].kmIM};
+    }
   }
-  // Candado de kilometraje del ciclo general — aplica cuando se marca
-  // "Mantenimiento preventivo" a mano (unidades sin MOP) O cuando el
-  // kilometraje mismo dice que hoy toca un mantenimiento programado del
-  // manual (unidades MOP, ya sin casilla que marcar — ver
-  // mtoActividadesSeleccionadasMOP). Si ya había un ciclo registrado para
-  // esta unidad, compara los km recorridos desde el último servicio contra
-  // el intervalo configurado (25,000 por default, 14,000 para la 529): más
-  // de 1,000 km ANTES de tiempo, bloquea (probable error de captura); más
-  // de 1,000 km TARDE, deja continuar pero lo marca como incidencia —
-  // nunca se bloquea por llegar tarde, solo por adelantado.
-  var esPreventivo=mtoGruposActividades().some(function(g,i){return g.nombre==='Mantenimiento preventivo'&&$('mtoAct'+i)&&$('mtoAct'+i).checked;})
-    ||(MOP_UNIDADES_APLICABLES.indexOf(unidad)!==-1&&mtoActividadesSeleccionadasMOP().length>0);
-  var incidenciaKilometraje=null;
+  // Candado de kilometraje del ciclo general (mantenimientoCicloUnidad,
+  // tarjeta "Ciclo de mantenimiento por unidad") — SOLO para unidades SIN
+  // MOP, donde sigue siendo la única referencia de "cada cuánto le toca".
+  // Las unidades MOP ya tienen su propio candado arriba (mantenimientoMOPBase
+  // + checkpoints de 16,000 km) y NO deben usar también este — son dos
+  // relojes distintos (20,000/25,000 genérico vs. el calendario real del
+  // manual) y correr los dos a la vez solo daría bloqueos contradictorios.
+  // Por eso ya no hace falta (ni se debe) configurar un ciclo aquí para las
+  // unidades 521-524, 526-527, 531-532 — su "Km base" real es el que se fija
+  // solo la primera vez que se registra su mantenimiento MOP.
+  var esPreventivo=MOP_UNIDADES_APLICABLES.indexOf(unidad)===-1
+    &&mtoGruposActividades().some(function(g,i){return g.nombre==='Mantenimiento preventivo'&&$('mtoAct'+i)&&$('mtoAct'+i).checked;});
+  var incidenciaKilometraje=incidenciaKilometrajeMOP;
   if(esPreventivo){
     var cicloPrevio=MTO_CICLOS[String(unidad)];
     if(cicloPrevio&&cicloPrevio.kmBase!=null){
@@ -2142,6 +2146,14 @@ function renderMtoCiclos(){
     var ciclo=MTO_CICLOS[String(u.numero)];
     var odo=MTO_ODOMETRO_WIALON[String(u.numero)];
     var kmActual=odo?odo.km:null;
+    // Las unidades MOP ya no usan este ciclo genérico — tienen su propio
+    // calendario (mantenimientoMOPBase, checkpoints de 16,000 km, ver
+    // tarjeta "Nueva orden de mantenimiento" y el aviso de vencidas arriba).
+    // No hace falta (ni se debe) configurar nada aquí para ellas.
+    if(MOP_UNIDADES_APLICABLES.indexOf(u.numero)!==-1){
+      return '<tr><td>'+u.numero+'</td><td class="num" colspan="4" style="color:#aaa;text-align:center">No aplica — usa el calendario MOP (arriba)</td>'
+        +'<td class="num r">'+(kmActual!=null?fmtN(kmActual,0):'—')+'</td><td>—</td></tr>';
+    }
     if(!ciclo){
       return '<tr><td>'+u.numero+'</td><td class="num" colspan="4" style="color:#aaa;text-align:center">Sin ciclo configurado</td>'
         +'<td class="num r">'+(kmActual!=null?fmtN(kmActual,0):'—')+'</td>'
