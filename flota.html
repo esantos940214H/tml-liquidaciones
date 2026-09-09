@@ -2349,9 +2349,29 @@ function mtoReimprimir(id){
   mtoImprimirFiltrosEntregados({id:m.id,unidad:m.unidad,fecha:m.fecha,articulos:m.articulos||[],notas:m.notas});
   mtoImprimirOrdenServicio({id:m.id,unidad:m.unidad,fecha:m.fecha,km:m.kilometraje,mecanico:m.mecanicoNombre||'(sin asignar)',actividades:m.actividades||[],notas:m.notas,faltantes:m.articulosFaltantes||[]});
 }
+// _mtoHistExpandido: qué renglones del historial tienen la lista completa
+// de actividades desplegada — por default se ve un resumen corto (pedido
+// de Esa: con muchas operaciones del manual MOP, la columna se volvía un
+// párrafo enorme e ilegible), con un "ver todas" para el detalle completo
+// cuando de verdad se necesite consultarlo.
+var _mtoHistExpandido={};
+function mtoToggleActividadesHistorial(id){
+  _mtoHistExpandido[id]=!_mtoHistExpandido[id];
+  renderMtoHistorial();
+}
 function renderMtoHistorial(){
   $('tbMtoHistorial').innerHTML=MTO_HISTORIAL.map(function(m){
-    var acts=(m.actividades||[]).map(function(a){return a.nombre;}).join(', ');
+    var lista=m.actividades||[];
+    var acts;
+    if(lista.length<=5||_mtoHistExpandido[m.id]){
+      acts=lista.map(function(a){return a.nombre;}).join(', ')
+        +(lista.length>5?' <button class="btn-sm" style="background:none;border:none;cursor:pointer;color:#1a1a2e;text-decoration:underline" onclick="mtoToggleActividadesHistorial(\''+m.id+'\')">ocultar</button>':'');
+    }else{
+      var nMOP=lista.filter(function(a){return a.esMOP;}).length;
+      var nOtras=lista.length-nMOP;
+      acts=lista.length+' actividades'+(nMOP?' ('+nMOP+' del manual oficial'+(nOtras?' + '+nOtras+' más':'')+')':'')
+        +' <button class="btn-sm" style="background:none;border:none;cursor:pointer;color:#1a1a2e;text-decoration:underline" onclick="mtoToggleActividadesHistorial(\''+m.id+'\')">ver todas</button>';
+    }
     var faltantes=m.articulosFaltantes||[];
     var avisoFaltantes=faltantes.length?' <span class="badge bg-yellow" title="'+faltantes.map(function(a){return a.nombre+(a.numeroParte?' ('+a.numeroParte+')':'');}).join(', ').replace(/"/g,'&quot;')+'">⚠️ faltan '+faltantes.length+'</span>':'';
     var inc=m.incidenciaKilometraje;
