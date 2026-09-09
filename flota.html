@@ -1765,7 +1765,11 @@ function mtoSincronizarFilasAutomaticas(){
       return (a.tipo||'').toLowerCase()===tipo&&(!a.unidadesCompatibles||!a.unidadesCompatibles.length||a.unidadesCompatibles.indexOf(unidad)!==-1);
     });
     if(candidatos.length===1){
-      _mtoArticuloFilas.push({articuloId:candidatos[0].id,cantidad:1,auto:true,tipo:tipo});
+      // Las unidades MOP (Freightliner M2 + motor MBE900) usan 1.5 cubetas
+      // de aceite por cambio, no 1 — pedido explícito de Esa. El resto de
+      // artículos (filtros) sigue siendo 1 por default.
+      var cantidadDefault=(tipo==='aceite'&&MOP_UNIDADES_APLICABLES.indexOf(unidad)!==-1)?1.5:1;
+      _mtoArticuloFilas.push({articuloId:candidatos[0].id,cantidad:cantidadDefault,auto:true,tipo:tipo});
     }else if(candidatos.length===0){
       var cualquieraDelTipo=MTO_ARTICULOS.filter(function(a){return (a.tipo||'').toLowerCase()===tipo;});
       if(cualquieraDelTipo.length){
@@ -1812,7 +1816,7 @@ function renderMtoArticulosFilas(){
       +compatibles.map(function(a){return '<option value="'+a.id+'"'+(a.id===f.articuloId?' selected':'')+'>'+a.nombre+'</option>';}).join('')
       +'</select></td>'
       +'<td class="num">'+(art?fmtN(art.existencia||0,0):'—')+'</td>'
-      +'<td class="r"><input type="number" min="0" step="1" value="'+f.cantidad+'" style="width:80px;text-align:right" onchange="mtoActualizarFila('+i+',\'cantidad\',this.value)"></td>'
+      +'<td class="r"><input type="number" min="0" step="0.5" value="'+f.cantidad+'" style="width:80px;text-align:right" onchange="mtoActualizarFila('+i+',\'cantidad\',this.value)"></td>'
       +'<td><button class="btn-sm" style="background:none;border:none;cursor:pointer;color:#c1121f" onclick="mtoQuitarArticuloFila('+i+')">✕</button></td></tr>';
   }).join('');
 }
