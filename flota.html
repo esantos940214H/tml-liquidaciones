@@ -321,7 +321,7 @@ tr:hover td{background:#fafafa}
       </div>
       <div class="alert alert-warn" id="mtoAvisoVencidas" style="display:none;margin-top:10px"></div>
       <div id="mtoMOPWrap" style="display:none;margin-top:16px">
-        <div class="card-title" style="font-size:11px">🔧 Mantenimiento programado (manual oficial Freightliner M2 + motor MBE900) <span class="info-tip">?<span class="info-tip-box">Solo aplica a las unidades 521-524, 526-527, 531-532. El sistema calcula solo, según el kilometraje, qué operaciones tocan hoy (Horario III) — chasis y motor van en calendarios separados, cada uno con sus propios niveles. Todo lo que aparece aquí YA se incluye en la orden (no hay nada que marcar); si alguna implica cambio de aceite o filtro, también se agrega y descuenta sola del inventario abajo.</span></span></div>
+        <div class="card-title" style="font-size:11px">🔧 <span id="mtoMOPTitulo">Mantenimiento programado</span> <span class="info-tip">?<span class="info-tip-box">Unidades 521-524, 526-527, 531-532: manual oficial Freightliner M2 + motor MBE900 (chasis y motor en calendarios separados). Unidad 529: plan oficial VW Delivery 9-170 + motor Cummins ISF 3.8 (secuencia L/MP1/MP2 cada 30,000 km). En ambos casos el sistema calcula solo, según el kilometraje, qué toca hoy — todo lo que aparece aquí YA se incluye en la orden (no hay nada que marcar); si algo implica cambio de aceite o filtro, también se agrega y descuenta solo del inventario abajo.</span></span></div>
         <div class="alert alert-info" id="mtoMOPInfo"></div>
         <div id="mtoMOPLista"></div>
       </div>
@@ -420,6 +420,12 @@ tr:hover td{background:#fafafa}
      motor Mercedes-Benz MBE 906/926), extraído del manual — ver
      mtoMigrarOperacionesMOPSiVacio() más abajo. -->
 <script src="shared/mopFreightlinerM2.js"></script>
+<!-- Plan de mantenimiento oficial VW Delivery 9-170 (motor Cummins ISF 3.8,
+     Grupo II de mantenimiento) — solo la unidad 529. Estructura distinta a
+     la del Freightliner: una secuencia fija de revisiones L/MP1/MP2 cada
+     30,000 km (no niveles independientes por sistema) — ver
+     vwPasoActual() más abajo. -->
+<script src="shared/mopVWDelivery9170.js"></script>
 <script>
 window._fbInit=false;
 window._fbCallbacks=[];
@@ -1279,6 +1285,109 @@ var MOP_TIPO_ARTICULO_POR_OPERACION={
   'chasis_42-02':['filtro_secador'],        // Reemplazo del cartucho desecante (Bendix)
   'chasis_42-15':['filtro_secador']         // Reemplazo del cartucho desecante (WABCO System Saver)
 };
+
+// ══════════════════════════════════════════════
+// VW DELIVERY 9-170 (Cummins ISF 3.8, Grupo II) — solo unidad 529. Plan
+// oficial "Garantía y Mantenimiento"/"Instrucciones de Operación" MAN
+// Latin America. A diferencia del Freightliner (niveles independientes
+// M1-M5 de chasis y motor), aquí es una SECUENCIA FIJA de revisiones L →
+// MP1 → L → MP2 → repite, cada 30,000 km (Grupo II), con servicios
+// complementarios (OT=aceite caja de cambios, OD=aceite eje trasero/
+// diferencial, CRT=verificación cubo rueda trasera, RV=regulación de
+// válvulas — SIN procedimiento disponible todavía, falta el manual técnico
+// del motor Cummins ISF 3.8) que se suman en pasos específicos — ver la
+// tabla completa en shared/mopVWDelivery9170.js (VW_DELIVERY_9170_SEED.intervalos,
+// tal cual el archivo que compartió Esa, sin inventar ni resumir).
+// ══════════════════════════════════════════════
+var VW_UNIDADES_APLICABLES=[529];
+var VW_INTERVALO_KM=30000;
+var MTO_VW_BASE={}; // {economico: {kmBase, fechaBase}} — collection mantenimientoVWBase
+// Qué tipo de artículo (MTO_TIPOS_VALIDOS) implica cada tipo de revisión —
+// "L" siempre trae aceite+filtro de motor (por eso se repite en MP1/MP2,
+// que SIEMPRE incluyen también lo de L). Los complementarios (OT/OD) traen
+// su propio tipo aparte; CRT y RV no consumen ningún artículo del catálogo.
+var VW_TIPO_ARTICULO_POR_REVISION={
+  'L':['aceite','filtro_aceite'],
+  'MP1':['aceite','filtro_aceite','filtro_aire','filtro_separador_agua','filtro_combustible','filtro_urea'],
+  'MP2':['aceite','filtro_aceite','filtro_aire','filtro_separador_agua','filtro_combustible','filtro_urea','filtro_secador']
+};
+var VW_TIPO_ARTICULO_POR_COMPLEMENTARIO={'OT':['aceite_transmision'],'OD':['aceite_diferencial']};
+// vwPasoActual: mismo espíritu que mtoCalcularNivelesMOP (checkpoint más
+// cercano, diff en km, candado de 1,000 km) pero con la rejilla fija de
+// 30,000 km de este plan en vez de niveles independientes por sistema.
+function vwPasoActual(unidad,km){
+  var base=MTO_VW_BASE[String(unidad)];
+  var esPrimeraVez=!base||base.kmBase==null;
+  if(esPrimeraVez){
+    return{esPrimeraVez:true,paso:1,revision:'Asentamiento',complementarios:[],km:0,checkpoint:0,diff:0,muyTemprano:false,vencido:false,fueraDeTabla:false};
+  }
+  var kmDesdeBase=km-base.kmBase;
+  var checkpoint=Math.round(kmDesdeBase/VW_INTERVALO_KM)*VW_INTERVALO_KM;
+  if(checkpoint<VW_INTERVALO_KM)checkpoint=VW_INTERVALO_KM; // el paso 1 (Asentamiento) ya se hizo al fijar la base
+  var paso=checkpoint/VW_INTERVALO_KM+1;
+  var fila=(window.VW_DELIVERY_9170_SEED&&window.VW_DELIVERY_9170_SEED.intervalos||[]).find(function(f){return f.paso===paso;});
+  if(!fila){
+    // Fuera de la tabla que compartió Esa (paso 47, 1,380,000 km) — no se
+    // inventa el patrón que seguiría, se avisa para revisar/ampliar la tabla.
+    return{esPrimeraVez:false,paso:paso,revision:null,complementarios:[],km:checkpoint,checkpoint:checkpoint,diff:kmDesdeBase-checkpoint,muyTemprano:false,vencido:false,fueraDeTabla:true};
+  }
+  var diff=kmDesdeBase-checkpoint;
+  var comp=(fila.complementarios||'').split('+').map(function(s){return s.trim();}).filter(Boolean);
+  return{esPrimeraVez:false,paso:paso,revision:fila.revision,complementarios:comp,km:checkpoint,checkpoint:checkpoint,
+    diff:diff,muyTemprano:diff<-1000,vencido:diff>1000,fueraDeTabla:false};
+}
+// vwChecklistDeTipo: texto verbatim del checklist oficial para "L"/"MP1"/
+// "MP2"/"Asentamiento" (ver shared/mopVWDelivery9170.js) — nunca se resume.
+function vwChecklistDeTipo(revision){
+  var mapaTitulo={
+    'Asentamiento':'Revisión de Asentamiento (entre 1,000 y 5,000 km, única vez)',
+    'L':'Revisión de Lubricación (L) — cada 30,000 km (Grupo II)',
+    'MP1':'Revisión MP1 — en la secuencia L, MP1, L, MP2 (ver tabla de kilometraje, sección 2)',
+    'MP2':'Revisión MP2 — la más completa, en la secuencia L, MP1, L, MP2 (ver tabla de kilometraje, sección 2)'
+  };
+  var titulo=mapaTitulo[revision];
+  var fila=(window.VW_DELIVERY_9170_SEED&&window.VW_DELIVERY_9170_SEED.checklists||[]).find(function(c){return c.tipo===titulo;});
+  return fila?fila.checklist:'';
+}
+function vwProcedimientoDe(nombre){
+  var fila=(window.VW_DELIVERY_9170_SEED&&window.VW_DELIVERY_9170_SEED.procedimientos||[]).find(function(p){return p.nombre===nombre;});
+  return fila?fila.procedimiento:'';
+}
+// vwActividadesDelPaso: junta el checklist de la revisión vigente más los
+// complementarios (OT/OD/CRT/RV) en el mismo formato {nombre,procedimiento,
+// esMOP:false} que ya imprime mtoImprimirOrdenServicio en bloque grande —
+// aquí cada "actividad" es un checklist completo, no una operación suelta.
+function vwActividadesDelPaso(unidad,km){
+  var r=vwPasoActual(unidad,km);
+  var out=[];
+  if(r.fueraDeTabla){
+    out.push({nombre:'⚠️ Kilometraje fuera de la tabla oficial (paso '+r.paso+')',procedimiento:'La tabla que compartió Esa llega hasta el paso 47 (1,380,000 km). Hay que ampliarla con el patrón real del manual antes de seguir generando órdenes automáticas para esta unidad a partir de este kilometraje — por ahora, registra el mantenimiento a mano.',esMOP:false});
+    return out;
+  }
+  if(r.esPrimeraVez){
+    out.push({nombre:'Revisión de Asentamiento (entre 1,000 y 5,000 km, única vez) — VW Delivery 9-170',procedimiento:vwChecklistDeTipo('Asentamiento'),esMOP:false});
+    out.push({nombre:'Revisión de Lubricación (L) — VW Delivery 9-170 (kilometraje base, para arrancar con aceite y filtro nuevos)',procedimiento:vwChecklistDeTipo('L'),esMOP:false});
+    return out;
+  }
+  out.push({nombre:'Revisión '+r.revision+' — VW Delivery 9-170 (paso '+r.paso+', '+fmtN(r.checkpoint,0)+' km desde la base)',procedimiento:vwChecklistDeTipo(r.revision),esMOP:false});
+  r.complementarios.forEach(function(c){
+    if(c==='OT')out.push({nombre:'Cambio de aceite de la caja de cambios (OT)',procedimiento:vwProcedimientoDe('Aceite de la caja de cambios (transmisión)'),esMOP:false});
+    else if(c==='OD')out.push({nombre:'Cambio de aceite del diferencial / eje trasero (OD)',procedimiento:vwProcedimientoDe('Eje delantero (9-170/11-180) — pin-maestro y diferencial'),esMOP:false});
+    else if(c==='CRT')out.push({nombre:'Verificación del cubo con rodamiento de la rueda trasera (CRT)',procedimiento:'Verificar ruido y vibración con las ruedas libres del suelo (ver checklist MP2).',esMOP:false});
+    else if(c==='RV')out.push({nombre:'Regulación de válvulas del motor (RV)',procedimiento:'⚠️ PENDIENTE: el procedimiento paso a paso (holguras, torques) todavía no está disponible — falta el manual técnico/taller del motor Cummins ISF 3.8. Por ahora solo verificar si el kilometraje actual requiere la regulación y, si aplica, coordinar con un Distribuidor Autorizado o el proveedor del motor.',esMOP:false});
+  });
+  return out;
+}
+function vwTiposArticulo(unidad,km){
+  var r=vwPasoActual(unidad,km);
+  var tipos=[];
+  function agregar(lista){(lista||[]).forEach(function(t){if(tipos.indexOf(t)===-1)tipos.push(t);});}
+  if(r.fueraDeTabla)return tipos;
+  if(r.esPrimeraVez){agregar(VW_TIPO_ARTICULO_POR_REVISION.L);return tipos;}
+  agregar(VW_TIPO_ARTICULO_POR_REVISION[r.revision]);
+  r.complementarios.forEach(function(c){agregar(VW_TIPO_ARTICULO_POR_COMPLEMENTARIO[c]);});
+  return tipos;
+}
 // Catálogo de actividades de mantenimiento — vive en Firestore
 // (mantenimientoActividades), NO hardcodeado, para que Esa pueda dar de
 // alta/editar actividades (con su procedimiento e intervalo) desde la
@@ -1426,31 +1535,90 @@ function mtoDiagnosticoMOPUnidad(unidad){
   if(!base||base.kmIM==null)return null;
   return mtoOperacionesAplicablesMOP(unidad,odo.km);
 }
-// mtoUnidadesVencidas: unidades MOP cuyo checkpoint ya se pasó por más de
-// 1,000 km según el odómetro real de Wialon — para el aviso emergente y las
-// marcas en amarillo (ver cargarMantenimiento/poblarMtoSelects/renderMtoCiclos).
+// vwDiagnosticoUnidad: mismo criterio que mtoDiagnosticoMOPUnidad, para la
+// unidad 529 (plan VW Delivery 9-170).
+function vwDiagnosticoUnidad(unidad){
+  if(VW_UNIDADES_APLICABLES.indexOf(unidad)===-1)return null;
+  var odo=MTO_ODOMETRO_WIALON[String(unidad)];
+  if(!odo||odo.km==null)return null;
+  var base=MTO_VW_BASE[String(unidad)];
+  if(!base||base.kmBase==null)return null;
+  return vwPasoActual(unidad,odo.km);
+}
+// mtoUnidadesVencidas: unidades con manual oficial (Freightliner o VW) cuyo
+// checkpoint ya se pasó por más de 1,000 km según el odómetro real de
+// Wialon — para el aviso emergente y las marcas en amarillo (ver
+// cargarMantenimiento/poblarMtoSelects/renderMtoCiclos).
 function mtoUnidadesVencidas(){
-  return MOP_UNIDADES_APLICABLES.map(function(u){
+  var deFreightliner=MOP_UNIDADES_APLICABLES.map(function(u){
     var r=mtoDiagnosticoMOPUnidad(u);
     return r&&r.vencido?{unidad:u,diff:r.diff,checkpoint:r.checkpoint}:null;
   }).filter(Boolean);
+  var deVW=VW_UNIDADES_APLICABLES.map(function(u){
+    var r=vwDiagnosticoUnidad(u);
+    return r&&r.vencido?{unidad:u,diff:r.diff,checkpoint:r.checkpoint}:null;
+  }).filter(Boolean);
+  return deFreightliner.concat(deVW);
 }
+// mtoRenderMOP: despachador — decide si esta unidad usa el manual
+// Freightliner (chasis+motor, niveles independientes) o el plan VW Delivery
+// 9-170 (secuencia fija L/MP1/MP2), o ninguno. Ambos comparten el mismo
+// bloque en pantalla (mtoMOPWrap/mtoMOPInfo/mtoMOPLista) — solo cambia qué
+// función lo llena.
 function mtoRenderMOP(){
   var unidad=parseInt($('mtoUnidad').value||0);
   var km=parseFloat($('mtoKm').value||0);
   var wrap=$('mtoMOPWrap');
+  var esFreightliner=MOP_UNIDADES_APLICABLES.indexOf(unidad)!==-1;
+  var esVW=VW_UNIDADES_APLICABLES.indexOf(unidad)!==-1;
   // Las "Actividades a realizar" de casilla (Mantenimiento preventivo,
   // Lavado, etc.) son el sistema viejo, sin calendario — para las unidades
-  // con MOP ya no hacen falta (todo sale del kilometraje), así que se
-  // ocultan por completo. Para el resto de la flota (sin manual oficial)
-  // siguen siendo la única forma de marcar qué se hizo.
-  if($('mtoActividadesWrap'))$('mtoActividadesWrap').style.display=(unidad&&MOP_UNIDADES_APLICABLES.indexOf(unidad)!==-1)?'none':'block';
-  if(!unidad||MOP_UNIDADES_APLICABLES.indexOf(unidad)===-1||!km){
+  // con manual oficial (Freightliner o VW) ya no hacen falta (todo sale
+  // del kilometraje), así que se ocultan por completo. Para el resto de la
+  // flota siguen siendo la única forma de marcar qué se hizo.
+  if($('mtoActividadesWrap'))$('mtoActividadesWrap').style.display=(unidad&&(esFreightliner||esVW))?'none':'block';
+  if(!unidad||!km||!(esFreightliner||esVW)){
     wrap.style.display='none';
     mtoSincronizarFilasAutomaticas();
     return;
   }
   wrap.style.display='block';
+  if($('mtoMOPTitulo'))$('mtoMOPTitulo').textContent=esVW?'Mantenimiento programado (plan oficial VW Delivery 9-170 + motor Cummins ISF 3.8)':'Mantenimiento programado (manual oficial Freightliner M2 + motor MBE900)';
+  if(esVW){mtoRenderVWMOP(unidad,km);return;}
+  mtoRenderFreightlinerMOP(unidad,km);
+}
+function mtoRenderVWMOP(unidad,km){
+  var r=vwPasoActual(unidad,km);
+  var elInfo=$('mtoMOPInfo');
+  var infoTexto;
+  if(r.fueraDeTabla){
+    infoTexto='⚠️ Este kilometraje cae fuera de la tabla oficial que compartió Esa (llega hasta el paso 47, 1,380,000 km) — hay que ampliarla antes de seguir generando órdenes automáticas.';
+    elInfo.className='alert alert-err';
+  }else if(r.esPrimeraVez){
+    infoTexto='Primera vez que se registra un mantenimiento programado para esta unidad — este kilometraje ('+fmtN(km,0)+' km) queda como base (kilómetro 0 del plan VW). Se aplica la Revisión de Asentamiento, más aceite y filtro de motor (para arrancar el conteo con aceite nuevo) — todo lo de abajo se agrega solo a la orden, no hay nada que marcar.';
+    elInfo.className='alert alert-info';
+  }else{
+    infoTexto='Kilometraje base: '+fmtN(MTO_VW_BASE[String(unidad)].kmBase,0)+' km · Recorridos: '+fmtN(km-MTO_VW_BASE[String(unidad)].kmBase,0)+' km · Paso '+r.paso+': Revisión '+r.revision+(r.complementarios.length?' + '+r.complementarios.join(' + '):'')+' — todo lo de abajo se agrega solo a la orden, no hay nada que marcar.';
+    if(r.muyTemprano){
+      infoTexto+=' ⛔ Faltan '+fmtN(-r.diff,0)+' km para este paso ('+fmtN(r.checkpoint,0)+' km desde la base) — todavía es muy pronto, no se puede generar la orden hasta estar a 1,000 km o menos.';
+      elInfo.className='alert alert-err';
+    }else if(r.vencido){
+      infoTexto+=' 🚨 VENCIDO: ya se pasaron '+fmtN(r.diff,0)+' km de este paso — se puede generar la orden, pero ya debió haberse hecho antes.';
+      elInfo.className='alert alert-warn';
+    }else{
+      elInfo.className='alert alert-info';
+    }
+  }
+  elInfo.innerHTML=infoTexto;
+  var actividades=vwActividadesDelPaso(unidad,km);
+  $('mtoMOPLista').innerHTML=actividades.map(function(a){
+    return '<div style="margin-top:10px;border-bottom:1px solid #eee;padding-bottom:8px"><div style="font-size:12px;font-weight:700">☑ '+a.nombre+'</div>'
+      +(a.procedimiento?'<div style="font-size:11px;white-space:pre-line;margin-top:4px;color:#444">'+a.procedimiento+'</div>':'')
+      +'</div>';
+  }).join('')||'<p style="font-size:12px;color:#888">No hay checklist programado para este kilometraje.</p>';
+  mtoSincronizarFilasAutomaticas();
+}
+function mtoRenderFreightlinerMOP(unidad,km){
   var r=mtoOperacionesAplicablesMOP(unidad,km);
   var base=MTO_MOP_BASE[String(unidad)];
   var infoTexto=r.esPrimeraVez
@@ -1511,6 +1679,20 @@ function mtoTiposArticuloDeMOP(){
     lista.forEach(function(t){if(tipos.indexOf(t)===-1)tipos.push(t);});
   });
   return tipos;
+}
+// mtoActividadesSeleccionadasVW/mtoTiposArticuloDeVW: mismo criterio que
+// las de Freightliner (arriba), para la unidad 529 (plan VW Delivery 9-170).
+function mtoActividadesSeleccionadasVW(){
+  var unidad=parseInt($('mtoUnidad').value||0);
+  var km=parseFloat($('mtoKm').value||0);
+  if(!unidad||VW_UNIDADES_APLICABLES.indexOf(unidad)===-1||!km)return[];
+  return vwActividadesDelPaso(unidad,km);
+}
+function mtoTiposArticuloDeVW(){
+  var unidad=parseInt($('mtoUnidad').value||0);
+  var km=parseFloat($('mtoKm').value||0);
+  if(!unidad||VW_UNIDADES_APLICABLES.indexOf(unidad)===-1||!km)return[];
+  return vwTiposArticulo(unidad,km);
 }
 // mtoGruposActividades: agrupa MTO_ACTIVIDADES por "paquete" — una entrada
 // por grupo (o por actividad suelta si no tiene paquete), en el mismo orden
@@ -1631,6 +1813,8 @@ async function cargarMantenimiento(){
     MTO_OPERACIONES_MOP=[];snapMOP.forEach(function(d){MTO_OPERACIONES_MOP.push(d.data());});
     var snapMOPBase=await db.collection('mantenimientoMOPBase').get();
     MTO_MOP_BASE={};snapMOPBase.forEach(function(d){MTO_MOP_BASE[d.id]=d.data();});
+    var snapVWBase=await db.collection('mantenimientoVWBase').get();
+    MTO_VW_BASE={};snapVWBase.forEach(function(d){MTO_VW_BASE[d.id]=d.data();});
     renderMtoCatalogo();renderMtoMecanicos();renderMtoHistorial();renderMtoProximos();renderMtoCiclos();renderMtoEntradas();renderMtoFaltantes();renderMtoCatalogoActividades();
     poblarMtoSelects();poblarMtoSelectEntrada();
     if(!$('entFecha').value)$('entFecha').value=hoy();
@@ -1748,9 +1932,10 @@ function mtoTiposNecesarios(){
       if(f.tipoArticulo&&tipos.indexOf(f.tipoArticulo)===-1)tipos.push(f.tipoArticulo);
     });
   });
-  // Los que ya implica el kilometraje MOP (aceite/filtros de la operación
-  // oficial vigente) — se agregan solos, sin depender de ninguna casilla.
+  // Los que ya implica el kilometraje del manual oficial vigente (Freightliner
+  // o VW) — se agregan solos, sin depender de ninguna casilla.
   mtoTiposArticuloDeMOP().forEach(function(t){if(tipos.indexOf(t)===-1)tipos.push(t);});
+  mtoTiposArticuloDeVW().forEach(function(t){if(tipos.indexOf(t)===-1)tipos.push(t);});
   return tipos;
 }
 function mtoSincronizarFilasAutomaticas(){
@@ -1827,7 +2012,7 @@ async function mtoGuardarYGenerar(){
   var mecanicoId=$('mtoMecanico').value;
   var mecanico=MTO_MECANICOS.find(function(m){return m.id===mecanicoId;});
   var fecha=$('mtoFecha').value||hoy();
-  var actividades=mtoActividadesSeleccionadas().concat(mtoActividadesSeleccionadasMOP());
+  var actividades=mtoActividadesSeleccionadas().concat(mtoActividadesSeleccionadasMOP()).concat(mtoActividadesSeleccionadasVW());
   if(!unidad){alert('Selecciona la unidad.');return;}
   if(!km){alert('Captura el kilometraje actual.');return;}
   if(!actividades.length){alert('Marca al menos una actividad a realizar.');return;}
@@ -1846,17 +2031,32 @@ async function mtoGuardarYGenerar(){
       incidenciaKilometrajeMOP={kmRecorrido:rMOP.checkpoint+rMOP.diff,intervaloVigente:rMOP.checkpoint,kmBaseAnterior:MTO_MOP_BASE[String(unidad)].kmIM};
     }
   }
+  // Mismo candado, para la unidad 529 (plan VW Delivery 9-170) — su propia
+  // rejilla de 30,000 km (VW_INTERVALO_KM), independiente del Freightliner.
+  if(VW_UNIDADES_APLICABLES.indexOf(unidad)!==-1){
+    var rVW=vwPasoActual(unidad,km);
+    if(rVW.fueraDeTabla){
+      alert('⛔ No se puede generar: este kilometraje cae fuera de la tabla oficial VW (llega hasta 1,380,000 km) — hay que ampliarla primero.');
+      return;
+    }
+    if(rVW.muyTemprano){
+      alert('⛔ No se puede generar: todavía faltan '+fmtN(-rVW.diff,0)+' km para el paso '+rVW.paso+' ('+fmtN(rVW.checkpoint,0)+' km desde la base de esta unidad). Se puede generar desde 1,000 km antes. Revisa el kilometraje capturado.');
+      return;
+    }
+    if(rVW.vencido){
+      incidenciaKilometrajeMOP={kmRecorrido:rVW.checkpoint+rVW.diff,intervaloVigente:rVW.checkpoint,kmBaseAnterior:MTO_VW_BASE[String(unidad)].kmBase};
+    }
+  }
   // Candado de kilometraje del ciclo general (mantenimientoCicloUnidad,
-  // tarjeta "Ciclo de mantenimiento por unidad") — SOLO para unidades SIN
-  // MOP, donde sigue siendo la única referencia de "cada cuánto le toca".
-  // Las unidades MOP ya tienen su propio candado arriba (mantenimientoMOPBase
-  // + checkpoints de 16,000 km) y NO deben usar también este — son dos
-  // relojes distintos (20,000/25,000 genérico vs. el calendario real del
-  // manual) y correr los dos a la vez solo daría bloqueos contradictorios.
-  // Por eso ya no hace falta (ni se debe) configurar un ciclo aquí para las
-  // unidades 521-524, 526-527, 531-532 — su "Km base" real es el que se fija
-  // solo la primera vez que se registra su mantenimiento MOP.
-  var esPreventivo=MOP_UNIDADES_APLICABLES.indexOf(unidad)===-1
+  // tarjeta "Ciclo de mantenimiento por unidad") — SOLO para unidades sin
+  // manual oficial cargado (ni Freightliner ni VW), donde sigue siendo la
+  // única referencia de "cada cuánto le toca". Las unidades con manual ya
+  // tienen su propio candado arriba (mantenimientoMOPBase/mantenimientoVWBase
+  // + checkpoints reales) y NO deben usar también este — son relojes
+  // distintos (20,000/25,000 genérico vs. el calendario real del manual) y
+  // correr los dos a la vez solo daría bloqueos contradictorios. Por eso ya
+  // no hace falta (ni se debe) configurar un ciclo aquí para esas unidades.
+  var esPreventivo=MOP_UNIDADES_APLICABLES.indexOf(unidad)===-1&&VW_UNIDADES_APLICABLES.indexOf(unidad)===-1
     &&mtoGruposActividades().some(function(g,i){return g.nombre==='Mantenimiento preventivo'&&$('mtoAct'+i)&&$('mtoAct'+i).checked;});
   var incidenciaKilometraje=incidenciaKilometrajeMOP;
   if(esPreventivo){
@@ -1931,6 +2131,11 @@ async function mtoGuardarYGenerar(){
     // se reinicia con cada visita).
     if(MOP_UNIDADES_APLICABLES.indexOf(unidad)!==-1&&(!MTO_MOP_BASE[String(unidad)]||MTO_MOP_BASE[String(unidad)].kmIM==null)){
       await db.collection('mantenimientoMOPBase').doc(String(unidad)).set({kmIM:km,fechaIM:fecha,definidoPor:u?(u.nombre||u.usuario):''});
+    }
+    // Mismo criterio, kilometraje base del plan VW Delivery 9-170
+    // (mantenimientoVWBase) — solo unidad 529, solo la primera vez.
+    if(VW_UNIDADES_APLICABLES.indexOf(unidad)!==-1&&(!MTO_VW_BASE[String(unidad)]||MTO_VW_BASE[String(unidad)].kmBase==null)){
+      await db.collection('mantenimientoVWBase').doc(String(unidad)).set({kmBase:km,fechaBase:fecha,definidoPor:u?(u.nombre||u.usuario):''});
     }
     mtoImprimirFiltrosEntregados({id:ref.id,unidad:unidad,fecha:fecha,articulos:articulosEntregables,notas:$('mtoNotas').value});
     mtoImprimirOrdenServicio({id:ref.id,unidad:unidad,fecha:fecha,km:km,mecanico:mecanico?mecanico.nombre:'(sin asignar)',actividades:actividades,notas:$('mtoNotas').value,faltantes:articulosFaltantes});
@@ -2067,7 +2272,7 @@ function renderMtoHistorial(){
 // inventario), mantenimientoMecanicos ni mantenimientoActividades — esos
 // quedan intactos a propósito. Doble confirmación porque es permanente.
 async function mtoBorrarHistorialPruebas(){
-  if(!confirm('⚠️ Esto borra PERMANENTEMENTE:\n\n- Todo el historial de órdenes de mantenimiento ('+MTO_HISTORIAL.length+')\n- Los ciclos de mantenimiento por unidad ('+Object.keys(MTO_CICLOS).length+')\n- El kilometraje base del manual Freightliner M2 ('+Object.keys(MTO_MOP_BASE).length+')\n- El registro de entradas de inventario ('+MTO_ENTRADAS.length+') — la existencia actual del catálogo NO se toca\n\nNO se borra: el catálogo de artículos/inventario, los mecánicos, ni los catálogos de actividades/operaciones MOP.\n\n¿Seguro que quieres continuar?'))return;
+  if(!confirm('⚠️ Esto borra PERMANENTEMENTE:\n\n- Todo el historial de órdenes de mantenimiento ('+MTO_HISTORIAL.length+')\n- Los ciclos de mantenimiento por unidad ('+Object.keys(MTO_CICLOS).length+')\n- El kilometraje base del manual Freightliner M2 ('+Object.keys(MTO_MOP_BASE).length+')\n- El kilometraje base del plan VW Delivery 9-170 ('+Object.keys(MTO_VW_BASE).length+')\n- El registro de entradas de inventario ('+MTO_ENTRADAS.length+') — la existencia actual del catálogo NO se toca\n\nNO se borra: el catálogo de artículos/inventario, los mecánicos, ni los catálogos de actividades/operaciones MOP.\n\n¿Seguro que quieres continuar?'))return;
   if(!confirm('Última confirmación — esto NO se puede deshacer. ¿Borrar todo lo anterior?'))return;
   try{
     var db=firebase.firestore();
@@ -2082,7 +2287,8 @@ async function mtoBorrarHistorialPruebas(){
     var n2=await borrarColeccion('mantenimientoCicloUnidad');
     var n3=await borrarColeccion('mantenimientoEntradasInventario');
     var n4=await borrarColeccion('mantenimientoMOPBase');
-    alert('✅ Listo. Se borraron '+n1+' órdenes, '+n2+' ciclos, '+n3+' entradas y '+n4+' kilometrajes base MOP. El inventario, mecánicos y catálogos de actividades quedaron intactos.');
+    var n5=await borrarColeccion('mantenimientoVWBase');
+    alert('✅ Listo. Se borraron '+n1+' órdenes, '+n2+' ciclos, '+n3+' entradas, '+n4+' kilometrajes base MOP y '+n5+' kilometrajes base VW. El inventario, mecánicos y catálogos de actividades quedaron intactos.');
     await cargarMantenimiento();
   }catch(e){alert('⚠️ Error al borrar: '+e.message);}
 }
@@ -2155,8 +2361,9 @@ function renderMtoCiclos(){
     // calendario (mantenimientoMOPBase, checkpoints de 16,000 km, ver
     // tarjeta "Nueva orden de mantenimiento" y el aviso de vencidas arriba).
     // No hace falta (ni se debe) configurar nada aquí para ellas.
-    if(MOP_UNIDADES_APLICABLES.indexOf(u.numero)!==-1){
-      return '<tr><td>'+u.numero+'</td><td class="num" colspan="4" style="color:#aaa;text-align:center">No aplica — usa el calendario MOP (arriba)</td>'
+    if(MOP_UNIDADES_APLICABLES.indexOf(u.numero)!==-1||VW_UNIDADES_APLICABLES.indexOf(u.numero)!==-1){
+      var cual=VW_UNIDADES_APLICABLES.indexOf(u.numero)!==-1?'VW':'MOP';
+      return '<tr><td>'+u.numero+'</td><td class="num" colspan="4" style="color:#aaa;text-align:center">No aplica — usa el calendario '+cual+' (arriba)</td>'
         +'<td class="num r">'+(kmActual!=null?fmtN(kmActual,0):'—')+'</td><td>—</td></tr>';
     }
     if(!ciclo){
@@ -2220,7 +2427,10 @@ function renderMtoProximos(){
 // espacio, "filtroaceite", etc.) haría que nunca encontrara el filtro
 // correcto. "otro" es la salida para cualquier artículo que no entra en
 // ninguna categoría — esos nunca se auto-agregan, siempre a mano.
-var MTO_TIPOS_VALIDOS=['aceite','filtro_aceite','filtro_aire','filtro_combustible','filtro_separador_agua','filtro_secador','otro'];
+// filtro_urea/aceite_transmision/aceite_diferencial se agregaron para el
+// plan VW Delivery 9-170 (SCR/OT/OD, ver vwPasoActual) — no existían en el
+// catálogo original (solo Freightliner).
+var MTO_TIPOS_VALIDOS=['aceite','filtro_aceite','filtro_aire','filtro_combustible','filtro_separador_agua','filtro_secador','filtro_urea','aceite_transmision','aceite_diferencial','otro'];
 function _mtoPedirTipo(valorActual){
   var msg='Tipo — usa EXACTAMENTE una de estas palabras (así el sistema puede encontrarlo solo):\n'+MTO_TIPOS_VALIDOS.join(', ')+'\n\n("otro" si no aplica ninguna — ese tipo nunca se auto-agrega, siempre se elige a mano)';
   while(true){
