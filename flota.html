@@ -351,9 +351,20 @@ tr:hover td{background:#fafafa}
     </div>
 
     <div class="card">
-      <div class="card-title">📋 Catálogo de actividades de mantenimiento <button class="btn btn-out btn-sm" onclick="mtoAbrirModalActividad(null)">+ Agregar actividad</button></div>
-      <p style="font-size:12px;color:#888;margin-bottom:10px">Actividades con el mismo "Paquete" se marcan juntas con una sola casilla arriba (ej. "Mantenimiento preventivo"). El procedimiento se imprime en letra grande en la Orden de Servicio; las refacciones sugeridas son solo informativas.</p>
-      <div class="tbl-wrap"><table><thead><tr><th>Nombre</th><th>Paquete</th><th class="num">Intervalo (km)</th><th>Tipo artículo</th><th>Estado</th><th></th></tr></thead><tbody id="tbMtoCatalogoActividades"></tbody></table></div>
+      <!-- Colapsado por default (pedido de Esa): con Freightliner y VW ya
+           cubriendo la mayoría de la flota con su propio manual oficial,
+           este catálogo "manual" solo hace falta para las unidades que
+           todavía no tienen manual cargado (528, 533, 534, 535, 4523,
+           4524) — se deja completo (nada se borra ni se quita de la
+           lógica), solo oculto hasta que alguien lo necesite. -->
+      <details>
+        <summary style="cursor:pointer;list-style:none" class="card-title">📋 Catálogo de actividades de mantenimiento <span style="font-size:11px;color:#888;font-weight:400">(solo para unidades sin manual oficial — clic para ver/editar)</span></summary>
+        <div style="margin-top:10px">
+          <button class="btn btn-out btn-sm" onclick="mtoAbrirModalActividad(null)">+ Agregar actividad</button>
+          <p style="font-size:12px;color:#888;margin:10px 0">Actividades con el mismo "Paquete" se marcan juntas con una sola casilla arriba (ej. "Mantenimiento preventivo"). El procedimiento se imprime en letra grande en la Orden de Servicio; las refacciones sugeridas son solo informativas.</p>
+          <div class="tbl-wrap"><table><thead><tr><th>Nombre</th><th>Paquete</th><th class="num">Intervalo (km)</th><th>Tipo artículo</th><th>Estado</th><th></th></tr></thead><tbody id="tbMtoCatalogoActividades"></tbody></table></div>
+        </div>
+      </details>
     </div>
 
     <div class="card">
@@ -2479,9 +2490,28 @@ function renderMtoCiclos(){
     // tarjeta "Nueva orden de mantenimiento" y el aviso de vencidas arriba).
     // No hace falta (ni se debe) configurar nada aquí para ellas.
     if(MOP_UNIDADES_APLICABLES.indexOf(u.numero)!==-1||VW_UNIDADES_APLICABLES.indexOf(u.numero)!==-1){
-      var cual=VW_UNIDADES_APLICABLES.indexOf(u.numero)!==-1?'VW':'MOP';
-      return '<tr><td>'+u.numero+'</td><td class="num" colspan="4" style="color:#aaa;text-align:center">No aplica — usa el calendario '+cual+' (arriba)</td>'
-        +'<td class="num r">'+(kmActual!=null?fmtN(kmActual,0):'—')+'</td><td>—</td></tr>';
+      var esVWFila=VW_UNIDADES_APLICABLES.indexOf(u.numero)!==-1;
+      var cual=esVWFila?'VW':'MOP';
+      // "Km base"/"Intervalo" no aplican tal cual (el MOP tiene varios
+      // niveles con distintos intervalos, no uno solo) pero "Próximo
+      // servicio" y "Faltan" sí se pueden mostrar — mismo cálculo que ya
+      // usa el aviso de vencidas (mtoDiagnosticoMOPUnidad/vwDiagnosticoUnidad),
+      // así Esa no tiene que adivinar ni entrar a "Nueva orden" para saberlo.
+      var rCiclo=esVWFila?vwDiagnosticoUnidad(u.numero):mtoDiagnosticoMOPUnidad(u.numero);
+      var proximoTxt='—',faltanTxt='—',faltanEstilo='';
+      if(!rCiclo){
+        proximoTxt='Sin base todavía — se fija con el primer mantenimiento registrado';
+      }else if(rCiclo.esPrimeraVez){
+        proximoTxt='Sin base todavía — se fija con el primer mantenimiento registrado';
+      }else{
+        var baseKm=esVWFila?MTO_VW_BASE[String(u.numero)].kmBase:MTO_MOP_BASE[String(u.numero)].kmIM;
+        proximoTxt=fmtN(baseKm+rCiclo.checkpoint,0)+' km ('+(esVWFila?('paso '+rCiclo.paso+', '+rCiclo.revision):('checkpoint '+fmtN(rCiclo.checkpoint,0)))+')';
+        if(rCiclo.vencido){faltanTxt='🚨 vencido, +'+fmtN(rCiclo.diff,0)+' km';faltanEstilo='color:#c1121f;font-weight:700';}
+        else{faltanTxt=fmtN(-rCiclo.diff,0)+' km';if(-rCiclo.diff<=1500)faltanEstilo='color:#92400e;font-weight:700';}
+      }
+      return '<tr><td>'+u.numero+'</td><td class="num" colspan="2" style="color:#aaa;text-align:center">usa el calendario '+cual+' (arriba)</td>'
+        +'<td class="num r">'+proximoTxt+'</td><td class="num r">'+(kmActual!=null?fmtN(kmActual,0):'—')+'</td>'
+        +'<td class="num r" style="'+faltanEstilo+'">'+faltanTxt+'</td><td>—</td></tr>';
     }
     if(!ciclo){
       return '<tr><td>'+u.numero+'</td><td class="num" colspan="4" style="color:#aaa;text-align:center">Sin ciclo configurado</td>'
