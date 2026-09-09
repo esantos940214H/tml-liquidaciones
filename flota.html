@@ -2225,7 +2225,13 @@ function _mtoAbrirImpresion(titulo,bodyHtml){
     +'th{background:#1a1a2e;color:#fff}.firma{margin-top:60px;display:flex;gap:40px}'
     +'.firma div{flex:1;border-top:1.5px solid #1a1a2e;padding-top:6px;font-size:11px;text-align:center;color:#666}'
     +'.btnPrint{margin-top:24px;padding:10px 22px;font-size:14px;font-weight:700;background:#e63946;color:#fff;border:none;border-radius:6px;cursor:pointer}'
-    +'@media print{.btnPrint{display:none}}</style></head><body>'
+    // El max-width:700px (pensado para verse bien en pantalla) desperdicia
+    // buena parte del ancho real de una hoja carta/A4 al imprimir — con 2
+    // columnas eso angosta cada una de más, hace que el texto envuelva más
+    // líneas de lo necesario y se vea "regado" con más aire del que hace
+    // falta. Al imprimir (o guardar como PDF) se usa el ancho completo de
+    // la hoja.
+    +'@media print{.btnPrint{display:none}body{max-width:100%;padding:14px}}</style></head><body>'
     +bodyHtml
     +'<button class="btnPrint" onclick="window.print()">🖨️ Imprimir / Guardar como PDF</button>'
     +'</body></html>');
@@ -2282,11 +2288,19 @@ function mtoImprimirOrdenServicio(o){
   var tituloMOP=esOrdenVW?'Mantenimiento programado (plan oficial VW Delivery 9-170 + motor Cummins ISF 3.8) — 🔧 = requiere mano de obra, con checklist se resuelve solo verificando':'Mantenimiento programado (manual Freightliner M2 / motor MBE900)';
   var htmlMOP=mop.length
     ?'<h3 style="margin-top:20px">'+tituloMOP+'</h3>'
-      +'<div style="column-count:2;column-gap:18px;font-size:11px">'
+      // "break-inside:avoid" va en cada OPERACIÓN individual, no en el
+      // grupo completo — antes estaba en el grupo, y como un grupo puede
+      // ser muy largo (ej. "25 Embrague", con 5 operaciones y sus pasos),
+      // el navegador no lo partía a la mitad: saltaba TODO el grupo entero
+      // a la siguiente columna/hoja, dejando media hoja en blanco antes.
+      // Partiendo por operación, cada una se queda completa (título +
+      // procedimiento nunca separados) pero el grupo sí puede repartirse
+      // entre columnas/hojas sin dejar huecos.
+      +'<div style="column-count:2;column-gap:18px;font-size:10.5px">'
       +Object.keys(porGrupoMOP).map(function(g){
-        return '<div style="break-inside:avoid;margin-bottom:10px"><strong>'+g+'</strong>'
+        return '<div style="margin-bottom:8px"><strong>'+g+'</strong>'
           +porGrupoMOP[g].map(function(a){
-            return '<div style="margin:5px 0;line-height:1.35;border-bottom:1px solid #eee;padding-bottom:4px">'
+            return '<div style="break-inside:avoid;margin:4px 0;line-height:1.3;border-bottom:1px solid #eee;padding-bottom:3px">'
               +'<div>☐ <strong>'+a.nombre+'</strong></div>'
               +(a.procedimiento?'<div style="white-space:pre-line;margin-left:14px">'+a.procedimiento+'</div>':'')
               +'</div>';
