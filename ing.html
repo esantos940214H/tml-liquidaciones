@@ -2261,6 +2261,19 @@ async function reintentarProvisionalFlete(ordenEmbarque){
 // ══════════════════════════════════════════════
 const FUNCTION_URL_ORDEN_EMBARQUE_SELLADA='https://us-central1-tml-liquidaciones.cloudfunctions.net/extraerOrdenEmbarqueSellada';
 const FUNCTION_URL_RECIBO_MANIOBRA='https://us-central1-tml-liquidaciones.cloudfunctions.net/extraerReciboManiobra';
+// _idTokenActual: estas funciones con IA (extraer estimado, orden de
+// embarque, recibo de maniobra) necesitan el token de Firebase Auth para
+// que la Cloud Function verifique la sesión — si currentUser es null
+// (la sesión de Firebase Auth expiró o todavía no termina de cargar),
+// firebase.auth().currentUser.getIdToken() tronaba con un error crudo de
+// JavaScript ("Cannot read properties of null"). Aquí se avisa claro en
+// español, para que se sepa que hay que volver a iniciar sesión en vez
+// de pensar que la función de IA está rota.
+async function _idTokenActual(){
+  var user=firebase.auth().currentUser;
+  if(!user)throw new Error('Tu sesión expiró o no ha cargado todavía — recarga la página (Ctrl+Shift+R) y vuelve a iniciar sesión, luego inténtalo de nuevo.');
+  return await user.getIdToken();
+}
 function _archivoABase64(file){
   return new Promise(function(resolve,reject){
     var r=new FileReader();
@@ -2301,7 +2314,7 @@ async function _paginasDeArchivo(file){
 // escribirlo directo, para poder juntar los mensajes de varias páginas.
 async function _procesarUnaOrdenEmbarque(blob,mimeType){
   var base64=await _archivoABase64(blob);
-  var idToken=await firebase.auth().currentUser.getIdToken();
+  var idToken=await _idTokenActual();
   var r=await fetch(FUNCTION_URL_ORDEN_EMBARQUE_SELLADA,{
     method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+idToken},
     body:JSON.stringify({archivoBase64:base64,mimeType:mimeType})
@@ -2376,7 +2389,7 @@ function _recortarImagenPorPorcentaje(file,recorte){
 // directo, para poder juntar los mensajes de varias páginas/comprobantes.
 async function _procesarUnReciboManiobra(blob,mimeType){
   var base64=await _archivoABase64(blob);
-  var idToken=await firebase.auth().currentUser.getIdToken();
+  var idToken=await _idTokenActual();
   var r=await fetch(FUNCTION_URL_RECIBO_MANIOBRA,{
     method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+idToken},
     body:JSON.stringify({archivoBase64:base64,mimeType:mimeType})
@@ -3081,7 +3094,7 @@ async function extraerEstimadoConIA(){
   $('estimadoInfo').innerHTML='<div class="alert alert-info">⏳ Leyendo el estimado con IA...</div>';
   try{
     var body=_estPdfBase64?{pdfBase64:_estPdfBase64}:{texto:texto};
-    var idToken=await firebase.auth().currentUser.getIdToken();
+    var idToken=await _idTokenActual();
     var r=await fetch(FUNCTION_URL_EXTRAER_ESTIMADO,{
       method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+idToken},body:JSON.stringify(body)
     });
