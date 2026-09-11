@@ -408,7 +408,7 @@ tr:hover td{background:#fafafa}
 
     <div class="card">
       <div class="card-title">🛒 Filtros/refacciones no entregados (pendientes de comprar) <span class="info-tip">?<span class="info-tip-box">Solo informativo: cuando una orden de mantenimiento pide más de lo que hay en existencia, esa parte NO se entrega ni se descuenta — queda aquí registrada, con su número de parte, para llevar el historial de qué se ha tenido que comprar por falta de inventario. Para que salga de esta lista, registra la compra en "Entradas de inventario" (arriba) y vuelve a generar/entregar ese filtro en una próxima orden.</span></span></div>
-      <div class="tbl-wrap"><table><thead><tr><th>Fecha</th><th>Unidad</th><th>Artículo</th><th>No. de parte</th><th class="r">Cantidad</th></tr></thead><tbody id="tbMtoFaltantes"></tbody></table></div>
+      <div class="tbl-wrap"><table><thead><tr><th>Fecha</th><th>Unidad</th><th>Artículo</th><th>No. de parte</th><th class="r">Cantidad</th><th></th></tr></thead><tbody id="tbMtoFaltantes"></tbody></table></div>
     </div>
 
     <div class="card">
@@ -2446,13 +2446,19 @@ async function mtoBorrarHistorialPruebas(){
   }catch(e){alert('⚠️ Error al borrar: '+e.message);}
 }
 // _mtoTodosFaltantes: junta articulosFaltantes de TODO el historial en una
-// sola lista plana, más reciente primero — puramente informativa (registro
-// de qué se ha tenido que comprar por falta de inventario), sin acciones.
+// sola lista plana, más reciente primero — registro de qué se ha tenido
+// que comprar por falta de inventario. Guarda mantId+índice para poder
+// quitar un renglón puntual (ver mtoResolverFaltante) cuando resulta que
+// en realidad no hacía falta comprar nada — por ejemplo, el artículo sí
+// existía en el catálogo pero con el "Tipo" mal capturado (caso real:
+// filtro separador dado de alta como "filtro_secador"), así que la
+// detección automática no lo encontraba aunque el filtro se haya
+// entregado igual (a mano) y el catálogo ya esté corregido.
 function _mtoTodosFaltantes(){
   var out=[];
   MTO_HISTORIAL.forEach(function(m){
-    (m.articulosFaltantes||[]).forEach(function(a){
-      out.push({fecha:m.fecha,unidad:m.unidad,nombre:a.nombre,numeroParte:a.numeroParte,cantidad:a.cantidad});
+    (m.articulosFaltantes||[]).forEach(function(a,i){
+      out.push({fecha:m.fecha,unidad:m.unidad,nombre:a.nombre,numeroParte:a.numeroParte,cantidad:a.cantidad,mantId:m.id,indice:i});
     });
   });
   out.sort(function(a,b){return(b.fecha||'').localeCompare(a.fecha||'');});
@@ -2462,8 +2468,26 @@ function renderMtoFaltantes(){
   var lista=_mtoTodosFaltantes();
   $('tbMtoFaltantes').innerHTML=lista.map(function(f){
     return '<tr><td>'+f.fecha+'</td><td>'+f.unidad+'</td><td style="font-size:12px">'+f.nombre+'</td>'
-      +'<td class="num">'+(f.numeroParte||'—')+'</td><td class="r">'+f.cantidad+'</td></tr>';
-  }).join('')||'<tr><td colspan="5" style="color:#888">Sin pendientes 🎉</td></tr>';
+      +'<td class="num">'+(f.numeroParte||'—')+'</td><td class="r">'+f.cantidad+'</td>'
+      +'<td><button class="btn-sm" style="background:none;border:none;cursor:pointer;color:#1a1a2e;text-decoration:underline" title="Ya no hace falta comprarlo (ej. el catálogo ya se corrigió y el artículo sí se entregó)" onclick="mtoResolverFaltante(\''+f.mantId+'\','+f.indice+')">✕ ya no falta</button></td></tr>';
+  }).join('')||'<tr><td colspan="6" style="color:#888">Sin pendientes 🎉</td></tr>';
+}
+// mtoResolverFaltante: quita UN renglón puntual de articulosFaltantes de su
+// mantenimiento — no descuenta ni toca inventario (eso ya se resolvió por
+// fuera, a mano o corrigiendo el catálogo), solo limpia el aviso de "hay
+// que comprar esto" que ya no aplica.
+async function mtoResolverFaltante(mantId,indice){
+  if(!confirm('¿Ya no hace falta comprar este artículo? Se quita de la lista de pendientes (no descuenta ni cambia el inventario, eso ya se resolvió aparte).'))return;
+  try{
+    var db=firebase.firestore();
+    var ref=db.collection('mantenimientos').doc(mantId);
+    var snap=await ref.get();
+    if(!snap.exists){alert('No se encontró esa orden de mantenimiento (¿ya se borró?).');return;}
+    var faltantes=(snap.data().articulosFaltantes||[]).slice();
+    faltantes.splice(indice,1);
+    await ref.set({articulosFaltantes:faltantes},{merge:true});
+    await cargarMantenimiento();
+  }catch(e){alert('⚠️ Error al quitarlo: '+e.message);}
 }
 // renderMtoProximos: estimado simple con el kilometraje MÁS RECIENTE
 // capturado a mano de cada unidad — ver nota en el info-tip de la tarjeta,
