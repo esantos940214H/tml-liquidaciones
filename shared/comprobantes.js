@@ -48,6 +48,23 @@
     return await ref.getDownloadURL();
   }
 
+  // descargarTexto(path): trae de vuelta como texto plano un archivo ya
+  // guardado con subirXML — para poder RE-LEER un XML que se subió antes
+  // (ej. reconstruir los datos de una factura cuyo documento en Firestore
+  // se dañó, pero el XML original en Storage sigue intacto). Regresa null
+  // si el archivo no existe (nunca se subió, o se borró de Storage).
+  async function descargarTexto(path) {
+    var st = storage();
+    if (!st) throw new Error('Firebase Storage no disponible.');
+    var ref = st.ref().child(path);
+    var url;
+    try { url = await ref.getDownloadURL(); }
+    catch (e) { return null; }
+    var r = await fetch(url);
+    if (!r.ok) throw new Error('No se pudo descargar ' + path + ' (HTTP ' + r.status + ').');
+    return await r.text();
+  }
+
   function fmtMoneda(n) {
     if (n == null || n === '') return '';
     return '$' + Number(n).toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -165,5 +182,5 @@
     document.getElementById('tmlPdfOverlay').classList.add('show');
   }
 
-  window.TMLComprobantes = { subirXML: subirXML, subirArchivo: subirArchivo, generarPDF: generarPDF, verPDF: verPDF };
+  window.TMLComprobantes = { subirXML: subirXML, subirArchivo: subirArchivo, descargarTexto: descargarTexto, generarPDF: generarPDF, verPDF: verPDF };
 })();
