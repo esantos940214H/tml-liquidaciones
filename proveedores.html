@@ -1226,6 +1226,47 @@ async function cargarYRenderFacturas(forzar){
   FACTURAS=await window.FB.getAll('cxpFacturas');
   renderFacturas();
 }
+// recuperarFacturaDesdeXML: reconstruye folio/proveedor/fecha/total de una
+// factura dañada (ver renderFacturas) volviendo a leer su XML original en
+// Storage (comprobantes/proveedores/<uuid>.xml — el nombre del archivo es
+// el mismo id del documento) y re-parseándolo con el mismo parseCfdiProveedor
+// que se usa al subir un XML nuevo. Solo repone los campos que vienen del
+// XML — el prorrateo NUNCA se toca (ya está intacto). El estado de pago
+// (pagada/pendiente, comprobante, REP) NO se puede recuperar del XML — si
+// esta factura ya estaba pagada antes de dañarse, hay que revisar a mano
+// contra el banco/proveedor y volver a registrar el pago.
+async function recuperarFacturaDesdeXML(uuid){
+  if(!confirm('Se va a leer otra vez el XML original de esta factura (si todavía existe en Storage) y a rellenar folio/proveedor/fecha/total. El prorrateo no se toca. El estado de pago (si ya estaba pagada) NO se puede recuperar así — tendrás que revisarlo a mano. ¿Continuar?'))return;
+  try{
+    var texto=await TMLComprobantes.descargarTexto('comprobantes/proveedores/'+uuid+'.xml');
+    if(!texto){alert('⚠️ No se encontró el XML original en Storage para esta factura (comprobantes/proveedores/'+uuid+'.xml) — no se puede recuperar automáticamente. Si tienes el XML a la mano, bórrala y vuelve a subirla normal desde "Buzón y registro de facturas".');return;}
+    var r=parseCfdiProveedor(texto);
+    if(!r.ok){alert('⚠️ Se encontró el XML pero no se pudo leer: '+r.error);return;}
+    var data=r.data;
+    if(data.uuid&&data.uuid.toUpperCase()!==uuid.toUpperCase()){alert('⚠️ El XML encontrado en Storage no coincide con esta factura (UUID distinto) — no se aplicó nada, revisa a mano.');return;}
+    var match=window.buscarProveedorPorRfc(PROVEEDORES,data.rfcEmisor);
+    if(match&&!match.activo)match=null;
+    var diasCredito=match?(match.diasCredito||15):0;
+    var fechaVencimiento=sumarDiasHabiles(data.fechaEmision||new Date().toISOString().slice(0,10),diasCredito);
+    await window.FB.set('cxpFacturas',uuid,{
+      proveedorId:match?match.rfc:data.rfcEmisor,
+      proveedorNombre:match?match.razonSocial:(data.nombreEmisor||data.rfcEmisor),
+      proveedorRegistrado:!!match,
+      serie:data.serie,folio:data.folio,tipoComprobante:data.tipoComprobante,
+      metodoPago:data.metodoPago,formaPago:data.formaPago,
+      subtotal:data.subtotal,totalImpuestos:data.traslados-data.retenciones,total:data.total,
+      fechaEmision:data.fechaEmision,diasCredito:diasCredito,fechaVencimiento:fechaVencimiento,
+      // estadoPago se repone como si NUNCA se hubiera pagado (más
+      // conservador que asumir que sí) — si en realidad ya estaba pagada
+      // antes de dañarse, el aviso de abajo pide revisarlo a mano.
+      estadoPago:data.metodoPago==='PUE'?'pendiente_pago':'vigente_por_pagar',
+      xmlURL:null
+    },{merge:true});
+    try{var url=await TMLComprobantes.subirXML('comprobantes/proveedores/'+uuid+'.xml',texto);await window.FB.set('cxpFacturas',uuid,{xmlURL:url},{merge:true});}catch(e){}
+    alert('✅ Recuperada: '+(data.serie?data.serie+'-':'')+data.folio+' — '+(match?match.razonSocial:data.nombreEmisor)+', '+fmt(data.total)+'.\n\n⚠️ IMPORTANTE: el estado de pago se puso como si nunca se hubiera pagado (pendiente). Si esta factura YA estaba pagada antes de dañarse, revisa tus registros/banco y vuelve a marcarla con el botón "➕ Pago".');
+    await cargarYRenderFacturas(true);
+  }catch(e){console.error('recuperarFacturaDesdeXML:',e);alert('⚠️ Error: '+e.message);}
+}
 function renderFacturas(){
   $('facCountLabel').textContent=FACTURAS.length?'— '+FACTURAS.length+' factura(s)':'';
   var wrap=$('facWrap');
@@ -1254,6 +1295,17 @@ function renderFacturas(){
   }
   wrap.innerHTML='<div class="tbl-wrap"><table><thead><tr><th>Proveedor</th><th>Folio</th><th>Fecha</th><th class="r">Total</th><th>Vencimiento</th><th>Estado</th><th>Pago</th><th>Prorrateo</th><th></th></tr></thead><tbody>'
     +ordenadas.map(function(f){
+      // Factura "dañada": le falta el folio — señal de que un set() sin
+      // merge le borró todos los campos salvo el prorrateo (bug ya
+      // corregido, ver reabrirLiquidacion()/recuperarCargosPerdidosReapertura
+      // en hist.html). Se muestra aparte con un botón para intentar
+      // reconstruirla desde el XML original en Storage, en vez de una fila
+      // llena de "undefined".
+      if(!f.folio){
+        return '<tr style="background:#fde8e8"><td colspan="8" style="font-size:12px;color:#9b1c1c">⚠️ Esta factura (ID '+f.id+') perdió sus datos (folio, proveedor, fecha, total) — su prorrateo sigue intacto ('+((f.prorrateo||[]).length)+' unidad(es)). '
+          +'<button class="btn btn-out btn-sm" onclick="recuperarFacturaDesdeXML(\''+f.id+'\')">🔧 Intentar recuperar del XML</button></td>'
+          +'<td><button class="btn btn-out btn-sm" onclick="eliminarFacturaUI(\''+f.id+'\')">🗑️ Eliminar</button></td></tr>';
+      }
       var vencido=yaVencioLimite(f.fechaVencimiento);
       var bloqueada=f.estadoPago==='pendiente_pago';
       var pagada=f.estadoPago==='pagada';
