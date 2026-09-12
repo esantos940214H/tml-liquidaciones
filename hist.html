@@ -1193,7 +1193,7 @@ async function recuperarCargosPerdidosReapertura(){
       window.FB.set('estado','ingresosDB',{data:JSON.stringify(ingDB2)}),
       window.FB.set('estado','nominaDB',{data:JSON.stringify(nomDB2)}),
       window.FB.set('estado','cargosFlotaDB',{data:JSON.stringify(cfDB)}),
-    ].concat(cxpTocadas.map(function(fx){return window.FB.set('cxpFacturas',fx.id,{prorrateo:fx.prorrateo});})));
+    ].concat(cxpTocadas.map(function(fx){return window.FB.set('cxpFacturas',fx.id,{prorrateo:fx.prorrateo},{merge:true});})));
     alert('✅ Liberados: '+nA2+' anticipo(s), '+nV2+' viaje(s)/ingreso(s), '+nN2+' recibo(s) de nómina, '+nCF+' cargo(s) de Flota y '+nCxp+' factura(s) de Proveedor.\n\nAhora ve al módulo de Liquidaciones — deberían aparecer otra vez como pendientes en la liquidación activa de ese operador.');
   }catch(e){console.error('recuperarCargosPerdidosReapertura:',e);alert('⚠️ Error: '+e.message);}
 }
@@ -1510,7 +1510,7 @@ async function reabrirLiquidacion(){
       window.FB.set('estado','cargosFlotaDB',{data:JSON.stringify(cfDB)}),
       window.FB.set('estado','arrastres',{data:JSON.stringify(arrDB)}),
       window.FB.set('liqActivas',String(opIdL),{data:JSON.stringify(liqReab)}),
-    ].concat(cxpTocadas.map(function(fx){return window.FB.set('cxpFacturas',fx.id,{prorrateo:fx.prorrateo});})).concat([
+    ].concat(cxpTocadas.map(function(fx){return window.FB.set('cxpFacturas',fx.id,{prorrateo:fx.prorrateo},{merge:true});})).concat([
       // Borrar el registro de "cerrada" en Historial — una liquidación no
       // puede aparecer como cerrada Y activa al mismo tiempo. Antes esto no
       // se borraba nunca, así que después de reabrir se veían DOS
