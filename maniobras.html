@@ -490,7 +490,11 @@ function renderPendientes(){
     // solo (se asume que ya se descargó/pagó).
     var creadoEnMs=v.creadoEn?new Date(v.creadoEn).getTime():new Date((v.fecha||hoy())+'T12:00:00').getTime();
     var horasDesde=(Date.now()-creadoEnMs)/3600000;
-    var esReciente=!v.depositoConfirmado&&horasDesde>=0&&horasDesde<32;
+    // Si el monto autorizado ya es $0.00 en firme (no "pendiente de
+    // confirmar", de verdad $0 — ej. un "NO PAGA"), no hay nada que
+    // depositarle al operador — no debe marcarse "Depositar hoy" ni salir
+    // en amarillo, aunque sea reciente.
+    var esReciente=!v.depositoConfirmado&&horasDesde>=0&&horasDesde<32&&(v.montoPendiente||(v.subtotal||0)>0);
     var negrita=esReciente?'font-weight:700':'';
     var ids=extraerIdsDeObservaciones(v.observaciones);
     return '<tr'+(esReciente?' style="background:#fff8e1"':'')+'>'
