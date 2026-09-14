@@ -887,26 +887,36 @@ function _revisarBuzonCore(apiKey, user, pass) {
       try {
         // Clasifica y registra directo lo "limpio" (sin ninguna señal de
         // alerta) — lo demás se queda para revisión manual, igual que
-        // antes. Se lee ingresosDB UNA vez aquí (justo antes de mutarlo en
-        // memoria) y se escribe UNA vez al final, mismo criterio de
-        // "releer justo antes de escribir" que ya usa el resto del sistema.
+        // antes. TODO esto corre dentro de una transacción de Firestore:
+        // revisarBuzonManiobrasProgramado y revisarBuzonPedidosProgramado
+        // están programados a la misma hora exacta cada hora y ambos tocan
+        // este mismo documento — sin transacción, el que termina después
+        // pisa (borra) lo que el otro acababa de registrar. La transacción
+        // relee ingresosDB justo antes de escribir y Firestore reintenta
+        // sola todo el bloque si alguien más lo cambió mientras tanto.
         const operadores = await _cargarOperadoresServer();
         const refIngresos = db.collection('estado').doc('ingresosDB');
-        const snapIngresos = await refIngresos.get();
-        const ingresosDB = (snapIngresos.exists && snapIngresos.data().data) ? JSON.parse(snapIngresos.data().data) : [];
         let totalRegistrados = 0;
         let totalNoPagaResueltos = 0;
-        encontrados.forEach(function (c) {
-          if (c.error || !c.renglones || !c.renglones.length) return;
-          const r = _clasificarYRegistrar(c.renglones, ingresosDB, operadores);
-          totalRegistrados += r.registrados;
-          totalNoPagaResueltos += r.noPagaResueltos;
-          c.renglones = r.pendientes;
+        let pendientesPorCorreo;
+        await db.runTransaction(async function (tx) {
+          const snapIngresos = await tx.get(refIngresos);
+          const ingresosDB = (snapIngresos.exists && snapIngresos.data().data) ? JSON.parse(snapIngresos.data().data) : [];
+          totalRegistrados = 0;
+          totalNoPagaResueltos = 0;
+          pendientesPorCorreo = encontrados.map(function (c) {
+            if (c.error || !c.renglones || !c.renglones.length) return c.renglones;
+            const r = _clasificarYRegistrar(c.renglones, ingresosDB, operadores);
+            totalRegistrados += r.registrados;
+            totalNoPagaResueltos += r.noPagaResueltos;
+            return r.pendientes;
+          });
+          if (totalRegistrados || totalNoPagaResueltos) {
+            tx.set(refIngresos, { data: JSON.stringify(ingresosDB) });
+          }
         });
-        if (totalRegistrados || totalNoPagaResueltos) {
-          console.log('revisarBuzonManiobras: ' + totalRegistrados + ' renglón(es) registrado(s) automático, ' + totalNoPagaResueltos + ' autorización(es) cerrada(s) en $0 por "No paga" (sin alertas).');
-          await refIngresos.set({ data: JSON.stringify(ingresosDB) });
-        }
+        console.log('revisarBuzonManiobras: ' + totalRegistrados + ' renglón(es) registrado(s) automático, ' + totalNoPagaResueltos + ' autorización(es) cerrada(s) en $0 por "No paga" (sin alertas).');
+        encontrados.forEach(function (c, i) { c.renglones = pendientesPorCorreo[i]; });
         encontrados._totalRegistrados = totalRegistrados;
         encontrados._totalNoPagaResueltos = totalNoPagaResueltos;
       } catch (e) {
@@ -924,9 +934,14 @@ function _revisarBuzonCore(apiKey, user, pass) {
         try {
           console.log('revisarBuzonManiobras: guardando ' + conAlgoPendiente.length + ' correo(s) pendiente(s) de revisión en Firestore...');
           const ref = db.collection('estado').doc('correosManiobrasPendientes');
-          const snap = await ref.get();
-          const previos = (snap.exists && snap.data().data) ? JSON.parse(snap.data().data) : [];
-          await ref.set({ data: JSON.stringify(previos.concat(conAlgoPendiente)) });
+          // Transacción por la misma razón que ingresosDB arriba: el botón
+          // manual "revisar buzón ahora" puede encimarse con la corrida
+          // programada de esta misma hora.
+          await db.runTransaction(async function (tx) {
+            const snap = await tx.get(ref);
+            const previos = (snap.exists && snap.data().data) ? JSON.parse(snap.data().data) : [];
+            tx.set(ref, { data: JSON.stringify(previos.concat(conAlgoPendiente)) });
+          });
           console.log('revisarBuzonManiobras: guardado en Firestore exitoso.');
         } catch (e) {
           console.error('revisarBuzonManiobras: error guardando en Firestore:', e);
@@ -2417,14 +2432,19 @@ function _revisarBuzonPedidosCore(user, pass, apiKey) {
   }).then(async function (encontrados) {
     const conAlgoPendiente = [];
     let totalRegistrados = 0;
-    // ingresosDB se lee UNA vez aquí (justo antes de mutarlo en memoria por
-    // cada renglón con económico) y se escribe UNA vez al final — mismo
-    // criterio de "releer justo antes de escribir" que ya usa el resto del
-    // sistema (ver revisarBuzonManiobras).
+    // Los datos de cada provisional de flete se van juntando aquí durante el
+    // loop (sin tocar ingresosDB todavía) — se aplican todos juntos al final
+    // dentro de una transacción de Firestore. Esto es necesario porque
+    // revisarBuzonPedidosProgramado y revisarBuzonManiobrasProgramado están
+    // programados a la misma hora exacta cada hora y AMBOS escriben este
+    // mismo documento (estado/ingresosDB): leerlo una vez al principio y
+    // escribirlo una vez al final (como antes) hacía que el que terminara
+    // después borrara silenciosamente lo que el otro acababa de registrar.
+    // La transacción relee ingresosDB justo antes de escribir y Firestore
+    // reintenta sola si alguien más lo cambió mientras tanto.
     const operadoresProv = await _cargarOperadoresServer();
     const refIngresosProv = db.collection('estado').doc('ingresosDB');
-    const snapIngresosProv = await refIngresosProv.get();
-    const ingresosDBProv = (snapIngresosProv.exists && snapIngresosProv.data().data) ? JSON.parse(snapIngresosProv.data().data) : [];
+    const provisionalesDatos = [];
     let provisionalesCreados = 0;
     let otrasTransportistasDescartados = 0;
     // El correo se manda con visibilidad compartida a VARIAS transportistas
@@ -2471,11 +2491,10 @@ function _revisarBuzonPedidosCore(user, pass, apiKey) {
             capturadoPor: 'Buzón automático (fletes@mudandote.mx)', fechaAlta: new Date().toISOString()
           });
           totalRegistrados++;
-          const rProv = _crearProvisionalFleteServer(ingresosDBProv, operadoresProv, {
+          provisionalesDatos.push({
             ordenEmbarque: tu1, tu2: tu2, pedidoFlete: r.pedidoFlete, destino: r.destino, tienda: r.tienda,
             tiendaPrevias: r.tiendaPrevias, fecha: r.fecha || c.fecha, economico: r.economico, montoFlete: r.monto
           });
-          if (rProv.ok) provisionalesCreados++;
         } catch (e) {
           console.error('revisarBuzonPedidos: error registrando renglón:', e);
           renglonesSinOrden.push(r);
@@ -2483,14 +2502,27 @@ function _revisarBuzonPedidosCore(user, pass, apiKey) {
       }
       if (renglonesSinOrden.length) conAlgoPendiente.push(Object.assign({}, c, { renglones: renglonesSinOrden }));
     }
-    if (provisionalesCreados) {
-      await refIngresosProv.set({ data: JSON.stringify(ingresosDBProv) });
+    if (provisionalesDatos.length) {
+      await db.runTransaction(async function (tx) {
+        const snapIngresosProv = await tx.get(refIngresosProv);
+        const ingresosDBProv = (snapIngresosProv.exists && snapIngresosProv.data().data) ? JSON.parse(snapIngresosProv.data().data) : [];
+        provisionalesCreados = 0;
+        provisionalesDatos.forEach(function (datos) {
+          const rProv = _crearProvisionalFleteServer(ingresosDBProv, operadoresProv, datos);
+          if (rProv.ok) provisionalesCreados++;
+        });
+        if (provisionalesCreados) {
+          tx.set(refIngresosProv, { data: JSON.stringify(ingresosDBProv) });
+        }
+      });
     }
     if (conAlgoPendiente.length) {
       const ref = db.collection('estado').doc('correosPedidosPendientes');
-      const snap = await ref.get();
-      const previos = (snap.exists && snap.data().data) ? JSON.parse(snap.data().data) : [];
-      await ref.set({ data: JSON.stringify(previos.concat(conAlgoPendiente)) });
+      await db.runTransaction(async function (tx) {
+        const snap = await tx.get(ref);
+        const previos = (snap.exists && snap.data().data) ? JSON.parse(snap.data().data) : [];
+        tx.set(ref, { data: JSON.stringify(previos.concat(conAlgoPendiente)) });
+      });
     }
     encontrados._totalRegistrados = totalRegistrados;
     encontrados._totalPendientes = conAlgoPendiente.length;

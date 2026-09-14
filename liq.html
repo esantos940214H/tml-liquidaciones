@@ -5136,29 +5136,9 @@ async function cerrarLiquidacion(){
   // contar (window._idsAntsReporte), no un filtro nuevo — evita cualquier
   // posibilidad de que lo reportado y lo marcado como usado no coincidan.
   var idsAntsCerrar=window._idsAntsReporte||[];
-  var nAMarcados=0;
-  Object.keys(anticiposDB).forEach(function(key){
-    if(parseInt(key)===_opIdNum){
-      (anticiposDB[key]||[]).forEach(function(a){
-        if(a.estado==='pendiente'&&idsAntsCerrar.indexOf(a.id)!==-1){
-          a.estado='liquidado';
-          a.liqNum=liqCopia.num;
-          nAMarcados++;
-        }
-      });
-    }
-  });
 
   // Marcar viajes: idem, exactamente los ids que ya se contaron en el reporte
   var idsViajesCerrar=window._idsViajesReporte||[];
-  var nVMarcados=0;
-  ingresosDB.forEach(function(v){
-    if(parseInt(v.unidad)===_opIdNum&&v.estado==='sin_liquidar'&&idsViajesCerrar.indexOf(v.id)!==-1){
-      v.estado='liquidado';
-      v.liqNum=liqCopia.num;
-      nVMarcados++;
-    }
-  });
 
   // Marcar como "aplicado" solo los incidentes que entraron dentro del tope de
   // $1,500 por liquidación. El excedente NO se traslada a otra liquidación:
@@ -5168,39 +5148,10 @@ async function cerrarLiquidacion(){
   _incTopeCierre.aplicar.forEach(function(a){_idsIncAplicar[a.id]=true;});
   var _idsIncExcedente={};
   _incTopeCierre.excedente.forEach(function(a){_idsIncExcedente[a.id]=true;});
-  var nIMarcados=0,nIDescartados=0;
-  Object.keys(incidentesDB).forEach(function(key){
-    if(parseInt(key)===_opIdNum){
-      (incidentesDB[key]||[]).forEach(function(a){
-        if(a.estado!=='pendiente')return;
-        if(_idsIncAplicar[a.id]){
-          a.estado='aplicado';
-          a.liqNum=liqCopia.num;
-          nIMarcados++;
-        } else if(_idsIncExcedente[a.id]){
-          a.estado='descartado';
-          a.liqNum=liqCopia.num;
-          nIDescartados++;
-        }
-      });
-    }
-  });
   // Marcar como "aplicado" exactamente los cargos de flota que ya se contaron
   // en el reporte (sin tope, así que son todos los "pendiente" del operador).
   var _idsCFAplicar={};
   cargosFlotaPendientesLiq().forEach(function(a){_idsCFAplicar[a.id]=true;});
-  var nCFMarcados=0;
-  Object.keys(cargosFlotaDB).forEach(function(key){
-    if(parseInt(key)===_opIdNum){
-      (cargosFlotaDB[key]||[]).forEach(function(a){
-        if(a.estado==='pendiente'&&_idsCFAplicar[a.id]){
-          a.estado='aplicado';
-          a.liqNum=liqCopia.num;
-          nCFMarcados++;
-        }
-      });
-    }
-  });
   // Marcar como "aplicado" las facturas de proveedor (Cuentas por Pagar)
   // prorrateadas a esta unidad — a diferencia de incidentes/cargosFlota,
   // cxpFacturas es una colección real (un documento por factura, no un
@@ -5230,18 +5181,6 @@ async function cerrarLiquidacion(){
   }
   // Marcar recibos de nómina: idem, exactamente los ids ya contados en el reporte
   var idsNominaCerrar=window._idsNominaReporte||[];
-  var nNMarcados=0;
-  Object.keys(nominaDB).forEach(function(key){
-    if(parseInt(key)===_opIdNum){
-      (nominaDB[key]||[]).forEach(function(n){
-        if(n.estado==='pendiente'&&idsNominaCerrar.indexOf(n.id)!==-1){
-          n.estado='liquidado';
-          n.liqNum=liqCopia.num;
-          nNMarcados++;
-        }
-      });
-    }
-  });
 
   // Las casetas sin comprobante viven dentro de liq.casetasNF (se capturaron en esta
   // misma liquidación) — no hay nada que marcar en una colección externa.
@@ -5289,31 +5228,93 @@ async function cerrarLiquidacion(){
   // "Saldo en contra liq #N" que ya existiera de la vez anterior (siempre
   // sigue pendiente — no se puede reabrir si ya hay una liquidación posterior
   // cerrada que pudo haberlo usado) para no duplicar la misma deuda dos veces.
-  if(!anticiposDB[_opIdNum])anticiposDB[_opIdNum]=[];
   var _conceptoSaldo='Saldo en contra liq #'+liqCopia.num;
-  anticiposDB[_opIdNum]=anticiposDB[_opIdNum].filter(function(a){return!(a.concepto===_conceptoSaldo&&a.estado==='pendiente');});
-  if(_snap.saldoReal<0){
-    var _deuda=Math.abs(_snap.saldoReal);
-    var _hoy=new Date();
-    var _fechaISO=_hoy.toISOString().slice(0,10);
-    var _fechaStr=_hoy.toLocaleDateString('es-MX');
-    anticiposDB[_opIdNum].push({
-      id:'saldo-liq-'+liqCopia.num+'-'+Date.now(),
-      fecha:_fechaISO, fechaStr:_fechaStr,
-      importe:_deuda,
-      concepto:_conceptoSaldo,
-      estado:'pendiente',
-      liqNum:null
-    });
-  }
 
-  // Guardar a Firebase: anticipos, ingresos, incidentes, nómina y eliminar liqActiva de forma explícita
+  // Guardar a Firebase: anticipos, ingresos, incidentes, cargosFlota y
+  // nómina — cada blob se relee FRESCO de Firestore aquí mismo (en vez de
+  // usar la copia que tenemos en memoria) y las marcas ("liquidado"/
+  // "aplicado"/"descartado", y el anticipo de saldo en contra) se aplican
+  // sobre esa copia fresca. anticiposDB/ingresosDB/etc. se mantienen "en
+  // vivo" en memoria vía listeners de Firebase — si mientras se armaba este
+  // cierre (validación SAT, facturas de proveedor) otra pestaña/otra
+  // liquidación guardó algo en el mismo documento, el listener pudo haber
+  // reemplazado la copia en memoria sin ninguna de las marcas de este
+  // cierre. Guardar esa copia stale habría perdido las marcas propias o las
+  // de quien escribió al mismo tiempo. Releer justo antes de escribir evita
+  // ambos casos (mismo criterio que ya usa el bloque de facturas de
+  // proveedor arriba).
+  var nAMarcados=0,nVMarcados=0,nIMarcados=0,nIDescartados=0,nCFMarcados=0,nNMarcados=0;
   if(fbReady){
+    async function _blobFresco(nombre,esArray){
+      var d=await window.FB.get('estado',nombre);
+      var v=(d&&d.data)?JSON.parse(d.data):(esArray?[]:{});
+      if(esArray){if(!Array.isArray(v))v=[];}else{if(Array.isArray(v))v={};}
+      return v;
+    }
+    var _antFresh=await _blobFresco('anticiposDB',false);
+    Object.keys(_antFresh).forEach(function(key){
+      if(parseInt(key)===_opIdNum){
+        (_antFresh[key]||[]).forEach(function(a){
+          if(a.estado==='pendiente'&&idsAntsCerrar.indexOf(a.id)!==-1){a.estado='liquidado';a.liqNum=liqCopia.num;nAMarcados++;}
+        });
+      }
+    });
+    if(!_antFresh[_opIdNum])_antFresh[_opIdNum]=[];
+    _antFresh[_opIdNum]=_antFresh[_opIdNum].filter(function(a){return!(a.concepto===_conceptoSaldo&&a.estado==='pendiente');});
+    if(_snap.saldoReal<0){
+      var _deuda=Math.abs(_snap.saldoReal);
+      var _hoy=new Date();
+      _antFresh[_opIdNum].push({
+        id:'saldo-liq-'+liqCopia.num+'-'+Date.now(),
+        fecha:_hoy.toISOString().slice(0,10), fechaStr:_hoy.toLocaleDateString('es-MX'),
+        importe:_deuda, concepto:_conceptoSaldo, estado:'pendiente', liqNum:null
+      });
+    }
+    anticiposDB=_antFresh;
     window.FB.set('estado','anticiposDB',{data: JSON.stringify(anticiposDB)});
+
+    var _ingFresh=await _blobFresco('ingresosDB',true);
+    _ingFresh.forEach(function(v){
+      if(parseInt(v.unidad)===_opIdNum&&v.estado==='sin_liquidar'&&idsViajesCerrar.indexOf(v.id)!==-1){v.estado='liquidado';v.liqNum=liqCopia.num;nVMarcados++;}
+    });
+    ingresosDB=_ingFresh;
     window.FB.set('estado','ingresosDB',{data: JSON.stringify(ingresosDB)});
+
+    var _incFresh=await _blobFresco('incidentesDB',false);
+    Object.keys(_incFresh).forEach(function(key){
+      if(parseInt(key)===_opIdNum){
+        (_incFresh[key]||[]).forEach(function(a){
+          if(a.estado!=='pendiente')return;
+          if(_idsIncAplicar[a.id]){a.estado='aplicado';a.liqNum=liqCopia.num;nIMarcados++;}
+          else if(_idsIncExcedente[a.id]){a.estado='descartado';a.liqNum=liqCopia.num;nIDescartados++;}
+        });
+      }
+    });
+    incidentesDB=_incFresh;
     window.FB.set('estado','incidentesDB',{data: JSON.stringify(incidentesDB)});
+
+    var _cfFresh=await _blobFresco('cargosFlotaDB',false);
+    Object.keys(_cfFresh).forEach(function(key){
+      if(parseInt(key)===_opIdNum){
+        (_cfFresh[key]||[]).forEach(function(a){
+          if(a.estado==='pendiente'&&_idsCFAplicar[a.id]){a.estado='aplicado';a.liqNum=liqCopia.num;nCFMarcados++;}
+        });
+      }
+    });
+    cargosFlotaDB=_cfFresh;
     window.FB.set('estado','cargosFlotaDB',{data: JSON.stringify(cargosFlotaDB)});
+
+    var _nomFresh=await _blobFresco('nominaDB',false);
+    Object.keys(_nomFresh).forEach(function(key){
+      if(parseInt(key)===_opIdNum){
+        (_nomFresh[key]||[]).forEach(function(n){
+          if(n.estado==='pendiente'&&idsNominaCerrar.indexOf(n.id)!==-1){n.estado='liquidado';n.liqNum=liqCopia.num;nNMarcados++;}
+        });
+      }
+    });
+    nominaDB=_nomFresh;
     window.FB.set('estado','nominaDB',{data: JSON.stringify(nominaDB)});
+
     window.FB.del('liqActivas',String(_opIdNum)); // eliminar ANTES del alert para que persista
   }
 
