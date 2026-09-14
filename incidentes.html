@@ -511,22 +511,34 @@ window.onFBReady(async function(){
   OPERADORES=await window.cargarOperadores();
   NOMBRES_OP=await window.cargarNombresOperadores();
   initSelects();
+  const data=await window.FB.get('estado','incidentesDB');
+  if(data&&data.data){var _ic=JSON.parse(data.data);incidentesDB=Array.isArray(_ic)?{}:_ic;}
+  // fbReady se marca hasta AQUÍ (no antes) — si se marcaba antes de traer
+  // incidentesDB, registrar un incidente que le ganara la carrera al fetch
+  // alcanzaba a guardar con incidentesDB todavía vacío ({}), borrando de
+  // golpe TODOS los incidentes ya registrados (mismo tipo de bug que ya
+  // tuvimos con anticiposDB/ingresosDB — ver CLAUDE.md).
   fbReady=true;
   $('fbStatus').textContent='✅ Conectado';
   $('fbStatus').className='fb-status fb-ok';
-  const data=await window.FB.get('estado','incidentesDB');
-  if(data&&data.data){incidentesDB=JSON.parse(data.data);}
   renderIncidentes();
   window.FB.listen('estado','incidentesDB',function(data){
-    if(data&&data.data){incidentesDB=JSON.parse(data.data);renderIncidentes();}
+    if(data&&data.data){var _ic2=JSON.parse(data.data);incidentesDB=Array.isArray(_ic2)?{}:_ic2;renderIncidentes();}
   });
 });
 setTimeout(function(){
   if(!fbReady){$('fbStatus').textContent='❌ Sin conexión';$('fbStatus').className='fb-status fb-err';}
 },6000);
 
-function guardar(){
+async function guardar(){
   if(!fbReady)return;
+  // Relee justo antes de guardar por si otra sesión/pestaña guardó algo
+  // mientras tanto — nunca reemplazar a ciegas con la copia en memoria.
+  var data=await window.FB.get('estado','incidentesDB');
+  var actual=(data&&data.data)?JSON.parse(data.data):{};
+  if(Array.isArray(actual))actual={};
+  Object.keys(incidentesDB).forEach(function(k){actual[k]=incidentesDB[k];});
+  incidentesDB=actual;
   window.FB.set('estado','incidentesDB',{data:JSON.stringify(incidentesDB)});
 }
 
