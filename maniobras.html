@@ -508,9 +508,29 @@ function renderPendientes(){
       +'<td class="num" style="font-size:11px">'+(ids.tu2||'—')+'</td>'
       +'<td style="font-size:11px">'+responsable+'</td>'
       +'<td>'+(vencido?'<span class="badge bg-red">⚠ Vencido</span>':'<span class="badge bg-yellow">⏳ '+(v.fechaLimiteJustificacion||'').slice(0,10)+'</span>')+'</td>'
-      +'<td><button class="btn btn-out btn-sm" onclick="eliminarAutorizacion(\''+v.id+'\')">✕</button></td>'
+      +'<td>'+(v.montoPendiente?'':'<button class="btn btn-out btn-sm" title="El correo que la confirmó en realidad era una petición, no una autorización real — regrésala a Pendiente" onclick="revertirAPendiente(\''+v.id+'\')">↩️</button> ')+'<button class="btn btn-out btn-sm" onclick="eliminarAutorizacion(\''+v.id+'\')">✕</button></td>'
       +'</tr>';
   }).join('');
+}
+// revertirAPendiente: caso real — la IA confundió una PETICIÓN de
+// autorización ("nos pueden apoyar en actualizar el monto...") con una
+// corrección ya confirmada, y cerró la maniobra con un monto que el
+// cliente en realidad nunca llegó a autorizar. Regresa la autorización a
+// "pendiente" (monto en $0, esperando el correo real) sin tocar folio/
+// T.U.'s/observaciones — no es un borrado, es corregir el estado.
+function revertirAPendiente(id){
+  var v=ingresosDB.find(function(x){return x.id===id;});
+  if(!v)return;
+  var u=usuarioSesion();
+  if(!u||!u.esAdmin){alert('Solo un administrador puede hacer esto.');return;}
+  if(!confirm('¿Regresar esta autorización a "Pendiente"? Se usa cuando el monto que quedó registrado ('+fmt(v.subtotal)+') en realidad viene de una PETICIÓN de autorización, no de una confirmación real del cliente. Pedido/T.U.\'s: "'+(v.observaciones||'')+'".'))return;
+  cargarIngresos().then(function(){
+    var vv=ingresosDB.find(function(x){return x.id===id;});
+    if(!vv){alert('Ya no se encontró esta autorización (¿la borraron mientras tanto?).');return;}
+    vv.subtotal=0;vv.subtManiobras=0;vv.iva=0;vv.total=0;vv.montoPendiente=true;
+    window.FB.set('estado','ingresosDB',{data:JSON.stringify(ingresosDB)});
+    renderPendientes();
+  });
 }
 async function cargarIngresos(){
   var data=await window.FB.get('estado','ingresosDB');
