@@ -701,6 +701,18 @@ function _registrarNoPagaServer(ingresosDB, x, operadores) {
     existente.observaciones = (existente.observaciones || '') + ' | NO_PAGA confirmado el ' + new Date().toISOString().slice(0, 10);
     return true;
   }
+  // Ya se había registrado este "No paga" antes (montoPendiente ya está en
+  // false porque una corrida anterior ya lo resolvió) — reprocesar el mismo
+  // correo (ej. reenvío, o el buzón lo vuelve a ver como no leído) no debe
+  // crear otra fila idéntica. Sin este candado, cada corrida que vuelve a
+  // ver el mismo correo agrega un duplicado plano más (mismo T.U., mismo
+  // $0.00, mismo destino) — bug real detectado en producción.
+  const yaRegistrado = ingresosDB.find(function (v) {
+    if (!v.esAutorizacionCliente || v.sustituidoPorXML) return false;
+    const vIds = _idsDeObservacionesServer(v.observaciones);
+    return ids.some(function (id) { return vIds.indexOf(id) !== -1; });
+  });
+  if (yaRegistrado) return true;
   const match = _matchOperadorServer(operadores, x.operador, x.eco);
   if (!match) return false;
   const idParts = [];

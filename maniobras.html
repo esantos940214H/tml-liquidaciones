@@ -982,7 +982,7 @@ async function extraerConIA(){
       if(data.error)throw new Error(data.error);
       renglones=data.renglones||[];
     }
-    _procesarRenglonesExtraidos(renglones);
+    await _procesarRenglonesExtraidos(renglones);
   }catch(e){
     $('extraerInfo').innerHTML='<div class="alert alert-warn">⚠️ Error al extraer: '+e.message+'. Captura a mano abajo.</div>';
   }finally{
@@ -993,7 +993,15 @@ async function extraerConIA(){
 // o de un correo jalado automáticamente del buzón) y llena _extraidos —
 // compartido para que ambos caminos pasen por la MISMA revisión antes de
 // registrar nada.
-function _procesarRenglonesExtraidos(renglones){
+async function _procesarRenglonesExtraidos(renglones){
+  // Refresca ingresosDB justo antes de tocarlo — esta función puede resolver
+  // "No paga" y GUARDAR directo (más abajo) sin pasar por "Registrar". Si el
+  // admin llevaba rato con la página abierta y mientras tanto el buzón
+  // automático (u otra sesión) ya agregó autorizaciones nuevas, guardar con
+  // la copia vieja en memoria las habría borrado silenciosamente al
+  // sobrescribir todo el documento — mismo tipo de bug ya visto antes con
+  // anticiposDB/ingresosDB.
+  await cargarIngresos();
   // El correo se manda con visibilidad compartida a VARIAS transportistas
   // a la vez — puede traer renglones de otras empresas (Benitez, Merlos,
   // etc.) mezclados con los de nosotros (SILVIA). Si no filtramos por
@@ -1056,6 +1064,17 @@ function _procesarRenglonesExtraidos(renglones){
       noPagaResueltosCount++;
       return;
     }
+    // Ya se había registrado este "No paga" antes (una corrida/extracción
+    // anterior ya lo resolvió y montoPendiente ya está en false) — volver a
+    // extraer el mismo correo no debe crear otra fila idéntica. Sin este
+    // candado, cada extracción que vuelve a ver el mismo renglón agrega un
+    // duplicado plano más (mismo T.U., mismo $0.00, mismo destino).
+    var yaRegistrado=ingresosDB.find(function(v){
+      if(!v.esAutorizacionCliente||v.sustituidoPorXML)return false;
+      var vIds=_idsDeObservaciones(v.observaciones);
+      return ids.some(function(id){return vIds.indexOf(id)!==-1;});
+    });
+    if(yaRegistrado){noPagaResueltosCount++;return;}
     var match=_matchOperadorPorNombre(x.operador,x.eco);
     if(!match)return;
     var idParts=[];
