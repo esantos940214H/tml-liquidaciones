@@ -213,12 +213,19 @@ const PROMPT_INSTRUCCIONES =
   'CORRECCIONES DENTRO DEL MISMO CORREO: el texto que recibes a veces es un hilo completo con varias respuestas encimadas ' +
   '(correo reenviado o respondido varias veces, con el historial de mensajes anteriores pegado abajo) — en ese caso el MISMO ' +
   'folio puede aparecer más de una vez, con montos distintos, porque el monto se corrigió después de la autorización ' +
-  'original. Reconoce una corrección cuando, en cualquier parte del texto, aparezca una frase como "envío corrección de ' +
-  'maniobra(s)", "maniobras actualizadas", "maniobras corregidas", "monto actualizado", "comparto monto actualizado" (o muy ' +
-  'similar) cerca de una tabla o de un folio — en ese caso, para ese folio, quédate SOLO con el monto de la versión más ' +
-  'reciente/corregida (normalmente la que acompaña esa frase) y NO regreses también la versión vieja/original: son la MISMA ' +
-  'maniobra, no dos. Si el mismo folio se repite con montos distintos y NO hay ninguna frase de corrección/actualización ' +
-  'cerca, regresa ambas apariciones tal cual (dos renglones), para que el sistema se los muestre al humano y decida. ' +
+  'original. Reconoce una corrección SOLO cuando el mensaje YA CONFIRMA/COMPARTE el monto nuevo como un hecho consumado ' +
+  '(ej. "envío corrección de maniobra(s)", "maniobras actualizadas", "maniobras corregidas", "monto actualizado", ' +
+  '"comparto monto actualizado", "autorizamos $X", "queda autorizado en $X") — en ese caso, para ese folio, quédate SOLO ' +
+  'con el monto de la versión más reciente/corregida (normalmente la que acompaña esa frase) y NO regreses también la ' +
+  'versión vieja/original: son la MISMA maniobra, no dos. ' +
+  'MUY IMPORTANTE — NO confundas una CORRECCIÓN (ya confirmada) con una SOLICITUD/PETICIÓN de actualización, que es distinta ' +
+  'y NUNCA debe tratarse como corrección: frases como "nos podrán apoyar en actualizar el monto...", "nos solicitan un ' +
+  'pago de $X, ¿lo autorizan?", "favor de confirmar/autorizar $X", "¿nos pueden apoyar con...?" son alguien PIDIENDO que se ' +
+  'autorice o actualice un monto — todavía NO es un monto autorizado. Si el correo (o esa parte del hilo) es una petición así ' +
+  'y no hay, en ninguna otra parte del mismo correo, una confirmación real de ese monto, NO generes ningún renglón para esa ' +
+  'petición — ignórala (deja que el correo de verdad con la autorización, cuando llegue, se procese aparte). Si el mismo ' +
+  'folio se repite con montos distintos y NO hay ninguna frase de corrección/confirmación real cerca (solo una petición), ' +
+  'regresa ÚNICAMENTE la versión que sí viene de una tabla de autorización real, no la de la petición. ' +
   'Responde SOLO un arreglo JSON (sin texto explicativo, sin backticks, sin markdown) con un objeto por cada renglón de ' +
   'maniobra que encuentres en TODAS las tablas del correo (después de aplicar la regla de corrección de arriba). Si no hay ' +
   'ninguna tabla/renglón reconocible, responde [].';
