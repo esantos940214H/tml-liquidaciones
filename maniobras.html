@@ -508,7 +508,7 @@ function renderPendientes(){
       +'<td class="num" style="font-size:11px">'+(ids.tu2||'—')+'</td>'
       +'<td style="font-size:11px">'+responsable+'</td>'
       +'<td>'+(vencido?'<span class="badge bg-red">⚠ Vencido</span>':'<span class="badge bg-yellow">⏳ '+(v.fechaLimiteJustificacion||'').slice(0,10)+'</span>')+'</td>'
-      +'<td>'+(v.montoPendiente?'':'<button class="btn btn-out btn-sm" title="El correo que la confirmó en realidad era una petición, no una autorización real — regrésala a Pendiente" onclick="revertirAPendiente(\''+v.id+'\')">↩️</button> ')+'<button class="btn btn-out btn-sm" onclick="eliminarAutorizacion(\''+v.id+'\')">✕</button></td>'
+      +'<td><button class="btn btn-out btn-sm" onclick="eliminarAutorizacion(\''+v.id+'\')">✕</button></td>'
       +'</tr>';
   }).join('');
 }
