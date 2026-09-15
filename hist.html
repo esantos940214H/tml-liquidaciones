@@ -908,15 +908,48 @@ function verDetalle(id){
   function dr(label,val,cls){return`<div class="det-row${cls?' '+cls:''}""><span>${label}</span><span class="num">${fmt(val)}</span></div>`;}
   function drDetail(label,val){return`<div style="display:flex;justify-content:space-between;padding:4px 10px 4px 20px;font-size:12px;color:#666;border-bottom:1px solid #f5f5f5"><span>${label}</span><span class="num">${fmt(val)}</span></div>`;}
 
+  // viajesDataResumen/antsDataResumen: mismo detalle real que se usa más
+  // abajo para las tablas de Cartera/Anticipos (snap.viajesList/antsList,
+  // o si no están, buscarlos en vivo) — se calculan aquí arriba porque
+  // también sirven de RESPALDO para el resumen de Ingresos/Anticipos:
+  // caso real detectado (liquidación de Andrés Navarro Ramírez) donde el
+  // snapshot guardó el detalle completo con montos reales, pero los
+  // totales agregados (totIngSubtotal/totAnts) quedaron en $0 — el dinero
+  // sí se movió bien, solo el resumen impreso salía mal. El detalle
+  // (subtotal/importe de cada renglón) es la fuente confiable.
+  var viajesDataResumen=(snap.viajesList&&snap.viajesList.length)
+    ?snap.viajesList
+    :ingresosDB.filter(function(v){return v.liqNum===l.num&&parseInt(v.unidad)===parseInt(l.opId||l.unidad);});
+  var antsDataResumen=snap.antsList&&snap.antsList.length?snap.antsList:(function(){
+    var res=[];
+    Object.keys(anticiposDB).forEach(function(key){
+      if(parseInt(key)===parseInt(l.opId||l.unidad)){
+        (anticiposDB[key]||[]).filter(function(a){return a.liqNum===l.num;}).forEach(function(a){res.push(a);});
+      }
+    });
+    return res;
+  })();
+  var totIngSubtotalMostrar=snap.totIngSubtotal||0;
+  var ingresosDesajustados=!totIngSubtotalMostrar&&viajesDataResumen.length>0;
+  if(ingresosDesajustados){
+    totIngSubtotalMostrar=viajesDataResumen.reduce(function(s,v){return s+parseFloat(v.subtotal||0);},0);
+  }
+  var totAntsMostrar=snap.totAnts||0;
+  if(!totAntsMostrar&&antsDataResumen.length>0){
+    totAntsMostrar=antsDataResumen.reduce(function(s,a){return s+parseFloat(a.importe||0);},0);
+  }
+
   // Ingresos
-  $('detIngresos').innerHTML=
-    dr('Fletes foráneos',snap.totSubFletes||0)
-    +dr('Maniobras',snap.totSubManiobras||0)
-    +dr('Otros ingresos',snap.totSubOtros||0)
-    +'<div style="height:1px;background:#eee;margin:4px 0"></div>'
-    +dr('IVA trasladado',snap.totIvaTrasl||0)
-    +dr('Retención IVA',-(snap.totRetTotal||0))
-    +`<div class="det-row subtotal"><span>TOTAL INGRESOS</span><span class="num">${fmt(snap.totIngSubtotal||0)}</span></div>`;
+  $('detIngresos').innerHTML=ingresosDesajustados
+    ? dr('Total facturado (el desglose por Flete/Maniobras/Otros no quedó guardado — ver el detalle completo en "Cartera" más abajo)',totIngSubtotalMostrar)
+      +`<div class="det-row subtotal"><span>TOTAL INGRESOS</span><span class="num">${fmt(totIngSubtotalMostrar)}</span></div>`
+    : dr('Fletes foráneos',snap.totSubFletes||0)
+      +dr('Maniobras',snap.totSubManiobras||0)
+      +dr('Otros ingresos',snap.totSubOtros||0)
+      +'<div style="height:1px;background:#eee;margin:4px 0"></div>'
+      +dr('IVA trasladado',snap.totIvaTrasl||0)
+      +dr('Retención IVA',-(snap.totRetTotal||0))
+      +`<div class="det-row subtotal"><span>TOTAL INGRESOS</span><span class="num">${fmt(snap.totIngSubtotal||0)}</span></div>`;
 
   // Gastos — desde julio 2026 la utilidad de empresa usa diesel y autopistas
   // SIN IVA (el IVA es acreditable). Las liquidaciones cerradas con la nueva
@@ -960,7 +993,7 @@ function verDetalle(id){
   const totalDieselLtsH=Math.max(0,(d.ltsIni||0)+(d.totLtsCarg||0)+ltsXmlTodosH-(d.ltsFinal||0));
   const totalDieselImporteH=totalDieselLtsH*(d.pp||0);
   $('detCargos').innerHTML=
-    dr('Anticipos recibidos',snap.totAnts||0,'cargo')
+    dr('Anticipos recibidos',totAntsMostrar,'cargo')
     +dr('Diesel total adelantado ('+fmtN(totalDieselLtsH)+' lts × '+fmt(d.pp||0)+')',totalDieselImporteH,'cargo')
     +(snap.totNomina?dr('Deducciones de nómina (IMSS, ISR, etc.)',snap.totNomina,'cargo'):'')
     +(snap.totCargosFlota?dr('Cargos de mantenimiento/flota',snap.totCargosFlota,'cargo'):'')
