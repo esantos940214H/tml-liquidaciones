@@ -572,7 +572,7 @@ tr:hover td{background:#fafafa}
         <div style="display:flex;gap:8px;flex-wrap:wrap">
           <button class="btn btn-out btn-sm" onclick="generarReporte()">🔄 Recalcular</button>
           <button class="btn btn-dark btn-sm" onclick="imprimirLiquidacion()">🖨️ Imprimir</button>
-          <button class="btn btn-green btn-sm" onclick="cerrarLiquidacion()">✅ Cerrar liquidación</button>
+          <button id="btnCerrarLiquidacion" class="btn btn-green btn-sm" onclick="cerrarLiquidacion()">✅ Cerrar liquidación</button>
         </div>
       </div>
     </div>
@@ -5123,9 +5123,32 @@ function imprimirLiquidacion(){
   setTimeout(_restaurar,3000); // respaldo por si afterprint no dispara
 }
 
+// _cerrandoLiquidacionEnCurso: candado contra doble ejecución de
+// cerrarLiquidacion() — caso real confirmado (liquidación de Andrés Navarro
+// Ramírez): un doble clic en el botón "Cerrar liquidación" (fácil que pase,
+// tarda varios segundos en validar CFDIs contra el SAT) disparaba DOS
+// corridas completas. La primera marcaba todo bien (anticipos/viajes
+// reales). La segunda corría sobre esos MISMOS registros ya marcados
+// "liquidado", encontraba 0 pendientes, armaba un reporte vacío, y lo
+// GUARDABA ENCIMA del bueno de la primera corrida porque ambas escriben al
+// mismo documento de historial (mismo folio, mismo operador). Ahora, si ya
+// hay una corrida en curso, un segundo clic no hace nada.
+let _cerrandoLiquidacionEnCurso=false;
 async function cerrarLiquidacion(){
   if(!liq)return;
   if(!PUEDE_EDITAR_LIQ){alert('Tu usuario solo puede VER Liquidaciones — no puedes cerrar una.');return;}
+  if(_cerrandoLiquidacionEnCurso){console.warn('cerrarLiquidacion: ya hay un cierre en curso, se ignora este clic adicional.');return;}
+  _cerrandoLiquidacionEnCurso=true;
+  var _btnCerrar=$('btnCerrarLiquidacion');
+  if(_btnCerrar){_btnCerrar.disabled=true;_btnCerrar.textContent='⏳ Cerrando...';}
+  try{
+    await _cerrarLiquidacionInterno();
+  }finally{
+    _cerrandoLiquidacionEnCurso=false;
+    if(_btnCerrar){_btnCerrar.disabled=false;_btnCerrar.textContent='✅ Cerrar liquidación';}
+  }
+}
+async function _cerrarLiquidacionInterno(){
   var _gastosPend=(liq.gastos||[]).filter(function(g){return g.autorizado===false;});
   if(_gastosPend.length){
     alert('🚫 No se puede cerrar: hay '+_gastosPend.length+' gasto(s) pendiente(s) de autorización por '+fmt(_gastosPend.reduce(function(s,g){return s+(g.importe||0);},0))+'.\n\nUn supervisor debe autorizarlos (o elimínalos si no proceden) en autorizaciones.mudanzastml.mx antes de cerrar.');
@@ -5191,7 +5214,6 @@ async function cerrarLiquidacion(){
   // Generar reporte para poblar _snap (incluye antsList, viajesList, cargasDiesel)
   // — sin ningún await entre la asignación de arriba y esta llamada.
   generarReporte();
-  console.log('DEBUG cerrarLiquidacion — justo después de generarReporte(): totAnts=',_snap.totAnts,'totIngSubtotal=',_snap.totIngSubtotal,'antsList.length=',(_snap.antsList||[]).length,'viajesList.length=',(_snap.viajesList||[]).length,'liq.reabierta=',liq.reabierta,'liq.anticiposIncluidos=',liq.anticiposIncluidos,'liq.viajesIncluidos=',liq.viajesIncluidos);
   // Capturar copia de liq ANTES de anularlo
   var liqCopia=JSON.parse(JSON.stringify(liq));
 
@@ -5407,7 +5429,6 @@ async function cerrarLiquidacion(){
   // dato de qué vehículo manejó ese periodo.
   if(window.FB){
     var _uCerrar=usuarioSesion();
-    console.log('DEBUG cerrarLiquidacion — justo antes de guardar en historial: totAnts=',_snap.totAnts,'totIngSubtotal=',_snap.totIngSubtotal,'antsList.length=',(_snap.antsList||[]).length,'viajesList.length=',(_snap.viajesList||[]).length);
     window.FB.set('historial','liq-'+liqCopia.num+'-'+_opIdNum,{
       id:'liq-'+liqCopia.num+'-'+_opIdNum,
       num:liqCopia.num, opId:_opIdNum, unidad:liqCopia.unidad, op:liqCopia.op,
