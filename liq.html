@@ -747,6 +747,16 @@ window.onFBReady=function(cb){if(window._fbInit)cb();else window._fbCallbacks.pu
     window.FB={
       set:function(col,id,data,options){return db.collection(col).doc(id).set(data,options);},
       get:async function(col,id){try{var s=await db.collection(col).doc(id).get();return s.exists?s.data():null;}catch(e){console.error('FB.get:',e);return null;}},
+      // getEstricto: a diferencia de get(), NO convierte un error de red/
+      // conexión en "null" — lo deja tronar. Se usa en cualquier lugar
+      // donde "no pude leer" y "el documento de verdad está vacío" deben
+      // tratarse distinto, porque lo segundo se usa para decidir qué
+      // guardar de vuelta: si un error de conexión se tratara igual que
+      // "vacío", se guardaría un documento vacío encima de datos reales
+      // (bug real, caso Andrés Navarro Ramírez: con la conexión caída,
+      // cerrarLiquidacion() leyó "vacío" en vez de fallar, y borró
+      // anticiposDB/ingresosDB completos al guardar).
+      getEstricto:async function(col,id){var s=await db.collection(col).doc(id).get();return s.exists?s.data():null;},
       del:function(col,id){return db.collection(col).doc(id).delete();},
       uploadFile:async function(path,file){
         var ref=storage.ref().child(path);
@@ -2255,9 +2265,19 @@ async function eliminarIngreso(id){
   // ingresosDB (recargar la página, o el listener en vivo). Se relee fresco
   // justo antes de guardar por el mismo motivo que el resto del sistema.
   if(!fbReady){alert('Sin conexión — no se pudo eliminar.');return;}
-  var d=await window.FB.get('estado','ingresosDB');
-  var fresh=(d&&d.data)?JSON.parse(d.data):[];
-  if(!Array.isArray(fresh))fresh=[];
+  // getEstricto (no get): si la lectura falla por conexión debe TRONAR, no
+  // devolver "vacío" — si no, se guardaría un ingresosDB vacío encima del
+  // real (bug ya ocurrido, ver comentario en cerrarLiquidacion).
+  var fresh;
+  try{
+    var d=await window.FB.getEstricto('estado','ingresosDB');
+    fresh=(d&&d.data)?JSON.parse(d.data):[];
+    if(!Array.isArray(fresh))fresh=[];
+  }catch(e){
+    console.error('eliminarIngreso: error leyendo ingresosDB, se cancela sin guardar nada:',e);
+    alert('⚠️ No se pudo eliminar: hubo un problema de conexión. Revisa tu conexión e intenta de nuevo.');
+    return;
+  }
   fresh=fresh.filter(function(v){return v.id!==id;});
   ingresosDB=fresh;
   window.FB.set('estado','ingresosDB',{data:JSON.stringify(ingresosDB)});
@@ -5256,8 +5276,16 @@ async function cerrarLiquidacion(){
   // proveedor arriba).
   var nAMarcados=0,nVMarcados=0,nIMarcados=0,nIDescartados=0,nCFMarcados=0,nNMarcados=0;
   if(fbReady){
+   try{
+    // getEstricto (no get) — si la lectura falla por conexión, esto debe
+    // TRONAR, no devolver "vacío". Si se tratara como vacío, se guardaría
+    // un documento vacío encima de datos reales de TODOS los operadores
+    // (bug real ya ocurrido: caso Andrés Navarro Ramírez, con la conexión
+    // caída se borraron anticiposDB/ingresosDB completos al cerrar esta
+    // liquidación). Si esto truena, el catch de más abajo cancela el
+    // cierre completo sin guardar nada.
     async function _blobFresco(nombre,esArray){
-      var d=await window.FB.get('estado',nombre);
+      var d=await window.FB.getEstricto('estado',nombre);
       var v=(d&&d.data)?JSON.parse(d.data):(esArray?[]:{});
       if(esArray){if(!Array.isArray(v))v=[];}else{if(Array.isArray(v))v={};}
       return v;
@@ -5327,6 +5355,11 @@ async function cerrarLiquidacion(){
     window.FB.set('estado','nominaDB',{data: JSON.stringify(nominaDB)});
 
     window.FB.del('liqActivas',String(_opIdNum)); // eliminar ANTES del alert para que persista
+   }catch(e){
+     console.error('cerrarLiquidacion: error leyendo/guardando anticipos/ingresos/incidentes/cargosFlota/nómina — se cancela el cierre SIN guardar nada de esto para no arriesgar sobrescribir con datos vacíos:',e);
+     alert('⚠️ No se pudo cerrar la liquidación: hubo un problema de conexión al leer/guardar los datos ('+(e.message||e)+').\n\nNO se guardó nada — tu conexión a internet puede estar fallando. Revisa tu conexión y vuelve a intentar cerrar la liquidación.');
+     return;
+   }
   }
 
   // Guardar snapshot en historial — el id/clave del documento usa opId

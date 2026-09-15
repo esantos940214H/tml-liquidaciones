@@ -256,6 +256,9 @@ window.onFBReady=function(cb){if(window._fbInit)cb();else window._fbCallbacks.pu
     window.FB={
       set:function(col,id,data){return db.collection(col).doc(id).set(data);},
       get:async function(col,id){try{var s=await db.collection(col).doc(id).get();return s.exists?s.data():null;}catch(e){console.error('FB.get:',e);return null;}},
+      // getEstricto: no convierte un error de red en "null" — se usa donde
+      // "no pude leer" y "el documento está vacío" deben tratarse distinto.
+      getEstricto:async function(col,id){var s=await db.collection(col).doc(id).get();return s.exists?s.data():null;},
       del:function(col,id){return db.collection(col).doc(id).delete();},
       listen:function(col,id,cb){return db.collection(col).doc(id).onSnapshot(function(s){cb(s.exists?s.data():null);});},
       getAll:async function(col){
@@ -534,9 +537,19 @@ async function guardar(){
   if(!fbReady)return;
   // Relee justo antes de guardar por si otra sesión/pestaña guardó algo
   // mientras tanto — nunca reemplazar a ciegas con la copia en memoria.
-  var data=await window.FB.get('estado','incidentesDB');
-  var actual=(data&&data.data)?JSON.parse(data.data):{};
-  if(Array.isArray(actual))actual={};
+  // getEstricto (no get): si la lectura falla por conexión debe TRONAR, no
+  // devolver "vacío" — si no, se guardaría un incidentesDB vacío encima
+  // del real de TODOS los operadores.
+  var actual;
+  try{
+    var data=await window.FB.getEstricto('estado','incidentesDB');
+    actual=(data&&data.data)?JSON.parse(data.data):{};
+    if(Array.isArray(actual))actual={};
+  }catch(e){
+    console.error('guardar (incidentes): error leyendo incidentesDB, se cancela sin guardar nada:',e);
+    alert('⚠️ No se pudo guardar: hubo un problema de conexión. Revisa tu conexión e intenta de nuevo.');
+    return;
+  }
   Object.keys(incidentesDB).forEach(function(k){actual[k]=incidentesDB[k];});
   incidentesDB=actual;
   window.FB.set('estado','incidentesDB',{data:JSON.stringify(incidentesDB)});
