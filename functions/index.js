@@ -493,14 +493,18 @@ function _sumarDiasHabilesServer(fechaISO, n) {
 function _buscarDuplicadoServer(ingresosDB, datos) {
   const unidad = parseInt(datos.unidad || 0);
   const monto = parseFloat(datos.monto || 0);
-  const fecha = datos.fecha || '';
   const ids = [datos.folio, datos.pedido, datos.tu1, datos.tu2].map(_normTxtServer).filter(function (s) { return s; });
   if (!ids.length) return null;
+  // Ya NO se exige que "fecha" coincida exacta — mismo criterio que su
+  // gemela en maniobras.html (ver comentario ahí, caso real de Francisco
+  // Artemio Peña Vazquez): un correo consolidado que reautoriza varias
+  // maniobras ya registradas antes no siempre trae la fecha original de
+  // cada una, así que exigir fecha exacta hacía que esas ya-registradas
+  // nunca coincidieran y se volvieran a crear como duplicadas.
   return ingresosDB.find(function (v) {
     if (!v.esAutorizacionCliente) return false;
     if (v.unidad !== unidad) return false;
     if (Math.abs((v.subtotal || 0) - monto) >= 0.01) return false;
-    if ((v.fecha || '') !== fecha) return false;
     const vIds = _idsDeObservacionesServer(v.observaciones);
     return ids.some(function (id) { return vIds.indexOf(id) !== -1; });
   });
