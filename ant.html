@@ -838,6 +838,7 @@ function renderAnticipos(){
 
 function eliminarAnticipo(unidad,id){
   if(!PUEDE_EDITAR_ANT){alert('Tu usuario solo puede VER Anticipos — no puedes eliminar ninguno.');return;}
+  if(!confirm('¿Eliminar este anticipo? Esto NO se puede deshacer.'))return;
   lockRequest('Eliminar anticipo', function(){
     if(anticiposDB[unidad])anticiposDB[unidad]=anticiposDB[unidad].filter(a=>a.id!==id);
     guardar();renderAnticipos();
@@ -866,6 +867,7 @@ function eliminarSeleccionadosAnts(){
   var chks=document.querySelectorAll('.chkAnt:checked');
   if(!chks.length){alert('No hay anticipos seleccionados.');return;}
   var sel=Array.from(chks).map(function(c){return{id:c.dataset.id,unidad:parseInt(c.dataset.unidad)};});
+  if(!confirm('¿Eliminar '+sel.length+' anticipo(s) seleccionado(s)? Esto NO se puede deshacer.'))return;
   lockRequest('Eliminar '+sel.length+' anticipo(s)', function(){
     sel.forEach(function(s){
       if(anticiposDB[s.unidad])anticiposDB[s.unidad]=anticiposDB[s.unidad].filter(function(a){return a.id!==s.id;});

@@ -671,7 +671,7 @@ window.onFBReady(async function(){
   initSelectUnidades();
   // Cargar anticipos e ingresos para el detalle
   const a=await window.FB.get('estado','anticiposDB');
-  if(a&&a.data)anticiposDB=JSON.parse(a.data);
+  if(a&&a.data){var _antHist=JSON.parse(a.data);anticiposDB=Array.isArray(_antHist)?{}:_antHist;}
   const i=await window.FB.get('estado','ingresosDB');
   if(i&&i.data)ingresosDB=JSON.parse(i.data);
   buscar();
