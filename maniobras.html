@@ -636,9 +636,19 @@ function _crearAutorizacionEnMemoria(datos){
   // seguimiento — se ACTUALIZA ese mismo registro en vez de crear uno nuevo
   // o bloquearlo como duplicado.
   if(!pendiente&&!montoVacio){
+    // Ya NO se exige que "unidad" coincida con la del pendiente original —
+    // caso real (Francisco Artemio Peña Vazquez): la unidad se reasignó a
+    // otro operador en Flota entre el correo "PENDIENTE" original y el
+    // correo con el monto confirmado; el emparejamiento por económico
+    // resuelve al operador NUEVO en la confirmación, así que exigir el
+    // mismo "unidad" hacía que nunca se encontrara el pendiente — se
+    // quedaba huérfano en amarillo para siempre y se creaba un duplicado
+    // aparte bajo el operador nuevo. El folio/pedido/T.U. ya es un
+    // identificador único de por sí (ver "idsChoque" más abajo), así que
+    // no hace falta el candado extra de operador — y de paso se corrige
+    // "unidad" al operador correcto vigente al momento de la confirmación.
     var existentePendiente=ingresosDB.find(function(v){
       if(!v.esAutorizacionCliente||!v.montoPendiente||v.sustituidoPorXML)return false;
-      if(v.unidad!==unidad)return false;
       var vIds=_idsDeObservaciones(v.observaciones);
       return idsNuevos.some(function(id){return vIds.indexOf(id)!==-1;});
     });
@@ -646,6 +656,7 @@ function _crearAutorizacionEnMemoria(datos){
       var ivaExist=Math.round(monto*0.16*100)/100;
       existentePendiente.subtotal=monto;existentePendiente.subtManiobras=monto;existentePendiente.iva=ivaExist;existentePendiente.total=monto+ivaExist;
       existentePendiente.montoPendiente=false;
+      existentePendiente.unidad=unidad;
       return{ok:true,monto:monto,fechaLimite:existentePendiente.fechaLimiteJustificacion,idCombinado:existentePendiente.observaciones,actualizado:true};
     }
   }

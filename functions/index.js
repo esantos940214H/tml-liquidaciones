@@ -531,9 +531,14 @@ function _crearAutorizacionServer(ingresosDB, datos) {
   const idsNuevos = [folio, pedido, tu1, tu2].map(_normTxtServer).filter(function (s) { return s; });
 
   if (!pendiente && !montoVacio) {
+    // Ya NO se exige que "unidad" coincida con la del pendiente original —
+    // mismo criterio que su gemela en maniobras.html (ver comentario ahí):
+    // si la unidad se reasignó a otro operador entre el correo PENDIENTE
+    // original y el correo con el monto confirmado, exigir el mismo
+    // operador dejaba el pendiente huérfano para siempre y creaba un
+    // duplicado bajo el operador nuevo.
     const existentePendiente = ingresosDB.find(function (v) {
       if (!v.esAutorizacionCliente || !v.montoPendiente || v.sustituidoPorXML) return false;
-      if (v.unidad !== unidad) return false;
       const vIds = _idsDeObservacionesServer(v.observaciones);
       return idsNuevos.some(function (id) { return vIds.indexOf(id) !== -1; });
     });
@@ -542,6 +547,7 @@ function _crearAutorizacionServer(ingresosDB, datos) {
       existentePendiente.subtotal = monto; existentePendiente.subtManiobras = monto;
       existentePendiente.iva = ivaExist; existentePendiente.total = monto + ivaExist;
       existentePendiente.montoPendiente = false;
+      existentePendiente.unidad = unidad;
       return { ok: true, actualizado: true };
     }
   }
