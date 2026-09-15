@@ -5191,6 +5191,7 @@ async function cerrarLiquidacion(){
   // Generar reporte para poblar _snap (incluye antsList, viajesList, cargasDiesel)
   // — sin ningún await entre la asignación de arriba y esta llamada.
   generarReporte();
+  console.log('DEBUG cerrarLiquidacion — justo después de generarReporte(): totAnts=',_snap.totAnts,'totIngSubtotal=',_snap.totIngSubtotal,'antsList.length=',(_snap.antsList||[]).length,'viajesList.length=',(_snap.viajesList||[]).length,'liq.reabierta=',liq.reabierta,'liq.anticiposIncluidos=',liq.anticiposIncluidos,'liq.viajesIncluidos=',liq.viajesIncluidos);
   // Capturar copia de liq ANTES de anularlo
   var liqCopia=JSON.parse(JSON.stringify(liq));
 
@@ -5406,6 +5407,7 @@ async function cerrarLiquidacion(){
   // dato de qué vehículo manejó ese periodo.
   if(window.FB){
     var _uCerrar=usuarioSesion();
+    console.log('DEBUG cerrarLiquidacion — justo antes de guardar en historial: totAnts=',_snap.totAnts,'totIngSubtotal=',_snap.totIngSubtotal,'antsList.length=',(_snap.antsList||[]).length,'viajesList.length=',(_snap.viajesList||[]).length);
     window.FB.set('historial','liq-'+liqCopia.num+'-'+_opIdNum,{
       id:'liq-'+liqCopia.num+'-'+_opIdNum,
       num:liqCopia.num, opId:_opIdNum, unidad:liqCopia.unidad, op:liqCopia.op,
