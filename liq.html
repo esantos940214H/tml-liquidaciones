@@ -1669,11 +1669,19 @@ async function cargarEstado(){
         var op=parseInt($('liqOp')?$('liqOp').value||0:0);
         if(!op && liq) op=liq.opId||liq.unidad;
         if(op) mostrarPreviewLiq(op);
-        // Si el reporte está visible, regenerarlo con datos actuales
+        // Si el reporte está visible, regenerarlo con datos actuales — EXCEPTO
+        // mientras hay un cierre en curso (_cerrandoLiquidacionEnCurso). Causa
+        // raíz real confirmada (liquidación de Andrés Navarro Ramírez): al
+        // cerrar, este mismo listener se entera casi al instante de que
+        // cerrarLiquidacion() acaba de marcar estos anticipos como
+        // "liquidado" y guardarlos — y si la pestaña activa era "Reporte",
+        // volvía a llamar generarReporte() DE INMEDIATO, encontrando ya 0
+        // pendientes (porque se acababan de marcar) y sobrescribiendo el
+        // _snap bueno con uno vacío ANTES de que se guardara en Historial.
         var tabActivo=document.querySelector('.tab.active');
         var tabs=document.querySelectorAll('.tab');
         var idxTab=Array.from(tabs).indexOf(tabActivo);
-        if(idxTab===4) generarReporte();
+        if(idxTab===4&&!_cerrandoLiquidacionEnCurso) generarReporte();
       }
     });
     window.FB.listen('estado','ingresosDB', function(data){
@@ -1682,15 +1690,18 @@ async function cargarEstado(){
         var op=parseInt($('liqOp')?$('liqOp').value||0:0);
         if(!op && liq) op=liq.opId||liq.unidad;
         if(op) mostrarPreviewLiq(op);
-        // Si el reporte está visible, regenerarlo con datos actuales
+        // Si el reporte está visible, regenerarlo con datos actuales — EXCEPTO
+        // mientras hay un cierre en curso (ver comentario en el listener de
+        // anticiposDB arriba, mismo mecanismo exacto).
         var tabActivo=document.querySelector('.tab.active');
         var tabs=document.querySelectorAll('.tab');
         var idxTab=Array.from(tabs).indexOf(tabActivo);
-        if(idxTab===4) generarReporte();
+        if(idxTab===4&&!_cerrandoLiquidacionEnCurso) generarReporte();
         // Si llegó un ingreso XML nuevo mientras la liquidación ya estaba abierta
         // (ej. se subió en ing.html después de iniciar), validarlo contra el SAT
-        // sin esperar a que se reabra la liquidación.
-        if(liq) validarCFDIsSATLiquidacion(true);
+        // sin esperar a que se reabra la liquidación. Tampoco durante un cierre
+        // en curso — sería revalidar sobre datos que el cierre ya está usando.
+        if(liq&&!_cerrandoLiquidacionEnCurso) validarCFDIsSATLiquidacion(true);
       }
     });
     window.FB.listen('estado','nominaDB', function(data){
@@ -1702,7 +1713,7 @@ async function cargarEstado(){
         if(op) mostrarPreviewLiq(op);
         var tabActivo=document.querySelector('.tab.active');
         var tabs=document.querySelectorAll('.tab');
-        if(Array.from(tabs).indexOf(tabActivo)===4) generarReporte();
+        if(Array.from(tabs).indexOf(tabActivo)===4&&!_cerrandoLiquidacionEnCurso) generarReporte();
       }
     });
     // incidentesDB: SOLO lectura desde liq.html — incidentes.html es dueño de la captura.
@@ -1715,7 +1726,7 @@ async function cargarEstado(){
         renderIncidentesLiq();
         var tabActivo=document.querySelector('.tab.active');
         var tabs=document.querySelectorAll('.tab');
-        if(Array.from(tabs).indexOf(tabActivo)===4) generarReporte();
+        if(Array.from(tabs).indexOf(tabActivo)===4&&!_cerrandoLiquidacionEnCurso) generarReporte();
       }
     });
     // cargosFlotaDB: SOLO lectura desde liq.html — flota.html es dueño de la captura
@@ -1727,7 +1738,7 @@ async function cargarEstado(){
         renderCargosFlotaLiq();
         var tabActivo=document.querySelector('.tab.active');
         var tabs=document.querySelectorAll('.tab');
-        if(Array.from(tabs).indexOf(tabActivo)===4) generarReporte();
+        if(Array.from(tabs).indexOf(tabActivo)===4&&!_cerrandoLiquidacionEnCurso) generarReporte();
       }
     });
     // cxpFacturas: colección real (un documento por factura, no un blob) del
