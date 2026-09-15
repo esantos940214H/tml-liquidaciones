@@ -5126,6 +5126,38 @@ function imprimirLiquidacion(){
 async function cerrarLiquidacion(){
   if(!liq)return;
   if(!PUEDE_EDITAR_LIQ){alert('Tu usuario solo puede VER Liquidaciones — no puedes cerrar una.');return;}
+  // Refrescar ANTES de generar el reporte — generarReporte() usa
+  // anticiposDB/ingresosDB/nominaDB/incidentesDB/cargosFlotaDB tal cual
+  // están en memoria (actualizados por listeners de Firebase), sin volver
+  // a leer Firestore. Si la conexión tuvo un tropiezo momentáneo mientras
+  // esta pestaña estaba abierta, esa copia en memoria puede quedarse
+  // atrasada — el cierre en sí (marcar/guardar, más abajo) ya se protegió
+  // contra esto, pero el RESUMEN/RECIBO que se congela en Historial se
+  // arma ANTES de eso, con generarReporte(). Casos reales: los recibos de
+  // Andrés Navarro Ramírez y Miguel Alonso Calderon salieron con
+  // "Anticipos"/"Ingresos"/"Comisión" en $0.00 aunque el dinero sí se
+  // movió y marcó bien — exactamente por esto.
+  try{
+    var _antRefresh=await window.FB.getEstricto('estado','anticiposDB');
+    var _antR=(_antRefresh&&_antRefresh.data)?JSON.parse(_antRefresh.data):{};
+    anticiposDB=Array.isArray(_antR)?{}:_antR;
+    var _ingRefresh=await window.FB.getEstricto('estado','ingresosDB');
+    var _ingR=(_ingRefresh&&_ingRefresh.data)?JSON.parse(_ingRefresh.data):[];
+    ingresosDB=Array.isArray(_ingR)?_ingR:[];
+    var _nomRefresh=await window.FB.getEstricto('estado','nominaDB');
+    var _nomR=(_nomRefresh&&_nomRefresh.data)?JSON.parse(_nomRefresh.data):{};
+    nominaDB=Array.isArray(_nomR)?{}:_nomR;
+    var _incRefresh=await window.FB.getEstricto('estado','incidentesDB');
+    var _incR=(_incRefresh&&_incRefresh.data)?JSON.parse(_incRefresh.data):{};
+    incidentesDB=Array.isArray(_incR)?{}:_incR;
+    var _cfRefresh=await window.FB.getEstricto('estado','cargosFlotaDB');
+    var _cfR=(_cfRefresh&&_cfRefresh.data)?JSON.parse(_cfRefresh.data):{};
+    cargosFlotaDB=Array.isArray(_cfR)?{}:_cfR;
+  }catch(e){
+    console.error('cerrarLiquidacion: error refrescando datos antes de generar el reporte, se cancela sin cerrar nada:',e);
+    alert('⚠️ No se pudo cerrar: hubo un problema de conexión al leer los datos actuales ('+(e.message||e)+'). NO se cerró nada — revisa tu conexión e intenta de nuevo.');
+    return;
+  }
   var _gastosPend=(liq.gastos||[]).filter(function(g){return g.autorizado===false;});
   if(_gastosPend.length){
     alert('🚫 No se puede cerrar: hay '+_gastosPend.length+' gasto(s) pendiente(s) de autorización por '+fmt(_gastosPend.reduce(function(s,g){return s+(g.importe||0);},0))+'.\n\nUn supervisor debe autorizarlos (o elimínalos si no proceden) en autorizaciones.mudanzastml.mx antes de cerrar.');
