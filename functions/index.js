@@ -829,12 +829,50 @@ function _clasificarYRegistrar(renglonesCrudos, ingresosDB, operadores) {
   return { pendientes: pendientes, registrados: registrados, noPagaResueltos: noPagaResueltos };
 }
 
+// _marcarLeidosImap: marca los UIDs dados como \Seen en una conexión IMAP
+// nueva y corta — se usa SOLO después de que ya se guardó en Firestore lo
+// que se sacó de esos correos (registrado, o encolado en la lista de
+// pendientes de revisión). Antes, los tres buzones (maniobras, compras,
+// pedidos) marcaban \Seen al momento de traer el correo (markSeen:true en
+// el fetch) — ANTES de guardar nada. Si la función se quedaba sin tiempo a
+// la mitad de un lote grande (ej. buzón con varios días de atraso, o
+// muchas llamadas a la IA en una sola corrida), esos correos ya marcados
+// como leídos desaparecían para siempre: IMAP nunca los vuelve a regresar
+// como UNSEEN, y no quedaba ningún rastro de ellos en Firestore. Marcarlos
+// leídos hasta el final reduce esa ventana de riesgo a solo los segundos
+// que tarda guardar en Firestore, en vez de a los minutos que puede tardar
+// procesar el lote completo con IA.
+function _marcarLeidosImap(user, pass, uids) {
+  if (!uids || !uids.length) return Promise.resolve();
+  const Imap = require('imap');
+  return new Promise(function (resolve) {
+    const imap = new Imap({ user: user, password: pass, host: 'imap.ionos.mx', port: 993, tls: true, connTimeout: 20000, authTimeout: 20000 });
+    let resuelto = false;
+    function terminar() { if (resuelto) return; resuelto = true; resolve(); }
+    imap.once('error', function (err) { console.error('_marcarLeidosImap: error de conexión (los correos quedan sin marcar, se reintentan la próxima corrida):', err); terminar(); });
+    imap.once('ready', function () {
+      imap.openBox('INBOX', false, function (err) {
+        if (err) { console.error('_marcarLeidosImap: error abriendo INBOX:', err); imap.end(); terminar(); return; }
+        imap.addFlags(uids, '\\Seen', function (err) {
+          if (err) console.error('_marcarLeidosImap: error marcando \\Seen (los correos quedan sin marcar, se reintentan la próxima corrida):', err);
+          else console.log('_marcarLeidosImap: ' + uids.length + ' correo(s) marcado(s) como leído(s).');
+          imap.end();
+          terminar();
+        });
+      });
+    });
+    imap.once('end', terminar);
+    imap.connect();
+  });
+}
+
 // node-imap (librería distinta a imapflow — más antigua y probada; imapflow
 // se quedaba pegada al conectar en este entorno de Cloud Functions aunque el
 // login IMAP crudo, sin librería, respondía en menos de 1 segundo — ver
 // pingImapLogin, era algo específico de esa librería, no de la red).
 function _revisarBuzonCore(apiKey, user, pass) {
   const Imap = require('imap');
+  let uidsFetched = [];
   return new Promise(function (resolveTodo, rejectTodo) {
     const imap = new Imap({ user: user, password: pass, host: 'imap.ionos.mx', port: 993, tls: true, connTimeout: 20000, authTimeout: 20000 });
     const encontrados = [];
@@ -858,7 +896,11 @@ function _revisarBuzonCore(apiKey, user, pass) {
           if (err) { console.error('revisarBuzonManiobras: error en search:', err); imap.end(); rejectTodo(err); return; }
           console.log('revisarBuzonManiobras: search encontró', uids ? uids.length : 0, 'correo(s):', JSON.stringify(uids));
           if (!uids || !uids.length) { imap.end(); terminar(encontrados); return; }
-          const f = imap.fetch(uids, { bodies: '', markSeen: true });
+          uidsFetched = uids;
+          // markSeen:false — ya NO se marca leído al traer el correo, sino
+          // hasta el final, después de guardar en Firestore (ver
+          // _marcarLeidosImap y su uso más abajo).
+          const f = imap.fetch(uids, { bodies: '', markSeen: false });
           const pendientes = [];
           f.on('message', function (msg, seqno) {
             console.log('revisarBuzonManiobras: mensaje #' + seqno + ' — empezando a recibir cuerpo...');
@@ -967,6 +1009,14 @@ function _revisarBuzonCore(apiKey, user, pass) {
         }
       }
     }
+    // Hasta aquí, todo lo que se sacó de estos correos ya quedó guardado en
+    // Firestore (registrado, o encolado en pendientes de revisión) — recién
+    // ahora es seguro marcarlos como leídos (ver _marcarLeidosImap arriba).
+    // Si esto falla, no pasa nada grave: el correo se vuelve a ver como
+    // UNSEEN en la próxima corrida y se reprocesa (ya es seguro reprocesar,
+    // ver el candado de "ya registrado" en _registrarNoPagaServer y el
+    // candado de duplicados sin exigir fecha exacta en _buscarDuplicadoServer).
+    await _marcarLeidosImap(user, pass, uidsFetched);
     return encontrados;
   });
 }
@@ -1422,6 +1472,7 @@ function _calcularProrrateoDesdeRenglonesServer(renglones, total, operadores) {
 
 function _revisarBuzonComprasCore(user, pass, apiKey) {
   const Imap = require('imap');
+  let uidsFetched = [];
   return new Promise(function (resolveTodo, rejectTodo) {
     const imap = new Imap({ user: user, password: pass, host: 'imap.ionos.mx', port: 993, tls: true, connTimeout: 20000, authTimeout: 20000 });
     const encontrados = [];
@@ -1435,7 +1486,8 @@ function _revisarBuzonComprasCore(user, pass, apiKey) {
           if (err) { console.error('revisarBuzonCompras: error en search:', err); imap.end(); rejectTodo(err); return; }
           console.log('revisarBuzonCompras: search encontró', uids ? uids.length : 0, 'correo(s).');
           if (!uids || !uids.length) { imap.end(); terminar(encontrados); return; }
-          const f = imap.fetch(uids, { bodies: '', markSeen: true });
+          uidsFetched = uids;
+          const f = imap.fetch(uids, { bodies: '', markSeen: false });
           const pendientes = [];
           f.on('message', function (msg, seqno) {
             const partes = [];
@@ -1551,6 +1603,14 @@ function _revisarBuzonComprasCore(user, pass, apiKey) {
     encontrados._totalRegistradas = totalRegistradas;
     encontrados._totalPendientes = conAlgoPendiente.length;
     encontrados._totalReps = totalReps;
+    // Hasta aquí, todo lo que se sacó de estos correos ya quedó guardado en
+    // Firestore (registrado, relacionado como REP, o encolado en
+    // pendientes de revisión) — recién ahora es seguro marcarlos como
+    // leídos (ver _marcarLeidosImap). Reprocesar un correo de factura ya
+    // registrada es seguro: el candado "UUID único" en
+    // _evaluarCandadosCxPServer la manda a revisión manual en vez de
+    // sobrescribirla.
+    await _marcarLeidosImap(user, pass, uidsFetched);
     return encontrados;
   });
 }
@@ -2377,6 +2437,7 @@ async function _sustituirFacturaFleteServer(fac) {
 function _revisarBuzonPedidosCore(user, pass, apiKey) {
   const Imap = require('imap');
   const resultadosFacturas = [];
+  let uidsFetched = [];
   return new Promise(function (resolveTodo, rejectTodo) {
     const imap = new Imap({ user: user, password: pass, host: 'imap.ionos.mx', port: 993, tls: true, connTimeout: 20000, authTimeout: 20000 });
     const encontrados = [];
@@ -2389,7 +2450,8 @@ function _revisarBuzonPedidosCore(user, pass, apiKey) {
         imap.search(['UNSEEN'], function (err, uids) {
           if (err) { console.error('revisarBuzonPedidos: error en search:', err); imap.end(); rejectTodo(err); return; }
           if (!uids || !uids.length) { imap.end(); terminar(encontrados); return; }
-          const f = imap.fetch(uids, { bodies: '', markSeen: true });
+          uidsFetched = uids;
+          const f = imap.fetch(uids, { bodies: '', markSeen: false });
           const pendientes = [];
           f.on('message', function (msg, seqno) {
             const partes = [];
@@ -2551,6 +2613,11 @@ function _revisarBuzonPedidosCore(user, pass, apiKey) {
       pendientesRevision: resultadosFacturas.filter(function (r) { return !r.ok; }).length,
       detalle: resultadosFacturas
     };
+    // Hasta aquí, todo lo que se sacó de estos correos ya quedó guardado en
+    // Firestore (pedidos registrados, provisionales de flete, facturas de
+    // flete sustituidas, o encolado en pendientes de revisión) — recién
+    // ahora es seguro marcarlos como leídos (ver _marcarLeidosImap).
+    await _marcarLeidosImap(user, pass, uidsFetched);
     return encontrados;
   });
 }
