@@ -513,8 +513,16 @@ function _crearAutorizacionServer(ingresosDB, datos) {
   const unidad = parseInt(datos.unidad || 0);
   if (!unidad) return { ok: false, error: 'Falta el operador.' };
   const pendiente = !!datos.montoPendiente;
-  const monto = parseFloat(datos.monto || 0);
-  if (!pendiente && !monto) return { ok: false, error: 'Falta el monto.' };
+  // "monto" puede llegar en $0.00 real (ej. una maniobra que el cliente
+  // confirmó explícitamente como "no paga" con un número, no con el texto
+  // NO_PAGA) — "!monto" trataba ese 0 real igual que un campo vacío y
+  // bloqueaba el registro. Ahora se distingue por si el campo llegó vacío,
+  // no por si el número da 0 (mismo criterio que su gemela en
+  // maniobras.html, _crearAutorizacionEnMemoria).
+  const montoVacio = (datos.monto == null || datos.monto === '');
+  const monto = montoVacio ? 0 : parseFloat(datos.monto);
+  if (!pendiente && montoVacio) return { ok: false, error: 'Falta el monto.' };
+  if (!pendiente && isNaN(monto)) return { ok: false, error: 'El monto no es un número válido.' };
   const folio = (datos.folio || '').trim();
   const pedido = (datos.pedido || '').trim();
   const tu1 = (datos.tu1 || '').trim();
@@ -522,7 +530,7 @@ function _crearAutorizacionServer(ingresosDB, datos) {
   if (!folio && !pedido && !tu1 && !tu2) return { ok: false, error: 'Falta al menos un identificador (folio, pedido o T.U.\'s).' };
   const idsNuevos = [folio, pedido, tu1, tu2].map(_normTxtServer).filter(function (s) { return s; });
 
-  if (!pendiente && monto) {
+  if (!pendiente && !montoVacio) {
     const existentePendiente = ingresosDB.find(function (v) {
       if (!v.esAutorizacionCliente || !v.montoPendiente || v.sustituidoPorXML) return false;
       if (v.unidad !== unidad) return false;
@@ -539,7 +547,7 @@ function _crearAutorizacionServer(ingresosDB, datos) {
   }
 
   const idsCorreccion = [folio, pedido].map(_normTxtServer).filter(function (s) { return s; });
-  const existenteCorregible = (!pendiente && monto && idsCorreccion.length) ? ingresosDB.find(function (v) {
+  const existenteCorregible = (!pendiente && !montoVacio && idsCorreccion.length) ? ingresosDB.find(function (v) {
     if (!v.esAutorizacionCliente || v.montoPendiente || v.sustituidoPorXML) return false;
     if (v.unidad !== unidad) return false;
     const vIds = _idsDeObservacionesServer(v.observaciones);
@@ -802,7 +810,7 @@ function _clasificarYRegistrar(renglonesCrudos, ingresosDB, operadores) {
     const mRaw = (x.monto == null) ? '' : String(x.monto).trim().toUpperCase();
     const montoPendiente = (mRaw === 'PENDIENTE');
     const r = _crearAutorizacionServer(ingresosDB, {
-      unidad: match.operadorId, monto: montoPendiente ? '' : (x.monto || ''), montoPendiente: montoPendiente,
+      unidad: match.operadorId, monto: montoPendiente ? '' : (x.monto == null ? '' : x.monto), montoPendiente: montoPendiente,
       fecha: x.fecha, folio: x.folio, pedido: x.pedido, tu1: x.tu1, tu2: x.tu2,
       tienda: x.tienda, destino: x.destino
     });

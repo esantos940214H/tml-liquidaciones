@@ -614,8 +614,16 @@ function _crearAutorizacionEnMemoria(datos){
   var unidad=parseInt(datos.unidad||0);
   if(!unidad)return{ok:false,error:'Falta el operador.'};
   var pendiente=!!datos.montoPendiente;
-  var monto=parseFloat(datos.monto||0);
-  if(!pendiente&&!monto)return{ok:false,error:'Falta el monto.'};
+  // "monto" puede venir realmente en $0.00 (ej. una maniobra confirmada en
+  // firme como "no paga a mano" — caso ya normal en el sistema, ver
+  // renderPendientes). Antes se revisaba con "!monto", que trata un 0 real
+  // igual que un campo vacío y bloqueaba el registro manual con "Falta el
+  // monto" aunque el admin SÍ haya escrito 0 a propósito. Ahora se
+  // distingue por si el campo llegó vacío/nulo, no por si el número da 0.
+  var montoVacio=(datos.monto==null||datos.monto==='');
+  var monto=montoVacio?0:parseFloat(datos.monto);
+  if(!pendiente&&montoVacio)return{ok:false,error:'Falta el monto.'};
+  if(!pendiente&&isNaN(monto))return{ok:false,error:'El monto no es un número válido.'};
   var folio=(datos.folio||'').trim();
   var pedido=(datos.pedido||'').trim();
   var tu1=(datos.tu1||'').trim();
@@ -627,7 +635,7 @@ function _crearAutorizacionEnMemoria(datos){
   // estos identificadores, y ahora SÍ traemos un monto real, es el correo de
   // seguimiento — se ACTUALIZA ese mismo registro en vez de crear uno nuevo
   // o bloquearlo como duplicado.
-  if(!pendiente&&monto){
+  if(!pendiente&&!montoVacio){
     var existentePendiente=ingresosDB.find(function(v){
       if(!v.esAutorizacionCliente||!v.montoPendiente||v.sustituidoPorXML)return false;
       if(v.unidad!==unidad)return false;
@@ -649,7 +657,7 @@ function _crearAutorizacionEnMemoria(datos){
   // monto anterior por el nuevo en vez de bloquear o crear un duplicado (el
   // correo más reciente manda).
   var idsCorreccion=[folio,pedido].map(_normTxt).filter(function(s){return s;});
-  var existenteCorregible=(!pendiente&&monto&&idsCorreccion.length)?ingresosDB.find(function(v){
+  var existenteCorregible=(!pendiente&&!montoVacio&&idsCorreccion.length)?ingresosDB.find(function(v){
     if(!v.esAutorizacionCliente||v.montoPendiente||v.sustituidoPorXML)return false;
     if(v.unidad!==unidad)return false;
     var vIds=_idsDeObservaciones(v.observaciones);

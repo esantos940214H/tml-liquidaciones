@@ -2247,9 +2247,20 @@ function renderIngresos(){
     +'</div>';
 }
 
-function eliminarIngreso(id){
+async function eliminarIngreso(id){
   if(!confirm('¿Eliminar este viaje?'))return;
-  ingresosDB=ingresosDB.filter(function(v){return v.id!==id;});
+  // Antes esto solo lo quitaba de la copia en memoria y nunca se guardaba
+  // en Firestore — el viaje "desaparecía" de la tabla pero seguía intacto
+  // en la base de datos, y volvía a aparecer en cuanto algo refrescara
+  // ingresosDB (recargar la página, o el listener en vivo). Se relee fresco
+  // justo antes de guardar por el mismo motivo que el resto del sistema.
+  if(!fbReady){alert('Sin conexión — no se pudo eliminar.');return;}
+  var d=await window.FB.get('estado','ingresosDB');
+  var fresh=(d&&d.data)?JSON.parse(d.data):[];
+  if(!Array.isArray(fresh))fresh=[];
+  fresh=fresh.filter(function(v){return v.id!==id;});
+  ingresosDB=fresh;
+  window.FB.set('estado','ingresosDB',{data:JSON.stringify(ingresosDB)});
   renderIngresos();actualizarBadges();
 }
 
@@ -2433,7 +2444,7 @@ function desbloquearCostoDiesel(){
 async function refrescarPreview(){
   if(!fbReady){console.warn('Firebase no listo');return;}
   const a=await window.FB.get('estado','anticiposDB');
-  if(a&&a.data)anticiposDB=JSON.parse(a.data);
+  if(a&&a.data){var _antRef=JSON.parse(a.data);anticiposDB=Array.isArray(_antRef)?{}:_antRef;}
   const i=await window.FB.get('estado','ingresosDB');
   if(i&&i.data)ingresosDB=JSON.parse(i.data);
   const opId=parseInt($('liqOp')?$('liqOp').value||0:0);
