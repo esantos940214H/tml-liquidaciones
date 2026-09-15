@@ -588,16 +588,24 @@ function _idsDeObservaciones(observaciones){
 function _buscarDuplicado(datos){
   var unidad=parseInt(datos.unidad||0);
   var monto=parseFloat(datos.monto||0);
-  var fecha=datos.fecha||'';
   var destino=_normTxt(datos.destino);
   var tienda=_normTxt(datos.tienda);
   var ids=[datos.folio,datos.pedido,datos.tu1,datos.tu2].map(_normTxt).filter(function(s){return s;});
   if(!ids.length)return null;
+  // Ya NO se exige que "fecha" coincida exacta (caso real: Francisco
+  // Artemio Peña Vazquez — al pedir la autorización de una maniobra nueva,
+  // el cliente contestó con un correo consolidado que traía, junto con la
+  // nueva, VARIAS autorizaciones ya registradas antes (pendientes o en
+  // $0). Ese correo no repite la fecha original de cada una — la IA le
+  // pone la fecha del correo actual a todo el lote — así que por fecha
+  // nunca coincidían con el registro viejo y se volvían a crear como si
+  // fueran nuevas). El monto + el mismo operador + compartir folio/pedido/
+  // T.U. ya es una señal más que suficiente de que es la misma
+  // autorización — no hace falta además la fecha exacta.
   return ingresosDB.find(function(v){
     if(!v.esAutorizacionCliente)return false;
     if(v.unidad!==unidad)return false;
     if(Math.abs((v.subtotal||0)-monto)>=0.01)return false;
-    if((v.fecha||'')!==fecha)return false;
     var vDestino=_normTxt((v.ruta&&v.ruta[0]&&v.ruta[0].destino)||'');
     var vTienda=_normTxt(v.tienda);
     if(destino&&vDestino&&destino!==vDestino)return false;
