@@ -1295,13 +1295,20 @@ function renderFacturas(){
   }
   wrap.innerHTML='<div class="tbl-wrap"><table><thead><tr><th>Proveedor</th><th>Folio</th><th>Fecha</th><th class="r">Total</th><th>Vencimiento</th><th>Estado</th><th>Pago</th><th>Prorrateo</th><th></th></tr></thead><tbody>'
     +ordenadas.map(function(f){
-      // Factura "dañada": le falta el folio — señal de que un set() sin
+      // Factura "dañada": le falta el proveedor — señal de que un set() sin
       // merge le borró todos los campos salvo el prorrateo (bug ya
       // corregido, ver reabrirLiquidacion()/recuperarCargosPerdidosReapertura
       // en hist.html). Se muestra aparte con un botón para intentar
       // reconstruirla desde el XML original en Storage, en vez de una fila
-      // llena de "undefined".
-      if(!f.folio){
+      // llena de "undefined". OJO: antes esto se detectaba con "!f.folio",
+      // pero el Folio es un campo OPCIONAL del CFDI — varias facturas reales
+      // nunca traen Folio y quedaban marcadas como dañadas para siempre
+      // aunque su recuperación sí hubiera funcionado (caso real: factura de
+      // Ricardo Domínguez González, recuperada correctamente pero seguía
+      // apareciendo en rojo). proveedorNombre sí es un campo que SIEMPRE se
+      // llena al registrar una factura (con razón social, nombre del
+      // emisor, o el RFC como último respaldo — nunca vacío).
+      if(!f.proveedorNombre){
         return '<tr style="background:#fde8e8"><td colspan="8" style="font-size:12px;color:#9b1c1c">⚠️ Esta factura (ID '+f.id+') perdió sus datos (folio, proveedor, fecha, total) — su prorrateo sigue intacto ('+((f.prorrateo||[]).length)+' unidad(es)). '
           +'<button class="btn btn-out btn-sm" onclick="recuperarFacturaDesdeXML(\''+f.id+'\')">🔧 Intentar recuperar del XML</button></td>'
           +'<td><button class="btn btn-out btn-sm" onclick="eliminarFacturaUI(\''+f.id+'\')">🗑️ Eliminar</button></td></tr>';
