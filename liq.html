@@ -1128,10 +1128,19 @@ async function validarCFDIsSATLiquidacion(soloNuevos){
     // se refrescaba aquí — el resultado quedaba guardado pero la pantalla
     // seguía mostrando "Sin verificar" hasta que algo MÁS disparara un
     // repintado (ej. el listener de ingresosDB, que puede tardar o no llegar).
-    if(liq)mostrarPreviewLiq(liq.opId||liq.unidad);
+    // Candado: si esta validación se disparó ANTES de que empezara un cierre
+    // (ej. por un listener), y para cuando termina (puede tardar varios
+    // segundos por las llamadas al SAT) el cierre ya está en curso, este
+    // repintado NO debe tocar mostrarPreviewLiq/generarReporte — pisaría el
+    // _snap correcto que el cierre ya calculó, justo antes de guardarlo en
+    // Historial, con datos viejos (0 pendientes, porque el cierre ya marcó
+    // todo como liquidado). Caso real confirmado: Andrés Navarro Ramírez,
+    // liquidación #2 guardada con $0.00 en Historial pese a que el dinero sí
+    // se marcó bien.
+    if(liq&&!_cerrandoLiquidacionEnCurso)mostrarPreviewLiq(liq.opId||liq.unidad);
     var tabActivo=document.querySelector('.tab.active');
     var tabs=document.querySelectorAll('.tab');
-    if(Array.from(tabs).indexOf(tabActivo)===4)generarReporte();
+    if(Array.from(tabs).indexOf(tabActivo)===4&&!_cerrandoLiquidacionEnCurso)generarReporte();
 
     var _detalleErrores=Object.keys(c.porCategoria).map(function(k){return c.porCategoria[k]+' de '+k;}).join(', ');
     if(c.nErrores===total){
@@ -4436,7 +4445,6 @@ async function renderRecibosNominaLiq(nomPend,opNombre){
 // 6: REPORTE
 // ══════════════════════════════════════════════
 function generarReporte(){
-  console.trace('TRAZA generarReporte llamado — _cerrandoLiquidacionEnCurso=',_cerrandoLiquidacionEnCurso);
   if(!liq){$('panel4Content').style.display='none';$('liqReqMsg4').style.display='block';return;}
   $('panel4Content').style.display='block';$('liqReqMsg4').style.display='none';
   $('repLiqNum').textContent='#'+liq.num;
@@ -4936,7 +4944,6 @@ function generarReporte(){
     casetasNFList:casetasNFAplicar.map(function(a){return{id:a.id,fecha:a.fecha,caseta:a.caseta,monto:a.monto,motivo:a.motivo,evidenciaURL:a.evidenciaURL||null,sinFoto:!!a.sinFoto};}),
     advertenciasFecha:(liq.advertenciasFecha||[]).slice()
   };
-  console.log('TRAZA generarReporte terminó — totAnts=',totAnts,'totIngSubtotal=',totIngSubtotal,'viajes.length=',viajes.length,'antsPend.length=',antsPend.length);
 }
 
 // ══════════════════════════════════════════════
