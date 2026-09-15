@@ -244,6 +244,12 @@ window.onFBReady=function(cb){if(window._fbInit)cb();else window._fbCallbacks.pu
     window.FB={
       set:function(col,id,data){return db.collection(col).doc(id).set(data);},
       get:async function(col,id){try{var s=await db.collection(col).doc(id).get();return s.exists?s.data():null;}catch(e){console.error('FB.get:',e);return null;}},
+      // getEstricto: no convierte un error de red en "null" — se usa antes
+      // de guardar, para no confundir "no pude leer" con "está vacío" (eso
+      // guardaría un ingresosDB vacío encima de datos reales de TODOS los
+      // operadores — bug real ya ocurrido en liq.html, caso Andrés Navarro
+      // Ramírez).
+      getEstricto:async function(col,id){var s=await db.collection(col).doc(id).get();return s.exists?s.data():null;},
       del:function(col,id){return db.collection(col).doc(id).delete();},
       listen:function(col,id,cb){return db.collection(col).doc(id).onSnapshot(function(s){cb(s.exists?s.data():null);});},
       getAll:async function(col){
@@ -524,16 +530,26 @@ function revertirAPendiente(id){
   var u=usuarioSesion();
   if(!u||!u.esAdmin){alert('Solo un administrador puede hacer esto.');return;}
   if(!confirm('¿Regresar esta autorización a "Pendiente"? Se usa cuando el monto que quedó registrado ('+fmt(v.subtotal)+') en realidad viene de una PETICIÓN de autorización, no de una confirmación real del cliente. Pedido/T.U.\'s: "'+(v.observaciones||'')+'".'))return;
-  cargarIngresos().then(function(){
+  cargarIngresosEstricto().then(function(){
     var vv=ingresosDB.find(function(x){return x.id===id;});
     if(!vv){alert('Ya no se encontró esta autorización (¿la borraron mientras tanto?).');return;}
     vv.subtotal=0;vv.subtManiobras=0;vv.iva=0;vv.total=0;vv.montoPendiente=true;
     window.FB.set('estado','ingresosDB',{data:JSON.stringify(ingresosDB)});
     renderPendientes();
-  });
+  }).catch(function(e){console.error('revertirAPendiente:',e);alert('⚠️ No se pudo actualizar: problema de conexión. Nada se guardó, intenta de nuevo.');});
 }
 async function cargarIngresos(){
   var data=await window.FB.get('estado','ingresosDB');
+  ingresosDB=(data&&data.data)?JSON.parse(data.data):[];
+  if(!Array.isArray(ingresosDB))ingresosDB=[];
+  renderPendientes();
+}
+// cargarIngresosEstricto: como cargarIngresos(), pero si la lectura falla
+// por conexión, TRONA en vez de dejar ingresosDB en []. Usar siempre antes
+// de un guardar — cargarIngresos() a secas es solo para la carga inicial
+// de la página (ahí un [] temporal no se guarda solo).
+async function cargarIngresosEstricto(){
+  var data=await window.FB.getEstricto('estado','ingresosDB');
   ingresosDB=(data&&data.data)?JSON.parse(data.data):[];
   if(!Array.isArray(ingresosDB))ingresosDB=[];
   renderPendientes();
@@ -542,11 +558,11 @@ function eliminarAutorizacion(id){
   var v=ingresosDB.find(function(x){return x.id===id;});
   if(!v)return;
   if(!confirm('¿Eliminar esta autorización pendiente ('+fmt(v.subtotal)+' + IVA, pedido "'+v.observaciones+'")? Solo hazlo si se capturó por error — si ya hay factura real, mejor sustitúyela desde Ingresos.'))return;
-  cargarIngresos().then(function(){
+  cargarIngresosEstricto().then(function(){
     ingresosDB=ingresosDB.filter(function(x){return x.id!==id;});
     window.FB.set('estado','ingresosDB',{data:JSON.stringify(ingresosDB)});
     renderPendientes();
-  });
+  }).catch(function(e){console.error('eliminarAutorizacion:',e);alert('⚠️ No se pudo eliminar: problema de conexión. Nada se guardó, intenta de nuevo.');});
 }
 // Click en el ícono 💰 de una maniobra reciente: pregunta si ya se depositó
 // y, si confirmas, la desmarca de inmediato (deja de resaltarse en amarillo/
@@ -764,7 +780,8 @@ async function agregarAutorizacionManiobra(){
   var unidad=parseInt($('autOp').value||0);
   // Releer justo antes de guardar, para no pisar algo que otra persona haya
   // capturado en Ingresos mientras esta pestaña estaba abierta.
-  await cargarIngresos();
+  try{await cargarIngresosEstricto();}
+  catch(e){console.error('agregarAutorizacionManiobra:',e);alert('⚠️ No se pudo registrar: problema de conexión al leer los datos actuales. Nada se guardó, intenta de nuevo.');return;}
   var montoTxt=($('autMonto').value||'').trim();
   var pendiente=/^PENDIENTE$/i.test(montoTxt);
   var r=_crearAutorizacionEnMemoria({
@@ -1028,7 +1045,8 @@ async function _procesarRenglonesExtraidos(renglones){
   // la copia vieja en memoria las habría borrado silenciosamente al
   // sobrescribir todo el documento — mismo tipo de bug ya visto antes con
   // anticiposDB/ingresosDB.
-  await cargarIngresos();
+  try{await cargarIngresosEstricto();}
+  catch(e){console.error('_procesarRenglonesExtraidos:',e);alert('⚠️ Problema de conexión al leer los datos actuales — no se procesó este correo/lote. Intenta de nuevo.');return;}
   // El correo se manda con visibilidad compartida a VARIAS transportistas
   // a la vez — puede traer renglones de otras empresas (Benitez, Merlos,
   // etc.) mezclados con los de nosotros (SILVIA). Si no filtramos por
@@ -1203,7 +1221,8 @@ async function registrarExtraidos(){
   var u=usuarioSesion();
   if(!u||!u.esAdmin){alert('Solo un administrador puede registrar autorizaciones.');return;}
   if(!_extraidos.length)return;
-  await cargarIngresos();
+  try{await cargarIngresosEstricto();}
+  catch(e){console.error('registrarExtraidos:',e);alert('⚠️ No se pudo registrar: problema de conexión al leer los datos actuales. Nada se guardó, intenta de nuevo.');return;}
   var responsable=($('autResponsable').value||'').trim()||u.usuario;
   var cliente=($('autCliente').value||'').trim()||'GRUPO COMERCIAL DSW';
   var plazo=$('autPlazo').value||15;
