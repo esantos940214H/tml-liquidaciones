@@ -528,6 +528,18 @@ async function _procesarUnReciboManiobra(blob,mimeType){
   var res=data.resultado||{};
   var monto=parseFloat(res.monto||0);
   if(!monto)return'⚠️ No se pudo leer el monto del recibo. Verifica la foto/página.';
+  // ingresosDB se carga UNA vez al abrir la app (iniciarEvidencias) y esta
+  // sesión puede quedarse abierta horas (es una PWA) — si la oficina
+  // autorizó o corrigió un monto de maniobra después de que el operador
+  // abrió la app, la copia en memoria ya no lo tenía y el recibo no
+  // encontraba con qué pedido emparejar ("no se encontró ningún pedido")
+  // aunque la autorización sí existiera. Se relee fresca justo antes de
+  // emparejar.
+  try{
+    var snapIng=await db.collection('estado').doc('ingresosDB').get();
+    var dataIng=snapIng.exists?snapIng.data():null;
+    if(dataIng&&dataIng.data)ingresosDB=JSON.parse(dataIng.data);
+  }catch(e){console.error('_procesarUnReciboManiobra: no se pudo refrescar ingresosDB, se usa la copia en memoria:',e);}
   var autorizaciones=ingresosDB.filter(function(v){return v.esAutorizacionCliente;});
   var candidatos=FLETES.filter(function(f){
     if(f.reciboManiobraImgURL)return false;
