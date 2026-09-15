@@ -5334,6 +5334,25 @@ async function _cerrarLiquidacionInterno(){
   // de quien escribió al mismo tiempo. Releer justo antes de escribir evita
   // ambos casos (mismo criterio que ya usa el bloque de facturas de
   // proveedor arriba).
+  // Candado extra contra ejecuciones "huérfanas": si esta pestaña estuvo
+  // mucho tiempo validando CFDIs contra el SAT (puede tardar minutos con
+  // muchos comprobantes) y MIENTRAS TANTO otra ejecución (otra pestaña, u
+  // otro intento de cierre de ESTA MISMA liquidación que nunca se esperó a
+  // terminar y se abandonó al recargar la página) ya terminó de cerrarla,
+  // liqActivas/{opId} ya no apunta a este mismo folio — proceder de todos
+  // modos volvería a marcar/guardar todo desde cero y podría pisar el
+  // cierre bueno que ya se guardó. El candado en memoria
+  // (_cerrandoLiquidacionEnCurso) no protege contra esto porque no
+  // sobrevive un F5/recarga — este sí, porque revisa Firestore.
+  if(fbReady){
+    var _liqActivaCheck=await window.FB.get('liqActivas',String(_opIdNum));
+    var _liqActivaCheckNum=null;
+    if(_liqActivaCheck&&_liqActivaCheck.data){try{_liqActivaCheckNum=JSON.parse(_liqActivaCheck.data).num;}catch(e){}}
+    if(_liqActivaCheckNum!==liqCopia.num){
+      alert('⚠️ No se guardó nada: esta liquidación #'+liqCopia.num+' ya no aparece como la activa de este operador (probablemente otro intento de cierre, tal vez de una pestaña anterior, ya la cerró mientras se validaba contra el SAT). Ve a Historial y confirma si ya quedó cerrada correctamente antes de intentar de nuevo.');
+      return;
+    }
+  }
   var nAMarcados=0,nVMarcados=0,nIMarcados=0,nIDescartados=0,nCFMarcados=0,nNMarcados=0;
   if(fbReady){
    try{
