@@ -64,6 +64,14 @@ const TML_RFC = 'MTM171214PI4';
 function _fmtMonedaServer(n) {
   return '$' + Number(n || 0).toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
+const _MESES_ES = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
+// _fmtFechaLargaServer('2026-10-08') -> '08 de octubre de 2026'
+function _fmtFechaLargaServer(iso) {
+  if (!iso) return '';
+  const partes = iso.split('-');
+  const y = partes[0], m = parseInt(partes[1], 10), d = partes[2];
+  return d + ' de ' + (_MESES_ES[m - 1] || '') + ' de ' + y;
+}
 // Como el correo se manda directo por SMTP (sin pasar por ningún cliente de
 // correo tipo Outlook/webmail), IONOS nunca guarda una copia en "Enviados"
 // de compras@ — eso lo hacen los clientes de correo al mandarlo, no el
@@ -1742,8 +1750,7 @@ exports.enviarSolicitudComplementoPago = onRequest(
             '<p>Te confirmamos que ya se realizó el pago de tu factura <strong>' + (fac.serie ? fac.serie + '-' : '') + fac.folio + '</strong> por ' +
             '<strong style="color:#1a1a2e;">' + _fmtMonedaServer(fac.total) + '</strong>, con fecha ' + fechaPago + '.</p>' +
             '<p style="background:#eef4f8;border-left:3px solid #457b9d;padding:10px 14px;border-radius:4px;">' +
-            'Por favor envíanos el <strong>complemento de pago (REP)</strong> correspondiente antes del <strong>' + fechaLimiteRep + '</strong> ' +
-            '(límite legal: día 8 del mes siguiente al pago).</p>' +
+            'Favor de enviarnos el <strong>complemento de pago (REP)</strong> correspondiente a más tardar el <strong>' + _fmtFechaLargaServer(fechaLimiteRep) + '</strong>.</p>' +
             (comprobanteURL ? '<p>Adjuntamos el comprobante del pago.</p>' : '') +
             '<p>Gracias.</p>'
           ),
