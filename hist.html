@@ -405,7 +405,15 @@ window.onFBReady=function(cb){if(window._fbInit)cb();else window._fbCallbacks.pu
     if(!firebase.apps.length)firebase.initializeApp(cfg);
     var db=firebase.firestore();
     window.FB={
-      set:function(col,id,data){return db.collection(col).doc(id).set(data);},
+      // options (ej. {merge:true}) SIEMPRE debe reenviarse a Firestore — un
+      // set:function(col,id,data){...} sin este 4o parámetro IGNORA en
+      // silencio el merge:true que le manden, y hace un set() completo que
+      // borra todos los campos del documento salvo los que trae "data".
+      // Bug real confirmado: cxpFacturas perdía proveedor/folio/fecha/total
+      // (solo sobrevivía "prorrateo") cada vez que se cerraba una
+      // liquidación con una factura de proveedor prorrateada, porque el
+      // merge:true que mandaba liq.html/hist.html se descartaba aquí.
+      set:function(col,id,data,options){return db.collection(col).doc(id).set(data,options);},
       get:async function(col,id){try{var s=await db.collection(col).doc(id).get();return s.exists?s.data():null;}catch(e){console.error('FB.get:',e);return null;}},
       del:function(col,id){return db.collection(col).doc(id).delete();},
       listen:function(col,id,cb){return db.collection(col).doc(id).onSnapshot(function(s){cb(s.exists?s.data():null);});},

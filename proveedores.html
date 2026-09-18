@@ -641,6 +641,15 @@ let FACTURAS=[];
 
 function _facNorm(s){return(s||'').toString().trim().toUpperCase();}
 
+// folioDesdeUUID: cuando el proveedor no trae Folio en el CFDI (es un campo
+// opcional), se usa el último tramo del folio fiscal (UUID) como identificador
+// legible — sirve tanto para distinguir la factura en la lista como para
+// ponerlo de concepto/referencia al hacer la transferencia a mano.
+function folioDesdeUUID(uuid){
+  var partes=(uuid||'').split('-');
+  return (partes[partes.length-1]||'').toUpperCase();
+}
+
 // parseCfdiProveedor(text): mismo enfoque que parseXML en ing.html
 // (DOMParser + querySelector sin namespace, sin librería externa) — pero
 // aquí se espera que el RECEPTOR sea Mudanzas TML (es una factura que TML
@@ -1152,7 +1161,7 @@ async function guardarFactura(){
       proveedorId:_facProveedorMatch?_facProveedorMatch.rfc:data.rfcEmisor,
       proveedorNombre:_facProveedorMatch?_facProveedorMatch.razonSocial:(data.nombreEmisor||data.rfcEmisor),
       proveedorRegistrado:!!_facProveedorMatch,
-      serie:data.serie,folio:data.folio,tipoComprobante:data.tipoComprobante,
+      serie:data.serie,folio:data.folio||folioDesdeUUID(data.uuid),folioAutoAsignado:!data.folio,tipoComprobante:data.tipoComprobante,
       metodoPago:data.metodoPago,formaPago:data.formaPago,
       subtotal:data.subtotal,totalImpuestos:data.traslados-data.retenciones,total:data.total,
       fechaEmision:data.fechaEmision,diasCredito:diasCredito,fechaVencimiento:fechaVencimiento,
@@ -1252,7 +1261,7 @@ async function recuperarFacturaDesdeXML(uuid){
       proveedorId:match?match.rfc:data.rfcEmisor,
       proveedorNombre:match?match.razonSocial:(data.nombreEmisor||data.rfcEmisor),
       proveedorRegistrado:!!match,
-      serie:data.serie,folio:data.folio,tipoComprobante:data.tipoComprobante,
+      serie:data.serie,folio:data.folio||folioDesdeUUID(uuid),folioAutoAsignado:!data.folio,tipoComprobante:data.tipoComprobante,
       metodoPago:data.metodoPago,formaPago:data.formaPago,
       subtotal:data.subtotal,totalImpuestos:data.traslados-data.retenciones,total:data.total,
       fechaEmision:data.fechaEmision,diasCredito:diasCredito,fechaVencimiento:fechaVencimiento,
@@ -1324,7 +1333,7 @@ function renderFacturas(){
       var negrita=sinPagar?'font-weight:700':'';
       var fila='<tr'+(sinPagar?' style="background:#fff8e1"':'')+'>'
         +'<td style="font-size:12px;'+negrita+'">'+(f.proveedorNombre||f.proveedorId||'')+(f.proveedorRegistrado===false?' <span class="badge bg-yellow" title="Este proveedor todavía no está dado de alta — se registró sin días de crédito. Dalo de alta para que le apliquen los días de crédito normales.">⚠️ no registrado</span>':'')+(f.estadoProrrateo==='n_aplica'?'<div style="font-size:10px;color:#888">gasto general (sin unidad)</div>':'')+'</td>'
-        +'<td class="num" style="'+negrita+'">'+(f.serie?f.serie+'-':'')+f.folio+'</td>'
+        +'<td class="num" style="'+negrita+'">'+(f.serie?f.serie+'-':'')+f.folio+(f.folioAutoAsignado?'<div style="font-size:10px;color:#888;font-weight:400" title="Este proveedor no trajo Folio en su CFDI — se usó el último tramo de su folio fiscal (UUID) para identificarla. Usa este mismo texto de concepto/referencia al hacer la transferencia.">💬 concepto transferencia: '+f.folio+'</div>':'')+'</td>'
         +'<td style="'+negrita+'">'+f.fechaEmision+'</td>'
         +'<td class="num r" style="'+negrita+'">'+fmt(f.total)+'</td>'
         +'<td>'+(vencido&&!bloqueada&&!pagada?'<span class="badge bg-red">⚠ Vencida '+f.fechaVencimiento+'</span>':'<span class="badge bg-green">'+f.fechaVencimiento+'</span>')+'</td>'
