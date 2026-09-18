@@ -174,7 +174,7 @@ window.onFBReady=function(cb){if(window._fbInit)cb();else window._fbCallbacks.pu
     if(!firebase.apps.length)firebase.initializeApp(cfg);
     var db=firebase.firestore();
     window.FB={
-      set:function(col,id,data){return db.collection(col).doc(id).set(data);},
+      set:function(col,id,data,options){return db.collection(col).doc(id).set(data,options);},
       get:async function(col,id){try{var s=await db.collection(col).doc(id).get();return s.exists?s.data():null;}catch(e){console.error('FB.get:',e);return null;}},
       del:function(col,id){return db.collection(col).doc(id).delete();},
       listen:function(col,id,cb){return db.collection(col).doc(id).onSnapshot(function(s){cb(s.exists?s.data():null);});},

@@ -1358,6 +1358,15 @@ async function _evaluarCandadosCxPServer(data) {
 // complemento y, de cada <Pago><DoctoRelacionado>, el UUID de la factura que
 // relaciona y el monto que le aplica. El emparejamiento real con la factura
 // en cxpFacturas se hace en _revisarBuzonComprasCore.
+
+// _folioDesdeUUID: mismo criterio que proveedores.html (folioDesdeUUID) — si
+// el proveedor no trae Folio en el CFDI (es un campo opcional), se usa el
+// último tramo del folio fiscal (UUID) como identificador legible.
+function _folioDesdeUUID(uuid) {
+  const partes = (uuid || '').split('-');
+  return (partes[partes.length - 1] || '').toUpperCase();
+}
+
 function _parseComplementoPagoServer(xmlText) {
   const { XMLParser } = require('fast-xml-parser');
   const parser = new XMLParser({ ignoreAttributes: false, attributeNamePrefix: '@_', removeNSPrefix: true });
@@ -1573,7 +1582,7 @@ function _revisarBuzonComprasCore(user, pass, apiKey) {
           proveedorId: ev.proveedor ? ev.proveedor.rfc : data.rfcEmisor,
           proveedorNombre: ev.proveedor ? (ev.proveedor.razonSocial || ev.proveedor.rfc) : (data.nombreEmisor || data.rfcEmisor),
           proveedorRegistrado: !!ev.proveedor,
-          serie: data.serie, folio: data.folio, tipoComprobante: data.tipoComprobante,
+          serie: data.serie, folio: data.folio || _folioDesdeUUID(data.uuid), folioAutoAsignado: !data.folio, tipoComprobante: data.tipoComprobante,
           metodoPago: data.metodoPago, formaPago: data.formaPago,
           subtotal: data.subtotal, totalImpuestos: data.traslados - data.retenciones, total: data.total,
           fechaEmision: data.fechaEmision, diasCredito: diasCredito, fechaVencimiento: fechaVencimiento,
