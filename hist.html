@@ -751,6 +751,16 @@ function buscar(){
     if(filtHasta&&l.llegada>filtHasta)return false;
     return true;
   });
+  // Orden: por fecha de CIERRE (la más reciente primero), no por número de
+  // liquidación — el número es un consecutivo POR OPERADOR, así que la
+  // liquidación #1 de un operador puede haberse cerrado hoy mismo y quedaba
+  // hasta abajo de la lista si se ordenaba por número.
+  filtrados.sort((a,b)=>{
+    const fa=a.fechaCierre||a.llegada||'';
+    const fb=b.fechaCierre||b.llegada||'';
+    if(fa!==fb)return fb<fa?-1:1;
+    return(b.num||0)-(a.num||0);
+  });
 
   $('countLiq').textContent=filtrados.length+' liquidaciones';
   const tb=$('tbHistorial');tb.innerHTML='';
