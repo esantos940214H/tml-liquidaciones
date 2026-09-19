@@ -1429,7 +1429,14 @@ function _extraerAdjuntosConZip(attachments) {
 async function _procesarMensajeCompras(rawBuffer, apiKey) {
   const { simpleParser } = require('mailparser');
   const parsed = await simpleParser(rawBuffer);
+  // TRAZA temporal: diagnóstico del caso "El correo no trae ningún XML
+  // adjunto" pese a que sí trae un .zip visible en el webmail — para ver
+  // qué recibe mailparser exactamente sin adivinar. Quitar una vez resuelto.
+  console.log('TRAZA _procesarMensajeCompras — asunto:', parsed.subject, '— adjuntos crudos:',
+    (parsed.attachments || []).map(function (a) { return { filename: a.filename, contentType: a.contentType, size: a.content ? a.content.length : 0 }; }));
   const attachmentsEfectivos = _extraerAdjuntosConZip(parsed.attachments);
+  console.log('TRAZA _procesarMensajeCompras — adjuntos efectivos (tras abrir zips):',
+    attachmentsEfectivos.map(function (a) { return { filename: a.filename, contentType: a.contentType, size: a.content ? a.content.length : 0 }; }));
   const xmlAdjunto = attachmentsEfectivos.find(function (a) {
     return (a.filename || '').toLowerCase().endsWith('.xml') || (a.contentType || '').toLowerCase().indexOf('xml') !== -1;
   });
