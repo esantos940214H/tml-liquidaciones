@@ -193,6 +193,16 @@ tr:hover td{background:#fafafa}
     <div id="buzonComprasWrap"></div>
   </div>
 
+  <!-- COMPLEMENTO DE PAGO (REP) MANUAL -->
+  <div class="card">
+    <div class="card-title">📎 Registrar complemento de pago (REP) manual <span class="info-tip">?<span class="info-tip-box">Úsalo solo si el correo del proveedor no se pudo procesar solo (ej. "El correo no trae ningún XML adjunto") y ya tienes el XML del complemento de pago (REP) a la mano — normalmente lo recibes por otro medio (WhatsApp, otro correo, etc.). Sube el XML aquí y se relaciona con la(s) factura(s) que mencione, igual que si lo hubiera procesado el buzón automático.</span></span></div>
+    <div class="field" style="margin-bottom:8px">
+      <label>Archivo XML del complemento de pago (REP)</label>
+      <input type="file" id="repXmlArchivo" accept=".xml" onchange="handleRepXmlManual(event)">
+    </div>
+    <div id="repManualInfo"></div>
+  </div>
+
   <!-- FACTURAS DE PROVEEDOR -->
   <div class="card">
     <div class="card-title">📄 Registrar factura de proveedor (CFDI)</div>
@@ -682,6 +692,67 @@ function parseCfdiProveedor(text){
     rfcEmisor:_facNorm(emisor.getAttribute('Rfc')),nombreEmisor:emisor.getAttribute('Nombre')||'',
     rfcReceptor:_facNorm(receptor.getAttribute('Rfc'))
   }};
+}
+
+// parseComplementoPagoCliente(text): mismo criterio que
+// _parseComplementoPagoServer en functions/index.js (usado por el buzón
+// automático) — aquí se repite del lado del navegador para poder registrar
+// un REP a mano cuando el correo automático falla. Un complemento de pago
+// (REP) no es una factura nueva: solo trae, por cada pago, la lista de
+// facturas que liquida (DoctoRelacionado, identificadas por su UUID).
+function parseComplementoPagoCliente(text){
+  var doc=new DOMParser().parseFromString(text,'text/xml');
+  var comp=doc.querySelector('Comprobante');
+  if(!comp)return{ok:false,error:'No es un CFDI válido (no se encontró el nodo Comprobante).'};
+  var tfd=doc.querySelector('TimbreFiscalDigital');
+  if(!tfd||!doc.querySelector('DoctoRelacionado'))return{ok:false,error:'El XML no trae Timbre Fiscal Digital o ningún DoctoRelacionado — ¿seguro que es un complemento de pago (REP) y no una factura normal?'};
+  var doctos=[];
+  doc.querySelectorAll('DoctoRelacionado').forEach(function(d){
+    doctos.push({uuid:_facNorm(d.getAttribute('IdDocumento')),impPagado:parseFloat(d.getAttribute('ImpPagado')||0)});
+  });
+  return{ok:true,data:{uuid:_facNorm(tfd.getAttribute('UUID')),doctos:doctos}};
+}
+
+async function handleRepXmlManual(ev){
+  var file=(ev.target.files||[])[0];
+  if(!file)return;
+  var info=$('repManualInfo');
+  info.innerHTML='<div class="alert alert-info">⏳ Leyendo el complemento de pago...</div>';
+  try{
+    var texto=await file.text();
+    var r=parseComplementoPagoCliente(texto);
+    if(!r.ok){info.innerHTML='<div class="alert alert-warn">⚠️ '+r.error+'</div>';return;}
+    var url=null;
+    try{url=await TMLComprobantes.subirXML('comprobantes/proveedores/pagos/rep-'+r.data.uuid+'.xml',texto);}
+    catch(e){console.error('handleRepXmlManual: no se pudo subir el XML a Storage:',e);}
+    var relacionadas=[],yaTenian=[],noEncontradas=[];
+    for(var i=0;i<r.data.doctos.length;i++){
+      var docto=r.data.doctos[i];
+      var fac=await window.FB.get('cxpFacturas',docto.uuid);
+      if(!fac){noEncontradas.push(docto.uuid);continue;}
+      if(fac.repRecibido){yaTenian.push(docto.uuid);continue;}
+      await window.FB.set('cxpFacturas',docto.uuid,{repRecibido:true,repXmlURL:url,repRecibidoEn:new Date().toISOString()},{merge:true});
+      relacionadas.push((fac.serie?fac.serie+'-':'')+fac.folio+' — '+(fac.proveedorNombre||''));
+      // Igual que el buzón automático: si el proveedor estaba bloqueado por
+      // REP pendiente y esta era su última factura sin complemento, se
+      // desbloquea solo.
+      if(fac.proveedorId){
+        var prov=await window.FB.get('proveedores',fac.proveedorId);
+        if(prov&&prov.bloqueadoPorRep){
+          var siguenPendientes=FACTURAS.some(function(f){return f.proveedorId===fac.proveedorId&&f.id!==docto.uuid&&f.estadoPago==='pagada'&&!f.repRecibido;});
+          if(!siguenPendientes)await window.FB.set('proveedores',fac.proveedorId,{bloqueadoPorRep:false},{merge:true});
+        }
+      }
+    }
+    var html='';
+    if(relacionadas.length)html+='<div class="alert alert-ok">✅ Complemento relacionado con: '+relacionadas.join(', ')+'.</div>';
+    if(yaTenian.length)html+='<div class="alert alert-info">ℹ️ '+yaTenian.length+' de las facturas mencionadas ya tenían su complemento registrado — no se tocaron.</div>';
+    if(noEncontradas.length)html+='<div class="alert alert-warn">⚠️ No se encontró ninguna factura registrada con UUID '+noEncontradas.join(', ')+' — revisa si esa factura sigue pendiente de registrar.</div>';
+    if(!relacionadas.length&&!yaTenian.length)html='<div class="alert alert-warn">⚠️ No se pudo relacionar con ninguna factura registrada.</div>';
+    info.innerHTML=html;
+    $('repXmlArchivo').value='';
+    await cargarYRenderFacturas(true);
+  }catch(e){console.error('handleRepXmlManual:',e);info.innerHTML='<div class="alert alert-warn">⚠️ Error: '+e.message+'</div>';}
 }
 
 // Candados de Fase 1 — ver plan: UUID único, tipo I/E, receptor=TML,
