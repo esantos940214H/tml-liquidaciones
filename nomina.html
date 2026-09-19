@@ -221,6 +221,9 @@ window.onFBReady=function(cb){if(window._fbInit)cb();else window._fbCallbacks.pu
 
 <script>
 let OPERADORES=[];
+// Todos los operadores, activos o dados de baja — para el filtro
+// "Operador" (el único select de operador en este módulo es de filtro).
+let OPERADORES_TODOS=[];
 // Nombres de TODOS los operadores (activos o no, con unidad o sin ella) —
 // respaldo para seguir mostrando el nombre en recibos viejos de alguien
 // que después fue dado de baja o se quedó sin unidad (ver
@@ -404,9 +407,9 @@ function initSelects(){
     var s=$(id);if(!s)return;
     // value=operadorId (identidad PERMANENTE), no la unidad actual — así la
     // nómina sigue ligada a la persona aunque lo reasignen de unidad.
-    OPERADORES.forEach(function(op){
+    OPERADORES_TODOS.forEach(function(op){
       var o=document.createElement('option');
-      o.value=op.operadorId;o.textContent=op.clave+' · '+op.nombre;
+      o.value=op.operadorId;o.textContent=op.clave+' · '+op.nombre+(op.activo===false?' (baja)':'');
       s.appendChild(o);
     });
   });
@@ -427,6 +430,7 @@ function initSelects(){
 }
 window.onFBReady(async function(){
   OPERADORES=await window.cargarOperadores();
+  OPERADORES_TODOS=await window.cargarOperadoresTodos();
   NOMBRES_OP=await window.cargarNombresOperadores();
   initSelects();
   var data=await window.FB.get('estado','nominaDB');
