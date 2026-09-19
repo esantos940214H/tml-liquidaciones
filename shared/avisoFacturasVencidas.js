@@ -6,13 +6,10 @@
 // proveedores.html, donde ya se ve la lista completa, y operador.html, que es
 // para operadores, no para quien paga facturas).
 //
-// Para no ser molesto (pedido explícito: "será molesto que cada que cambie
-// de ventana me aparezca ese mensaje"), se muestra COMO MÁXIMO una vez por
-// día — se guarda la fecha del último aviso en una cookie de dominio
-// compartido (igual que "tml_user", domain=.mudanzastml.mx, así que un solo
-// aviso ya cuenta para TODOS los subdominios ese día, no uno por módulo). Si
-// ya no quedan facturas vencidas (se pagaron), simplemente no aparece nada,
-// sin importar la cookie.
+// Pedido explícito: debe aparecer cada vez que se entra a un módulo distinto
+// mientras sigan existiendo facturas vencidas sin pagar — sin límite de una
+// vez al día. En cuanto se pague o venza el plazo de todas, deja de
+// aparecer solo (no hay nada que "apagar" a mano).
 // ══════════════════════════════════════════════════════════════════════════
 (function(){
   'use strict';
@@ -25,27 +22,16 @@
     var m=document.cookie.match('(^|;\\s*)'+name+'=([^;]*)');
     return m?decodeURIComponent(m[2]):null;
   }
-  function tmlSetCookie(name,value,days){
-    var expires='';
-    if(days){var d=new Date();d.setTime(d.getTime()+days*24*60*60*1000);expires=';expires='+d.toUTCString();}
-    document.cookie=name+'='+encodeURIComponent(value)+expires+';domain=.mudanzastml.mx;path=/;SameSite=Lax;Secure';
-  }
   function usuarioSesionTML(){
     try{return JSON.parse(tmlGetCookie('tml_user')||'null');}catch(e){return null;}
   }
   function yaVencioLimite(fechaLimiteISO){
     return !!fechaLimiteISO&&new Date(fechaLimiteISO).getTime()<Date.now();
   }
-  function hoyStr(){
-    var d=new Date();
-    return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
-  }
 
   var u=usuarioSesionTML();
   if(!u)return; // sin sesión reconocida (pantalla de login) — no hay a quién avisarle
   if(!u.esAdmin&&(!u.permisos||!u.permisos.proveedores))return; // solo a quien puede ver Proveedores
-
-  if(tmlGetCookie('tml_avisoVencidasFecha')===hoyStr())return; // ya se mostró hoy
 
   if(!window.firebase||!firebase.firestore){console.error('avisoFacturasVencidas: falta cargar firebase-app-compat.js y firebase-firestore-compat.js antes de este script.');return;}
   if(!firebase.apps.length)firebase.initializeApp(FIREBASE_CONFIG);
@@ -61,8 +47,6 @@
       if(!bloqueada&&!pagada&&yaVencioLimite(f.fechaVencimiento))vencidas.push(f);
     });
     if(!vencidas.length)return;
-
-    tmlSetCookie('tml_avisoVencidasFecha',hoyStr(),1);
 
     var total=vencidas.reduce(function(s,f){return s+(f.total||0);},0);
     var totalFmt='$'+total.toLocaleString('es-MX',{minimumFractionDigits:2,maximumFractionDigits:2});
