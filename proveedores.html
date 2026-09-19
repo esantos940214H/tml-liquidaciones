@@ -193,16 +193,6 @@ tr:hover td{background:#fafafa}
     <div id="buzonComprasWrap"></div>
   </div>
 
-  <!-- COMPLEMENTO DE PAGO (REP) MANUAL -->
-  <div class="card">
-    <div class="card-title">📎 Registrar complemento de pago (REP) manual <span class="info-tip">?<span class="info-tip-box">Úsalo solo si el correo del proveedor no se pudo procesar solo (ej. "El correo no trae ningún XML adjunto") y ya tienes el XML del complemento de pago (REP) a la mano — normalmente lo recibes por otro medio (WhatsApp, otro correo, etc.). Sube el XML aquí y se relaciona con la(s) factura(s) que mencione, igual que si lo hubiera procesado el buzón automático.</span></span></div>
-    <div class="field" style="margin-bottom:8px">
-      <label>Archivo XML del complemento de pago (REP)</label>
-      <input type="file" id="repXmlArchivo" accept=".xml" onchange="handleRepXmlManual(event)">
-    </div>
-    <div id="repManualInfo"></div>
-  </div>
-
   <!-- FACTURAS DE PROVEEDOR -->
   <div class="card">
     <div class="card-title">📄 Registrar factura de proveedor (CFDI)</div>
@@ -713,10 +703,10 @@ function parseComplementoPagoCliente(text){
   return{ok:true,data:{uuid:_facNorm(tfd.getAttribute('UUID')),doctos:doctos}};
 }
 
-async function handleRepXmlManual(ev){
+async function handleRepXmlManual(ev,uuid){
   var file=(ev.target.files||[])[0];
   if(!file)return;
-  var info=$('repManualInfo');
+  var info=document.getElementById('repInfo_'+uuid);
   info.innerHTML='<div class="alert alert-info">⏳ Leyendo el complemento de pago...</div>';
   try{
     var texto=await file.text();
@@ -750,7 +740,6 @@ async function handleRepXmlManual(ev){
     if(noEncontradas.length)html+='<div class="alert alert-warn">⚠️ No se encontró ninguna factura registrada con UUID '+noEncontradas.join(', ')+' — revisa si esa factura sigue pendiente de registrar.</div>';
     if(!relacionadas.length&&!yaTenian.length)html='<div class="alert alert-warn">⚠️ No se pudo relacionar con ninguna factura registrada.</div>';
     info.innerHTML=html;
-    $('repXmlArchivo').value='';
     await cargarYRenderFacturas(true);
   }catch(e){console.error('handleRepXmlManual:',e);info.innerHTML='<div class="alert alert-warn">⚠️ Error: '+e.message+'</div>';}
 }
@@ -960,6 +949,11 @@ let _pagoExtraido={};
 
 function togglePagoForm(uuid){
   var el=document.getElementById('pagoForm_'+uuid);
+  if(!el)return;
+  el.style.display=(el.style.display==='none'?'table-row':'none');
+}
+function toggleRepForm(uuid){
+  var el=document.getElementById('repForm_'+uuid);
   if(!el)return;
   el.style.display=(el.style.display==='none'?'table-row':'none');
 }
@@ -1409,7 +1403,7 @@ function renderFacturas(){
         +'<td class="num r" style="'+negrita+'">'+fmt(f.total)+'</td>'
         +'<td>'+(vencido&&!bloqueada&&!pagada?'<span class="badge bg-red">⚠ Vencida '+f.fechaVencimiento+'</span>':'<span class="badge bg-green">'+f.fechaVencimiento+'</span>')+'</td>'
         +'<td>'+(bloqueada?'<span class="badge bg-red">🚫 PUE sin pago</span>':(pagada?'<span class="badge bg-green">✅ Pagada</span>':'<span class="badge bg-yellow">⏳ Pendiente de pago ('+(f.metodoPago||'')+')</span>'))+'</td>'
-        +'<td>'+(pagada?'<button class="btn btn-out btn-sm" onclick="window.open(\''+(f.comprobanteURL||'')+'\',\'_blank\')">👁️ Ver</button>'+(f.repRecibido?' <span class="badge bg-green" title="Complemento de pago recibido">✅ REP</span>':(f.repFechaLimite?' <span class="badge bg-yellow" title="Límite para recibir el complemento de pago">🔔 REP al '+f.repFechaLimite+'</span>':''))
+        +'<td>'+(pagada?'<button class="btn btn-out btn-sm" onclick="window.open(\''+(f.comprobanteURL||'')+'\',\'_blank\')">👁️ Ver</button>'+(f.repRecibido?' <span class="badge bg-green" title="Complemento de pago recibido">✅ REP</span>':(f.repFechaLimite?' <span class="badge bg-yellow" title="Límite para recibir el complemento de pago">🔔 REP al '+f.repFechaLimite+'</span> <button class="btn btn-out btn-sm" onclick="toggleRepForm(\''+f.id+'\')">📎 Subir REP</button>':''))
           :'<button class="btn btn-out btn-sm" onclick="togglePagoForm(\''+f.id+'\')">➕ Pago</button>')+'</td>'
         +'<td>'+(f.estadoProrrateo==='n_aplica'?'<span style="color:#888;font-size:11px">— gasto general</span>':(f.estadoProrrateo==='pendiente_prorrateo'?'<button class="btn btn-red btn-sm" onclick="iniciarProrrateoDeFactura(\''+f.id+'\')">⚖️ Prorratear</button>':(tieneProrrateo?'<button class="btn btn-out btn-sm" onclick="toggleProrrateoDetalle(\''+f.id+'\')">👁️ '+f.prorrateo.length+' unidad(es)</button>':'<span style="color:#c1121f;font-size:11px">sin prorrateo</span>')))+'</td>'
         +'<td><button class="btn btn-out btn-sm" onclick="eliminarFacturaUI(\''+f.id+'\')">🗑️ Eliminar</button></td>'
@@ -1419,6 +1413,13 @@ function renderFacturas(){
           +'<div style="font-weight:700;margin-bottom:6px">💳 Registrar pago — sube el comprobante (foto o PDF de la transferencia/depósito)</div>'
           +'<input type="file" accept="image/*,.pdf" onchange="handlePagoArchivo(event,\''+f.id+'\')">'
           +'<div id="pagoInfo_'+f.id+'" style="margin-top:8px"></div>'
+          +'</td></tr>';
+      }
+      if(pagada&&!f.repRecibido&&f.repFechaLimite){
+        fila+='<tr id="repForm_'+f.id+'" style="display:none;background:#eef4f8"><td colspan="9" style="padding:10px 20px">'
+          +'<div style="font-weight:700;margin-bottom:6px">📎 Registrar complemento de pago (REP) — sube el XML. Úsalo solo si el correo automático del proveedor falló; se relaciona por UUID con la(s) factura(s) que mencione (puede ser esta u otra).</div>'
+          +'<input type="file" accept=".xml" onchange="handleRepXmlManual(event,\''+f.id+'\')">'
+          +'<div id="repInfo_'+f.id+'" style="margin-top:8px"></div>'
           +'</td></tr>';
       }
       if(tieneProrrateo){
