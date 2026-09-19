@@ -304,6 +304,10 @@ window.onFBReady=function(cb){if(window._fbInit)cb();else window._fbCallbacks.pu
 
 <script>
 let OPERADORES=[];
+// Todos los operadores, activos o dados de baja — solo para el filtro
+// "Operador" (ver initSelects), nunca para el select de captura ("mOp"),
+// que debe seguir mostrando solo a quien puede recibir anticipos hoy.
+let OPERADORES_TODOS=[];
 // true por default (no rompe a nadie que ya use Anticipos hoy) — solo se
 // pone en false para un usuario con el custom claim "ant_solo_ver":true (ver
 // admin/crear-usuarios.js), que entra a VER pero no puede subir archivos,
@@ -540,13 +544,19 @@ function initSelects(){
     const s=$(id);if(!s)return;
     // Limpiar opciones extras
     while(s.options.length>1)s.remove(1);
+    // "mOp" (captura de un anticipo NUEVO) solo debe ofrecer operadores
+    // activos. "filtOp" (filtro para BUSCAR anticipos ya existentes) debe
+    // incluir también a los dados de baja — sus anticipos viejos nunca se
+    // tocan al darlos de baja, pero si no aparecen aquí no hay forma de
+    // filtrarlos por nombre (caso real: parecía que se le habían borrado).
     // El value es operadorId (identidad PERMANENTE), no la unidad actual —
     // así los anticipos siguen ligados a la persona aunque lo reasignen de
     // unidad después. El texto sí muestra la unidad actual, es solo para
     // que se reconozca en la lista.
-    OPERADORES.forEach(op=>{
+    const lista=id==='filtOp'?OPERADORES_TODOS:OPERADORES;
+    lista.forEach(op=>{
       const o=document.createElement('option');
-      o.value=op.operadorId;o.textContent=op.clave+' · '+op.nombre;
+      o.value=op.operadorId;o.textContent=op.clave+' · '+op.nombre+(op.activo===false?' (baja)':'');
       s.appendChild(o);
     });
   });
@@ -568,6 +578,7 @@ function initSelects(){
 // Firebase
 window.onFBReady(async function(){
   OPERADORES=await window.cargarOperadores();
+  OPERADORES_TODOS=await window.cargarOperadoresTodos();
   NOMBRES_OP=await window.cargarNombresOperadores();
   ASIGNACIONES=await window.cargarAsignaciones();
   initSelects();

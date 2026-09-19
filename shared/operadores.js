@@ -147,6 +147,45 @@
     return _cachePromise;
   };
 
+  var _cacheTodosPromise = null;
+
+  // cargarOperadoresTodos(forzar): igual que cargarOperadores(), pero SIN
+  // filtrar por activo ni por unidad asignada — para los filtros de
+  // "Operador" en pantallas que buscan/consultan HISTORIA (Anticipos,
+  // Ingresos, Historial, Nómina, etc.), donde alguien dado de baja debe
+  // seguir apareciendo para poder filtrar sus registros viejos (que nunca
+  // se tocan al dar de baja) — a diferencia de cargarOperadores(), que es
+  // para los selects de captura de un anticipo/ingreso/liquidación NUEVO,
+  // donde SÍ debe estar excluido. Caso real que motivó esto: un operador
+  // dado de baja "desapareció" del filtro de Anticipos/Ingresos y parecía
+  // que se le habían borrado sus anticipos e ingresos — nunca se tocaron,
+  // solo ya no aparecía la opción para buscarlo por nombre.
+  window.cargarOperadoresTodos = function (forzar) {
+    if (_cacheTodosPromise && !forzar) return _cacheTodosPromise;
+    _cacheTodosPromise = (async function () {
+      var _db = db();
+      if (!_db) return [];
+      var lista = [];
+      try {
+        var snap = await _db.collection('operadores').get();
+        snap.forEach(function (d) {
+          var o = d.data();
+          lista.push({
+            unidad: o.unidadActual != null ? o.unidadActual : null,
+            operadorId: parseInt(d.id),
+            nombre: o.nombre || '',
+            comision: o.comision != null ? o.comision : 12,
+            clave: o.clave || '',
+            activo: o.activo !== false
+          });
+        });
+      } catch (e) { console.error('shared/operadores.js: no se pudo cargar operadores (todos):', e); }
+      lista.sort(function (a, b) { return (a.nombre || '').localeCompare(b.nombre || ''); });
+      return lista;
+    })();
+    return _cacheTodosPromise;
+  };
+
   var _cacheNombresPromise = null;
 
   // cargarNombresOperadores(forzar): mapa {operadorId: nombre} de TODOS los
