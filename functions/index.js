@@ -1398,10 +1398,39 @@ function _parseComplementoPagoServer(xmlText) {
   return { ok: true, data: { uuid: (tfd['@_UUID'] || '').toUpperCase(), doctos: doctos } };
 }
 
+// _extraerAdjuntosConZip: algunos proveedores mandan el XML y el PDF
+// empaquetados juntos en un .zip en vez de como adjuntos sueltos — antes el
+// buzón no los abría, así que el correo se quedaba marcado "El correo no
+// trae ningún XML adjunto" y la factura nunca se registraba sola. Aquí se
+// reemplaza cada adjunto .zip por los archivos que trae dentro (aplanado,
+// un solo nivel — no se espera zip-dentro-de-zip), para que el resto de la
+// función (que busca .xml/.pdf) siga funcionando igual sin saber si vino
+// suelto o empaquetado.
+function _extraerAdjuntosConZip(attachments) {
+  const AdmZip = require('adm-zip');
+  const resultado = [];
+  (attachments || []).forEach(function (a) {
+    const esZip = (a.filename || '').toLowerCase().endsWith('.zip') || (a.contentType || '').toLowerCase().indexOf('zip') !== -1;
+    if (!esZip) { resultado.push(a); return; }
+    try {
+      const zip = new AdmZip(a.content);
+      zip.getEntries().forEach(function (entry) {
+        if (entry.isDirectory) return;
+        resultado.push({ filename: entry.entryName, contentType: '', content: entry.getData() });
+      });
+    } catch (e) {
+      console.error('_extraerAdjuntosConZip: no se pudo abrir el zip "' + (a.filename || '') + '":', e);
+      resultado.push(a); // se deja el .zip tal cual — el correo queda "pendiente" en vez de perderse
+    }
+  });
+  return resultado;
+}
+
 async function _procesarMensajeCompras(rawBuffer, apiKey) {
   const { simpleParser } = require('mailparser');
   const parsed = await simpleParser(rawBuffer);
-  const xmlAdjunto = (parsed.attachments || []).find(function (a) {
+  const attachmentsEfectivos = _extraerAdjuntosConZip(parsed.attachments);
+  const xmlAdjunto = attachmentsEfectivos.find(function (a) {
     return (a.filename || '').toLowerCase().endsWith('.xml') || (a.contentType || '').toLowerCase().indexOf('xml') !== -1;
   });
   const base = {
@@ -1435,7 +1464,7 @@ async function _procesarMensajeCompras(rawBuffer, apiKey) {
   // unidad reconocible (la representación impresa normalmente no trae un
   // desglose renglón-por-renglón como el reporte de monitoreo, así que en la
   // práctica solo "gana" el PDF que de verdad es el desglose).
-  const pdfsAdjuntos = (parsed.attachments || []).filter(function (a) {
+  const pdfsAdjuntos = attachmentsEfectivos.filter(function (a) {
     return (a.filename || '').toLowerCase().endsWith('.pdf') || (a.contentType || '').toLowerCase().indexOf('pdf') !== -1;
   });
   let renglonesJustificacion = [];
