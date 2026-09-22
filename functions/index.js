@@ -2419,6 +2419,109 @@ function _parseFacturaFleteXMLServer(xmlText) {
   };
 }
 
+// _parseExcelCartaPorteServer(buffer): lee la "Plantilla Masiva" de
+// mercancías/ubicaciones de Carta Porte (mismo formato que usa Facturo por
+// Ti) y regresa { tu, ubicaciones, mercancias, totalDistRec } listo para
+// meterse en complements[0].data de Facturapi — o null si el archivo no
+// tiene esta forma (para que el que llama lo ignore en silencio, igual que
+// con los XML que no son factura de flete).
+// Fila 1 = títulos de grupo (ORIGEN/DESTINO), fila 2 = encabezados reales,
+// los datos empiezan en la fila 3. Los datos de ubicación/pedido SOLO
+// vienen en el primer renglón de datos — cada renglón siguiente es una
+// mercancía distinta del MISMO pedido (columnas de ubicación en blanco).
+// OJO: el Peso Bruto/Neto Total que trae el encabezado del Excel NO
+// siempre coincide con la suma real de "Peso en KG" de las mercancías (caso
+// real verificado: 323 kg de encabezado vs. 7,080 kg sumando renglones,
+// mismo Excel) — Facturapi exige que coincidan exacto, así que aquí se
+// IGNORA el total del encabezado y se calcula sumando las mercancías.
+function _parseExcelCartaPorteServer(buffer) {
+  const XLSX = require('xlsx');
+  let wb;
+  try { wb = XLSX.read(buffer, { type: 'buffer' }); } catch (e) { return null; }
+  const ws = wb.Sheets[wb.SheetNames[0]];
+  if (!ws) return null;
+  const filas = XLSX.utils.sheet_to_json(ws, { header: 1, defval: null, raw: true });
+  const datos = filas.slice(2).filter(function (f) { return f && f.some(function (v) { return v != null && v !== ''; }); });
+  if (!datos.length) return null;
+  const cab = datos[0];
+  const tu = _normalizarOrdenEmbarqueServer(cab[0]);
+  if (!tu) return null;
+
+  const _txt = function (v) { return (v == null ? '' : String(v)).trim(); };
+  const _pad = function (v, n) { const s = _txt(v); return s ? s.padStart(n, '0') : ''; };
+  const _fecha = function (v) {
+    const s = _txt(v);
+    const m = /^(\d{4})[.\-](\d{2})[.\-](\d{2})T(.+)$/.exec(s);
+    return m ? (m[1] + '-' + m[2] + '-' + m[3] + 'T' + m[4]) : s;
+  };
+  // "DIF" (Distrito Federal, código legado) → "CMX" en el catálogo c_Estado
+  // actual del SAT. Única discrepancia conocida entre este Excel y lo que
+  // exige el SAT — si aparece otra, agregar aquí.
+  const _estado = function (v) { const s = _txt(v).toUpperCase(); return s === 'DIF' ? 'CMX' : s; };
+
+  const ubicaciones = [
+    {
+      TipoUbicacion: 'Origen', IDUbicacion: _txt(cab[3]) || 'OR000001',
+      RFCRemitenteDestinatario: _txt(cab[5]).toUpperCase(),
+      NombreRemitenteDestinatario: _txt(cab[4]),
+      FechaHoraSalidaLlegada: _fecha(cab[14]),
+      Domicilio: {
+        Calle: _txt(cab[12]), NumeroExterior: _txt(cab[13]),
+        Colonia: _pad(cab[11], 4), Localidad: _pad(cab[8], 2), Municipio: _pad(cab[10], 3),
+        Estado: _estado(cab[7]), Pais: _txt(cab[6]).toUpperCase() || 'MEX', CodigoPostal: _pad(cab[9], 5)
+      }
+    },
+    {
+      TipoUbicacion: 'Destino', IDUbicacion: _txt(cab[19]) || 'DE000001',
+      RFCRemitenteDestinatario: _txt(cab[21]).toUpperCase(),
+      NombreRemitenteDestinatario: _txt(cab[20]),
+      DistanciaRecorrida: parseFloat(cab[2]) || 0,
+      FechaHoraSalidaLlegada: _fecha(cab[15]),
+      Domicilio: {
+        Calle: _txt(cab[28]), NumeroExterior: _txt(cab[29]),
+        Colonia: _pad(cab[27], 4), Localidad: _pad(cab[24], 2), Municipio: _pad(cab[26], 3),
+        Estado: _estado(cab[23]), Pais: _txt(cab[22]).toUpperCase() || 'MEX', CodigoPostal: _pad(cab[25], 5)
+      }
+    }
+  ];
+
+  const moneda = _txt(cab[30]).toUpperCase() || 'MXN';
+  const mercancia = [];
+  datos.forEach(function (f) {
+    const bienesTransp = f[32];
+    if (bienesTransp == null || bienesTransp === '') return;
+    const peligroso = /^S/i.test(_txt(f[37]) || 'NO');
+    const item = {
+      BienesTransp: _txt(bienesTransp),
+      Descripcion: _txt(f[33]),
+      Cantidad: parseFloat(f[34]) || 0,
+      ClaveUnidad: _txt(f[35]),
+      Unidad: _txt(f[35]),
+      PesoEnKg: parseFloat(f[36]) || 0,
+      ValorMercancia: 0,
+      Moneda: moneda,
+      MaterialPeligroso: peligroso ? 'Sí' : 'No'
+    };
+    if (peligroso && _txt(f[38]) && _txt(f[38]) !== '-') item.CveMaterialPeligroso = _txt(f[38]);
+    mercancia.push(item);
+  });
+  if (!mercancia.length) return null;
+  const pesoBrutoTotal = mercancia.reduce(function (s, m) { return s + (m.PesoEnKg || 0); }, 0);
+
+  return {
+    tu: tu,
+    ubicaciones: ubicaciones,
+    mercancias: {
+      PesoBrutoTotal: parseFloat(pesoBrutoTotal.toFixed(3)),
+      UnidadPeso: _txt(cab[18]).toUpperCase() || 'KGM',
+      PesoNetoTotal: parseFloat(pesoBrutoTotal.toFixed(3)),
+      NumTotalMercancias: mercancia.length,
+      Mercancia: mercancia
+    },
+    totalDistRec: parseFloat(cab[1]) || parseFloat(cab[2]) || 0
+  };
+}
+
 // _sustituirFacturaFleteServer(fac): busca EXACTAMENTE un pedido pendiente
 // en fletesDB cuyo T.U./pedido aparezca en los Conceptos del XML (mismo
 // criterio "contiene" que intentarSustituirFletePorXML del lado cliente en
@@ -2495,6 +2598,7 @@ async function _sustituirFacturaFleteServer(fac) {
 function _revisarBuzonPedidosCore(user, pass, apiKey) {
   const Imap = require('imap');
   const resultadosFacturas = [];
+  const resultadosExcelCartaPorte = [];
   let uidsFetched = [];
   return new Promise(function (resolveTodo, rejectTodo) {
     const imap = new Imap({ user: user, password: pass, host: 'imap.ionos.mx', port: 993, tls: true, connTimeout: 20000, authTimeout: 20000 });
@@ -2547,6 +2651,39 @@ function _revisarBuzonPedidosCore(user, pass, apiKey) {
                       }
                     }
                     if (eraFactura) return;
+                    // También puede traer el Excel de mercancías/ubicaciones
+                    // de Carta Porte (ver _parseExcelCartaPorteServer) — si
+                    // trae uno reconocible, se matchea contra el pedido
+                    // pendiente con ese mismo T.U. y el correo tampoco se
+                    // manda al extractor de pedidos (no es una tabla de
+                    // pedidos nuevos, es el Excel de uno que ya existe).
+                    const xlsxAdjuntos = (parsed.attachments || []).filter(function (a) {
+                      return (a.filename || '').toLowerCase().endsWith('.xlsx');
+                    });
+                    let eraExcelCartaPorte = false;
+                    for (const adjX of xlsxAdjuntos) {
+                      let cp;
+                      try { cp = _parseExcelCartaPorteServer(adjX.content); }
+                      catch (eParse) { console.error('revisarBuzonPedidos: error leyendo Excel de Carta Porte:', eParse); continue; }
+                      if (!cp) continue;
+                      eraExcelCartaPorte = true;
+                      try {
+                        const ref = db.collection('fletesDB').doc(cp.tu);
+                        const snapPedido = await ref.get();
+                        if (!snapPedido.exists) {
+                          resultadosExcelCartaPorte.push({ tu: cp.tu, ok: false, motivo: 'No hay ningún pedido pendiente con ese T.U.' });
+                          continue;
+                        }
+                        await ref.set({
+                          cartaPorteExcel: { ubicaciones: cp.ubicaciones, mercancias: cp.mercancias, totalDistRec: cp.totalDistRec, cargadoEn: new Date().toISOString() }
+                        }, { merge: true });
+                        resultadosExcelCartaPorte.push({ tu: cp.tu, ok: true });
+                      } catch (eSet) {
+                        console.error('revisarBuzonPedidos: error guardando Excel de Carta Porte:', eSet);
+                        resultadosExcelCartaPorte.push({ tu: cp.tu, ok: false, motivo: eSet.message || String(eSet) });
+                      }
+                    }
+                    if (eraExcelCartaPorte) return;
                     const r = await _procesarMensajePedidos(raw, apiKey);
                     encontrados.push(Object.assign({ error: null, revisadoEn: new Date().toISOString() }, r));
                   } catch (e) {
@@ -2671,6 +2808,11 @@ function _revisarBuzonPedidosCore(user, pass, apiKey) {
       pendientesRevision: resultadosFacturas.filter(function (r) { return !r.ok; }).length,
       detalle: resultadosFacturas
     };
+    encontrados._excelCartaPorte = {
+      matcheados: resultadosExcelCartaPorte.filter(function (r) { return r.ok; }).length,
+      sinPedido: resultadosExcelCartaPorte.filter(function (r) { return !r.ok; }).length,
+      detalle: resultadosExcelCartaPorte
+    };
     // Hasta aquí, todo lo que se sacó de estos correos ya quedó guardado en
     // Firestore (pedidos registrados, provisionales de flete, facturas de
     // flete sustituidas, o encolado en pendientes de revisión) — recién
@@ -2690,7 +2832,9 @@ exports.revisarBuzonPedidos = onRequest(
         pendientesRevision: encontrados._totalPendientes || 0, ingresosProvisionales: encontrados._totalProvisionales || 0,
         otrasTransportistasDescartados: encontrados._otrasTransportistasDescartados || 0,
         facturasFleteRegistradas: (encontrados._facturasFlete || {}).registradas || 0,
-        facturasFletePendientesRevision: (encontrados._facturasFlete || {}).pendientesRevision || 0
+        facturasFletePendientesRevision: (encontrados._facturasFlete || {}).pendientesRevision || 0,
+        excelCartaPorteMatcheados: (encontrados._excelCartaPorte || {}).matcheados || 0,
+        excelCartaPorteSinPedido: (encontrados._excelCartaPorte || {}).sinPedido || 0
       });
     } catch (e) {
       console.error('revisarBuzonPedidos:', e);
@@ -2711,6 +2855,8 @@ exports.revisarBuzonPedidosProgramado = onSchedule(
         otrasTransportistasDescartados: encontrados._otrasTransportistasDescartados || 0,
         facturasFleteRegistradas: (encontrados._facturasFlete || {}).registradas || 0,
         facturasFletePendientesRevision: (encontrados._facturasFlete || {}).pendientesRevision || 0,
+        excelCartaPorteMatcheados: (encontrados._excelCartaPorte || {}).matcheados || 0,
+        excelCartaPorteSinPedido: (encontrados._excelCartaPorte || {}).sinPedido || 0,
         error: null
       });
     } catch (e) {

@@ -2243,7 +2243,7 @@ async function revisarBuzonPedidosAhora(){
     var r=await fetch(FUNCTION_URL_REVISAR_BUZON_PEDIDOS,{method:'POST'});
     var data=await r.json();
     if(data.error)throw new Error(data.error);
-    $('buzonPedidosInfo').innerHTML='<div class="alert alert-ok">✅ '+data.correosNuevos+' correo(s) nuevo(s)'+(data.pedidosRegistrados?' — '+data.pedidosRegistrados+' pedido(s) se registraron solos':'')+(data.ingresosProvisionales?' — '+data.ingresosProvisionales+' ya aparecen como ingreso provisional':'')+(data.pendientesRevision?' — '+data.pendientesRevision+' quedaron pendientes de revisar':'')+'.</div>';
+    $('buzonPedidosInfo').innerHTML='<div class="alert alert-ok">✅ '+data.correosNuevos+' correo(s) nuevo(s)'+(data.pedidosRegistrados?' — '+data.pedidosRegistrados+' pedido(s) se registraron solos':'')+(data.ingresosProvisionales?' — '+data.ingresosProvisionales+' ya aparecen como ingreso provisional':'')+(data.excelCartaPorteMatcheados?' — '+data.excelCartaPorteMatcheados+' Excel de Carta Porte se enlazaron a su pedido':'')+(data.excelCartaPorteSinPedido?' — ⚠️ '+data.excelCartaPorteSinPedido+' Excel de Carta Porte sin pedido pendiente con ese T.U.':'')+(data.pendientesRevision?' — '+data.pendientesRevision+' quedaron pendientes de revisar':'')+'.</div>';
     await cargarCorreosPendientesPedidos();
     await cargarYRenderFletesPendientes();
   }catch(e){
