@@ -10,7 +10,8 @@
     "mailparser": "^3.7.1",
     "fast-xml-parser": "^4.5.0",
     "nodemailer": "^6.9.15",
-    "adm-zip": "^0.5.16"
+    "adm-zip": "^0.5.16",
+    "xlsx": "^0.18.5"
   },
   "private": true
 }
