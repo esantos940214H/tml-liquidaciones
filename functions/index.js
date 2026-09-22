@@ -2461,7 +2461,7 @@ function _parseExcelCartaPorteServer(buffer) {
 
   const ubicaciones = [
     {
-      TipoUbicacion: 'Origen', IDUbicacion: _txt(cab[3]) || 'OR000001',
+      TipoUbicacion: 'Origen', IDUbicacion: 'OR000001', // el ID que trae el Excel (ej. "OR000011") no siempre cumple el patrón 2 letras+6 dígitos que exige el SAT — se ignora y se usa uno fijo, ya que no se referencia en ningún otro lado del CFDI
       RFCRemitenteDestinatario: _txt(cab[5]).toUpperCase(),
       NombreRemitenteDestinatario: _txt(cab[4]),
       FechaHoraSalidaLlegada: _fecha(cab[14]),
@@ -2472,7 +2472,7 @@ function _parseExcelCartaPorteServer(buffer) {
       }
     },
     {
-      TipoUbicacion: 'Destino', IDUbicacion: _txt(cab[19]) || 'DE000001',
+      TipoUbicacion: 'Destino', IDUbicacion: 'DE000001',
       RFCRemitenteDestinatario: _txt(cab[21]).toUpperCase(),
       NombreRemitenteDestinatario: _txt(cab[20]),
       DistanciaRecorrida: parseFloat(cab[2]) || 0,
