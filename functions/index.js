@@ -3558,3 +3558,127 @@ exports.facturapiPrueba = onRequest({ secrets: [FACTURAPI_TEST_KEY], cors: true,
     res.status(/administrador|sesión/.test(e.message || '') ? 403 : 500).json({ error: e.message || 'Error interno del servidor.' });
   }
 });
+
+// ══════════════════════════════════════════════════════════════════════════
+// GENERAR CARTA PORTE de un pedido de flete — junta lo que ya se sabe de tres
+// lados (cartaPorteExcel del pedido, datos SAT de Flota de la unidad/
+// operador ya asignados, datos fiscales del cliente en clientesFiscales),
+// timbra con Facturapi (llave de PRUEBA, mismo periodo de prueba de
+// facturapiPrueba) y reusa _parseFacturaFleteXMLServer +
+// _sustituirFacturaFleteServer con el XML resultante — el MISMO camino que
+// ya usa el sistema cuando llega por correo la factura hecha a mano en
+// Facturo por Ti, para no duplicar lógica de cierre de pedido.
+// Se niega a generar si falta CUALQUIER dato obligatorio (nunca inventa
+// nada ni usa un valor por default silencioso) — mejor un error claro que
+// timbrar con datos incompletos o equivocados.
+async function _generarIdCCPServer() {
+  const crypto = require('crypto');
+  const hex = crypto.randomBytes(16).toString('hex');
+  return 'CCC' + hex.slice(3, 8) + '-' + hex.slice(8, 12) + '-' + hex.slice(12, 16) + '-' + hex.slice(16, 20) + '-' + hex.slice(20, 32);
+}
+exports.generarCartaPorteFlete = onRequest({ secrets: [FACTURAPI_TEST_KEY], cors: true, region: 'us-central1', timeoutSeconds: 60 }, async (req, res) => {
+  if (req.method !== 'POST') { res.status(405).json({ error: 'Método no permitido, usa POST.' }); return; }
+  try {
+    const decoded = await _verificarAdmin(req);
+    const ordenEmbarque = _normalizarOrdenEmbarqueServer(req.body && req.body.ordenEmbarque);
+    if (!ordenEmbarque) { res.status(400).json({ error: 'Falta indicar el pedido (ordenEmbarque).' }); return; }
+
+    const refPedido = db.collection('fletesDB').doc(ordenEmbarque);
+    const snapPedido = await refPedido.get();
+    if (!snapPedido.exists) { res.status(404).json({ error: 'No existe ningún pedido con ese T.U.' }); return; }
+    const pedido = snapPedido.data();
+    if (pedido.estado !== 'pendiente_factura') { res.status(400).json({ error: 'Este pedido ya no está pendiente de factura.' }); return; }
+    const cp = pedido.cartaPorteExcel;
+    if (!cp || !cp.ubicaciones || !cp.mercancias) { res.status(400).json({ error: 'Este pedido todavía no tiene el Excel de mercancías de Carta Porte cargado.' }); return; }
+    if (pedido.montoFlete == null) { res.status(400).json({ error: 'Este pedido no tiene el monto del flete capturado.' }); return; }
+    if (!pedido.economico) { res.status(400).json({ error: 'Este pedido no tiene unidad (económico) asignada — asígnasela en Flota primero.' }); return; }
+
+    const snapUnidad = await db.collection('unidades').doc(String(pedido.economico)).get();
+    if (!snapUnidad.exists) { res.status(400).json({ error: 'No se encontró la unidad ' + pedido.economico + ' en Flota.' }); return; }
+    const unidad = snapUnidad.data();
+    const cpUnidad = unidad.cartaPorte || {};
+    const faltanUnidad = ['configVehicular', 'permSCT', 'numPermisoSCT', 'aseguradora', 'poliza', 'pesoBrutoVehicular'].filter(function (k) { return !cpUnidad[k]; });
+    if (faltanUnidad.length) { res.status(400).json({ error: 'A la unidad ' + pedido.economico + ' le faltan estos datos de Carta Porte en Flota: ' + faltanUnidad.join(', ') + '.' }); return; }
+    if (!unidad.placas) { res.status(400).json({ error: 'La unidad ' + pedido.economico + ' no tiene placas registradas en Flota.' }); return; }
+    if (!unidad.operadorActual) { res.status(400).json({ error: 'La unidad ' + pedido.economico + ' no tiene operador asignado en Flota.' }); return; }
+
+    const snapOperador = await db.collection('operadores').doc(String(unidad.operadorActual)).get();
+    if (!snapOperador.exists) { res.status(400).json({ error: 'No se encontró el operador asignado a la unidad ' + pedido.economico + '.' }); return; }
+    const operador = snapOperador.data();
+    if (!operador.rfc || !operador.licencia) { res.status(400).json({ error: 'Al operador ' + (operador.nombre || '') + ' le falta RFC o Licencia en Flota — complétalos ahí primero.' }); return; }
+
+    const rfcCliente = ((cp.ubicaciones[0] || {}).RFCRemitenteDestinatario || '').toUpperCase();
+    if (!rfcCliente) { res.status(400).json({ error: 'El Excel de Carta Porte de este pedido no trae el RFC del cliente.' }); return; }
+    const snapCliente = await db.collection('clientesFiscales').doc(rfcCliente).get();
+    if (!snapCliente.exists) { res.status(400).json({ error: 'Falta registrar los datos fiscales del cliente ' + rfcCliente + ' (arriba, tarjeta "Clientes") antes de poder generar.' }); return; }
+    const cliente = snapCliente.data();
+
+    const idCCP = await _generarIdCCPServer();
+    const invoice = {
+      type: 'I',
+      customer: { legal_name: cliente.razonSocial, tax_id: cliente.rfc, tax_system: cliente.regimenFiscal, address: { zip: cliente.cpFiscal } },
+      items: [{
+        quantity: 1,
+        product: {
+          description: 'Viaje con pedido ' + ordenEmbarque + (pedido.tu2 ? '/' + pedido.tu2 : ''),
+          product_key: '78101800', unit_key: 'E48',
+          price: parseFloat(pedido.montoFlete),
+          taxes: [{ type: 'IVA', rate: 0.16 }]
+        }
+      }],
+      use: cliente.usoCfdi, payment_form: '99', payment_method: 'PPD',
+      complements: [{
+        type: 'carta_porte',
+        data: {
+          IdCCP: idCCP,
+          TranspInternac: 'No',
+          TotalDistRec: cp.totalDistRec || 0,
+          Ubicaciones: cp.ubicaciones,
+          Mercancias: Object.assign({}, cp.mercancias, {
+            Autotransporte: {
+              PermSCT: cpUnidad.permSCT, NumPermisoSCT: cpUnidad.numPermisoSCT,
+              IdentificacionVehicular: {
+                ConfigVehicular: cpUnidad.configVehicular, PlacaVM: unidad.placas,
+                AnioModeloVM: String(cpUnidad.anioModeloVM || ''), PesoBrutoVehicular: cpUnidad.pesoBrutoVehicular
+              },
+              Seguros: { AseguraRespCivil: cpUnidad.aseguradora, PolizaRespCivil: cpUnidad.poliza }
+            }
+          }),
+          FiguraTransporte: [{
+            TipoFigura: '01', RFCFigura: operador.rfc, NumLicencia: operador.licencia, NombreFigura: operador.nombre
+          }]
+        }
+      }]
+    };
+
+    const rTimbrado = await fetch('https://www.facturapi.io/v2/invoices', {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + FACTURAPI_TEST_KEY.value(), 'Content-Type': 'application/json' },
+      body: JSON.stringify(invoice)
+    });
+    const respuestaTimbrado = await rTimbrado.json();
+
+    await db.collection('cartaPorteGeneraciones').add({
+      ordenEmbarque: ordenEmbarque, uid: decoded.uid, email: decoded.email || '',
+      fecha: admin.firestore.FieldValue.serverTimestamp(), exitoso: rTimbrado.ok, statusHttp: rTimbrado.status,
+      facturapiId: respuestaTimbrado && respuestaTimbrado.id ? respuestaTimbrado.id : null,
+      error: rTimbrado.ok ? null : (respuestaTimbrado && (respuestaTimbrado.message || respuestaTimbrado.error)) || 'Error desconocido de Facturapi.'
+    });
+    if (!rTimbrado.ok) { res.status(502).json({ error: 'Facturapi rechazó la Carta Porte.', detalleFacturapi: respuestaTimbrado }); return; }
+
+    const rXml = await fetch('https://www.facturapi.io/v2/invoices/' + respuestaTimbrado.id + '/xml', {
+      headers: { 'Authorization': 'Bearer ' + FACTURAPI_TEST_KEY.value() }
+    });
+    if (!rXml.ok) { res.status(502).json({ error: 'Se timbró en Facturapi (id ' + respuestaTimbrado.id + ') pero no se pudo descargar el XML para cerrar el pedido — cierra el pedido a mano con ese XML desde el dashboard de Facturapi.' }); return; }
+    const xmlTexto = await rXml.text();
+
+    const fac = _parseFacturaFleteXMLServer(xmlTexto);
+    if (!fac) { res.status(502).json({ error: 'Se timbró (id ' + respuestaTimbrado.id + ') pero el XML no se pudo leer como factura de flete — revísalo a mano.' }); return; }
+    const resultadoSustitucion = await _sustituirFacturaFleteServer(fac);
+
+    res.json({ ok: true, facturapiId: respuestaTimbrado.id, uuid: fac.uuid, folio: fac.folio, sustitucion: resultadoSustitucion });
+  } catch (e) {
+    console.error('generarCartaPorteFlete:', e);
+    res.status(/administrador|sesión/.test(e.message || '') ? 403 : 500).json({ error: e.message || 'Error interno del servidor.' });
+  }
+});
