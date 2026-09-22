@@ -2543,7 +2543,7 @@ function _parseExcelCartaPorteServer(buffer) {
 // que actualizar — identificar la unidad por la placa del XML no se intenta
 // aquí, se deja el pedido marcado como facturado en fletesDB para que se
 // registre el ingreso a mano con el XML ya identificado.
-async function _sustituirFacturaFleteServer(fac) {
+async function _sustituirFacturaFleteServer(fac, xmlURL) {
   const pendSnap = await db.collection('fletesDB').where('estado', '==', 'pendiente_factura').get();
   const pendientes = [];
   pendSnap.forEach(function (d) { pendientes.push(Object.assign({ id: d.id }, d.data())); });
@@ -2559,6 +2559,7 @@ async function _sustituirFacturaFleteServer(fac) {
   const f = encontrados[0];
   if (f.facturaUUID === fac.uuid) return { ok: false, motivo: 'ya estaba facturado con este mismo XML' };
   const camposFlete = { estado: 'facturado', facturaUUID: fac.uuid, facturaFolio: fac.folio, montoFactura: fac.total, facturadoEn: new Date().toISOString() };
+  if (xmlURL) camposFlete.facturaXmlURL = xmlURL;
   if (fac.destino && f.destino !== fac.destino) { camposFlete.destinoOriginalCorreo = f.destino || null; camposFlete.destino = fac.destino; }
   await db.collection('fletesDB').doc(f.id).set(camposFlete, { merge: true });
 
@@ -2577,6 +2578,7 @@ async function _sustituirFacturaFleteServer(fac) {
     prov.fecha = fac.fecha; if (fac.cliente) prov.cliente = fac.cliente;
     if (fac.ruta.length) prov.ruta = fac.ruta;
     prov.montoPendiente = false; prov.sustituidoPorXML = true;
+    if (xmlURL) prov.xmlURL = xmlURL;
     prov.observaciones = (prov.observaciones || '') + ' — sustituido por XML (buzón automático) ' + fac.folio + ' el ' + new Date().toISOString().slice(0, 10);
     tx.set(refIngresos, { data: JSON.stringify(ingresosDB) });
     ingresoActualizado = true;
@@ -3630,8 +3632,19 @@ exports.generarCartaPorteFlete = onRequest({ secrets: [FACTURAPI_TEST_KEY], cors
         product: {
           description: 'Viaje con pedido ' + ordenEmbarque + (pedido.tu2 ? '/' + pedido.tu2 : ''),
           product_key: '78101800', unit_key: 'E48',
-          price: parseFloat(pedido.montoFlete),
-          taxes: [{ type: 'IVA', rate: 0.16 }]
+          // Facturapi trata "price" como precio CON IVA incluido y de ahí
+          // calcula el subtotal (verificado con una Carta Porte real de
+          // prueba: mandar price=montoFlete dio un subtotal de solo
+          // montoFlete/1.16) — hay que mandarlo ya con el IVA sumado para
+          // que el subtotal resultante sea el monto del flete real.
+          price: Math.round(parseFloat(pedido.montoFlete) * 1.16 * 100) / 100,
+          taxes: [
+            { type: 'IVA', rate: 0.16 },
+            // Retención de IVA del 4% — estándar en fletes cuando el
+            // receptor es persona moral (verificado en la factura real de
+            // este mismo pedido: Retencion Impuesto=002 TasaOCuota=0.04).
+            { type: 'IVA', rate: 0.04, withholding: true }
+          ]
         }
       }],
       use: cliente.usoCfdi, payment_form: '99', payment_method: 'PPD',
@@ -3682,7 +3695,12 @@ exports.generarCartaPorteFlete = onRequest({ secrets: [FACTURAPI_TEST_KEY], cors
 
     const fac = _parseFacturaFleteXMLServer(xmlTexto);
     if (!fac) { res.status(502).json({ error: 'Se timbró (id ' + respuestaTimbrado.id + ') pero el XML no se pudo leer como factura de flete — revísalo a mano.' }); return; }
-    const resultadoSustitucion = await _sustituirFacturaFleteServer(fac);
+
+    let xmlURL = null;
+    try { xmlURL = await _subirXMLStorage('facturasFlete/' + fac.uuid + '.xml', xmlTexto); }
+    catch (eStorage) { console.error('generarCartaPorteFlete: no se pudo subir el XML a Storage:', eStorage); }
+
+    const resultadoSustitucion = await _sustituirFacturaFleteServer(fac, xmlURL);
 
     res.json({ ok: true, facturapiId: respuestaTimbrado.id, uuid: fac.uuid, folio: fac.folio, sustitucion: resultadoSustitucion });
   } catch (e) {
