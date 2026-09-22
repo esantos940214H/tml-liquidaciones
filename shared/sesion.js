@@ -241,6 +241,34 @@
     tmlSetCookie('tml_user', JSON.stringify(puente));
   }
 
+  // ── Cierre de sesión automático por inactividad ─────────────────────────
+  // Pedido explícito de Esa: cada listener en vivo (window.FB.listen) de una
+  // pestaña abierta y olvidada sigue costando lecturas de Firestore
+  // indefinidamente — con el presupuesto mensual del proyecto tan ajustado,
+  // una sesión que nadie cierra suma. A los 30 minutos sin ningún clic,
+  // tecla, scroll o toque, se cierra sola (se borra la cookie-puente
+  // "tml_user" — así afecta también a los módulos que aún usan el login
+  // viejo por SHA-256, no solo a los ya migrados a Firebase Auth — y se
+  // recarga la página, que manda a la pantalla de login). Cualquier
+  // actividad reinicia el conteo desde cero.
+  var MINUTOS_INACTIVIDAD = 30;
+  var _timeoutInactividad = null;
+  function _cerrarPorInactividad() {
+    if (!tmlGetCookie('tml_user') && !auth.currentUser) return; // ya sin sesión, nada que cerrar
+    tmlDeleteCookie('tml_user');
+    (auth.currentUser ? auth.signOut() : Promise.resolve()).finally(function () {
+      location.reload();
+    });
+  }
+  function _reiniciarConteoInactividad() {
+    if (_timeoutInactividad) clearTimeout(_timeoutInactividad);
+    _timeoutInactividad = setTimeout(_cerrarPorInactividad, MINUTOS_INACTIVIDAD * 60 * 1000);
+  }
+  ['click', 'keydown', 'mousemove', 'scroll', 'touchstart'].forEach(function (evento) {
+    document.addEventListener(evento, _reiniciarConteoInactividad, { passive: true });
+  });
+  _reiniciarConteoInactividad();
+
   // Exponer la API en un namespace propio para no chocar con nombres de
   // función que ya existan en cada módulo (ej. varios módulos ya tienen su
   // propia función local "cerrarSesionTML" para el login viejo).
