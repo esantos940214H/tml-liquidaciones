@@ -193,111 +193,6 @@ tr:hover td{background:#fafafa}
     <div id="buzonComprasWrap"></div>
   </div>
 
-  <!-- PRUEBA DE FACTURAPI (Carta Porte) — solo mientras dure el periodo de prueba gratuita, para comparar contra Facturo por Ti. Admin-only. -->
-  <div class="card" id="cardFacturapiPrueba" style="display:none">
-    <div class="card-title">🧪 Prueba Facturapi — Complemento Carta Porte <span class="info-tip">?<span class="info-tip-box">Esto NO afecta tus facturas reales de proveedores. Manda el JSON de abajo a la cuenta de PRUEBA de Facturapi (sk_test) para validar que el formato de Carta Porte funcione, antes de decidir si se integra en serio. Puedes editar el JSON y volver a timbrar cuantas veces quieras — es gratis y no genera CFDI reales.</span></span></div>
-    <div class="field" style="margin-bottom:12px">
-      <label>JSON de la factura de prueba (edítalo libremente)</label>
-      <textarea id="facturapiPruebaJson" rows="18" style="font-family:monospace;font-size:12px;white-space:pre">{
-  "type": "I",
-  "customer": {
-    "legal_name": "CLIENTE DE PRUEBA SA DE CV",
-    "tax_id": "XAXX010101000",
-    "tax_system": "601",
-    "email": "prueba@mudanzastml.mx",
-    "address": { "zip": "83240" }
-  },
-  "items": [
-    {
-      "quantity": 1,
-      "product": {
-        "description": "Servicio de mudanza y transporte de menaje de casa",
-        "product_key": "78102200",
-        "unit_key": "E48",
-        "price": 5000,
-        "taxes": [{ "type": "IVA", "rate": 0.16 }]
-      }
-    }
-  ],
-  "use": "G03",
-  "payment_form": "03",
-  "complements": [
-    {
-      "type": "carta_porte",
-      "data": {
-        "IdCCP": "CCPPRUEBA0001",
-        "TranspInternac": "No",
-        "TotalDistRec": 45,
-        "Ubicaciones": [
-          {
-            "TipoUbicacion": "Origen",
-            "IDUbicacion": "OR000001",
-            "RFCRemitenteDestinatario": "MTM171214PI4",
-            "NombreRemitenteDestinatario": "MUDANZAS TML SA DE CV",
-            "FechaHoraSalidaLlegada": "2026-09-22T09:00:00",
-            "Domicilio": {
-              "Calle": "AV PRUEBA", "NumeroExterior": "100", "Colonia": "0552",
-              "Localidad": "07", "Municipio": "030", "Estado": "SON", "Pais": "MEX", "CodigoPostal": "83240"
-            }
-          },
-          {
-            "TipoUbicacion": "Destino",
-            "IDUbicacion": "DE000001",
-            "RFCRemitenteDestinatario": "XAXX010101000",
-            "NombreRemitenteDestinatario": "CLIENTE DE PRUEBA SA DE CV",
-            "DistanciaRecorrida": 45,
-            "FechaHoraSalidaLlegada": "2026-09-22T11:00:00",
-            "Domicilio": {
-              "Calle": "CALLE DESTINO", "NumeroExterior": "200", "Colonia": "1741",
-              "Localidad": "02", "Municipio": "002", "Estado": "BCN", "Pais": "MEX", "CodigoPostal": "21325"
-            }
-          }
-        ],
-        "Mercancias": {
-          "PesoBrutoTotal": 1200,
-          "UnidadPeso": "KGM",
-          "PesoNetoTotal": 1000,
-          "NumTotalMercancias": 1,
-          "Mercancia": [
-            {
-              "BienesTransp": "78102200",
-              "Descripcion": "Menaje de casa (mudanza residencial)",
-              "Cantidad": 1,
-              "ClaveUnidad": "KGM",
-              "PesoEnKg": 1000
-            }
-          ],
-          "Autotransporte": {
-            "PermSCT": "TPAF01",
-            "NumPermisoSCT": "PRUEBA0001",
-            "IdentificacionVehicular": {
-              "ConfigVehicular": "C2",
-              "PlacaVM": "AB12345",
-              "AnioModeloVM": 2020
-            },
-            "Seguros": {
-              "AseguraRespCivil": "ASEGURADORA DE PRUEBA",
-              "PolizaRespCivil": "POL0001"
-            }
-          }
-        },
-        "FiguraTransporte": [
-          {
-            "TipoFigura": "01",
-            "RFCFigura": "XAXX010101000",
-            "NumLicencia": "LIC0001",
-            "NombreFigura": "OPERADOR DE PRUEBA"
-          }
-        ]
-      }
-    }
-  ]
-}</textarea>
-    </div>
-    <button class="btn btn-red" onclick="timbrarPruebaFacturapi()" id="btnFacturapiPrueba">🧾 Timbrar de prueba</button>
-    <div id="facturapiPruebaResultado" style="margin-top:12px"></div>
-  </div>
-
   <!-- FACTURAS DE PROVEEDOR -->
   <div class="card">
     <div class="card-title">📄 Registrar factura de proveedor (CFDI)</div>
@@ -529,7 +424,6 @@ function mostrarSesionEnHeader(){
   if($('sesionUsuarioLabel'))$('sesionUsuarioLabel').textContent='👤 '+(u.nombre||u.usuario)+(u.esAdmin?' (admin)':'');
   if($('btnCerrarSesion'))$('btnCerrarSesion').style.display='inline';
   if($('btnCambiarPass'))$('btnCambiarPass').style.display='inline';
-  if($('cardFacturapiPrueba'))$('cardFacturapiPrueba').style.display=u.esAdmin?'block':'none';
   aplicarPermisosNav(u);
 }
 function verificarSesionModulo(){
@@ -1025,38 +919,6 @@ async function revisarBuzonComprasAhora(){
     $('buzonComprasInfo').innerHTML='<div class="alert alert-warn">⚠️ '+e.message+'</div>';
   }finally{
     $('btnRevisarBuzonCompras').disabled=false;
-  }
-}
-
-// ══════════════════════════════════════════════
-// PRUEBA de integración con Facturapi (Complemento Carta Porte) — ver
-// functions/index.js → facturapiPrueba. Solo mientras dure el periodo de
-// prueba gratuita de Facturapi; usa su llave sk_test, no genera CFDI reales
-// ni tiene costo.
-// ══════════════════════════════════════════════
-const FUNCTION_URL_FACTURAPI_PRUEBA='https://us-central1-tml-liquidaciones.cloudfunctions.net/facturapiPrueba';
-async function timbrarPruebaFacturapi(){
-  var resultado=$('facturapiPruebaResultado');
-  var boton=$('btnFacturapiPrueba');
-  var invoice;
-  try{
-    invoice=JSON.parse($('facturapiPruebaJson').value);
-  }catch(e){
-    resultado.innerHTML='<div class="alert alert-warn">⚠️ El JSON tiene un error de formato: '+e.message+'</div>';
-    return;
-  }
-  boton.disabled=true;
-  resultado.innerHTML='<div class="alert alert-info">⏳ Timbrando de prueba con Facturapi...</div>';
-  try{
-    var idToken=await firebase.auth().currentUser.getIdToken();
-    var r=await fetch(FUNCTION_URL_FACTURAPI_PRUEBA,{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+idToken},body:JSON.stringify({invoice:invoice})});
-    var data=await r.json();
-    if(!r.ok)throw new Error((data.error||'Error desconocido')+(data.detalleFacturapi?' — '+JSON.stringify(data.detalleFacturapi):''));
-    resultado.innerHTML='<div class="alert alert-ok">✅ Se timbró de prueba correctamente. ID Facturapi: '+(data.facturapi&&data.facturapi.id||'')+'</div><pre style="font-size:11px;background:#f5f5f5;padding:8px;border-radius:6px;overflow:auto;max-height:300px">'+JSON.stringify(data.facturapi,null,2)+'</pre>';
-  }catch(e){
-    resultado.innerHTML='<div class="alert alert-warn">⚠️ '+e.message+'</div>';
-  }finally{
-    boton.disabled=false;
   }
 }
 
