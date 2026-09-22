@@ -2499,10 +2499,18 @@ function _parseExcelCartaPorteServer(buffer) {
       Unidad: _txt(f[35]),
       PesoEnKg: parseFloat(f[36]) || 0,
       ValorMercancia: 0,
-      Moneda: moneda,
-      MaterialPeligroso: peligroso ? 'Sí' : 'No'
+      Moneda: moneda
     };
-    if (peligroso && _txt(f[38]) && _txt(f[38]) !== '-') item.CveMaterialPeligroso = _txt(f[38]);
+    // MaterialPeligroso: NO declarar nada cuando no es peligroso — el
+    // catálogo c_ClaveProdServCP del SAT ya marca cada clave como
+    // peligrosa o no, y declarar "No" de más en una clave que el
+    // catálogo ya dice que nunca es peligrosa causa rechazo (caso real
+    // verificado con la clave 31241501 "Lentes"). Solo se declara cuando
+    // el Excel sí la marca como peligrosa.
+    if (peligroso) {
+      item.MaterialPeligroso = 'Sí';
+      if (_txt(f[38]) && _txt(f[38]) !== '-') item.CveMaterialPeligroso = _txt(f[38]);
+    }
     mercancia.push(item);
   });
   if (!mercancia.length) return null;
