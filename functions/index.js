@@ -51,6 +51,12 @@ const FLETES_EMAIL_PASS = defineSecret('FLETES_EMAIL_PASS');
 // Token de API de Wialon (rastreo satelital) — se genera desde la cuenta de
 // Wialon (Usuario → Token de acceso a la API), nunca se pega en el código.
 const WIALON_TOKEN = defineSecret('WIALON_TOKEN');
+// Llave de PRUEBA (sk_test_...) de la cuenta de Facturapi de Mudanzas TML —
+// SOLO para probar la integración de timbrado con Complemento Carta Porte
+// durante los 14 días de prueba gratuita, antes de decidir si se integra en
+// serio. No timbra CFDI reales ni tiene costo. Nunca usar esta constante
+// para una llave LIVE (sk_live_...) sin repensar los controles de seguridad.
+const FACTURAPI_TEST_KEY = defineSecret('FACTURAPI_TEST_KEY');
 // RFC de Mudanzas TML confirmado contra su Constancia de Situación Fiscal
 // (agosto 2026) — el receptor del CFDI de proveedor debe ser este RFC.
 const TML_RFC = 'MTM171214PI4';
@@ -3357,6 +3363,52 @@ exports.usuariosCambiarEstado = onRequest({ cors: true, region: 'us-central1' },
     res.json({ ok: true });
   } catch (e) {
     console.error('usuariosCambiarEstado:', e);
+    res.status(/administrador|sesión/.test(e.message || '') ? 403 : 500).json({ error: e.message || 'Error interno del servidor.' });
+  }
+});
+
+// ══════════════════════════════════════════════════════════════════════════
+// PRUEBA de integración con Facturapi (Complemento Carta Porte) — SOLO para
+// el periodo de prueba gratuito de 14 días, para comparar contra Facturo
+// por Ti antes de decidir con qué proveedor quedarse. Reenvía tal cual el
+// JSON de factura que manda el navegador a la API de Facturapi usando la
+// llave de PRUEBA (Secret Manager, nunca en el código ni en el navegador).
+// Admin-only porque un timbrado (aunque sea de prueba) no debe poder
+// dispararlo cualquiera con la URL. Deja registro en Firestore
+// (facturapiPruebas) de quién probó qué y si salió bien, para no perder el
+// rastro de qué se ha intentado durante la prueba.
+exports.facturapiPrueba = onRequest({ secrets: [FACTURAPI_TEST_KEY], cors: true, region: 'us-central1', timeoutSeconds: 60 }, async (req, res) => {
+  if (req.method !== 'POST') { res.status(405).json({ error: 'Método no permitido, usa POST.' }); return; }
+  try {
+    const decoded = await _verificarAdmin(req);
+    const invoice = (req.body && req.body.invoice) || null;
+    if (!invoice || typeof invoice !== 'object') { res.status(400).json({ error: 'Falta el JSON de la factura (body.invoice).' }); return; }
+
+    const r = await fetch('https://www.facturapi.io/v2/invoices', {
+      method: 'POST',
+      headers: {
+        'Authorization': 'Bearer ' + FACTURAPI_TEST_KEY.value(),
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(invoice)
+    });
+    const respuesta = await r.json();
+
+    await db.collection('facturapiPruebas').add({
+      uid: decoded.uid,
+      email: decoded.email || '',
+      fecha: admin.firestore.FieldValue.serverTimestamp(),
+      tipoComprobante: invoice.type || '',
+      exitoso: r.ok,
+      statusHttp: r.status,
+      facturapiId: respuesta && respuesta.id ? respuesta.id : null,
+      error: r.ok ? null : (respuesta && (respuesta.message || respuesta.error) ) || 'Error desconocido de Facturapi.'
+    });
+
+    if (!r.ok) { res.status(502).json({ error: 'Facturapi rechazó la factura de prueba.', detalleFacturapi: respuesta }); return; }
+    res.json({ ok: true, facturapi: respuesta });
+  } catch (e) {
+    console.error('facturapiPrueba:', e);
     res.status(/administrador|sesión/.test(e.message || '') ? 403 : 500).json({ error: e.message || 'Error interno del servidor.' });
   }
 });
