@@ -2113,7 +2113,10 @@ function renderFletesPendientes(){
         +'<td style="font-size:12px'+(hayDiscrepancia?';color:#9b1c1c;font-weight:700':'')+'">'+(f.tiendaPrevias||'')+(hayDiscrepancia?' ⚠️':'')+'</td>'
         +'<td>'+(f.fecha||'')+'</td>'
         +'<td class="num">'+(f.economico||'—')+'</td><td class="num r">'+(f.montoFlete!=null?fmt(f.montoFlete):'—')+'</td>'
-        +'<td><button class="btn-sm" style="background:none;border:none;cursor:pointer;color:#c1121f" onclick="eliminarFleteUI(\''+f.ordenEmbarque+'\')">✕</button></td></tr>';
+        +'<td style="white-space:nowrap">'
+          +((usuarioSesion()||{}).esAdmin?(f.cartaPorteExcel?'<button class="btn-sm btn-out" onclick="generarCartaPorteFleteUI(\''+f.ordenEmbarque+'\')" id="btnCP_'+f.ordenEmbarque+'">🧾 Generar Carta Porte</button> ':'<span style="color:#aaa;font-size:11px" title="Falta el Excel de mercancías">Sin Excel CP</span> '):'')
+          +'<button class="btn-sm" style="background:none;border:none;cursor:pointer;color:#c1121f" onclick="eliminarFleteUI(\''+f.ordenEmbarque+'\')">✕</button>'
+        +'</td></tr>';
     }).join('')+'</tbody></table></div>';
 }
 // crearIngresoProvisionalFlete(datos): mismo criterio que
@@ -2185,6 +2188,29 @@ async function eliminarFleteUI(ordenEmbarque){
   if(!confirm('¿Eliminar el pedido de flete '+ordenEmbarque+'? Solo hazlo si se capturó por error.'))return;
   try{ await window.eliminarFlete(ordenEmbarque); await cargarYRenderFletesPendientes(); }
   catch(e){ alert('⚠️ Error: '+e.message); }
+}
+
+// generarCartaPorteFleteUI: junta Excel+Flota+Cliente y timbra con
+// Facturapi (llave de PRUEBA, ver functions/index.js → generarCartaPorteFlete)
+// — mientras dure el periodo de prueba de 14 días. Si Facturapi rechaza algo
+// (dato faltante, catálogo, etc.) el mensaje exacto se muestra tal cual para
+// poder corregirlo (en Flota, en Clientes, o en el Excel) y reintentar.
+const FUNCTION_URL_GENERAR_CARTA_PORTE='https://us-central1-tml-liquidaciones.cloudfunctions.net/generarCartaPorteFlete';
+async function generarCartaPorteFleteUI(ordenEmbarque){
+  if(!confirm('¿Generar la Carta Porte de prueba del pedido '+ordenEmbarque+' con Facturapi?'))return;
+  var boton=$('btnCP_'+ordenEmbarque);
+  if(boton)boton.disabled=true;
+  try{
+    var idToken=await firebase.auth().currentUser.getIdToken();
+    var r=await fetch(FUNCTION_URL_GENERAR_CARTA_PORTE,{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+idToken},body:JSON.stringify({ordenEmbarque:ordenEmbarque})});
+    var data=await r.json();
+    if(!r.ok)throw new Error((data.error||'Error desconocido')+(data.detalleFacturapi?' — '+JSON.stringify(data.detalleFacturapi):''));
+    alert('✅ Carta Porte generada. UUID: '+data.uuid+' (folio '+data.folio+').');
+    await cargarYRenderFletesPendientes();
+  }catch(e){
+    alert('⚠️ '+e.message);
+    if(boton)boton.disabled=false;
+  }
 }
 
 async function cargarCorreosPendientesPedidos(){
