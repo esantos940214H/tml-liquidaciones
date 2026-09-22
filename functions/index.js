@@ -400,9 +400,9 @@ exports.extraerEstimado = onRequest(
 // 4. Desde la raíz del repo: firebase deploy --only functions
 // 5. Copia la URL de "revisarBuzonManiobras" que muestra la terminal al
 //    terminar y pégala en FUNCTION_URL_REVISAR_BUZON en maniobras.html.
-// El revisor también corre solo 3 veces al día, a las 7:00, 14:00 y 22:00
-// hrs (hora CDMX) — onSchedule, abajo. El botón en la página es nada más
-// para no tener que esperar al probar.
+// El revisor también corre solo cada 6 horas (hora CDMX) — onSchedule,
+// abajo. El botón en la página es nada más para no tener que esperar al
+// probar.
 // ══════════════════════════════════════════════════════════════════════════
 // Descarga (con mailparser) y procesa con la IA un solo mensaje ya leído
 // del buzón — separado para no repetir el try/catch por mensaje.
@@ -1104,7 +1104,7 @@ exports.revisarBuzonManiobras = onRequest(
   }
 );
 
-// Corre 3 veces al día (7:00, 14:00, 22:00 hrs CDMX) — así aunque nadie
+// Corre cada 6 horas (hora CDMX) — así aunque nadie
 // entre a la página, los correos nuevos se van juntando en
 // estado/correosManiobrasPendientes para cuando alguien entre a revisarlos.
 // Guarda SIEMPRE (éxito o error) un registro en
@@ -1112,7 +1112,7 @@ exports.revisarBuzonManiobras = onRequest(
 // quedaba en los logs de Cloud Functions (solo visibles desde Cloud Shell);
 // ahora se puede consultar directo desde Firestore.
 exports.revisarBuzonManiobrasProgramado = onSchedule(
-  { schedule: '0 * * * *', timeZone: 'America/Mexico_City', secrets: [ANTHROPIC_API_KEY, MANIOBRAS_EMAIL_USER, MANIOBRAS_EMAIL_PASS], region: 'us-central1', timeoutSeconds: 300 },
+  { schedule: '0 */6 * * *', timeZone: 'America/Mexico_City', secrets: [ANTHROPIC_API_KEY, MANIOBRAS_EMAIL_USER, MANIOBRAS_EMAIL_PASS], region: 'us-central1', timeoutSeconds: 300 },
   async () => {
     const inicio = new Date().toISOString();
     try {
@@ -1726,7 +1726,7 @@ exports.revisarBuzonCompras = onRequest(
 );
 
 exports.revisarBuzonComprasProgramado = onSchedule(
-  { schedule: '0 * * * *', timeZone: 'America/Mexico_City', secrets: [COMPRAS_EMAIL_USER, COMPRAS_EMAIL_PASS, ANTHROPIC_API_KEY], region: 'us-central1', timeoutSeconds: 300 },
+  { schedule: '0 */6 * * *', timeZone: 'America/Mexico_City', secrets: [COMPRAS_EMAIL_USER, COMPRAS_EMAIL_PASS, ANTHROPIC_API_KEY], region: 'us-central1', timeoutSeconds: 300 },
   async () => {
     const inicio = new Date().toISOString();
     try {
@@ -2694,7 +2694,7 @@ exports.revisarBuzonPedidos = onRequest(
 );
 
 exports.revisarBuzonPedidosProgramado = onSchedule(
-  { schedule: '0 * * * *', timeZone: 'America/Mexico_City', secrets: [FLETES_EMAIL_USER, FLETES_EMAIL_PASS, ANTHROPIC_API_KEY], region: 'us-central1', timeoutSeconds: 300 },
+  { schedule: '0 */6 * * *', timeZone: 'America/Mexico_City', secrets: [FLETES_EMAIL_USER, FLETES_EMAIL_PASS, ANTHROPIC_API_KEY], region: 'us-central1', timeoutSeconds: 300 },
   async () => {
     const inicio = new Date().toISOString();
     try {
