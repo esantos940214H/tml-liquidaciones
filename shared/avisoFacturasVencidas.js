@@ -6,10 +6,14 @@
 // proveedores.html, donde ya se ve la lista completa, y operador.html, que es
 // para operadores, no para quien paga facturas).
 //
-// Pedido explícito: debe aparecer cada vez que se entra a un módulo distinto
-// mientras sigan existiendo facturas vencidas sin pagar — sin límite de una
-// vez al día. En cuanto se pague o venza el plazo de todas, deja de
-// aparecer solo (no hay nada que "apagar" a mano).
+// Se muestra como máximo una vez por HORA (no una vez al día — eso ya se
+// probó y resultaba muy espaciado; tampoco sin límite — eso disparaba una
+// consulta a Firestore en cada cambio de módulo, y con el presupuesto
+// mensual tan ajustado del proyecto eso pesa). Se guarda la hora del último
+// aviso en una cookie de dominio compartido (igual que "tml_user",
+// domain=.mudanzastml.mx), así que un aviso en un subdominio cuenta para
+// todos los demás esa misma hora. En cuanto se pague o venza el plazo de
+// todas las facturas, deja de aparecer solo.
 // ══════════════════════════════════════════════════════════════════════════
 (function(){
   'use strict';
@@ -22,6 +26,11 @@
     var m=document.cookie.match('(^|;\\s*)'+name+'=([^;]*)');
     return m?decodeURIComponent(m[2]):null;
   }
+  function tmlSetCookie(name,value,days){
+    var expires='';
+    if(days){var d=new Date();d.setTime(d.getTime()+days*24*60*60*1000);expires=';expires='+d.toUTCString();}
+    document.cookie=name+'='+encodeURIComponent(value)+expires+';domain=.mudanzastml.mx;path=/;SameSite=Lax;Secure';
+  }
   function usuarioSesionTML(){
     try{return JSON.parse(tmlGetCookie('tml_user')||'null');}catch(e){return null;}
   }
@@ -32,6 +41,9 @@
   var u=usuarioSesionTML();
   if(!u)return; // sin sesión reconocida (pantalla de login) — no hay a quién avisarle
   if(!u.esAdmin&&(!u.permisos||!u.permisos.proveedores))return; // solo a quien puede ver Proveedores
+
+  var _ultimoAviso=parseInt(tmlGetCookie('tml_avisoVencidasTs')||'0',10);
+  if(Date.now()-_ultimoAviso<60*60*1000)return; // ya se mostró hace menos de 1 hora
 
   if(!window.firebase||!firebase.firestore){console.error('avisoFacturasVencidas: falta cargar firebase-app-compat.js y firebase-firestore-compat.js antes de este script.');return;}
   if(!firebase.apps.length)firebase.initializeApp(FIREBASE_CONFIG);
@@ -47,6 +59,8 @@
       if(!bloqueada&&!pagada&&yaVencioLimite(f.fechaVencimiento))vencidas.push(f);
     });
     if(!vencidas.length)return;
+
+    tmlSetCookie('tml_avisoVencidasTs',String(Date.now()),1);
 
     var total=vencidas.reduce(function(s,f){return s+(f.total||0);},0);
     var totalFmt='$'+total.toLocaleString('es-MX',{minimumFractionDigits:2,maximumFractionDigits:2});
