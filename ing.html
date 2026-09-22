@@ -510,6 +510,9 @@ window.onFBReady=function(cb){if(window._fbInit)cb();else window._fbCallbacks.pu
 
 <script>
 let OPERADORES=[];
+// Todos los operadores, activos o dados de baja — solo para el filtro
+// "Operador" (ver initSelects), nunca para el select de captura ("estOp").
+let OPERADORES_TODOS=[];
 // Nombres de TODOS los operadores (activos o no, con unidad o sin ella) —
 // respaldo para poder seguir mostrando el nombre en registros viejos de
 // alguien que después fue dado de baja o se quedó sin unidad asignada
@@ -1143,6 +1146,7 @@ function initSelects(){
 }
 window.onFBReady(async function(){
   OPERADORES=await window.cargarOperadores();
+  OPERADORES_TODOS=await window.cargarOperadoresTodos();
   NOMBRES_OP=await window.cargarNombresOperadores();
   initSelects();
   fbReady=true;
