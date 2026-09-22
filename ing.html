@@ -496,6 +496,26 @@ tr:hover td{background:#fafafa}
     <div id="facturapiPruebaResultado" style="margin-top:12px"></div>
   </div>
 
+  <!-- CLIENTES (datos fiscales para armar la factura/Carta Porte con Facturapi)
+       — mismo espíritu que el catálogo de Proveedores, pero para el RECEPTOR
+       de la factura que emitimos por el flete. Se captura UNA sola vez por
+       cliente (RFC, régimen fiscal, CP del domicilio fiscal, uso de CFDI) y
+       de ahí en adelante "Generar Carta Porte" lo reusa automático. Admin-only. -->
+  <div class="card" id="cardClientesFiscales" style="display:none">
+    <div class="card-title">👥 Clientes (datos fiscales) <span class="info-tip">?<span class="info-tip-box">Estos son los datos que pide el SAT del RECEPTOR de la factura (régimen fiscal, código postal de su domicilio fiscal, uso de CFDI) — NO es el domicilio de origen/destino del flete, es su domicilio fiscal registrado ante el SAT. Se captura una sola vez por cliente y "Generar Carta Porte" lo jala automático por RFC.</span></span></div>
+    <div class="row" style="margin-bottom:12px">
+      <div class="field"><label>RFC</label><input type="text" id="clRfc" placeholder="Ej: GCD170101GS6" style="text-transform:uppercase"></div>
+      <div class="field" style="flex:2;min-width:220px"><label>Razón social</label><input type="text" id="clRazonSocial" placeholder="Como aparece en su Constancia de Situación Fiscal"></div>
+      <div class="field"><label>Régimen fiscal</label><input type="text" id="clRegimenFiscal" placeholder="Ej: 601"></div>
+      <div class="field"><label>CP domicilio fiscal</label><input type="text" id="clCpFiscal" placeholder="Ej: 64000"></div>
+      <div class="field"><label>Uso de CFDI</label><input type="text" id="clUsoCfdi" placeholder="Ej: G03" value="G03"></div>
+      <button class="btn btn-red btn-sm" onclick="guardarClienteForm()" id="btnGuardarCliente">Guardar</button>
+      <button class="btn btn-out btn-sm" id="btnCancelarEdicionCliente" onclick="cancelarEdicionCliente()" style="display:none">Cancelar edición</button>
+    </div>
+    <div id="clInfo"></div>
+    <div id="clientesWrap"><div style="text-align:center;padding:20px;color:#aaa">Cargando...</div></div>
+  </div>
+
   <!-- ARCHIVO MAESTRO DE FLETES (cruce pedidos de flete ↔ autorizaciones de maniobra) —
        siempre visible/actualizado (colapsado por default), ya no hace falta darle
        "generar" — se recalcula solo cada vez que cambian los pedidos de flete o las
@@ -1218,6 +1238,7 @@ function verificarSesionModulo(){
   if($('cardBuzonPedidosFlete'))$('cardBuzonPedidosFlete').style.display=esAdminIng?'':'none';
   if($('cardRegistrarFleteManual'))$('cardRegistrarFleteManual').style.display=esAdminIng?'':'none';
   if($('cardFacturapiPrueba'))$('cardFacturapiPrueba').style.display=esAdminIng?'':'none';
+  if($('cardClientesFiscales')){$('cardClientesFiscales').style.display=esAdminIng?'':'none';if(esAdminIng)cargarYRenderClientes();}
 }
 window.onFBReady(verificarSesionModulo);
 
@@ -2262,6 +2283,75 @@ async function timbrarPruebaFacturapi(){
     resultado.innerHTML='<div class="alert alert-warn">⚠️ '+e.message+'</div>';
   }finally{
     boton.disabled=false;
+  }
+}
+
+// ══════════════════════════════════════════════
+// CLIENTES (datos fiscales) — colección clientesFiscales, doc id = RFC.
+// Solo lo usa "Generar Carta Porte" para armar el campo customer del CFDI.
+// ══════════════════════════════════════════════
+let CLIENTES_FISCALES=[];
+let _editandoRfcCliente=null;
+
+async function cargarYRenderClientes(){
+  var snap=await firebase.firestore().collection('clientesFiscales').get();
+  CLIENTES_FISCALES=[];
+  snap.forEach(function(d){CLIENTES_FISCALES.push(d.data());});
+  CLIENTES_FISCALES.sort(function(a,b){return(a.razonSocial||'').localeCompare(b.razonSocial||'');});
+  renderClientes();
+}
+function renderClientes(){
+  var wrap=$('clientesWrap');
+  if(!CLIENTES_FISCALES.length){wrap.innerHTML='<p style="font-size:12px;color:#aaa;padding:8px 0">Todavía no hay clientes registrados.</p>';return;}
+  wrap.innerHTML='<div class="tbl-wrap"><table><thead><tr><th>RFC</th><th>Razón social</th><th>Régimen</th><th>CP fiscal</th><th>Uso CFDI</th><th></th></tr></thead><tbody>'
+    +CLIENTES_FISCALES.map(function(c){
+      return '<tr>'
+        +'<td class="num">'+c.rfc+'</td>'
+        +'<td style="font-size:12px">'+(c.razonSocial||'')+'</td>'
+        +'<td class="num">'+(c.regimenFiscal||'—')+'</td>'
+        +'<td class="num">'+(c.cpFiscal||'—')+'</td>'
+        +'<td class="num">'+(c.usoCfdi||'—')+'</td>'
+        +'<td><button class="btn btn-out btn-sm" onclick="editarCliente(\''+c.rfc+'\')">✏️ Editar</button></td>'
+        +'</tr>';
+    }).join('')+'</tbody></table></div>';
+}
+function limpiarFormCliente(){
+  $('clRfc').value='';$('clRazonSocial').value='';$('clRegimenFiscal').value='';$('clCpFiscal').value='';$('clUsoCfdi').value='G03';
+  $('clRfc').disabled=false;
+  _editandoRfcCliente=null;
+  $('btnCancelarEdicionCliente').style.display='none';
+  $('clInfo').innerHTML='';
+}
+function cancelarEdicionCliente(){limpiarFormCliente();}
+function editarCliente(rfc){
+  var c=CLIENTES_FISCALES.find(function(x){return x.rfc===rfc;});
+  if(!c)return;
+  _editandoRfcCliente=rfc;
+  $('clRfc').value=c.rfc;$('clRfc').disabled=true;
+  $('clRazonSocial').value=c.razonSocial||'';$('clRegimenFiscal').value=c.regimenFiscal||'';
+  $('clCpFiscal').value=c.cpFiscal||'';$('clUsoCfdi').value=c.usoCfdi||'G03';
+  $('btnCancelarEdicionCliente').style.display='inline-block';
+  $('clInfo').innerHTML='';
+}
+async function guardarClienteForm(){
+  var rfc=(_editandoRfcCliente||$('clRfc').value||'').trim().toUpperCase();
+  var razonSocial=($('clRazonSocial').value||'').trim().toUpperCase();
+  var regimenFiscal=($('clRegimenFiscal').value||'').trim();
+  var cpFiscal=($('clCpFiscal').value||'').trim();
+  var usoCfdi=($('clUsoCfdi').value||'').trim().toUpperCase();
+  if(!rfc){$('clInfo').innerHTML='<div class="alert alert-warn">⚠️ Falta el RFC.</div>';return;}
+  if(!razonSocial||!regimenFiscal||!cpFiscal||!usoCfdi){$('clInfo').innerHTML='<div class="alert alert-warn">⚠️ Faltan datos — los 4 son obligatorios para poder timbrar.</div>';return;}
+  try{
+    await firebase.firestore().collection('clientesFiscales').doc(rfc).set({
+      rfc:rfc,razonSocial:razonSocial,regimenFiscal:regimenFiscal,cpFiscal:cpFiscal,usoCfdi:usoCfdi
+    },{merge:true});
+    var eraEdicion=!!_editandoRfcCliente;
+    limpiarFormCliente();
+    await cargarYRenderClientes();
+    $('clInfo').innerHTML='<div class="alert alert-ok">✅ Cliente '+(eraEdicion?'actualizado':'registrado')+' correctamente.</div>';
+  }catch(e){
+    console.error('guardarClienteForm:',e);
+    $('clInfo').innerHTML='<div class="alert alert-err">⚠️ Error al guardar: '+e.message+'</div>';
   }
 }
 

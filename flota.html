@@ -694,10 +694,16 @@ async function editarOperador(id){
   if(licencia===null)return;
   var licenciaVigencia=prompt('Vigencia de licencia (YYYY-MM-DD, opcional):',op.licenciaVigencia||'');
   if(licenciaVigencia===null)return;
+  // RFC: solo se usa para autollenar FiguraTransporte al generar una Carta
+  // Porte (ver ing.html → Generar Carta Porte) — opcional, no bloquea nada
+  // si se deja en blanco.
+  var rfc=prompt('RFC (para Carta Porte, opcional):',op.rfc||'');
+  if(rfc===null)return;
   try{
     await firebase.firestore().collection('operadores').doc(id).update({
       nombre:nombre.trim().toUpperCase(),comision:parseFloat(comisionTxt)||12,clave:clave.trim(),
-      licencia:licencia.trim()||null,licenciaVigencia:licenciaVigencia.trim()||null
+      licencia:licencia.trim()||null,licenciaVigencia:licenciaVigencia.trim()||null,
+      rfc:rfc.trim().toUpperCase()||null
     });
     if(window.cargarOperadores)window.cargarOperadores(true);
     await cargarTodo();
@@ -791,6 +797,44 @@ async function editarUnidad(id){
     await cargarTodo();
   }catch(e){console.error('editarUnidad:',e);alert('⚠️ Error: '+e.message);}
 }
+// editarCartaPorteUnidad: datos que solo hacen falta al generar una Carta
+// Porte (ver ing.html → Generar Carta Porte) — aparte de editarUnidad()
+// para no obligar a pasar por 7 prompts más solo para corregir la placa.
+// Se capturan una sola vez por unidad y de ahí en adelante se reusan en
+// cada pedido de esa unidad.
+async function editarCartaPorteUnidad(id){
+  var un=unidadesRaw.find(function(u){return u.id===id;});
+  if(!un)return;
+  var cp=un.cartaPorte||{};
+  var configVehicular=prompt('Config. vehicular SAT (catálogo c_ConfigAutotransporte, ej. C2, C3, T3S2):',cp.configVehicular||'');
+  if(configVehicular===null)return;
+  var anioModeloVM=prompt('Año modelo del vehículo:',cp.anioModeloVM||'');
+  if(anioModeloVM===null)return;
+  var pesoBrutoVehicular=prompt('Peso bruto vehicular (kg):',cp.pesoBrutoVehicular||'');
+  if(pesoBrutoVehicular===null)return;
+  var permSCT=prompt('Tipo de permiso SCT/ATT (catálogo c_TipoPermiso, ej. TPAF01):',cp.permSCT||'TPAF01');
+  if(permSCT===null)return;
+  var numPermisoSCT=prompt('Número de permiso SCT/ATT:',cp.numPermisoSCT||'');
+  if(numPermisoSCT===null)return;
+  var aseguradora=prompt('Aseguradora (responsabilidad civil):',cp.aseguradora||'');
+  if(aseguradora===null)return;
+  var poliza=prompt('Número de póliza (responsabilidad civil):',cp.poliza||'');
+  if(poliza===null)return;
+  try{
+    await firebase.firestore().collection('unidades').doc(id).update({
+      cartaPorte:{
+        configVehicular:configVehicular.trim().toUpperCase()||null,
+        anioModeloVM:anioModeloVM.trim()||null,
+        pesoBrutoVehicular:parseFloat(pesoBrutoVehicular)||null,
+        permSCT:permSCT.trim().toUpperCase()||null,
+        numPermisoSCT:numPermisoSCT.trim()||null,
+        aseguradora:aseguradora.trim()||null,
+        poliza:poliza.trim()||null
+      }
+    });
+    await cargarTodo();
+  }catch(e){console.error('editarCartaPorteUnidad:',e);alert('⚠️ Error: '+e.message);}
+}
 async function toggleActivaUnidad(id){
   var un=unidadesRaw.find(function(u){return u.id===id;});
   if(!un)return;
@@ -825,6 +869,7 @@ function renderUnidades(){
       +'<td><span class="badge '+(u.activa?'bg-green':'bg-gray')+'">'+(u.activa?'Activa':'Baja')+'</span></td>'
       +'<td style="white-space:nowrap">'
         +'<button class="btn-sm btn-out" onclick="editarUnidad(\''+u.id+'\')">✏️</button> '
+        +'<button class="btn-sm btn-out" title="Datos para Carta Porte" onclick="editarCartaPorteUnidad(\''+u.id+'\')">🧾</button> '
         +'<button class="btn-sm" style="background:'+(u.activa?'#fde8e8':'#d1e7dd')+';color:'+(u.activa?'#9b1c1c':'#0a5233')+';border:none;cursor:pointer" onclick="toggleActivaUnidad(\''+u.id+'\')">'+(u.activa?'Dar de baja':'Reactivar')+'</button>'
       +'</td>'
       +'</tr>';
