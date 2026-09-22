@@ -3239,9 +3239,15 @@ exports.wialonActualizarBitacoras = onRequest({ secrets: [WIALON_TOKEN], cors: t
     res.status(500).json({ error: e.message || 'Error interno del servidor.' });
   }
 });
+// Suspendida temporalmente (control de costo, presupuesto de Google Cloud
+// al 100%) — los operadores todavía no empiezan a usar operador.html, así
+// que hoy no hay ninguna bitácora real que dependa de esto. Para reactivar,
+// solo poner esta constante en false.
+const BITACORAS_WIALON_SUSPENDIDO = true;
 exports.wialonActualizarBitacorasProgramado = onSchedule(
   { schedule: '*/15 * * * *', timeZone: 'America/Mexico_City', secrets: [WIALON_TOKEN], region: 'us-central1', timeoutSeconds: 120 },
   async () => {
+    if (BITACORAS_WIALON_SUSPENDIDO) return;
     try {
       const r = await _wialonActualizarBitacorasCore();
       if (r.actualizadas) console.log('wialonActualizarBitacorasProgramado:', JSON.stringify(r));
