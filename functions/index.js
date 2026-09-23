@@ -3632,12 +3632,14 @@ exports.generarCartaPorteFlete = onRequest({ secrets: [FACTURAPI_TEST_KEY], cors
         product: {
           description: 'Viaje con pedido ' + ordenEmbarque + (pedido.tu2 ? '/' + pedido.tu2 : ''),
           product_key: '78101800', unit_key: 'E48',
-          // Facturapi trata "price" como precio CON IVA incluido y de ahí
-          // calcula el subtotal (verificado con una Carta Porte real de
-          // prueba: mandar price=montoFlete dio un subtotal de solo
-          // montoFlete/1.16) — hay que mandarlo ya con el IVA sumado para
-          // que el subtotal resultante sea el monto del flete real.
-          price: Math.round(parseFloat(pedido.montoFlete) * 1.16 * 100) / 100,
+          // Facturapi trata "price" como el TOTAL neto ya con todos los
+          // impuestos aplicados (trasladados suman, retenidos restan) y de
+          // ahí calcula el subtotal — verificado con 2 pruebas reales:
+          // con solo IVA 16% el factor fue 1.16, y al agregar la retención
+          // de 4% el factor pasó a 1.12 (=1+0.16-0.04). Hay que mandarlo ya
+          // con ese neto aplicado para que el subtotal resultante sea el
+          // monto real del flete.
+          price: Math.round(parseFloat(pedido.montoFlete) * 1.12 * 100) / 100,
           taxes: [
             { type: 'IVA', rate: 0.16 },
             // Retención de IVA del 4% — estándar en fletes cuando el
