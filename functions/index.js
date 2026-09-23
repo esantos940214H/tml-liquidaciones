@@ -1786,19 +1786,66 @@ async function _compactarPdfCartaPorteServer(pdfOriginalBuffer, cartaPorteData, 
     logoRatio = logoImg.height / logoImg.width;
   } catch (eLogo) { console.error('_compactarPdfCartaPorteServer: no se pudo cargar el logo:', eLogo); }
 
+  // El encabezado grande (logo + Folio + Emisor/Receptor, estilo Facturapi)
+  // va SOLO en la primera página propia — sería redundante repetirlo en
+  // cada página, y "Factura"/"con Complemento Carta Porte" no se repite
+  // porque ya aparece en la página 1 real que se conservó. Las páginas
+  // siguientes no llevan encabezado, para aprovechar todo el espacio.
+  let _primeraPaginaPropia = true;
   function dibujarEncabezadoPagina(pagina) {
-    const anchoLogo = 90;
-    if (logoImg) pagina.drawImage(logoImg, { x: margin, y: pageHeight - margin - anchoLogo * logoRatio, width: anchoLogo, height: anchoLogo * logoRatio });
-    // El QR ya NO se repite en cada página — solo al final, en la sección
-    // de Sellos y certificación, junto a la leyenda de representación
-    // impresa (un solo QR por documento es suficiente).
+    if (!_primeraPaginaPropia) return pageHeight - margin;
+    _primeraPaginaPropia = false;
+    const anchoLogo = 110;
+    let yTope = pageHeight - margin;
+    if (logoImg) pagina.drawImage(logoImg, { x: margin, y: yTope - anchoLogo * logoRatio, width: anchoLogo, height: anchoLogo * logoRatio });
     if (fac) {
-      const xDatos = margin + 100;
-      pagina.drawText('MUDANZAS TML — ' + (fac.rfcEmisor || TML_RFC), { x: xDatos, y: pageHeight - margin - 10, size: 8, font: fontBold });
-      pagina.drawText('Receptor: ' + (fac.cliente || '') + ' (RFC ' + (fac.rfcReceptor || '') + ')', { x: xDatos, y: pageHeight - margin - 22, size: 8, font: font });
-      pagina.drawText('Folio ' + (fac.folio || '') + ' — Folio fiscal (UUID): ' + (fac.uuid || ''), { x: xDatos, y: pageHeight - margin - 34, size: 8, font: font });
+      // Caja de folio, arriba a la derecha.
+      pagina.drawRectangle({ x: pageWidth - margin - 90, y: yTope - 32, width: 90, height: 32, borderColor: rgb(0.7, 0.7, 0.7), borderWidth: 1 });
+      pagina.drawText('Folio', { x: pageWidth - margin - 82, y: yTope - 14, size: 8, font: font });
+      pagina.drawText(String(fac.folio || ''), { x: pageWidth - margin - 82, y: yTope - 27, size: 12, font: fontBold });
+
+      let yCol = yTope - (anchoLogo * logoRatio) - 14;
+      pagina.drawText('Complemento Carta Porte 3.1', { x: margin, y: yCol, size: 13, font: fontBold });
+      yCol -= 20;
+      const xCol2 = margin + 280;
+      pagina.drawText('Emisor', { x: margin, y: yCol, size: 9, font: fontBold });
+      pagina.drawText('Folio Fiscal', { x: xCol2, y: yCol, size: 8, font: fontBold });
+      pagina.drawText(fac.uuid || '', { x: xCol2 + 70, y: yCol, size: 8, font: font });
+      yCol -= 12;
+      pagina.drawText('MUDANZAS TML', { x: margin, y: yCol, size: 8, font: fontBold });
+      pagina.drawText('Tipo de CFDI', { x: xCol2, y: yCol, size: 8, font: fontBold });
+      pagina.drawText(fac.tipoComprobante === 'I' ? 'I (Ingreso)' : (fac.tipoComprobante || ''), { x: xCol2 + 70, y: yCol, size: 8, font: font });
+      yCol -= 12;
+      pagina.drawText('55067, Ecatepec de Morelos, Estado de México, MEX', { x: margin, y: yCol, size: 8, font: font });
+      pagina.drawText('Versión CFDI', { x: xCol2, y: yCol, size: 8, font: fontBold });
+      pagina.drawText(fac.version || '', { x: xCol2 + 70, y: yCol, size: 8, font: font });
+      yCol -= 12;
+      pagina.drawText('RFC ' + (fac.rfcEmisor || TML_RFC), { x: margin, y: yCol, size: 8, font: font });
+      pagina.drawText('Lugar emisión', { x: xCol2, y: yCol, size: 8, font: fontBold });
+      pagina.drawText(fac.lugarExpedicion || '', { x: xCol2 + 70, y: yCol, size: 8, font: font });
+      yCol -= 12;
+      pagina.drawText('Régimen Fiscal ' + (fac.regimenFiscalEmisor || '624') + ' - Coordinados', { x: margin, y: yCol, size: 8, font: font });
+      pagina.drawText('Fecha emisión', { x: xCol2, y: yCol, size: 8, font: fontBold });
+      pagina.drawText(fac.fechaCompleta || '', { x: xCol2 + 70, y: yCol, size: 8, font: font });
+      yCol -= 12;
+      pagina.drawText('Fecha certific.', { x: xCol2, y: yCol, size: 8, font: fontBold });
+      pagina.drawText(fac.fechaTimbrado || '', { x: xCol2 + 70, y: yCol, size: 8, font: font });
+      yCol -= 18;
+
+      pagina.drawText('Receptor', { x: margin, y: yCol, size: 9, font: fontBold });
+      yCol -= 12;
+      pagina.drawText('Razón Social: ' + (fac.cliente || ''), { x: margin, y: yCol, size: 8, font: font });
+      yCol -= 12;
+      pagina.drawText('RFC: ' + (fac.rfcReceptor || ''), { x: margin, y: yCol, size: 8, font: font });
+      pagina.drawText('Régimen Fiscal: ' + (fac.regimenFiscalReceptor || ''), { x: xCol2, y: yCol, size: 8, font: font });
+      yCol -= 12;
+      pagina.drawText('Domicilio: ' + (fac.domicilioFiscalReceptor || ''), { x: margin, y: yCol, size: 8, font: font });
+      pagina.drawText('Uso del CFDI: ' + (fac.usoCFDI || ''), { x: xCol2, y: yCol, size: 8, font: font });
+      yCol -= 12;
+      pagina.drawLine({ start: { x: margin, y: yCol }, end: { x: pageWidth - margin, y: yCol }, thickness: 0.5, color: rgb(0.7, 0.7, 0.7) });
+      return yCol - 10;
     }
-    return pageHeight - margin - altoEncabezado;
+    return yTope - (anchoLogo * logoRatio) - 10;
   }
 
   let pagina = nuevo.addPage([pageWidth, pageHeight]);
@@ -2685,6 +2732,10 @@ function _parseFacturaFleteXMLServer(xmlText) {
     textoConceptos: textoConceptos, ruta: ruta, sello: comp['@_Sello'] || '',
     fechaTimbrado: tfd['@_FechaTimbrado'] || '', selloSAT: tfd['@_SelloSAT'] || '',
     noCertificadoSAT: tfd['@_NoCertificadoSAT'] || '', rfcProvCertif: tfd['@_RfcProvCertif'] || '',
+    fechaCompleta: comp['@_Fecha'] || '', lugarExpedicion: comp['@_LugarExpedicion'] || '',
+    tipoComprobante: comp['@_TipoDeComprobante'] || '', version: comp['@_Version'] || '',
+    regimenFiscalEmisor: emisor['@_RegimenFiscal'] || '', regimenFiscalReceptor: receptor['@_RegimenFiscal'] || '',
+    domicilioFiscalReceptor: receptor['@_DomicilioFiscalReceptor'] || '', usoCFDI: receptor['@_UsoCFDI'] || '',
     destino: destinoPunto ? destinoPunto.label : null, horaSalida: origen ? origen.fechaHora : null, distanciaKm: distanciaKm
   };
 }
