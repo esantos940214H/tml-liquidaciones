@@ -1805,6 +1805,8 @@ async function _compactarPdfCartaPorteServer(pdfOriginalBuffer, cartaPorteData, 
       pagina.drawText(String(fac.folio || ''), { x: pageWidth - margin - 82, y: yTope - 27, size: 12, font: fontBold });
 
       let yCol = yTope - (anchoLogo * logoRatio) - 14;
+      pagina.drawText('Complemento Carta Porte 3.1', { x: margin, y: yCol, size: 13, font: fontBold });
+      yCol -= 20;
       const xCol2 = margin + 280;
       pagina.drawText('Emisor', { x: margin, y: yCol, size: 9, font: fontBold });
       pagina.drawText('Folio Fiscal', { x: xCol2, y: yCol, size: 8, font: fontBold });
