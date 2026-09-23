@@ -1789,7 +1789,9 @@ async function _compactarPdfCartaPorteServer(pdfOriginalBuffer, cartaPorteData, 
   function dibujarEncabezadoPagina(pagina) {
     const anchoLogo = 90;
     if (logoImg) pagina.drawImage(logoImg, { x: margin, y: pageHeight - margin - anchoLogo * logoRatio, width: anchoLogo, height: anchoLogo * logoRatio });
-    if (qrImg) pagina.drawImage(qrImg, { x: pageWidth - margin - 60, y: pageHeight - margin - 60, width: 60, height: 60 });
+    // El QR ya NO se repite en cada página — solo al final, en la sección
+    // de Sellos y certificación, junto a la leyenda de representación
+    // impresa (un solo QR por documento es suficiente).
     if (fac) {
       const xDatos = margin + 100;
       pagina.drawText('MUDANZAS TML — ' + (fac.rfcEmisor || TML_RFC), { x: xDatos, y: pageHeight - margin - 10, size: 8, font: fontBold });
