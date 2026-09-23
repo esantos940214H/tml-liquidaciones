@@ -1815,8 +1815,24 @@ async function _compactarPdfCartaPorteServer(pdfOriginalBuffer, cartaPorteData, 
   function campoValor(campo, valor) {
     nuevaPaginaSiHaceFalta();
     pagina.drawText(campo + ':', { x: margin, y, size: 8, font: fontBold });
-    pagina.drawText(String(valor == null || valor === '' ? '—' : valor), { x: margin + 130, y, size: 8, font: font });
+    pagina.drawText(String(valor == null || valor === '' ? '—' : valor), { x: margin + 220, y, size: 8, font: font });
     y -= 12;
+  }
+  // campoTextoLargo: para los sellos/cadena original — son cadenas base64
+  // muy largas sin espacios, se cortan a mano por ancho de página en vez
+  // de dejar que se desborden fuera del margen.
+  function campoTextoLargo(campo, valor) {
+    nuevaPaginaSiHaceFalta();
+    pagina.drawText(campo + ':', { x: margin, y, size: 8, font: fontBold });
+    y -= 11;
+    const texto = String(valor == null || valor === '' ? '—' : valor);
+    const anchoCaracter = 3.6, caracteresPorLinea = Math.floor((pageWidth - margin * 2) / anchoCaracter);
+    for (let i = 0; i < texto.length; i += caracteresPorLinea) {
+      nuevaPaginaSiHaceFalta();
+      pagina.drawText(texto.slice(i, i + caracteresPorLinea), { x: margin, y, size: 6.5, font: font });
+      y -= 9;
+    }
+    y -= 3;
   }
   // dibujarTabla: helper reusado por Mercancías/Ubicaciones/Figuras — cada
   // columna es {label, w, get(fila)}; repite el encabezado solo cuando
@@ -1899,6 +1915,22 @@ async function _compactarPdfCartaPorteServer(pdfOriginalBuffer, cartaPorteData, 
       }
     }
   ], figuras);
+
+  // Sellos y certificación — para que se sienta igual que la
+  // representación de antes (mismos datos, ya certificados en el XML,
+  // solo repetidos aquí al final).
+  if (fac) {
+    tituloSeccion('Sellos y certificación del SAT');
+    campoTextoLargo('Sello digital del CFDI', fac.sello);
+    campoTextoLargo('Sello del SAT', fac.selloSAT);
+    campoTextoLargo('Cadena original del complemento de certificación digital del SAT', _cadenaOriginalTFDServer(fac));
+    campoValor('No. de certificado del SAT', fac.noCertificadoSAT);
+    campoValor('RFC del proveedor de certificación (PAC)', fac.rfcProvCertif);
+    y -= 6; nuevaPaginaSiHaceFalta();
+    if (qrImg) { pagina.drawImage(qrImg, { x: margin, y: y - 60, width: 60, height: 60 }); }
+    pagina.drawText('Este documento es una representación impresa de un CFDI', { x: margin + 70, y: y - 30, size: 8, font: font });
+    y -= 70;
+  }
 
   return Buffer.from(await nuevo.save());
 }
@@ -2608,6 +2640,8 @@ function _parseFacturaFleteXMLServer(xmlText) {
     iva: parseFloat(impResumen['@_TotalImpuestosTrasladados'] || 0), ret: parseFloat(impResumen['@_TotalImpuestosRetenidos'] || 0), total: total,
     rfcEmisor: (emisor['@_Rfc'] || '').toUpperCase(), rfcReceptor: (receptor['@_Rfc'] || '').toUpperCase(), cliente: receptor['@_Nombre'] || '',
     textoConceptos: textoConceptos, ruta: ruta, sello: comp['@_Sello'] || '',
+    fechaTimbrado: tfd['@_FechaTimbrado'] || '', selloSAT: tfd['@_SelloSAT'] || '',
+    noCertificadoSAT: tfd['@_NoCertificadoSAT'] || '', rfcProvCertif: tfd['@_RfcProvCertif'] || '',
     destino: destinoPunto ? destinoPunto.label : null, horaSalida: origen ? origen.fechaHora : null, distanciaKm: distanciaKm
   };
 }
@@ -2620,6 +2654,14 @@ function _urlVerificacionCFDIServer(fac) {
   const fe = (fac.sello || '').slice(-8);
   return 'https://verificacfdi.facturaelectronica.sat.gob.mx/default.aspx?id=' + fac.uuid +
     '&re=' + fac.rfcEmisor + '&rr=' + fac.rfcReceptor + '&tt=' + fac.total.toFixed(6) + '&fe=' + fe;
+}
+
+// _cadenaOriginalTFDServer: misma fórmula fija del Anexo 20 del SAT para
+// el complemento de certificación digital (versión 1.1) —
+// ||1.1|UUID|FechaTimbrado|RfcProvCertif|SelloCFD||  — se calcula, no se
+// inventa, con datos que ya vienen en el mismo XML certificado.
+function _cadenaOriginalTFDServer(fac) {
+  return '||1.1|' + fac.uuid + '|' + fac.fechaTimbrado + '|' + fac.rfcProvCertif + '|' + fac.sello + '||';
 }
 
 // _parseExcelCartaPorteServer(buffer): lee la "Plantilla Masiva" de
