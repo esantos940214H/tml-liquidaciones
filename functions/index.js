@@ -1718,6 +1718,18 @@ async function _subirXMLStorage(path, text) {
   return 'https://storage.googleapis.com/' + bucket.name + '/' + path;
 }
 
+// _subirPDFStorage: sube la representación impresa OFICIAL del CFDI (la
+// que devuelve el PAC/proveedor de timbrado, con QR/sello/folio fiscal —
+// nunca la genérica que arma jsPDF del lado del navegador, esa no cumple
+// con lo que exige el SAT para una representación impresa real).
+async function _subirPDFStorage(path, buffer) {
+  const bucket = admin.storage().bucket('tml-liquidaciones.firebasestorage.app');
+  const file = bucket.file(path);
+  await file.save(buffer, { contentType: 'application/pdf' });
+  await file.makePublic();
+  return 'https://storage.googleapis.com/' + bucket.name + '/' + path;
+}
+
 exports.revisarBuzonCompras = onRequest(
   { secrets: [COMPRAS_EMAIL_USER, COMPRAS_EMAIL_PASS, ANTHROPIC_API_KEY], cors: true, region: 'us-central1', timeoutSeconds: 300 },
   async (req, res) => {
@@ -2543,7 +2555,7 @@ function _parseExcelCartaPorteServer(buffer) {
 // que actualizar — identificar la unidad por la placa del XML no se intenta
 // aquí, se deja el pedido marcado como facturado en fletesDB para que se
 // registre el ingreso a mano con el XML ya identificado.
-async function _sustituirFacturaFleteServer(fac, xmlURL) {
+async function _sustituirFacturaFleteServer(fac, xmlURL, pdfURL) {
   const pendSnap = await db.collection('fletesDB').where('estado', '==', 'pendiente_factura').get();
   const pendientes = [];
   pendSnap.forEach(function (d) { pendientes.push(Object.assign({ id: d.id }, d.data())); });
@@ -2560,6 +2572,7 @@ async function _sustituirFacturaFleteServer(fac, xmlURL) {
   if (f.facturaUUID === fac.uuid) return { ok: false, motivo: 'ya estaba facturado con este mismo XML' };
   const camposFlete = { estado: 'facturado', facturaUUID: fac.uuid, facturaFolio: fac.folio, montoFactura: fac.total, facturadoEn: new Date().toISOString() };
   if (xmlURL) camposFlete.facturaXmlURL = xmlURL;
+  if (pdfURL) camposFlete.facturaPdfURL = pdfURL;
   if (fac.destino && f.destino !== fac.destino) { camposFlete.destinoOriginalCorreo = f.destino || null; camposFlete.destino = fac.destino; }
   await db.collection('fletesDB').doc(f.id).set(camposFlete, { merge: true });
 
@@ -2579,6 +2592,7 @@ async function _sustituirFacturaFleteServer(fac, xmlURL) {
     if (fac.ruta.length) prov.ruta = fac.ruta;
     prov.montoPendiente = false; prov.sustituidoPorXML = true;
     if (xmlURL) prov.xmlURL = xmlURL;
+    if (pdfURL) prov.pdfURL = pdfURL;
     prov.observaciones = (prov.observaciones || '') + ' — sustituido por XML (buzón automático) ' + fac.folio + ' el ' + new Date().toISOString().slice(0, 10);
     tx.set(refIngresos, { data: JSON.stringify(ingresosDB) });
     ingresoActualizado = true;
@@ -3702,7 +3716,19 @@ exports.generarCartaPorteFlete = onRequest({ secrets: [FACTURAPI_TEST_KEY], cors
     try { xmlURL = await _subirXMLStorage('facturasFlete/' + fac.uuid + '.xml', xmlTexto); }
     catch (eStorage) { console.error('generarCartaPorteFlete: no se pudo subir el XML a Storage:', eStorage); }
 
-    const resultadoSustitucion = await _sustituirFacturaFleteServer(fac, xmlURL);
+    // PDF: la representación impresa OFICIAL que regresa Facturapi (con
+    // QR/sello/folio fiscal) — nunca la genérica que arma jsPDF del lado
+    // del navegador, esa no cumple con lo que exige el SAT.
+    let pdfURL = null;
+    try {
+      const rPdf = await fetch('https://www.facturapi.io/v2/invoices/' + respuestaTimbrado.id + '/pdf', {
+        headers: { 'Authorization': 'Bearer ' + FACTURAPI_TEST_KEY.value() }
+      });
+      if (rPdf.ok) pdfURL = await _subirPDFStorage('facturasFlete/' + fac.uuid + '.pdf', Buffer.from(await rPdf.arrayBuffer()));
+      else console.error('generarCartaPorteFlete: Facturapi no regresó el PDF, status', rPdf.status);
+    } catch (ePdf) { console.error('generarCartaPorteFlete: no se pudo descargar/subir el PDF:', ePdf); }
+
+    const resultadoSustitucion = await _sustituirFacturaFleteServer(fac, xmlURL, pdfURL);
 
     res.json({ ok: true, facturapiId: respuestaTimbrado.id, uuid: fac.uuid, folio: fac.folio, sustitucion: resultadoSustitucion });
   } catch (e) {
