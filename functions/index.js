@@ -1860,7 +1860,7 @@ async function _compactarPdfCartaPorteServer(pdfOriginalBuffer, cartaPorteData, 
   // TML) y guinda/carmín, con el texto en blanco — mismo estilo que usa
   // Facturo por Ti para separar secciones.
   const AZUL_MARINO_TML = rgb(34 / 255, 44 / 255, 62 / 255);
-  const GUINDA_TML = rgb(139 / 255, 21 / 255, 56 / 255);
+  const GUINDA_TML = rgb(0x67 / 255, 0x00 / 255, 0x10 / 255);
   let _seccionesDibujadas = 0;
   function tituloSeccion(texto) {
     y -= 10; nuevaPaginaSiHaceFalta();
