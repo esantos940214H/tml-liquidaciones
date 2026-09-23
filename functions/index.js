@@ -1956,7 +1956,10 @@ async function _compactarPdfCartaPorteServer(pdfOriginalBuffer, cartaPorteData, 
   // Condiciones de prestación de servicios (cláusulas SCT) — texto fijo,
   // igual en todas las Cartas de Porte, exigido por el Art. 74 del RAFSA
   // para ir impreso en el reverso del documento (ver
-  // CLAUSULAS_SCT_CARTA_PORTE arriba, transcrito tal cual del DOF).
+  // CLAUSULAS_SCT_CARTA_PORTE arriba, transcrito tal cual del DOF). Va en
+  // su propia hoja aparte, no continúa pegado a la sección de sellos.
+  pagina = nuevo.addPage([pageWidth, pageHeight]);
+  y = dibujarEncabezadoPagina(pagina);
   tituloSeccion('Condiciones de prestación de servicios (Carta de Porte)');
   CLAUSULAS_SCT_CARTA_PORTE.forEach(function (clausula) { dibujarParrafo(clausula, 7.5); y -= 4; });
 
