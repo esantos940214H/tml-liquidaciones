@@ -1722,6 +1722,85 @@ async function _subirXMLStorage(path, text) {
 // que devuelve el PAC/proveedor de timbrado, con QR/sello/folio fiscal —
 // nunca la genérica que arma jsPDF del lado del navegador, esa no cumple
 // con lo que exige el SAT para una representación impresa real).
+// _compactarPdfCartaPorteServer: la página 1 del PDF de Facturapi ya trae
+// TODO lo que exige el SAT para la representación impresa (QR, sellos,
+// folio fiscal, emisor/receptor) — se conserva tal cual, sin tocarla. Lo
+// único que se reemplaza son las páginas del Complemento Carta Porte (que
+// Facturapi arma un campo por renglón, 22+ páginas para 120 mercancías)
+// por una tabla compacta armada aquí con los mismos datos del XML — mismo
+// espíritu que el formato de Facturo por Ti, sin tener que calcular sellos
+// ni QR (esos ya vienen correctos en la página 1 que se conserva).
+async function _compactarPdfCartaPorteServer(pdfOriginalBuffer, ubicaciones, mercancias, fac) {
+  const { PDFDocument, StandardFonts } = require('pdf-lib');
+  const QRCode = require('qrcode');
+  const original = await PDFDocument.load(pdfOriginalBuffer);
+  const nuevo = await PDFDocument.create();
+  const [pagina1] = await nuevo.copyPages(original, [0]);
+  nuevo.addPage(pagina1);
+
+  const font = await nuevo.embedFont(StandardFonts.Helvetica);
+  const fontBold = await nuevo.embedFont(StandardFonts.HelveticaBold);
+  const pageWidth = 612, pageHeight = 792, margin = 36, filaAltura = 13;
+
+  // Mismo QR de verificación del SAT que trae la página 1 — se repite en
+  // cada página propia porque la Carta Porte viaja físicamente en la
+  // unidad y puede revisarse por separado del resto de la factura.
+  let qrImg = null;
+  if (fac && fac.uuid) {
+    const qrPng = await QRCode.toBuffer(_urlVerificacionCFDIServer(fac), { type: 'png', width: 100, margin: 1 });
+    qrImg = await nuevo.embedPng(qrPng);
+  }
+  function dibujarEncabezadoPagina(pagina) {
+    if (qrImg) pagina.drawImage(qrImg, { x: pageWidth - margin - 70, y: pageHeight - margin - 70, width: 70, height: 70 });
+    if (fac) {
+      pagina.drawText('Folio ' + (fac.folio || '') + ' — UUID ' + (fac.uuid || ''), { x: margin, y: pageHeight - margin + 4, size: 7, font: font });
+    }
+  }
+
+  let pagina = nuevo.addPage([pageWidth, pageHeight]);
+  dibujarEncabezadoPagina(pagina);
+  let y = pageHeight - margin;
+  pagina.drawText('Complemento Carta Porte — Ubicaciones', { x: margin, y, size: 12, font: fontBold });
+  y -= 20;
+  (ubicaciones || []).forEach(function (u) {
+    const dom = u.Domicilio || {};
+    [
+      (u.TipoUbicacion || '') + ' — ' + (u.NombreRemitenteDestinatario || '') + ' (RFC ' + (u.RFCRemitenteDestinatario || '') + ')',
+      'Domicilio: ' + (dom.Calle || '') + ' ' + (dom.NumeroExterior || '') + ', Col. ' + (dom.Colonia || '') + ', CP ' + (dom.CodigoPostal || '') + ', ' + (dom.Estado || '') + ', ' + (dom.Pais || ''),
+      'Fecha/hora: ' + (u.FechaHoraSalidaLlegada || '') + (u.DistanciaRecorrida ? ' — Distancia: ' + u.DistanciaRecorrida + ' km' : '')
+    ].forEach(function (linea) { pagina.drawText(linea, { x: margin, y, size: 9, font: font }); y -= 12; });
+    y -= 8;
+  });
+
+  const columnas = [
+    { label: 'Clave', w: 55 }, { label: 'Descripción', w: 230 },
+    { label: 'Cant.', w: 55 }, { label: 'Unidad', w: 50 }, { label: 'Peso (kg)', w: 60 }
+  ];
+  const filasPorPagina = Math.floor((pageHeight - margin * 2 - 40) / filaAltura);
+  const listaMercancia = (mercancias && mercancias.Mercancia) || [];
+  let fila = 0;
+  pagina = nuevo.addPage([pageWidth, pageHeight]);
+  dibujarEncabezadoPagina(pagina);
+  y = pageHeight - margin;
+  function encabezadoMercancias() {
+    pagina.drawText('Complemento Carta Porte — Mercancías (' + listaMercancia.length + ')', { x: margin, y, size: 12, font: fontBold });
+    y -= 18;
+    let x = margin;
+    columnas.forEach(function (c) { pagina.drawText(c.label, { x: x, y: y, size: 9, font: fontBold }); x += c.w; });
+    y -= filaAltura;
+  }
+  encabezadoMercancias();
+  listaMercancia.forEach(function (m) {
+    if (fila >= filasPorPagina) { pagina = nuevo.addPage([pageWidth, pageHeight]); dibujarEncabezadoPagina(pagina); y = pageHeight - margin; fila = 0; encabezadoMercancias(); }
+    let x = margin;
+    [m.BienesTransp, (m.Descripcion || '').slice(0, 48), String(m.Cantidad), m.ClaveUnidad, String(m.PesoEnKg)]
+      .forEach(function (v, i) { pagina.drawText(String(v || ''), { x: x, y: y, size: 8, font: font }); x += columnas[i].w; });
+    y -= filaAltura; fila++;
+  });
+
+  return Buffer.from(await nuevo.save());
+}
+
 async function _subirPDFStorage(path, buffer) {
   const bucket = admin.storage().bucket('tml-liquidaciones.firebasestorage.app');
   const file = bucket.file(path);
@@ -2426,9 +2505,19 @@ function _parseFacturaFleteXMLServer(xmlText) {
     subtotal: subtotal, subtFlete: clasif.subtFlete, subtManiobras: clasif.subtManiobras, subtOtros: clasif.subtOtros,
     iva: parseFloat(impResumen['@_TotalImpuestosTrasladados'] || 0), ret: parseFloat(impResumen['@_TotalImpuestosRetenidos'] || 0), total: total,
     rfcEmisor: (emisor['@_Rfc'] || '').toUpperCase(), rfcReceptor: (receptor['@_Rfc'] || '').toUpperCase(), cliente: receptor['@_Nombre'] || '',
-    textoConceptos: textoConceptos, ruta: ruta,
+    textoConceptos: textoConceptos, ruta: ruta, sello: comp['@_Sello'] || '',
     destino: destinoPunto ? destinoPunto.label : null, horaSalida: origen ? origen.fechaHora : null, distanciaKm: distanciaKm
   };
+}
+
+// _urlVerificacionCFDIServer: la misma fórmula oficial del SAT para el QR
+// de verificación de cualquier CFDI (Anexo 20) — con esto no hace falta
+// que Facturapi nos dé el QR de cada página, lo generamos igual de válido
+// nosotros mismos con datos que ya vienen en el XML.
+function _urlVerificacionCFDIServer(fac) {
+  const fe = (fac.sello || '').slice(-8);
+  return 'https://verificacfdi.facturaelectronica.sat.gob.mx/default.aspx?id=' + fac.uuid +
+    '&re=' + fac.rfcEmisor + '&rr=' + fac.rfcReceptor + '&tt=' + fac.total.toFixed(6) + '&fe=' + fe;
 }
 
 // _parseExcelCartaPorteServer(buffer): lee la "Plantilla Masiva" de
@@ -3720,16 +3809,23 @@ exports.generarCartaPorteFlete = onRequest({ secrets: [FACTURAPI_TEST_KEY], cors
     try { xmlURL = await _subirXMLStorage('facturasFlete/' + fac.uuid + '.xml', xmlTexto); }
     catch (eStorage) { console.error('generarCartaPorteFlete: no se pudo subir el XML a Storage:', eStorage); }
 
-    // PDF: la representación impresa OFICIAL que regresa Facturapi (con
-    // QR/sello/folio fiscal) — nunca la genérica que arma jsPDF del lado
-    // del navegador, esa no cumple con lo que exige el SAT.
+    // PDF: se conserva la página 1 OFICIAL que regresa Facturapi (con
+    // QR/sello/folio fiscal — nunca calculado a mano) y se reemplazan las
+    // páginas del Complemento Carta Porte por una tabla compacta armada
+    // aquí (ver _compactarPdfCartaPorteServer) en vez de las 20+ páginas,
+    // un campo por renglón, que arma Facturapi por default.
     let pdfURL = null;
     try {
       const rPdf = await fetch('https://www.facturapi.io/v2/invoices/' + respuestaTimbrado.id + '/pdf', {
         headers: { 'Authorization': 'Bearer ' + FACTURAPI_TEST_KEY.value() }
       });
-      if (rPdf.ok) pdfURL = await _subirPDFStorage('facturasFlete/' + fac.uuid + '.pdf', Buffer.from(await rPdf.arrayBuffer()));
-      else console.error('generarCartaPorteFlete: Facturapi no regresó el PDF, status', rPdf.status);
+      if (rPdf.ok) {
+        const pdfOriginal = Buffer.from(await rPdf.arrayBuffer());
+        let pdfFinal = pdfOriginal;
+        try { pdfFinal = await _compactarPdfCartaPorteServer(pdfOriginal, cp.ubicaciones, cp.mercancias, fac); }
+        catch (eCompact) { console.error('generarCartaPorteFlete: no se pudo compactar el PDF, se usa el original de Facturapi:', eCompact); }
+        pdfURL = await _subirPDFStorage('facturasFlete/' + fac.uuid + '.pdf', pdfFinal);
+      } else console.error('generarCartaPorteFlete: Facturapi no regresó el PDF, status', rPdf.status);
     } catch (ePdf) { console.error('generarCartaPorteFlete: no se pudo descargar/subir el PDF:', ePdf); }
 
     const resultadoSustitucion = await _sustituirFacturaFleteServer(fac, xmlURL, pdfURL);
