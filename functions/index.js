@@ -1730,7 +1730,13 @@ async function _subirXMLStorage(path, text) {
 // por una tabla compacta armada aquí con los mismos datos del XML — mismo
 // espíritu que el formato de Facturo por Ti, sin tener que calcular sellos
 // ni QR (esos ya vienen correctos en la página 1 que se conserva).
-async function _compactarPdfCartaPorteServer(pdfOriginalBuffer, ubicaciones, mercancias, fac) {
+async function _compactarPdfCartaPorteServer(pdfOriginalBuffer, cartaPorteData, fac) {
+  const ubicaciones = cartaPorteData.Ubicaciones || [];
+  const mercancias = cartaPorteData.Mercancias || {};
+  const autotransporte = mercancias.Autotransporte || {};
+  const idVeh = autotransporte.IdentificacionVehicular || {};
+  const seguros = autotransporte.Seguros || {};
+  const figuras = cartaPorteData.FiguraTransporte || [];
   const { PDFDocument, StandardFonts } = require('pdf-lib');
   const QRCode = require('qrcode');
   const original = await PDFDocument.load(pdfOriginalBuffer);
@@ -1801,43 +1807,98 @@ async function _compactarPdfCartaPorteServer(pdfOriginalBuffer, ubicaciones, mer
   function nuevaPaginaSiHaceFalta() {
     if (y < margin + filaAltura) { pagina = nuevo.addPage([pageWidth, pageHeight]); y = dibujarEncabezadoPagina(pagina); }
   }
-
-  pagina.drawText('Complemento Carta Porte — Ubicaciones', { x: margin, y, size: 12, font: fontBold });
-  y -= 20;
-  (ubicaciones || []).forEach(function (u) {
-    const dom = u.Domicilio || {};
-    [
-      (u.TipoUbicacion || '') + ' — ' + (u.NombreRemitenteDestinatario || '') + ' (RFC ' + (u.RFCRemitenteDestinatario || '') + ')',
-      'Domicilio: ' + (dom.Calle || '') + ' ' + (dom.NumeroExterior || '') + ', Col. ' + (dom.Colonia || '') + ', CP ' + (dom.CodigoPostal || '') + ', ' + (dom.Estado || '') + ', ' + (dom.Pais || ''),
-      'Fecha/hora: ' + (u.FechaHoraSalidaLlegada || '') + (u.DistanciaRecorrida ? ' — Distancia: ' + u.DistanciaRecorrida + ' km' : '')
-    ].forEach(function (linea) { nuevaPaginaSiHaceFalta(); pagina.drawText(linea, { x: margin, y, size: 9, font: font }); y -= 12; });
-    y -= 8;
-  });
-
-  const columnas = [
-    { label: 'Clave', w: 55 }, { label: 'Descripción', w: 230 },
-    { label: 'Cant.', w: 55 }, { label: 'Unidad', w: 50 }, { label: 'Peso (kg)', w: 60 }
-  ];
-  const listaMercancia = (mercancias && mercancias.Mercancia) || [];
-  y -= 10;
-  nuevaPaginaSiHaceFalta();
-  pagina.drawText('Complemento Carta Porte — Mercancías (' + listaMercancia.length + ')', { x: margin, y, size: 12, font: fontBold });
-  y -= 18;
-  function encabezadoColumnasMercancias() {
-    let x = margin;
-    columnas.forEach(function (c) { pagina.drawText(c.label, { x: x, y: y, size: 9, font: fontBold }); x += c.w; });
-    y -= filaAltura;
+  function tituloSeccion(texto) {
+    y -= 8; nuevaPaginaSiHaceFalta();
+    pagina.drawText(texto, { x: margin, y, size: 12, font: fontBold });
+    y -= 16;
   }
-  encabezadoColumnasMercancias();
-  listaMercancia.forEach(function (m) {
-    const habiaSaltadoPagina = y < margin + filaAltura;
+  function campoValor(campo, valor) {
     nuevaPaginaSiHaceFalta();
-    if (habiaSaltadoPagina) encabezadoColumnasMercancias();
-    let x = margin;
-    [m.BienesTransp, (m.Descripcion || '').slice(0, 48), String(m.Cantidad), m.ClaveUnidad, String(m.PesoEnKg)]
-      .forEach(function (v, i) { pagina.drawText(String(v || ''), { x: x, y: y, size: 8, font: font }); x += columnas[i].w; });
-    y -= filaAltura;
-  });
+    pagina.drawText(campo + ':', { x: margin, y, size: 8, font: fontBold });
+    pagina.drawText(String(valor == null || valor === '' ? '—' : valor), { x: margin + 130, y, size: 8, font: font });
+    y -= 12;
+  }
+  // dibujarTabla: helper reusado por Mercancías/Ubicaciones/Figuras — cada
+  // columna es {label, w, get(fila)}; repite el encabezado solo cuando
+  // brinca de página de verdad, nunca por secciones fijas.
+  function dibujarTabla(columnas, filas) {
+    function encabezado() {
+      let x = margin;
+      columnas.forEach(function (c) { pagina.drawText(c.label, { x: x, y: y, size: 8, font: fontBold }); x += c.w; });
+      y -= filaAltura;
+    }
+    nuevaPaginaSiHaceFalta();
+    encabezado();
+    filas.forEach(function (fila) {
+      const saltoPagina = y < margin + filaAltura;
+      nuevaPaginaSiHaceFalta();
+      if (saltoPagina) encabezado();
+      let x = margin;
+      columnas.forEach(function (c) {
+        pagina.drawText(String(c.get(fila) == null ? '—' : c.get(fila)), { x: x, y: y, size: 7.5, font: font });
+        x += c.w;
+      });
+      y -= filaAltura;
+    });
+  }
+
+  tituloSeccion('Complemento de Carta Porte');
+  campoValor('Folio del CCP (IdCCP)', cartaPorteData.IdCCP);
+  campoValor('Transporte internacional', cartaPorteData.TranspInternac);
+  campoValor('Total distancia recorrida', (cartaPorteData.TotalDistRec || 0) + ' km');
+
+  tituloSeccion('Autotransporte');
+  campoValor('Permiso SCT/ATT', autotransporte.PermSCT);
+  campoValor('Número de permiso', autotransporte.NumPermisoSCT);
+  campoValor('Configuración vehicular', idVeh.ConfigVehicular);
+  campoValor('Placa', idVeh.PlacaVM);
+  campoValor('Año modelo', idVeh.AnioModeloVM);
+  campoValor('Peso bruto vehicular', (idVeh.PesoBrutoVehicular || '') + ' kg');
+  campoValor('Aseguradora resp. civil', seguros.AseguraRespCivil);
+  campoValor('Póliza resp. civil', seguros.PolizaRespCivil);
+
+  tituloSeccion('Mercancías (' + (mercancias.Mercancia || []).length + ')');
+  campoValor('Peso bruto total', (mercancias.PesoBrutoTotal || 0) + ' ' + (mercancias.UnidadPeso || ''));
+  campoValor('Peso neto total', (mercancias.PesoNetoTotal || 0) + ' ' + (mercancias.UnidadPeso || ''));
+  y -= 4;
+  dibujarTabla([
+    { label: 'Clave', w: 50, get: function (m) { return m.BienesTransp; } },
+    { label: 'Descripción', w: 195, get: function (m) { return (m.Descripcion || '').slice(0, 42); } },
+    { label: 'Cant.', w: 45, get: function (m) { return m.Cantidad; } },
+    { label: 'Unidad', w: 45, get: function (m) { return m.ClaveUnidad; } },
+    { label: 'Peso (kg)', w: 55, get: function (m) { return m.PesoEnKg; } },
+    { label: 'Material pelig.', w: 65, get: function (m) { return m.MaterialPeligroso || 'No'; } }
+  ], mercancias.Mercancia || []);
+
+  tituloSeccion('Remitentes y destinatarios');
+  campoValor('Total distancia recorrida', (cartaPorteData.TotalDistRec || 0) + ' km');
+  y -= 4;
+  dibujarTabla([
+    { label: 'Tipo', w: 45, get: function (u) { return u.TipoUbicacion; } },
+    { label: 'RFC', w: 85, get: function (u) { return u.RFCRemitenteDestinatario; } },
+    { label: 'Nombre', w: 140, get: function (u) { return (u.NombreRemitenteDestinatario || '').slice(0, 30); } },
+    { label: 'Fecha/hora', w: 90, get: function (u) { return u.FechaHoraSalidaLlegada; } },
+    {
+      label: 'Domicilio', w: 145, get: function (u) {
+        const d = u.Domicilio || {};
+        return ((d.Calle || '') + ' ' + (d.NumeroExterior || '') + ', CP ' + (d.CodigoPostal || '')).slice(0, 40);
+      }
+    }
+  ], ubicaciones);
+
+  tituloSeccion('Figura de transporte');
+  dibujarTabla([
+    { label: 'Tipo', w: 40, get: function (f) { return f.TipoFigura === '01' ? 'Operador' : f.TipoFigura; } },
+    { label: 'RFC', w: 85, get: function (f) { return f.RFCFigura; } },
+    { label: 'Nombre', w: 160, get: function (f) { return (f.NombreFigura || '').slice(0, 35); } },
+    { label: 'Licencia', w: 90, get: function (f) { return f.NumLicencia; } },
+    {
+      label: 'Domicilio', w: 130, get: function (f) {
+        const d = f.Domicilio || {};
+        return ((d.Calle || '') + ' ' + (d.NumeroExterior || '')).slice(0, 35);
+      }
+    }
+  ], figuras);
 
   return Buffer.from(await nuevo.save());
 }
@@ -3772,6 +3833,25 @@ exports.generarCartaPorteFlete = onRequest({ secrets: [FACTURAPI_TEST_KEY], cors
     if (!pedido.pedidoFlete) { res.status(400).json({ error: 'Este pedido no tiene número de "Pedido de flete" capturado — es obligatorio en la descripción de la factura, complétalo antes de generar.' }); return; }
 
     const idCCP = await _generarIdCCPServer();
+    const cartaPorteData = {
+      IdCCP: idCCP,
+      TranspInternac: 'No',
+      TotalDistRec: cp.totalDistRec || 0,
+      Ubicaciones: cp.ubicaciones,
+      Mercancias: Object.assign({}, cp.mercancias, {
+        Autotransporte: {
+          PermSCT: cpUnidad.permSCT, NumPermisoSCT: cpUnidad.numPermisoSCT,
+          IdentificacionVehicular: {
+            ConfigVehicular: cpUnidad.configVehicular, PlacaVM: unidad.placas,
+            AnioModeloVM: String(cpUnidad.anioModeloVM || ''), PesoBrutoVehicular: cpUnidad.pesoBrutoVehicular
+          },
+          Seguros: { AseguraRespCivil: cpUnidad.aseguradora, PolizaRespCivil: cpUnidad.poliza }
+        }
+      }),
+      FiguraTransporte: [{
+        TipoFigura: '01', RFCFigura: operador.rfc, NumLicencia: operador.licencia, NombreFigura: operador.nombre
+      }]
+    };
     const invoice = {
       type: 'I',
       customer: { legal_name: cliente.razonSocial, tax_id: cliente.rfc, tax_system: cliente.regimenFiscal, address: { zip: cliente.cpFiscal } },
@@ -3798,28 +3878,7 @@ exports.generarCartaPorteFlete = onRequest({ secrets: [FACTURAPI_TEST_KEY], cors
         }
       }],
       use: cliente.usoCfdi, payment_form: '99', payment_method: 'PPD',
-      complements: [{
-        type: 'carta_porte',
-        data: {
-          IdCCP: idCCP,
-          TranspInternac: 'No',
-          TotalDistRec: cp.totalDistRec || 0,
-          Ubicaciones: cp.ubicaciones,
-          Mercancias: Object.assign({}, cp.mercancias, {
-            Autotransporte: {
-              PermSCT: cpUnidad.permSCT, NumPermisoSCT: cpUnidad.numPermisoSCT,
-              IdentificacionVehicular: {
-                ConfigVehicular: cpUnidad.configVehicular, PlacaVM: unidad.placas,
-                AnioModeloVM: String(cpUnidad.anioModeloVM || ''), PesoBrutoVehicular: cpUnidad.pesoBrutoVehicular
-              },
-              Seguros: { AseguraRespCivil: cpUnidad.aseguradora, PolizaRespCivil: cpUnidad.poliza }
-            }
-          }),
-          FiguraTransporte: [{
-            TipoFigura: '01', RFCFigura: operador.rfc, NumLicencia: operador.licencia, NombreFigura: operador.nombre
-          }]
-        }
-      }]
+      complements: [{ type: 'carta_porte', data: cartaPorteData }]
     };
 
     const rTimbrado = await fetch('https://www.facturapi.io/v2/invoices', {
@@ -3863,7 +3922,7 @@ exports.generarCartaPorteFlete = onRequest({ secrets: [FACTURAPI_TEST_KEY], cors
       if (rPdf.ok) {
         const pdfOriginal = Buffer.from(await rPdf.arrayBuffer());
         let pdfFinal = pdfOriginal;
-        try { pdfFinal = await _compactarPdfCartaPorteServer(pdfOriginal, cp.ubicaciones, cp.mercancias, fac); }
+        try { pdfFinal = await _compactarPdfCartaPorteServer(pdfOriginal, cartaPorteData, fac); }
         catch (eCompact) { console.error('generarCartaPorteFlete: no se pudo compactar el PDF, se usa el original de Facturapi:', eCompact); }
         pdfURL = await _subirPDFStorage('facturasFlete/' + fac.uuid + '.pdf', pdfFinal);
       } else console.error('generarCartaPorteFlete: Facturapi no regresó el PDF, status', rPdf.status);
