@@ -1856,16 +1856,14 @@ async function _compactarPdfCartaPorteServer(pdfOriginalBuffer, cartaPorteData, 
   function nuevaPaginaSiHaceFalta() {
     if (y < margin + filaAltura) { pagina = nuevo.addPage([pageWidth, pageHeight]); y = dibujarEncabezadoPagina(pagina); }
   }
-  // Barras de encabezado por sección, alternando azul marino (del logo de
-  // TML) y guinda/carmín, con el texto en blanco — mismo estilo que usa
-  // Facturo por Ti para separar secciones.
+  // Barras de encabezado por sección, todas en azul marino (del logo de
+  // TML) con el texto en blanco.
   const AZUL_MARINO_TML = rgb(34 / 255, 44 / 255, 62 / 255);
-  const GUINDA_TML = rgb(0x67 / 255, 0x00 / 255, 0x10 / 255);
   let _seccionesDibujadas = 0;
   function tituloSeccion(texto) {
     y -= 10; nuevaPaginaSiHaceFalta();
     const altoBarra = 20;
-    const color = (_seccionesDibujadas % 2 === 0) ? AZUL_MARINO_TML : GUINDA_TML;
+    const color = AZUL_MARINO_TML;
     _seccionesDibujadas++;
     pagina.drawRectangle({ x: margin, y: y - 5, width: pageWidth - margin * 2, height: altoBarra, color: color });
     pagina.drawText(texto, { x: margin + 8, y: y, size: 11, font: fontBold, color: rgb(1, 1, 1) });
