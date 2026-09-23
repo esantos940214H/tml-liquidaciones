@@ -1730,7 +1730,7 @@ async function _subirXMLStorage(path, text) {
 // por una tabla compacta armada aquí con los mismos datos del XML — mismo
 // espíritu que el formato de Facturo por Ti, sin tener que calcular sellos
 // ni QR (esos ya vienen correctos en la página 1 que se conserva).
-async function _compactarPdfCartaPorteServer(pdfOriginalBuffer, cartaPorteData, fac) {
+async function _compactarPdfCartaPorteServer(pdfOriginalBuffer, cartaPorteData, fac, unidad, operador, pedido, eventosBitacora) {
   const ubicaciones = cartaPorteData.Ubicaciones || [];
   const mercancias = cartaPorteData.Mercancias || {};
   const autotransporte = mercancias.Autotransporte || {};
@@ -2031,6 +2031,171 @@ async function _compactarPdfCartaPorteServer(pdfOriginalBuffer, cartaPorteData, 
   y = dibujarEncabezadoPagina(pagina);
   tituloSeccion('Condiciones de prestación de servicios (Carta de Porte)');
   CLAUSULAS_SCT_CARTA_PORTE.forEach(function (clausula) { dibujarParrafo(clausula, 7.5); y -= 4; });
+
+  // ─── Bitácora de horas de servicio (NOM-087-SCT-2-2017) ────────────────
+  // Respaldo en papel de la bitácora digital del operador — un pedido
+  // explícito del dueño ("por si se pierde o no se puede llenar la
+  // digital"), con los datos REALES del viaje (no una plantilla en
+  // blanco): logo, empresa, unidad y conductor de ESTE viaje. Un anverso
+  // por cada día que duró el viaje + un único reverso al final (los
+  // aspectos de la norma no cambian por día). Misma clasificación de
+  // eventos que usa la cuadrícula en pantalla de operador.html
+  // (CATEGORIAS_GRID) y la misma prueba de actividad por hora
+  // (_renderGridBitacora), para que ambas coincidan siempre.
+  if (Array.isArray(eventosBitacora) && eventosBitacora.length && unidad && operador) {
+    const CATEGORIAS_GRID_SERVER = [
+      { label: 'CONDUCIENDO', tipos: ['conduciendo'] },
+      { label: 'PAUSA', tipos: ['pausa'] },
+      { label: 'ACTIVIDADES AUXILIARES', tipos: ['carga', 'descarga', 'retenes'] },
+      { label: 'CASOS DE EXCEPCIÓN', tipos: ['descompostura', 'percance_vial', 'bloqueo_carretero', 'eventos_climatologicos'] },
+      { label: 'DESCANSO', tipos: ['descanso'] }
+    ];
+    const ETIQUETAS_BITACORA_SERVER = {
+      descompostura: 'Avería del vehículo', percance_vial: 'Percance vial',
+      bloqueo_carretero: 'Bloqueo carretero', eventos_climatologicos: 'Eventos climatológicos',
+      carga: 'Carga', descarga: 'Descarga', retenes: 'Operativos y/o retenes'
+    };
+    function diaLocalISOServer(iso) {
+      const d = new Date(iso);
+      return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+    }
+    function horaLocalServer(iso) {
+      if (!iso) return '—';
+      const d = new Date(iso);
+      return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
+    }
+    const diasBitacora = {};
+    eventosBitacora.forEach(function (e) { diasBitacora[diaLocalISOServer(e.inicio)] = true; });
+    const diasBitacoraOrdenados = Object.keys(diasBitacora).sort();
+    const inicioViajeEv = eventosBitacora.find(function (e) { return e.tipo === 'inicio_viaje'; });
+    const cierreViajeEv = eventosBitacora.find(function (e) { return e.tipo === 'cierre_viaje'; });
+    const destinoU = ubicaciones.find(function (u) { return u.TipoUbicacion === 'Destino'; }) || {};
+
+    let firmaOperadorImg = null;
+    if (operador.firmaURL) {
+      try {
+        const rFirma = await fetch(operador.firmaURL);
+        if (rFirma.ok) firmaOperadorImg = await nuevo.embedPng(Buffer.from(await rFirma.arrayBuffer()));
+      } catch (eFirma) { console.error('_compactarPdfCartaPorteServer: no se pudo cargar la firma del operador para la bitácora:', eFirma); }
+    }
+
+    diasBitacoraOrdenados.forEach(function (dia, idxDia) {
+      const eventosDia = eventosBitacora.filter(function (e) { return diaLocalISOServer(e.inicio) === dia; });
+      pagina = nuevo.addPage([pageWidth, pageHeight]);
+      let yB = pageHeight - margin;
+      const anchoLogoB = 90;
+      if (logoImg) pagina.drawImage(logoImg, { x: margin, y: yB - anchoLogoB * logoRatio, width: anchoLogoB, height: anchoLogoB * logoRatio });
+      pagina.drawText('BITÁCORA DE HORAS DE SERVICIO', { x: margin + anchoLogoB + 16, y: yB - 14, size: 13, font: fontBold });
+      pagina.drawText('NOM-087-SCT-2-2017 — Día ' + (idxDia + 1) + ' de ' + diasBitacoraOrdenados.length + ' del viaje', { x: margin + anchoLogoB + 16, y: yB - 29, size: 9, font: font });
+      pagina.drawText('Fecha: ' + dia, { x: margin + anchoLogoB + 16, y: yB - 43, size: 9, font: font });
+      yB -= Math.max(anchoLogoB * logoRatio, 48) + 10;
+      pagina.drawLine({ start: { x: margin, y: yB }, end: { x: pageWidth - margin, y: yB }, thickness: 0.75, color: rgb(0.75, 0.75, 0.75) });
+      yB -= 16;
+
+      const xCol2B = margin + 300;
+      function campoB(campo, valor, x) {
+        pagina.drawText(campo + ':', { x: x, y: yB, size: 8, font: fontBold });
+        pagina.drawText(String(valor == null || valor === '' ? '—' : valor), { x: x + 105, y: yB, size: 8, font: font });
+      }
+      function campoLargoB(campo, valor) {
+        pagina.drawText(campo + ':', { x: margin, y: yB, size: 8, font: fontBold });
+        pagina.drawText(String(valor == null || valor === '' ? '—' : valor), { x: margin + 105, y: yB, size: 8, font: font });
+        yB -= 12;
+      }
+      campoB('Permisionario', 'MUDANZAS TML, S.A. DE C.V.', margin);
+      campoB('Tipo de servicio', 'Autotransporte de Carga Federal', xCol2B); yB -= 12;
+      campoLargoB('Domicilio', '55067, Ecatepec de Morelos, Edo. Méx.');
+      campoB('Permiso SCT / No.', (autotransporte.PermSCT || '—') + ' / ' + (autotransporte.NumPermisoSCT || '—'), margin);
+      campoB('Unidad económica', unidad.numero || (pedido && pedido.economico) || '—', xCol2B); yB -= 12;
+      campoB('Marca / Modelo', (unidad.marca || '—') + ' / ' + (unidad.modelo || '—'), margin);
+      campoB('Placas', idVeh.PlacaVM, xCol2B); yB -= 12;
+      campoB('Config. vehicular', idVeh.ConfigVehicular, margin); yB -= 18;
+
+      campoB('Conductor', operador.nombre, margin);
+      campoB('Licencia No.', operador.licencia, xCol2B); yB -= 12;
+      campoB('RFC conductor', operador.rfc, margin);
+      campoB('T.U. / Pedido', ((pedido && pedido.ordenEmbarque) || '—') + (pedido && pedido.pedidoFlete ? ' / ' + pedido.pedidoFlete : ''), xCol2B); yB -= 12;
+      campoLargoB('Origen', 'Planta TML, Ecatepec de Morelos, Edo. Méx.');
+      campoLargoB('Destino', (pedido && (pedido.destino || pedido.tienda)) || destinoU.NombreRemitenteDestinatario || '—');
+      campoB('Hora de salida', idxDia === 0 ? horaLocalServer(inicioViajeEv && inicioViajeEv.inicio) : '—', margin);
+      campoB('Hora de llegada', idxDia === diasBitacoraOrdenados.length - 1 ? horaLocalServer(cierreViajeEv && (cierreViajeEv.fin || cierreViajeEv.inicio)) : '—', xCol2B);
+      yB -= 22;
+
+      // Cuadrícula de 24 horas × 5 categorías — misma prueba de actividad
+      // (eIni<celdaFin && eFin>celdaIni) que operador.html:_renderGridBitacora,
+      // para que la impresa y la digital coincidan siempre.
+      const inicioDiaMs = new Date(dia + 'T00:00:00').getTime();
+      const xLabel = margin, wLabel = 95, wTot = 30;
+      const anchoHoras = pageWidth - margin * 2 - wLabel - wTot;
+      const wHora = anchoHoras / 24;
+      let xCelda = xLabel + wLabel;
+      pagina.drawText('HORA', { x: xLabel, y: yB, size: 7, font: fontBold });
+      for (let h = 1; h <= 24; h++) {
+        pagina.drawText(String(h), { x: xCelda + wHora / 2 - 3, y: yB, size: 6, font: font });
+        xCelda += wHora;
+      }
+      pagina.drawText('TOT', { x: xCelda + 2, y: yB, size: 7, font: fontBold });
+      yB -= 4;
+      pagina.drawLine({ start: { x: xLabel, y: yB }, end: { x: pageWidth - margin, y: yB }, thickness: 0.5, color: rgb(0.6, 0.6, 0.6) });
+      yB -= 12;
+      CATEGORIAS_GRID_SERVER.forEach(function (cat) {
+        pagina.drawText(cat.label, { x: xLabel, y: yB, size: 6.5, font: fontBold });
+        let xC = xLabel + wLabel, horasActivas = 0;
+        for (let h = 1; h <= 24; h++) {
+          const celdaIni = inicioDiaMs + (h - 1) * 3600000, celdaFin = inicioDiaMs + h * 3600000;
+          const activo = eventosDia.some(function (e) {
+            if (cat.tipos.indexOf(e.tipo) === -1) return false;
+            const eIni = new Date(e.inicio).getTime();
+            const eFin = e.fin ? new Date(e.fin).getTime() : Date.now();
+            return eIni < celdaFin && eFin > celdaIni;
+          });
+          if (activo) { horasActivas++; pagina.drawRectangle({ x: xC, y: yB - 2, width: wHora, height: 10, color: AZUL_MARINO_TML, opacity: 0.75 }); }
+          xC += wHora;
+        }
+        pagina.drawText(horasActivas + 'h', { x: xC + 2, y: yB, size: 6.5, font: fontBold });
+        yB -= 13;
+      });
+      yB -= 10;
+
+      // Casos de excepción / actividades auxiliares del día, solo los que
+      // de verdad ocurrieron (no una lista fija en blanco para marcar).
+      const casosDia = ['descompostura', 'percance_vial', 'bloqueo_carretero', 'eventos_climatologicos']
+        .filter(function (t) { return eventosDia.some(function (e) { return e.tipo === t; }); });
+      const auxiliaresDia = ['carga', 'descarga', 'retenes']
+        .filter(function (t) { return eventosDia.some(function (e) { return e.tipo === t; }); });
+      pagina.drawText('Casos de excepción: ' + (casosDia.length ? casosDia.map(function (t) { return ETIQUETAS_BITACORA_SERVER[t]; }).join(', ') : 'Ninguno'), { x: margin, y: yB, size: 8, font: font });
+      yB -= 12;
+      pagina.drawText('Actividades auxiliares: ' + (auxiliaresDia.length ? auxiliaresDia.map(function (t) { return ETIQUETAS_BITACORA_SERVER[t]; }).join(', ') : 'Ninguna'), { x: margin, y: yB, size: 8, font: font });
+      yB -= 40;
+
+      // Firmas — la del conductor usa la firma real capturada en la app
+      // (operadores/{id}.firmaURL) cuando existe, no una línea en blanco.
+      pagina.drawLine({ start: { x: margin, y: yB }, end: { x: margin + 200, y: yB }, thickness: 0.75, color: rgb(0.5, 0.5, 0.5) });
+      pagina.drawText('Firma del responsable', { x: margin, y: yB - 10, size: 7.5, font: font });
+      if (firmaOperadorImg) {
+        const wFirma = 100, hFirma = wFirma * (firmaOperadorImg.height / firmaOperadorImg.width);
+        pagina.drawImage(firmaOperadorImg, { x: xCol2B, y: yB + 2, width: wFirma, height: Math.min(hFirma, 34) });
+      }
+      pagina.drawLine({ start: { x: xCol2B, y: yB }, end: { x: xCol2B + 200, y: yB }, thickness: 0.75, color: rgb(0.5, 0.5, 0.5) });
+      pagina.drawText('Firma del conductor', { x: xCol2B, y: yB - 10, size: 7.5, font: font });
+    });
+
+    // Reverso único (no se repite por día) — aspectos de la norma tal cual
+    // se transcribieron para el carrusel de operador.html.
+    pagina = nuevo.addPage([pageWidth, pageHeight]);
+    y = pageHeight - margin;
+    pagina.drawText('ASPECTOS RELEVANTES DE LA NOM-087-SCT-2-2017', { x: margin, y: y, size: 12, font: fontBold });
+    y -= 14;
+    pagina.drawText('Que establece los tiempos de conducción y pausas que deben observar los conductores de vehículos de autotransporte federal.', { x: margin, y: y, size: 8, font: font });
+    y -= 20;
+    ASPECTOS_NOM087_SCT.forEach(function (a) {
+      nuevaPaginaSiHaceFalta();
+      pagina.drawText(a.numeral, { x: margin, y: y, size: 8.5, font: fontBold });
+      y -= 11;
+      dibujarParrafo(a.texto, 7.5);
+      y -= 6;
+    });
+  }
 
   return Buffer.from(await nuevo.save());
 }
@@ -2790,6 +2955,23 @@ const CLAUSULAS_SCT_CARTA_PORTE = [
   'DÉCIMA TERCERA.- El "Transportista" queda eximido de la obligación de recibir mercancías o efectos para su transporte, en los siguientes casos: a) Cuando se trate de carga que por su naturaleza, peso, volumen, embalaje defectuoso o cualquier otra circunstancia no pueda transportarse sin destruirse o sin causar daño a los demás artículos o al material rodante, salvo que la empresa de que se trate tenga el equipo adecuado. b) Las mercancías cuyo transporte haya sido prohibido por disposiciones legales o reglamentarias. Cuando tales disposiciones no prohíban precisamente el transporte de determinadas mercancías, pero sí ordenen la presentación de ciertos documentos para que puedan ser transportadas, el "Remitente" o "Expedidor" estará obligado a entregar al "Transportista" los documentos correspondientes.',
   'DÉCIMA CUARTA.- Los casos no previstos en las presentes condiciones y las quejas derivadas de su aplicación se someterán por la vía administrativa a la Secretaría de Comunicaciones y Transportes.',
   'DÉCIMA QUINTA.- Para el caso de que el "Remitente" o "Expedidor" contrate carro por entero, este aceptará la responsabilidad solidaria para con el "Transportista" mediante la figura de la corresponsabilidad que contempla el artículo 10 del Reglamento Sobre el Peso, Dimensiones y Capacidad de los Vehículos de Autotransporte que Transitan en los Caminos y Puentes de Jurisdicción Federal, por lo que el "Remitente" o "Expedidor" queda obligado a verificar que la carga y el vehículo que la transporta, cumplan con el peso y dimensiones máximas establecidas en la NOM-012-SCT-2-2014. Para el caso de incumplimiento e inobservancia a las disposiciones que regulan el peso y dimensiones, por parte del "Remitente" o "Expedidor", este será corresponsable de las infracciones y multas que la Secretaría de Comunicaciones y Transportes y la Policía Federal impongan al "Transportista", por cargar las unidades con exceso de peso.'
+];
+
+// Mismos numerales/texto de la NOM-087-SCT-2-2017 ya transcritos para el
+// reverso de la bitácora digital del operador (operador.html,
+// ASPECTOS_NOM087) — se reutilizan tal cual aquí para el reverso de la
+// representación impresa, sin volver a transcribir del PDF oficial (evita
+// que un error de dedo entre las dos copias las deje distintas).
+const ASPECTOS_NOM087_SCT = [
+  { numeral: '3.4. Excepciones temporales.', texto: 'Es el tiempo que podrá prolongarse la duración de la conducción y del tiempo de servicio ininterrumpido, así como reducciones de la duración del descanso diario en las siguientes situaciones: en caso de percance vial, de avería del vehículo, de perturbación del servicio o alguna otra circunstancia que ocasione interrupción del tráfico por la vía que se transite, situaciones que deberán ser evidenciadas documentalmente; así como, cuando sea necesario asegurar el funcionamiento de servicios de interés público con carácter de urgente y excepcional.' },
+  { numeral: '3.5. Actividades auxiliares.', texto: 'Cualquier trabajo distinto al de la conducción, para el mismo u otro permisionario, dentro o fuera del sector transporte, citando de forma enunciativa mas no limitativa: carga o descarga, limpieza y mantenimiento técnico, tareas que tengan como objeto garantizar la seguridad de la carga, tiempo dedicado a cumplir con las obligaciones legales vinculadas directamente con una operación de transporte (aduanal, administrativo, entre otros) y carga de combustible.' },
+  { numeral: '3.6. Pausa.', texto: 'Periodo comprendido dentro del tiempo de servicio durante el cual, el conductor no lleva a cabo ninguna tarea de conducción o las definidas como otras actividades auxiliares.' },
+  { numeral: '4.1.', texto: 'Todo conductor debe realizar una pausa de 30 minutos cuando: a) Ha conducido hasta cinco horas continuas, o bien; b) Esta pausa podrá distribuirse durante un lapso de cinco horas y media de acuerdo a las condiciones de la ruta.' },
+  { numeral: '4.2.', texto: 'Los periodos de pausa, en ningún caso podrán ser acumulables.' },
+  { numeral: '4.6.', texto: 'En rutas que impliquen una conducción máxima de 14 horas, el conductor debe tener una pausa no menor a 8 horas continuas, sin menoscabo de cumplir con las pausas mínimas establecidas en los numerales 4.1 y 4.2 de la presente Norma.' },
+  { numeral: '4.7.', texto: 'El tiempo máximo de conducción en 24 horas nunca podrá exceder las 14 horas.' },
+  { numeral: '7.1. Vigilancia', texto: 'La vigilancia del cumplimiento de esta Norma Oficial Mexicana corresponde a la Secretaría de Comunicaciones y Transportes y a la Secretaría de Gobernación, a través de la Policía Federal, en el ámbito de sus atribuciones.' },
+  { numeral: '8.3.1.', texto: 'La Secretaría, sin perjuicio de las atribuciones que tiene conferidas la Secretaría de Gobernación, a través de la Policía Federal, verificará la bitácora de horas de servicio a través de sus distintas Unidades Administrativas y de acuerdo con las facultades que cada una tiene conferidas.' }
 ];
 
 // _parseExcelCartaPorteServer(buffer): lee la "Plantilla Masiva" de
@@ -4109,7 +4291,15 @@ exports.generarCartaPorteFlete = onRequest({ secrets: [FACTURAPI_TEST_KEY], cors
       if (rPdf.ok) {
         const pdfOriginal = Buffer.from(await rPdf.arrayBuffer());
         let pdfFinal = pdfOriginal;
-        try { pdfFinal = await _compactarPdfCartaPorteServer(pdfOriginal, cartaPorteData, fac); }
+        // Bitácora de horas de servicio del viaje (si el operador la llenó
+        // desde su app) — se anexa como respaldo en papel, con logo y
+        // datos reales de esta unidad/operador, no una plantilla en blanco.
+        let eventosBitacora = [];
+        try {
+          const snapBitacora = await db.collection('bitacoras').doc(ordenEmbarque).get();
+          if (snapBitacora.exists && Array.isArray(snapBitacora.data().eventos)) eventosBitacora = snapBitacora.data().eventos;
+        } catch (eBitacora) { console.error('generarCartaPorteFlete: no se pudo leer la bitácora del viaje:', eBitacora); }
+        try { pdfFinal = await _compactarPdfCartaPorteServer(pdfOriginal, cartaPorteData, fac, unidad, operador, pedido, eventosBitacora); }
         catch (eCompact) { console.error('generarCartaPorteFlete: no se pudo compactar el PDF, se usa el original de Facturapi:', eCompact); }
         pdfURL = await _subirPDFStorage('facturasFlete/' + fac.uuid + '.pdf', pdfFinal);
       } else console.error('generarCartaPorteFlete: Facturapi no regresó el PDF, status', rPdf.status);
