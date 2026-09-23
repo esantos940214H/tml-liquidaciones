@@ -2974,6 +2974,14 @@ function _revisarBuzonPedidosCore(user, pass, apiKey) {
   const Imap = require('imap');
   const resultadosFacturas = [];
   const resultadosExcelCartaPorte = [];
+  // Los Excel de Carta Porte solo se juntan aquí durante el loop de
+  // correos (sin tocar Firestore todavía) — si el correo del pedido y el
+  // del Excel llegan juntos y sin leer, se procesan EN PARALELO, así que
+  // intentar matchear el Excel contra fletesDB en ese momento puede
+  // encontrar que el pedido todavía no existe (se registra hasta el paso
+  // siguiente). El match real se intenta después, ya que todos los
+  // pedidos nuevos de esta misma pasada quedaron registrados.
+  const excelesCartaPortePendientes = [];
   let uidsFetched = [];
   return new Promise(function (resolveTodo, rejectTodo) {
     const imap = new Imap({ user: user, password: pass, host: 'imap.ionos.mx', port: 993, tls: true, connTimeout: 20000, authTimeout: 20000 });
@@ -3042,21 +3050,7 @@ function _revisarBuzonPedidosCore(user, pass, apiKey) {
                       catch (eParse) { console.error('revisarBuzonPedidos: error leyendo Excel de Carta Porte:', eParse); continue; }
                       if (!cp) continue;
                       eraExcelCartaPorte = true;
-                      try {
-                        const ref = db.collection('fletesDB').doc(cp.tu);
-                        const snapPedido = await ref.get();
-                        if (!snapPedido.exists) {
-                          resultadosExcelCartaPorte.push({ tu: cp.tu, ok: false, motivo: 'No hay ningún pedido pendiente con ese T.U.' });
-                          continue;
-                        }
-                        await ref.set({
-                          cartaPorteExcel: { ubicaciones: cp.ubicaciones, mercancias: cp.mercancias, totalDistRec: cp.totalDistRec, cargadoEn: new Date().toISOString() }
-                        }, { merge: true });
-                        resultadosExcelCartaPorte.push({ tu: cp.tu, ok: true });
-                      } catch (eSet) {
-                        console.error('revisarBuzonPedidos: error guardando Excel de Carta Porte:', eSet);
-                        resultadosExcelCartaPorte.push({ tu: cp.tu, ok: false, motivo: eSet.message || String(eSet) });
-                      }
+                      excelesCartaPortePendientes.push(cp);
                     }
                     if (eraExcelCartaPorte) return;
                     const r = await _procesarMensajePedidos(raw, apiKey);
@@ -3151,6 +3145,29 @@ function _revisarBuzonPedidosCore(user, pass, apiKey) {
         }
       }
       if (renglonesSinOrden.length) conAlgoPendiente.push(Object.assign({}, c, { renglones: renglonesSinOrden }));
+    }
+    // Recién ahora se intenta matchear cada Excel de Carta Porte — todos
+    // los pedidos nuevos de esta misma pasada del buzón ya quedaron
+    // registrados arriba, así que si el correo del pedido y el del Excel
+    // llegaron juntos y sin leer, esto sí los encuentra (antes de este
+    // fix, ambos correos se procesaban en paralelo y el Excel casi
+    // siempre llegaba a buscar el pedido antes de que existiera).
+    for (const cp of excelesCartaPortePendientes) {
+      try {
+        const ref = db.collection('fletesDB').doc(cp.tu);
+        const snapPedido = await ref.get();
+        if (!snapPedido.exists) {
+          resultadosExcelCartaPorte.push({ tu: cp.tu, ok: false, motivo: 'No hay ningún pedido pendiente con ese T.U.' });
+          continue;
+        }
+        await ref.set({
+          cartaPorteExcel: { ubicaciones: cp.ubicaciones, mercancias: cp.mercancias, totalDistRec: cp.totalDistRec, cargadoEn: new Date().toISOString() }
+        }, { merge: true });
+        resultadosExcelCartaPorte.push({ tu: cp.tu, ok: true });
+      } catch (eSet) {
+        console.error('revisarBuzonPedidos: error guardando Excel de Carta Porte:', eSet);
+        resultadosExcelCartaPorte.push({ tu: cp.tu, ok: false, motivo: eSet.message || String(eSet) });
+      }
     }
     if (provisionalesDatos.length) {
       await db.runTransaction(async function (tx) {
