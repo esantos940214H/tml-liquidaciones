@@ -1737,7 +1737,7 @@ async function _compactarPdfCartaPorteServer(pdfOriginalBuffer, cartaPorteData, 
   const idVeh = autotransporte.IdentificacionVehicular || {};
   const seguros = autotransporte.Seguros || {};
   const figuras = cartaPorteData.FiguraTransporte || [];
-  const { PDFDocument, StandardFonts } = require('pdf-lib');
+  const { PDFDocument, StandardFonts, rgb } = require('pdf-lib');
   const QRCode = require('qrcode');
   const original = await PDFDocument.load(pdfOriginalBuffer);
   const nuevo = await PDFDocument.create();
@@ -1809,10 +1809,20 @@ async function _compactarPdfCartaPorteServer(pdfOriginalBuffer, cartaPorteData, 
   function nuevaPaginaSiHaceFalta() {
     if (y < margin + filaAltura) { pagina = nuevo.addPage([pageWidth, pageHeight]); y = dibujarEncabezadoPagina(pagina); }
   }
+  // Barras de encabezado por sección, alternando los 2 colores del logo
+  // de TML (azul marino y naranja oscuro) con el texto en blanco — mismo
+  // estilo que usa Facturo por Ti para separar secciones.
+  const AZUL_MARINO_TML = rgb(34 / 255, 44 / 255, 62 / 255);
+  const NARANJA_OSCURO_TML = rgb(232 / 255, 76 / 255, 31 / 255);
+  let _seccionesDibujadas = 0;
   function tituloSeccion(texto) {
-    y -= 8; nuevaPaginaSiHaceFalta();
-    pagina.drawText(texto, { x: margin, y, size: 12, font: fontBold });
-    y -= 16;
+    y -= 10; nuevaPaginaSiHaceFalta();
+    const altoBarra = 20;
+    const color = (_seccionesDibujadas % 2 === 0) ? AZUL_MARINO_TML : NARANJA_OSCURO_TML;
+    _seccionesDibujadas++;
+    pagina.drawRectangle({ x: margin, y: y - 5, width: pageWidth - margin * 2, height: altoBarra, color: color });
+    pagina.drawText(texto, { x: margin + 8, y: y, size: 11, font: fontBold, color: rgb(1, 1, 1) });
+    y -= altoBarra + 8;
   }
   function campoValor(campo, valor) {
     nuevaPaginaSiHaceFalta();
