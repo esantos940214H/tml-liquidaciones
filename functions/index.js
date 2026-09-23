@@ -1871,6 +1871,18 @@ async function _compactarPdfCartaPorteServer(pdfOriginalBuffer, cartaPorteData, 
     pagina.drawText(texto, { x: margin + 8, y: y, size: 11, font: fontBold, color: rgb(1, 1, 1) });
     y -= altoBarra + 8;
   }
+  // lineaDelgada: para la primera sección ("Complemento de Carta Porte") —
+  // repetir su título sería redundante con "Complemento Carta Porte 3.1"
+  // que ya aparece en el encabezado grande, así que solo se separa con
+  // una línea delgada en vez de otra barra de color. Avanza el contador
+  // de colores igual que tituloSeccion, para que las demás secciones
+  // sigan alternando como antes.
+  function lineaDelgada() {
+    y -= 10; nuevaPaginaSiHaceFalta();
+    pagina.drawLine({ start: { x: margin, y: y }, end: { x: pageWidth - margin, y: y }, thickness: 0.75, color: rgb(0.75, 0.75, 0.75) });
+    _seccionesDibujadas++;
+    y -= 14;
+  }
   function campoValor(campo, valor) {
     nuevaPaginaSiHaceFalta();
     pagina.drawText(campo + ':', { x: margin, y, size: 8, font: fontBold });
@@ -1938,7 +1950,7 @@ async function _compactarPdfCartaPorteServer(pdfOriginalBuffer, cartaPorteData, 
     });
   }
 
-  tituloSeccion('Complemento de Carta Porte');
+  lineaDelgada();
   campoValor('Folio del CCP (IdCCP)', cartaPorteData.IdCCP);
   campoValor('Transporte internacional', cartaPorteData.TranspInternac);
   campoValor('Total distancia recorrida', (cartaPorteData.TotalDistRec || 0) + ' km');
@@ -2734,7 +2746,7 @@ function _parseFacturaFleteXMLServer(xmlText) {
     noCertificadoSAT: tfd['@_NoCertificadoSAT'] || '', rfcProvCertif: tfd['@_RfcProvCertif'] || '',
     fechaCompleta: comp['@_Fecha'] || '', lugarExpedicion: comp['@_LugarExpedicion'] || '',
     tipoComprobante: comp['@_TipoDeComprobante'] || '', version: comp['@_Version'] || '',
-    regimenFiscalEmisor: emisor['@_RegimenFiscal'] || '', regimenFiscalReceptor: receptor['@_RegimenFiscal'] || '',
+    regimenFiscalEmisor: emisor['@_RegimenFiscal'] || '', regimenFiscalReceptor: receptor['@_RegimenFiscalReceptor'] || '',
     domicilioFiscalReceptor: receptor['@_DomicilioFiscalReceptor'] || '', usoCFDI: receptor['@_UsoCFDI'] || '',
     destino: destinoPunto ? destinoPunto.label : null, horaSalida: origen ? origen.fechaHora : null, distanciaKm: distanciaKm
   };
