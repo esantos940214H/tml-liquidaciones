@@ -1735,12 +1735,32 @@ async function _compactarPdfCartaPorteServer(pdfOriginalBuffer, ubicaciones, mer
   const QRCode = require('qrcode');
   const original = await PDFDocument.load(pdfOriginalBuffer);
   const nuevo = await PDFDocument.create();
-  const [pagina1] = await nuevo.copyPages(original, [0]);
-  nuevo.addPage(pagina1);
+
+  // El encabezado (emisor/receptor/conceptos/QR/sellos) casi siempre cabe
+  // en 1 página, pero si la factura trae varios conceptos (flete +
+  // maniobras + seguros, caso real en mudanzas) puede ocupar 2 o más —
+  // se detecta buscando en qué página empieza realmente el Complemento
+  // Carta Porte, en vez de asumir que siempre es la página 1, para nunca
+  // perder información real del encabezado.
+  let paginasEncabezado = 1;
+  try {
+    const pdfjsLib = await import('pdfjs-dist/legacy/build/pdf.mjs');
+    const pdfLeido = await pdfjsLib.getDocument({ data: new Uint8Array(pdfOriginalBuffer) }).promise;
+    for (let i = 1; i <= pdfLeido.numPages; i++) {
+      const pagina = await pdfLeido.getPage(i);
+      const contenido = await pagina.getTextContent();
+      const texto = contenido.items.map(function (it) { return it.str; }).join(' ');
+      if (/Complemento Carta Porte|IdCCP/i.test(texto)) { paginasEncabezado = i - 1 || 1; break; }
+    }
+  } catch (eDeteccion) { console.error('_compactarPdfCartaPorteServer: no se pudo detectar el encabezado, se asume 1 página:', eDeteccion); }
+
+  const indicesEncabezado = Array.from({ length: paginasEncabezado }, function (_, i) { return i; });
+  const paginasEncabezadoCopiadas = await nuevo.copyPages(original, indicesEncabezado);
+  paginasEncabezadoCopiadas.forEach(function (p) { nuevo.addPage(p); });
 
   const font = await nuevo.embedFont(StandardFonts.Helvetica);
   const fontBold = await nuevo.embedFont(StandardFonts.HelveticaBold);
-  const pageWidth = 612, pageHeight = 792, margin = 36, filaAltura = 13;
+  const pageWidth = 612, pageHeight = 792, margin = 36, filaAltura = 13, altoEncabezado = 60;
 
   // Mismo QR de verificación del SAT que trae la página 1 — se repite en
   // cada página propia porque la Carta Porte viaja físicamente en la
@@ -1750,16 +1770,38 @@ async function _compactarPdfCartaPorteServer(pdfOriginalBuffer, ubicaciones, mer
     const qrPng = await QRCode.toBuffer(_urlVerificacionCFDIServer(fac), { type: 'png', width: 100, margin: 1 });
     qrImg = await nuevo.embedPng(qrPng);
   }
+  // Logo: no lo exige el SAT, es solo continuidad de marca — no está
+  // prohibido agregarlo ni repetir los datos fiscales en estas páginas,
+  // lo único regulado (sello/QR/folio) ya se conserva igual.
+  let logoImg = null, logoRatio = 1;
+  try {
+    const logoBytes = require('fs').readFileSync(require('path').join(__dirname, 'assets', 'logo.png'));
+    logoImg = await nuevo.embedPng(logoBytes);
+    logoRatio = logoImg.height / logoImg.width;
+  } catch (eLogo) { console.error('_compactarPdfCartaPorteServer: no se pudo cargar el logo:', eLogo); }
+
   function dibujarEncabezadoPagina(pagina) {
-    if (qrImg) pagina.drawImage(qrImg, { x: pageWidth - margin - 70, y: pageHeight - margin - 70, width: 70, height: 70 });
+    const anchoLogo = 90;
+    if (logoImg) pagina.drawImage(logoImg, { x: margin, y: pageHeight - margin - anchoLogo * logoRatio, width: anchoLogo, height: anchoLogo * logoRatio });
+    if (qrImg) pagina.drawImage(qrImg, { x: pageWidth - margin - 60, y: pageHeight - margin - 60, width: 60, height: 60 });
     if (fac) {
-      pagina.drawText('Folio ' + (fac.folio || '') + ' — UUID ' + (fac.uuid || ''), { x: margin, y: pageHeight - margin + 4, size: 7, font: font });
+      const xDatos = margin + 100;
+      pagina.drawText('MUDANZAS TML — ' + (fac.rfcEmisor || TML_RFC), { x: xDatos, y: pageHeight - margin - 10, size: 8, font: fontBold });
+      pagina.drawText('Receptor: ' + (fac.cliente || '') + ' (RFC ' + (fac.rfcReceptor || '') + ')', { x: xDatos, y: pageHeight - margin - 22, size: 8, font: font });
+      pagina.drawText('Folio ' + (fac.folio || '') + ' — Folio fiscal (UUID): ' + (fac.uuid || ''), { x: xDatos, y: pageHeight - margin - 34, size: 8, font: font });
     }
+    return pageHeight - margin - altoEncabezado;
   }
 
   let pagina = nuevo.addPage([pageWidth, pageHeight]);
-  dibujarEncabezadoPagina(pagina);
-  let y = pageHeight - margin;
+  let y = dibujarEncabezadoPagina(pagina);
+  // nuevaPaginaSiHaceFalta: flujo continuo — solo brinca de página cuando
+  // de verdad ya no cabe la siguiente línea, nunca por secciones fijas
+  // (evita páginas cortadas a la mitad con espacio en blanco de sobra).
+  function nuevaPaginaSiHaceFalta() {
+    if (y < margin + filaAltura) { pagina = nuevo.addPage([pageWidth, pageHeight]); y = dibujarEncabezadoPagina(pagina); }
+  }
+
   pagina.drawText('Complemento Carta Porte — Ubicaciones', { x: margin, y, size: 12, font: fontBold });
   y -= 20;
   (ubicaciones || []).forEach(function (u) {
@@ -1768,7 +1810,7 @@ async function _compactarPdfCartaPorteServer(pdfOriginalBuffer, ubicaciones, mer
       (u.TipoUbicacion || '') + ' — ' + (u.NombreRemitenteDestinatario || '') + ' (RFC ' + (u.RFCRemitenteDestinatario || '') + ')',
       'Domicilio: ' + (dom.Calle || '') + ' ' + (dom.NumeroExterior || '') + ', Col. ' + (dom.Colonia || '') + ', CP ' + (dom.CodigoPostal || '') + ', ' + (dom.Estado || '') + ', ' + (dom.Pais || ''),
       'Fecha/hora: ' + (u.FechaHoraSalidaLlegada || '') + (u.DistanciaRecorrida ? ' — Distancia: ' + u.DistanciaRecorrida + ' km' : '')
-    ].forEach(function (linea) { pagina.drawText(linea, { x: margin, y, size: 9, font: font }); y -= 12; });
+    ].forEach(function (linea) { nuevaPaginaSiHaceFalta(); pagina.drawText(linea, { x: margin, y, size: 9, font: font }); y -= 12; });
     y -= 8;
   });
 
@@ -1776,26 +1818,25 @@ async function _compactarPdfCartaPorteServer(pdfOriginalBuffer, ubicaciones, mer
     { label: 'Clave', w: 55 }, { label: 'Descripción', w: 230 },
     { label: 'Cant.', w: 55 }, { label: 'Unidad', w: 50 }, { label: 'Peso (kg)', w: 60 }
   ];
-  const filasPorPagina = Math.floor((pageHeight - margin * 2 - 40) / filaAltura);
   const listaMercancia = (mercancias && mercancias.Mercancia) || [];
-  let fila = 0;
-  pagina = nuevo.addPage([pageWidth, pageHeight]);
-  dibujarEncabezadoPagina(pagina);
-  y = pageHeight - margin;
-  function encabezadoMercancias() {
-    pagina.drawText('Complemento Carta Porte — Mercancías (' + listaMercancia.length + ')', { x: margin, y, size: 12, font: fontBold });
-    y -= 18;
+  y -= 10;
+  nuevaPaginaSiHaceFalta();
+  pagina.drawText('Complemento Carta Porte — Mercancías (' + listaMercancia.length + ')', { x: margin, y, size: 12, font: fontBold });
+  y -= 18;
+  function encabezadoColumnasMercancias() {
     let x = margin;
     columnas.forEach(function (c) { pagina.drawText(c.label, { x: x, y: y, size: 9, font: fontBold }); x += c.w; });
     y -= filaAltura;
   }
-  encabezadoMercancias();
+  encabezadoColumnasMercancias();
   listaMercancia.forEach(function (m) {
-    if (fila >= filasPorPagina) { pagina = nuevo.addPage([pageWidth, pageHeight]); dibujarEncabezadoPagina(pagina); y = pageHeight - margin; fila = 0; encabezadoMercancias(); }
+    const habiaSaltadoPagina = y < margin + filaAltura;
+    nuevaPaginaSiHaceFalta();
+    if (habiaSaltadoPagina) encabezadoColumnasMercancias();
     let x = margin;
     [m.BienesTransp, (m.Descripcion || '').slice(0, 48), String(m.Cantidad), m.ClaveUnidad, String(m.PesoEnKg)]
       .forEach(function (v, i) { pagina.drawText(String(v || ''), { x: x, y: y, size: 8, font: font }); x += columnas[i].w; });
-    y -= filaAltura; fila++;
+    y -= filaAltura;
   });
 
   return Buffer.from(await nuevo.save());
