@@ -3636,6 +3636,10 @@ exports.generarCartaPorteFlete = onRequest({ secrets: [FACTURAPI_TEST_KEY], cors
     const snapCliente = await db.collection('clientesFiscales').doc(rfcCliente).get();
     if (!snapCliente.exists) { res.status(400).json({ error: 'Falta registrar los datos fiscales del cliente ' + rfcCliente + ' (arriba, tarjeta "Clientes") antes de poder generar.' }); return; }
     const cliente = snapCliente.data();
+    // El cliente exige que la factura lleve el número de PEDIDO de flete
+    // (no solo el T.U.) en la descripción — sin este dato no se genera,
+    // para no mandar una factura que no cumpla lo que pide el cliente.
+    if (!pedido.pedidoFlete) { res.status(400).json({ error: 'Este pedido no tiene número de "Pedido de flete" capturado — es obligatorio en la descripción de la factura, complétalo antes de generar.' }); return; }
 
     const idCCP = await _generarIdCCPServer();
     const invoice = {
@@ -3644,7 +3648,7 @@ exports.generarCartaPorteFlete = onRequest({ secrets: [FACTURAPI_TEST_KEY], cors
       items: [{
         quantity: 1,
         product: {
-          description: 'Viaje con pedido ' + ordenEmbarque + (pedido.tu2 ? '/' + pedido.tu2 : ''),
+          description: 'Viaje con pedido ' + pedido.pedidoFlete + ' — T.U. ' + ordenEmbarque + (pedido.tu2 ? '/' + pedido.tu2 : ''),
           product_key: '78101800', unit_key: 'E48',
           // Facturapi trata "price" como el TOTAL neto ya con todos los
           // impuestos aplicados (trasladados suman, retenidos restan) y de
