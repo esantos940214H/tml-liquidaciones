@@ -1863,6 +1863,8 @@ async function descargarPDFIngreso(id){
   });
 }
 function eliminar(id){
+  var v=ingresosDB.find(function(x){return x.id===id;});
+  if(!confirm('¿Eliminar este ingreso'+(v&&v.folio?' (folio '+v.folio+')':'')+'? Esta acción no se puede deshacer.'))return;
   lockRequest('Eliminar viaje/ingreso', function(){
     ingresosDB=ingresosDB.filter(v=>v.id!==id);
     guardar();renderIngresos();
@@ -2036,6 +2038,7 @@ function eliminarSeleccionadosIng(){
   var ids=ingresosDB.filter(function(v){return idsSel.indexOf(v.id)!==-1&&v.estado==='sin_liquidar';}).map(function(v){return v.id;});
   if(!ids.length){alert('Ninguno de los seleccionados se puede eliminar: ya están liquidados.');return;}
   if(yaLiquidados.length){alert('⚠️ '+yaLiquidados.length+' de los seleccionados ya están liquidados y NO se van a eliminar. Solo se eliminarán los '+ids.length+' que siguen sin liquidar.');}
+  if(!confirm('¿Eliminar '+ids.length+' ingreso(s)? Esta acción no se puede deshacer.'))return;
   lockRequest('Eliminar '+ids.length+' ingreso(s)', function(){
     ingresosDB=ingresosDB.filter(function(v){return ids.indexOf(v.id)===-1;});
     guardar();renderIngresos();
