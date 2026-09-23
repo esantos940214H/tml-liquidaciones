@@ -13,7 +13,8 @@
     "adm-zip": "^0.5.16",
     "xlsx": "^0.18.5",
     "pdf-lib": "^1.17.1",
-    "qrcode": "^1.5.4"
+    "qrcode": "^1.5.4",
+    "pdfjs-dist": "^6.3.289"
   },
   "private": true
 }
