@@ -1,0 +1,50 @@
+name: Deploy Restaurante Encino
+
+# Independiente del despliegue de TML: publica SOLO la carpeta encino/ en el
+# proyecto de Firebase del restaurante (el definido en encino/.firebaserc).
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'encino/**'
+      - '.github/workflows/deploy-encino.yml'
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Revisar que ya esté configurado
+        id: check
+        run: |
+          if [ -z '${{ secrets.FIREBASE_SERVICE_ACCOUNT_ENCINO }}' ] || grep -q PENDIENTE encino/.firebaserc; then
+            echo "Falta el secreto FIREBASE_SERVICE_ACCOUNT_ENCINO o el ID del proyecto en encino/.firebaserc; no se publica." 
+            echo "listo=no" >> "$GITHUB_OUTPUT"
+          else
+            echo "listo=si" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Setup Node
+        if: steps.check.outputs.listo == 'si'
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install firebase-tools
+        if: steps.check.outputs.listo == 'si'
+        run: npm install -g firebase-tools
+
+      - name: Write Firebase service account key
+        if: steps.check.outputs.listo == 'si'
+        run: echo '${{ secrets.FIREBASE_SERVICE_ACCOUNT_ENCINO }}' > "${{ runner.temp }}/gcp-key.json"
+
+      - name: Deploy
+        if: steps.check.outputs.listo == 'si'
+        working-directory: encino
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/gcp-key.json
+        run: firebase deploy --only hosting --non-interactive

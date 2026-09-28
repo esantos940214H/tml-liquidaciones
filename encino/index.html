@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Restaurante Encino · Oaxaca</title>
+<meta name="description" content="Restaurante Encino en Oaxaca: desayunos y comidas viernes, sábado y domingo. Consulta el menú con precios y ordena en línea para recoger o a domicilio.">
+<link rel="canonical" href="https://encino.app/">
+<meta property="og:type" content="restaurant">
+<meta property="og:title" content="Restaurante Encino · Oaxaca">
+<meta property="og:description" content="Desayunos y comidas viernes, sábado y domingo. Menú y pedidos en línea.">
+<meta property="og:url" content="https://encino.app/">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,700&family=Source+Sans+3:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+/* Una sola columna, como una carta impresa: portada, horario, menú del día, visítanos. */
+:root{
+  --papel:#f5efe3; --hoja:#fffaf0; --tinta:#2a261f; --gris:#6f6757; --encino:#46612f; --corteza:#7a4f2a; --linea:#e2d7c2;
+  --display:"Fraunces",Georgia,"Times New Roman",serif; --texto:"Source Sans 3",system-ui,-apple-system,"Segoe UI",sans-serif;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--papel:#16180f;--hoja:#1e2117;--tinta:#ede6d6;--gris:#a89f8b;--encino:#a7c587;--corteza:#d9a570;--linea:#353829;color-scheme:dark}}
+:root[data-theme="dark"]{--papel:#16180f;--hoja:#1e2117;--tinta:#ede6d6;--gris:#a89f8b;--encino:#a7c587;--corteza:#d9a570;--linea:#353829;color-scheme:dark}
+*{box-sizing:border-box}
+body{margin:0;background:var(--papel);color:var(--tinta);font:17px/1.6 var(--texto)}
+.w{max-width:760px;margin:0 auto;padding-inline:16px}
+a{color:var(--encino)}
+a:focus-visible,button:focus-visible{outline:3px solid var(--corteza);outline-offset:2px}
+header.portada{padding-block:72px 48px;text-align:center}
+.eyebrow{font-size:.8rem;letter-spacing:.22em;text-transform:uppercase;color:var(--corteza);font-weight:700}
+h1{font:700 clamp(2.8rem,9vw,4.6rem)/1 var(--display);color:var(--encino);margin:.25em 0 .2em;text-wrap:balance;letter-spacing:-.01em}
+.lema{font:500 1.25rem/1.45 var(--display);color:var(--gris);max-width:32ch;margin:0 auto;text-wrap:balance}
+.sep{display:block;margin:28px auto 0;width:56px;height:3px;border-radius:2px;background:var(--corteza)}
+.acciones{display:flex;gap:12px;justify-content:center;flex-wrap:wrap;margin-top:28px}
+.btn{display:inline-block;padding:14px 24px;border-radius:999px;font-weight:700;text-decoration:none;border:2px solid var(--encino);color:var(--encino)}
+.btn.p{background:var(--encino);color:var(--hoja)}
+section{padding-block:36px;border-top:1px solid var(--linea)}
+h2{font:700 1.7rem/1.2 var(--display);margin:0 0 14px;text-wrap:balance}
+.horario{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px}
+.dia{background:var(--hoja);border:1px solid var(--linea);border-radius:14px;padding:14px 16px}
+.dia b{display:block;font-family:var(--display);font-size:1.15rem}
+.dia span{color:var(--gris);font-variant-numeric:tabular-nums}
+.hoy{font-weight:700;color:var(--corteza);margin-top:12px}
+.menu-hoy .cat{margin-top:18px}
+.menu-hoy h3{font-size:.8rem;letter-spacing:.18em;text-transform:uppercase;color:var(--corteza);margin:0 0 4px}
+.pl{display:flex;gap:12px;align-items:baseline;padding:8px 0;border-bottom:1px dashed var(--linea)}
+.pl .n{flex:1;min-width:0;font-weight:600}.pl .d{display:block;font-weight:400;color:var(--gris);font-size:.92rem}
+.pl .p{font-variant-numeric:tabular-nums;font-weight:700;white-space:nowrap}
+.mut{color:var(--gris)}
+.datos{display:grid;gap:6px}
+.datos div{display:flex;gap:10px}.datos dt{font-weight:700;min-width:92px}.datos dd{margin:0;min-width:0}
+footer{padding-block:32px 48px;text-align:center;color:var(--gris);font-size:.9rem;border-top:1px solid var(--linea)}
+</style>
+</head>
+<body>
+<script>
+// ─── DATOS DEL RESTAURANTE ─ edita aquí. Lo que quede vacío no se muestra.
+window.ENCINO_SITIO = {
+  lema: 'Desayunos y comidas de fin de semana en Oaxaca',
+  descripcion: '',          // 2-3 líneas: qué tipo de cocina, ambiente, especialidades
+  direccion: '',            // Calle, número, colonia, Oaxaca de Juárez, Oax., C.P.
+  telefono: '',             // 951 000 0000
+  whatsapp: '',             // mismo formato; opcional
+  mapa: '',                 // liga "Compartir" de Google Maps
+  facebook: '', instagram: '',
+  cocina: 'Mexicana, oaxaqueña',
+  rangoPrecio: '$$'
+};
+</script>
+<header class="portada w">
+  <div class="eyebrow">Oaxaca</div>
+  <h1>Restaurante Encino</h1>
+  <p class="lema" id="lema"></p>
+  <span class="sep" aria-hidden="true"></span>
+  <div class="acciones"><a class="btn p" href="carta.html">Ver el menú</a><a class="btn" href="pedidos.html">Ordenar en línea</a></div>
+</header>
+<main class="w">
+  <section id="sobre" hidden><h2>Encino</h2><p id="desc"></p></section>
+  <section>
+    <h2>Horario</h2>
+    <div class="horario" id="horario"></div>
+    <p class="hoy" id="hoy"></p>
+  </section>
+  <section class="menu-hoy">
+    <h2 id="mhTit">Menú</h2>
+    <p class="mut" id="mhSub">Consulta la carta completa con precios.</p>
+    <div id="mh"></div>
+    <p style="margin-top:18px"><a href="carta.html">Ver la carta completa →</a></p>
+  </section>
+  <section id="visita" hidden>
+    <h2>Visítanos</h2>
+    <dl class="datos" id="datos"></dl>
+  </section>
+</main>
+<footer class="w">Restaurante Encino · Oaxaca, México</footer>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+<script src="config.js"></script>
+<script src="store.js"></script>
+<script src="comun.js"></script>
+<script>
+(function(){
+  var E = Encino, esc = E.esc, D = window.ENCINO_SITIO, cfg = E.cfgFrom([]), menu = [];
+  var $ = function(id){ return document.getElementById(id); };
+  var DIAS_EN = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+
+  // Horario por día a partir de los menús configurados (el más temprano y el más tarde)
+  function horarioPorDia(){
+    var h = {};
+    (cfg.menus || []).forEach(function(m){ (m.dias || []).forEach(function(d){
+      h[d] = h[d] || { desde: m.desde, hasta: m.hasta };
+      if (m.desde && m.desde < h[d].desde) h[d].desde = m.desde;
+      if (m.hasta && m.hasta > h[d].hasta) h[d].hasta = m.hasta;
+    }); });
+    return h;
+  }
+  function pinta(){
+    $('lema').textContent = D.lema || '';
+    if (D.descripcion) { $('sobre').hidden = false; $('desc').textContent = D.descripcion; }
+    var h = horarioPorDia(), orden = [1,2,3,4,5,6,0];
+    $('horario').innerHTML = orden.filter(function(d){ return h[d]; }).map(function(d){ return '<div class="dia"><b>' + E.DIAS[d] + '</b><span>' + esc(h[d].desde || '') + ' – ' + esc(h[d].hasta || '') + '</span></div>'; }).join('') || '<p class="mut">Horario por confirmar.</p>';
+    var ahora = new Date(), hoy = h[ahora.getDay()], t = E.hm(ahora);
+    $('hoy').textContent = hoy && t >= hoy.desde && t < hoy.hasta ? 'Abierto ahora, hasta las ' + hoy.hasta + '.' : 'Ahora estamos cerrados.';
+    var m = E.menuActual(cfg);
+    var its = menu.filter(function(i){ return i.disponible !== false && i.enCarta !== false && i.tipo !== 'bebida' && m && E.enMenu(i, m.id); });
+    if (m && its.length) {
+      $('mhTit').textContent = m.nombre;
+      $('mhSub').textContent = E.diasTxt(m);
+      $('mh').innerHTML = E.porCategoria(its).map(function(g){ return '<div class="cat"><h3>' + esc(g.categoria) + '</h3>' + g.items.map(function(i){
+        return '<div class="pl"><span class="n">' + esc(i.nombre) + (i.descripcion ? '<span class="d">' + esc(i.descripcion) + '</span>' : '') + '</span><span class="p">' + E.money(i.precio) + '</span></div>'; }).join('') + '</div>'; }).join('');
+    }
+    var datos = [['Dirección', D.direccion, D.mapa ? '<a href="' + esc(D.mapa) + '" target="_blank" rel="noopener">' + esc(D.direccion || 'Ver en el mapa') + '</a>' : null],
+      ['Teléfono', D.telefono, '<a href="tel:' + esc((D.telefono || '').replace(/\s/g, '')) + '">' + esc(D.telefono) + '</a>'],
+      ['WhatsApp', D.whatsapp, '<a href="https://wa.me/52' + esc((D.whatsapp || '').replace(/\D/g, '')) + '" target="_blank" rel="noopener">' + esc(D.whatsapp) + '</a>'],
+      ['Facebook', D.facebook, '<a href="' + esc(D.facebook) + '" target="_blank" rel="noopener">Facebook</a>'],
+      ['Instagram', D.instagram, '<a href="' + esc(D.instagram) + '" target="_blank" rel="noopener">Instagram</a>']].filter(function(x){ return x[1]; });
+    if (datos.length) { $('visita').hidden = false; $('datos').innerHTML = datos.map(function(x){ return '<div><dt>' + x[0] + '</dt><dd>' + (x[2] || esc(x[1])) + '</dd></div>'; }).join(''); }
+    jsonLd(h);
+  }
+  // Datos estructurados para Google (tipo Restaurant)
+  function jsonLd(h){
+    var ld = { '@context': 'https://schema.org', '@type': 'Restaurant', name: 'Restaurante Encino', url: 'https://encino.app/',
+      servesCuisine: D.cocina || undefined, priceRange: D.rangoPrecio || undefined, telephone: D.telefono || undefined,
+      hasMenu: 'https://encino.app/carta.html', acceptsReservations: false,
+      address: D.direccion ? { '@type': 'PostalAddress', streetAddress: D.direccion, addressLocality: 'Oaxaca de Juárez', addressRegion: 'Oaxaca', addressCountry: 'MX' } : undefined,
+      sameAs: [D.facebook, D.instagram].filter(Boolean),
+      openingHoursSpecification: Object.keys(h).map(function(d){ return { '@type': 'OpeningHoursSpecification', dayOfWeek: DIAS_EN[d], opens: h[d].desde, closes: h[d].hasta }; }),
+      potentialAction: { '@type': 'OrderAction', target: 'https://encino.app/pedidos.html' } };
+    var s = document.getElementById('ld') || document.createElement('script');
+    s.id = 'ld'; s.type = 'application/ld+json'; s.textContent = JSON.stringify(ld);
+    document.head.appendChild(s);
+  }
+  pinta();
+  Store.init().then(function(){
+    Store.watch('config', function(d){ cfg = E.cfgFrom(d); pinta(); });
+    Store.watch('menu', function(d){ menu = d; pinta(); });
+  });
+})();
+</script>
+</body>
+</html>

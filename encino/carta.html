@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Menú — Restaurante Encino</title>
+<style id="cartaCss"></style>
+</head>
+<body>
+<div id="app"><div style="text-align:center;padding:60px 16px;font-family:system-ui;color:#7a7466">Cargando menú…</div></div>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+<script src="config.js"></script>
+<script src="store.js"></script>
+<script src="comun.js"></script>
+<script>
+(function(){
+  document.getElementById('cartaCss').textContent = Encino.CARTA_CSS;
+  var menu = [], cfg = Encino.cfgFrom([]), tabActual = null;
+  function pinta(){
+    document.title = 'Menú — ' + cfg.nombre;
+    var link = cfg.pedidosActivos ? 'pedidos.html' : '';
+    document.getElementById('app').innerHTML = Encino.cartaBody(cfg, menu, { linkPedidos: link });
+    if (tabActual) { var b = document.querySelector('.c-tabs button[data-m="' + tabActual + '"]'); if (b) b.click(); }
+  }
+  document.addEventListener('click', function(e){ var b = e.target.closest('.c-tabs button'); if (b) tabActual = b.getAttribute('data-m'); });
+  (new Function(Encino.CARTA_JS))();
+  Store.init().then(function(){
+    Store.watch('config', function(d){ cfg = Encino.cfgFrom(d); pinta(); });
+    Store.watch('menu', function(d){ menu = d; pinta(); });
+  });
+})();
+</script>
+</body>
+</html>

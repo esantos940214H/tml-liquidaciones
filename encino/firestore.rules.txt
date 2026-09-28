@@ -1,0 +1,31 @@
+// Reglas de Firestore para Restaurante Encino (modo Firebase).
+// Pégalas en Firebase Console → Firestore → Reglas del proyecto DEL RESTAURANTE.
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function staff() { return request.auth != null; }
+
+    // Públicos de solo lectura: carta QR y página de pedidos
+    match /encino_menu/{id}   { allow read: if true; allow write: if staff(); }
+    match /encino_config/{id} { allow read: if true; allow write: if staff(); }
+
+    // Pedidos en línea: cualquiera puede CREAR un pedido nuevo y consultar
+    // el suyo por id; solo el personal puede listarlos y cambiarlos.
+    match /encino_pedidos/{id} {
+      allow create: if request.resource.data.estado == 'nuevo'
+                    && request.resource.data.items is list
+                    && request.resource.data.items.size() > 0
+                    && request.resource.data.items.size() < 60;
+      allow get: if true;
+      allow list, update, delete: if staff();
+    }
+
+    // Todo lo demás: solo personal con sesión
+    match /encino_ordenes/{id}       { allow read, write: if staff(); }
+    match /encino_ventas/{id}        { allow read, write: if staff(); }
+    match /encino_insumos/{id}       { allow read, write: if staff(); }
+    match /encino_movimientos/{id}   { allow read, write: if staff(); }
+    match /encino_compras/{id}       { allow read, write: if staff(); }
+    match /encino_preparaciones/{id} { allow read, write: if staff(); }
+  }
+}
