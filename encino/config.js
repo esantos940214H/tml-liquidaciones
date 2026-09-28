@@ -13,7 +13,14 @@
 //   dispositivos comparten menú, órdenes, inventario y pedidos en línea.
 //   Ver encino/README.md → "Pasar a modo Firebase".
 // ─────────────────────────────────────────────────────────────────────────
-window.ENCINO_FIREBASE_CONFIG = null;
+window.ENCINO_FIREBASE_CONFIG = {
+  apiKey: "AIzaSyACB1MqFgZfPcZzh205u71sbfcAe9Jv6ac",
+  authDomain: "restaurante-encino.firebaseapp.com",
+  projectId: "restaurante-encino",
+  storageBucket: "restaurante-encino.firebasestorage.app",
+  messagingSenderId: "969102111634",
+  appId: "1:969102111634:web:9b41a207453e443966874b"
+};
 /* Ejemplo:
 window.ENCINO_FIREBASE_CONFIG = {
   apiKey: "...",
