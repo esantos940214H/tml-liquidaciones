@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Ordenar en línea — Restaurante Encino</title>
+<style>
+:root{--bg:#f7f3ec;--card:#fffdf8;--ink:#2b2a26;--mut:#7a7466;--acc:#4f6b3a;--acc2:#3d5530;--line:#e4dccd;--bad:#a23b2a}
+@media (prefers-color-scheme:dark){:root{--bg:#171a15;--card:#1f231c;--ink:#ece8df;--mut:#a9a392;--acc:#a8c48c;--acc2:#bcd6a2;--line:#343a2f;--bad:#e08b7a}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+.wrap{max-width:760px;margin:0 auto;padding:20px 16px 120px}
+h1{margin:0;color:var(--acc);font-family:Georgia,serif;font-size:1.8rem;text-align:center}
+.sub{text-align:center;color:var(--mut);font-size:.85rem;margin:4px 0 14px}
+.tabs{display:flex;gap:8px;overflow-x:auto;padding:4px 0 10px;position:sticky;top:0;background:var(--bg);z-index:2}
+.tabs button{flex:0 0 auto;border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:999px;padding:8px 14px;font-weight:600;cursor:pointer}
+.tabs button.on{background:var(--acc);border-color:var(--acc);color:var(--bg)}
+.cat{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:4px 14px;margin:12px 0}
+.cat h3{margin:12px 0 4px;font-size:.85rem;letter-spacing:.12em;text-transform:uppercase;color:var(--acc)}
+.it{display:flex;gap:10px;align-items:center;padding:10px 0;border-bottom:1px dashed var(--line)}
+.it:last-child{border-bottom:0}
+.it .n{flex:1;font-weight:600}.it .d{display:block;font-weight:400;color:var(--mut);font-size:.85rem}
+.it .p{font-weight:700;white-space:nowrap}
+.qty{display:flex;align-items:center;gap:6px}
+.qty button{width:34px;height:34px;border-radius:50%;border:1px solid var(--line);background:var(--bg);color:var(--ink);font-size:1.1rem;cursor:pointer}
+.qty b{min-width:18px;text-align:center}
+.bar{position:fixed;left:0;right:0;bottom:0;background:var(--card);border-top:1px solid var(--line);padding:12px 16px}
+.bar .in{max-width:760px;margin:0 auto;display:flex;gap:12px;align-items:center}
+.btn{background:var(--acc);color:var(--bg);border:0;border-radius:10px;padding:12px 18px;font-weight:700;font-size:1rem;cursor:pointer}
+.btn:disabled{opacity:.45;cursor:default}
+.box{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px;margin:14px 0}
+label{display:block;font-size:.8rem;color:var(--mut);margin:10px 0 4px}
+input,select,textarea{width:100%;padding:10px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--ink);font:inherit}
+.row{display:flex;gap:10px}.row>*{flex:1}
+.st{font-size:1.2rem;font-weight:700;text-align:center;margin:10px 0}
+.mut{color:var(--mut)}.bad{color:var(--bad)}
+a{color:var(--acc)}
+</style>
+</head>
+<body>
+<div class="wrap" id="app"><p class="sub">Cargando…</p></div>
+<div class="bar" id="bar" hidden><div class="in"><div style="flex:1"><b id="barTot">$0.00</b><div class="mut" id="barN" style="font-size:.8rem"></div></div><button class="btn" id="barBtn">Continuar</button></div></div>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+<script src="config.js"></script>
+<script src="store.js"></script>
+<script src="comun.js"></script>
+<script>
+(function(){
+  var E = Encino, esc = E.esc, money = E.money;
+  var menu = [], cfg = E.cfgFrom([]), cart = {}, paso = 'menu', menuSel = null, miPedido = null;
+  try { miPedido = localStorage.getItem('encino:miPedido'); } catch(e){}
+  var app = document.getElementById('app'), bar = document.getElementById('bar');
+
+  function items(){ return menu.filter(function(i){ return i.disponible !== false && i.enLinea !== false; }); }
+  function total(){ var t = 0; Object.keys(cart).forEach(function(id){ var m = menu.find(function(x){ return x.id === id; }); if (m) t += m.precio * cart[id]; }); return t; }
+  function nArt(){ return Object.keys(cart).reduce(function(s,k){ return s + cart[k]; }, 0); }
+
+  function pinta(){
+    if (paso === 'estado') return;
+    if (!cfg.pedidosActivos) { app.innerHTML = '<h1>' + esc(cfg.nombre) + '</h1><div class="box st">Por el momento no estamos recibiendo pedidos en línea.</div><p style="text-align:center"><a href="carta.html">Ver el menú</a></p>'; bar.hidden = true; return; }
+    if (paso === 'datos') return pintaDatos();
+    if (!menuSel) { var a = E.menuActual(cfg); menuSel = a ? a.id : null; }
+    var h = '<h1>' + esc(cfg.nombre) + '</h1><p class="sub">Ordena en línea · ' + esc(cfg.telefono || '') + '</p><div class="tabs">';
+    (cfg.menus || []).forEach(function(m){ h += '<button data-m="' + esc(m.id) + '"' + (m.id === menuSel ? ' class="on"' : '') + '>' + esc(m.nombre) + '</button>'; });
+    h += '</div>';
+    var its = items().filter(function(i){ return E.enMenu(i, menuSel); });
+    if (!its.length) h += '<div class="box mut">No hay platillos disponibles en este menú.</div>';
+    E.porCategoria(its).forEach(function(g){
+      h += '<div class="cat"><h3>' + esc(g.categoria) + '</h3>';
+      g.items.forEach(function(i){
+        var q = cart[i.id] || 0;
+        h += '<div class="it"><span class="n">' + esc(i.nombre) + (i.descripcion ? '<span class="d">' + esc(i.descripcion) + '</span>' : '') + '</span><span class="p">' + money(i.precio) + '</span><span class="qty">' +
+          (q ? '<button data-menos="' + i.id + '">−</button><b>' + q + '</b>' : '') + '<button data-mas="' + i.id + '">+</button></span></div>';
+      });
+      h += '</div>';
+    });
+    app.innerHTML = h;
+    pintaBar();
+  }
+  function pintaBar(){
+    var n = nArt();
+    bar.hidden = !n;
+    document.getElementById('barTot').textContent = money(total());
+    document.getElementById('barN').textContent = n + (n === 1 ? ' artículo' : ' artículos');
+    document.getElementById('barBtn').textContent = paso === 'datos' ? 'Enviar pedido' : 'Continuar';
+  }
+  function pintaDatos(){
+    var h = '<h1>' + esc(cfg.nombre) + '</h1><p class="sub">Revisa tu pedido</p><div class="box">';
+    Object.keys(cart).forEach(function(id){ var m = menu.find(function(x){ return x.id === id; }); if (!m) return;
+      h += '<div class="it"><span class="n">' + cart[id] + ' × ' + esc(m.nombre) + '</span><span class="p">' + money(m.precio * cart[id]) + '</span></div>'; });
+    h += '<div class="it"><span class="n">Total</span><span class="p">' + money(total()) + '</span></div></div>';
+    h += '<div class="box"><label>Nombre *</label><input id="fNom" autocomplete="name"><label>Teléfono *</label><input id="fTel" type="tel" autocomplete="tel">' +
+      '<div class="row"><div><label>Entrega</label><select id="fTipo"><option value="recoger">Paso a recoger</option><option value="domicilio">A domicilio</option></select></div>' +
+      '<div><label>¿A qué hora?</label><input id="fHora" type="time"></div></div>' +
+      '<div id="dirBox" hidden><label>Dirección *</label><textarea id="fDir" rows="2"></textarea></div>' +
+      '<label>Notas (sin cebolla, etc.)</label><textarea id="fNotas" rows="2"></textarea><p id="fErr" class="bad"></p>' +
+      '<button class="btn" id="volver" style="background:transparent;color:var(--acc);padding-left:0">← Seguir agregando</button></div>';
+    app.innerHTML = h;
+    document.getElementById('fTipo').onchange = function(){ document.getElementById('dirBox').hidden = this.value !== 'domicilio'; };
+    document.getElementById('volver').onclick = function(){ paso = 'menu'; pinta(); };
+    pintaBar();
+  }
+  function enviar(){
+    var v = function(id){ return document.getElementById(id).value.trim(); };
+    var err = document.getElementById('fErr');
+    if (!v('fNom') || !v('fTel')) { err.textContent = 'Nombre y teléfono son obligatorios.'; return; }
+    if (v('fTipo') === 'domicilio' && !v('fDir')) { err.textContent = 'Escribe la dirección de entrega.'; return; }
+    var lineas = Object.keys(cart).map(function(id){ var m = menu.find(function(x){ return x.id === id; });
+      return m ? { menuId: m.id, nombre: m.nombre, precio: m.precio, tipo: m.tipo, cant: cart[id] } : null; }).filter(Boolean);
+    var btn = document.getElementById('barBtn'); btn.disabled = true;
+    var p = { id: Store.uid(), estado: 'nuevo', creado: Date.now(), cliente: v('fNom'), telefono: v('fTel'), entrega: v('fTipo'),
+      direccion: v('fDir'), hora: v('fHora'), notas: v('fNotas'), items: lineas, total: total() };
+    Store.put('pedidos', p).then(function(){
+      try { localStorage.setItem('encino:miPedido', p.id); } catch(e){}
+      cart = {}; verEstado(p.id);
+    }).catch(function(e){ btn.disabled = false; err.textContent = 'No se pudo enviar: ' + e.message; });
+  }
+  var ESTADOS = { nuevo: '⏳ Recibido — esperando confirmación del restaurante', aceptado: '👨‍🍳 Confirmado, en preparación', listo: '✅ ¡Listo! Ya puedes pasar / va en camino',
+    entregado: '🎉 Entregado. ¡Gracias!', rechazado: '❌ El restaurante no pudo tomar tu pedido' };
+  function verEstado(id){
+    paso = 'estado'; bar.hidden = true;
+    Store.watchDoc('pedidos', id, function(p){
+      if (!p) { app.innerHTML = '<div class="box">No encontramos tu pedido.</div>'; return; }
+      app.innerHTML = '<h1>' + esc(cfg.nombre) + '</h1><div class="box"><p class="mut" style="text-align:center">Pedido #' + esc(p.id.slice(-5).toUpperCase()) + ' · ' + esc(p.cliente) + '</p><div class="st">' + (ESTADOS[p.estado] || esc(p.estado)) + '</div>' +
+        (p.motivo ? '<p style="text-align:center" class="mut">' + esc(p.motivo) + '</p>' : '') +
+        '<p style="text-align:center">Total: <b>' + money(p.total) + '</b></p>' + (cfg.telefono ? '<p style="text-align:center" class="mut">Dudas: ' + esc(cfg.telefono) + '</p>' : '') +
+        '<p style="text-align:center"><button class="btn" id="nuevo">Hacer otro pedido</button></p></div>';
+      document.getElementById('nuevo').onclick = function(){ try { localStorage.removeItem('encino:miPedido'); } catch(e){} location.reload(); };
+    });
+  }
+  app.addEventListener('click', function(e){
+    var t = e.target.closest('button'); if (!t) return;
+    if (t.dataset.m) { menuSel = t.dataset.m; pinta(); }
+    else if (t.dataset.mas) { cart[t.dataset.mas] = (cart[t.dataset.mas] || 0) + 1; pinta(); }
+    else if (t.dataset.menos) { var k = t.dataset.menos; cart[k]--; if (cart[k] <= 0) delete cart[k]; pinta(); }
+  });
+  document.getElementById('barBtn').onclick = function(){ if (paso === 'menu') { paso = 'datos'; pinta(); window.scrollTo(0,0); } else enviar(); };
+
+  Store.init().then(function(){
+    Store.watch('config', function(d){ cfg = E.cfgFrom(d); document.title = 'Ordenar en línea — ' + cfg.nombre; if (paso === 'menu') pinta(); });
+    Store.watch('menu', function(d){ menu = d; if (paso === 'menu') pinta(); });
+    if (miPedido) Store.get('pedidos', miPedido).then(function(p){ if (p && ['nuevo','aceptado','listo'].indexOf(p.estado) >= 0) verEstado(p.id); }).catch(function(){});
+  });
+})();
+</script>
+</body>
+</html>
