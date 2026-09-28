@@ -1,4 +1,4 @@
-// Utilidades compartidas por index.html (administración), carta.html (menú
+// Utilidades compartidas por admin.html (administración), carta.html (menú
 // QR) y pedidos.html (pedidos en línea).
 (function(){
   'use strict';

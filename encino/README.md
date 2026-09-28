@@ -5,7 +5,8 @@ Carpeta independiente: **no forma parte del despliegue de TML** (`build.sh` y
 
 | Archivo | Para quién | Qué hace |
 |---|---|---|
-| `index.html` | Personal | Mesas y órdenes, cobro y ticket, menú, inventario, compras, pedidos en línea, históricos y recomendaciones, configuración |
+| `index.html` | Público | Página de inicio (provisional) |
+| `admin.html` | Personal | Mesas y órdenes, cobro y ticket, menú, inventario, compras, pedidos en línea, históricos y recomendaciones, configuración |
 | `carta.html` | Clientes (QR) | Menú de solo lectura con pestañas: Viernes desayunos / comidas, Sábado y Domingo desayunos / comidas (abre en el que toca por día y hora) |
 | `pedidos.html` | Clientes | Ordenar en línea (recoger o domicilio) y ver el estado del pedido |
 | `store.js` / `comun.js` / `config.js` | — | Datos, utilidades y configuración |
@@ -19,7 +20,7 @@ Carpeta independiente: **no forma parte del despliegue de TML** (`build.sh` y
 
 ## Modo local (por defecto)
 
-Abre `index.html` en el navegador de la caja. Todo se guarda en ese navegador.
+Abre `admin.html` en el navegador de la caja. Todo se guarda en ese navegador.
 Limitaciones: otros dispositivos no ven los datos y los pedidos en línea solo
 llegan si se hacen desde el mismo navegador. **Descarga respaldos** seguido
 (Configuración → Descargar respaldo).

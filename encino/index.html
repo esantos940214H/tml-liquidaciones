@@ -3,1010 +3,158 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Encino — Administración</title>
+<title>Restaurante Encino · Oaxaca</title>
+<meta name="description" content="Restaurante Encino en Oaxaca: desayunos y comidas viernes, sábado y domingo. Consulta el menú con precios y ordena en línea para recoger o a domicilio.">
+<link rel="canonical" href="https://encino.app/">
+<meta property="og:type" content="restaurant">
+<meta property="og:title" content="Restaurante Encino · Oaxaca">
+<meta property="og:description" content="Desayunos y comidas viernes, sábado y domingo. Menú y pedidos en línea.">
+<meta property="og:url" content="https://encino.app/">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,700&family=Source+Sans+3:wght@400;600;700&display=swap" rel="stylesheet">
 <style>
-:root{--bg:#f4f1ea;--card:#fffdf8;--ink:#26251f;--mut:#76705f;--acc:#4f6b3a;--acc-ink:#fff;--acc-soft:#e3ead9;--line:#e0d8c8;--warn:#b7791f;--warn-soft:#fbefd9;--bad:#a23b2a;--bad-soft:#f7e1dc;--ok:#2f7d4f;--busy:#8a5a2b;--busy-soft:#f3e4d2}
-@media (prefers-color-scheme:dark){:root{--bg:#151813;--card:#1e221b;--ink:#ebe7dd;--mut:#a39d8c;--acc:#9fbe85;--acc-ink:#151813;--acc-soft:#2c3626;--line:#343a2f;--warn:#e0b060;--warn-soft:#3a3020;--bad:#e08b7a;--bad-soft:#3d2520;--ok:#7fcf9c;--busy:#e0a86a;--busy-soft:#3a2c1e}}
+/* Una sola columna, como una carta impresa: portada, horario, menú del día, visítanos. */
+:root{
+  --papel:#f5efe3; --hoja:#fffaf0; --tinta:#2a261f; --gris:#6f6757; --encino:#46612f; --corteza:#7a4f2a; --linea:#e2d7c2;
+  --display:"Fraunces",Georgia,"Times New Roman",serif; --texto:"Source Sans 3",system-ui,-apple-system,"Segoe UI",sans-serif;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--papel:#16180f;--hoja:#1e2117;--tinta:#ede6d6;--gris:#a89f8b;--encino:#a7c587;--corteza:#d9a570;--linea:#353829;color-scheme:dark}}
+:root[data-theme="dark"]{--papel:#16180f;--hoja:#1e2117;--tinta:#ede6d6;--gris:#a89f8b;--encino:#a7c587;--corteza:#d9a570;--linea:#353829;color-scheme:dark}
 *{box-sizing:border-box}
-body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.4 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
-header{display:flex;align-items:center;gap:14px;padding:10px 16px;background:var(--card);border-bottom:1px solid var(--line);position:sticky;top:0;z-index:5;flex-wrap:wrap}
-header h1{margin:0;font:700 1.25rem Georgia,serif;color:var(--acc)}
-nav{display:flex;gap:4px;overflow-x:auto;flex:1}
-nav button{border:0;background:transparent;color:var(--ink);padding:8px 12px;border-radius:8px;font:600 .9rem system-ui;cursor:pointer;white-space:nowrap;position:relative}
-nav button.on{background:var(--acc-soft);color:var(--acc)}
-.badge{display:inline-block;min-width:18px;padding:0 5px;border-radius:9px;background:var(--bad);color:#fff;font-size:.72rem;line-height:18px;text-align:center;margin-left:4px}
-.modo{font-size:.75rem;color:var(--mut)}
-main{padding:16px;max-width:1280px;margin:0 auto}
-h2{margin:0 0 12px;font-size:1.2rem}
-h3{margin:18px 0 8px;font-size:1rem}
-.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px;margin-bottom:14px}
-.toolbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px}
-.toolbar .sp{flex:1}
-button.b,a.b,label.b{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);background:var(--card);color:var(--ink);padding:8px 12px;border-radius:8px;font:600 .88rem system-ui;cursor:pointer;text-decoration:none}
-button.b.p{background:var(--acc);border-color:var(--acc);color:var(--acc-ink)}
-button.b.d{color:var(--bad);border-color:var(--bad)}
-button.b.s{padding:4px 8px;font-size:.8rem}
-button.b:disabled{opacity:.45;cursor:default}
-input,select,textarea{padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--ink);font:inherit;min-width:0}
-label.f{display:block;font-size:.78rem;color:var(--mut);margin:8px 0 3px}
-.grid2{display:grid;grid-template-columns:1fr 1fr;gap:0 12px}
-.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:0 12px}
-@media (max-width:640px){.grid2,.grid3{grid-template-columns:1fr}}
-.w100{width:100%}
-table{width:100%;border-collapse:collapse;font-size:.9rem}
-th{text-align:left;font-size:.75rem;text-transform:uppercase;letter-spacing:.05em;color:var(--mut);border-bottom:1px solid var(--line);padding:6px 8px}
-td{border-bottom:1px solid var(--line);padding:7px 8px;vertical-align:top}
-td.n,th.n{text-align:right;white-space:nowrap}
-.tw{overflow-x:auto}
-.mut{color:var(--mut)}.small{font-size:.8rem}
-.pill{display:inline-block;padding:1px 8px;border-radius:999px;font-size:.75rem;font-weight:600;background:var(--acc-soft);color:var(--acc)}
-.pill.warn{background:var(--warn-soft);color:var(--warn)}.pill.bad{background:var(--bad-soft);color:var(--bad)}.pill.busy{background:var(--busy-soft);color:var(--busy)}
-.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;margin-bottom:14px}
-.kpi{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px}
-.kpi .v{font-size:1.4rem;font-weight:700}.kpi .l{font-size:.78rem;color:var(--mut)}
-/* Mesas */
-.mesas{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:10px}
-.mesa{border:2px solid var(--line);background:var(--card);border-radius:14px;padding:14px 10px;text-align:center;cursor:pointer;color:var(--ink);font:inherit}
-.mesa .num{font-size:1.6rem;font-weight:800}
-.mesa.oc{border-color:var(--busy);background:var(--busy-soft)}
-.mesa .t{font-weight:700}.mesa .x{font-size:.75rem;color:var(--mut)}
-/* Modales */
-.ov{position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:flex-start;justify-content:center;padding:24px 12px;overflow-y:auto;z-index:20}
-.md{background:var(--card);border-radius:14px;width:100%;max-width:560px;padding:18px;position:relative;box-shadow:0 10px 40px rgba(0,0,0,.3)}
-.md.wide{max-width:1180px}
-.md .cx{position:absolute;top:10px;right:10px;border:0;background:transparent;font-size:1.4rem;cursor:pointer;color:var(--mut)}
-.md h2{padding-right:30px}
-.md .foot{display:flex;gap:8px;justify-content:flex-end;margin-top:16px;flex-wrap:wrap}
-/* Orden */
-.ord{display:grid;grid-template-columns:1.5fr 1fr;gap:16px}
-@media (max-width:820px){.ord{grid-template-columns:1fr}}
-.chips{display:flex;gap:6px;flex-wrap:wrap;margin:8px 0}
-.chips button{border:1px solid var(--line);background:var(--bg);color:var(--ink);border-radius:999px;padding:5px 11px;font:600 .8rem system-ui;cursor:pointer}
-.chips button.on{background:var(--acc);border-color:var(--acc);color:var(--acc-ink)}
-.items{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:8px;max-height:60vh;overflow-y:auto;padding:2px}
-.item{border:1px solid var(--line);background:var(--bg);border-radius:10px;padding:10px;text-align:left;cursor:pointer;color:var(--ink);font:inherit}
-.item:hover{border-color:var(--acc)}
-.item .nm{font-weight:600;font-size:.88rem}.item .pr{color:var(--acc);font-weight:700;font-size:.85rem}
-.item.beb{border-left:4px solid #4a78a8}
-.item.off{opacity:.4}
-.cuenta{background:var(--bg);border-radius:12px;padding:12px}
-.ln{display:flex;gap:8px;align-items:center;padding:7px 0;border-bottom:1px dashed var(--line)}
-.ln .nm{flex:1;font-size:.9rem}.ln .nt{display:block;font-size:.75rem;color:var(--warn)}
-.ln .q{display:flex;align-items:center;gap:4px}
-.ln .q button{width:28px;height:28px;border-radius:50%;border:1px solid var(--line);background:var(--card);color:var(--ink);cursor:pointer}
-.tot{display:flex;justify-content:space-between;font-size:1.3rem;font-weight:800;margin:12px 0}
-.bar{height:10px;background:var(--acc);border-radius:5px;min-width:2px}
-.ticket td{border:0;padding:1px 0}.ticket .c{text-align:center}.ticket .r{text-align:right}.ticket .b{font-weight:bold}.ticket .g{font-size:14px}.ticket hr{border:0;border-top:1px dashed #000;margin:4px 0}.ticket table{font-size:12px}
-.ticket{background:#fff;color:#000;font:12px/1.3 "Courier New",monospace;padding:12px;border:1px solid var(--line);max-width:320px;margin:0 auto;white-space:normal}
-.toast{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:10px;z-index:50;font-weight:600;box-shadow:0 4px 20px rgba(0,0,0,.3)}
-.ped{border:1px solid var(--line);border-radius:12px;padding:12px;background:var(--card);margin-bottom:10px}
-.ped.nuevo{border:2px solid var(--bad)}
-#login{max-width:360px;margin:60px auto}
-.qr{background:#fff;padding:10px;display:inline-block;border-radius:8px}
+body{margin:0;background:var(--papel);color:var(--tinta);font:17px/1.6 var(--texto)}
+.w{max-width:760px;margin:0 auto;padding-inline:16px}
+a{color:var(--encino)}
+a:focus-visible,button:focus-visible{outline:3px solid var(--corteza);outline-offset:2px}
+header.portada{padding-block:72px 48px;text-align:center}
+.eyebrow{font-size:.8rem;letter-spacing:.22em;text-transform:uppercase;color:var(--corteza);font-weight:700}
+h1{font:700 clamp(2.8rem,9vw,4.6rem)/1 var(--display);color:var(--encino);margin:.25em 0 .2em;text-wrap:balance;letter-spacing:-.01em}
+.lema{font:500 1.25rem/1.45 var(--display);color:var(--gris);max-width:32ch;margin:0 auto;text-wrap:balance}
+.sep{display:block;margin:28px auto 0;width:56px;height:3px;border-radius:2px;background:var(--corteza)}
+.acciones{display:flex;gap:12px;justify-content:center;flex-wrap:wrap;margin-top:28px}
+.btn{display:inline-block;padding:14px 24px;border-radius:999px;font-weight:700;text-decoration:none;border:2px solid var(--encino);color:var(--encino)}
+.btn.p{background:var(--encino);color:var(--hoja)}
+section{padding-block:36px;border-top:1px solid var(--linea)}
+h2{font:700 1.7rem/1.2 var(--display);margin:0 0 14px;text-wrap:balance}
+.horario{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px}
+.dia{background:var(--hoja);border:1px solid var(--linea);border-radius:14px;padding:14px 16px}
+.dia b{display:block;font-family:var(--display);font-size:1.15rem}
+.dia span{color:var(--gris);font-variant-numeric:tabular-nums}
+.hoy{font-weight:700;color:var(--corteza);margin-top:12px}
+.menu-hoy .cat{margin-top:18px}
+.menu-hoy h3{font-size:.8rem;letter-spacing:.18em;text-transform:uppercase;color:var(--corteza);margin:0 0 4px}
+.pl{display:flex;gap:12px;align-items:baseline;padding:8px 0;border-bottom:1px dashed var(--linea)}
+.pl .n{flex:1;min-width:0;font-weight:600}.pl .d{display:block;font-weight:400;color:var(--gris);font-size:.92rem}
+.pl .p{font-variant-numeric:tabular-nums;font-weight:700;white-space:nowrap}
+.mut{color:var(--gris)}
+.datos{display:grid;gap:6px}
+.datos div{display:flex;gap:10px}.datos dt{font-weight:700;min-width:92px}.datos dd{margin:0;min-width:0}
+footer{padding-block:32px 48px;text-align:center;color:var(--gris);font-size:.9rem;border-top:1px solid var(--linea)}
 </style>
 </head>
 <body>
-<header>
-  <h1>🌳 Encino</h1>
-  <nav id="nav">
-    <button data-t="mesas" class="on">🍽️ Mesas</button>
-    <button data-t="pedidos">🌐 Pedidos en línea <span id="bPed"></span></button>
-    <button data-t="menu">📋 Menú</button>
-    <button data-t="inventario">📦 Inventario <span id="bInv"></span></button>
-    <button data-t="compras">🛒 Compras</button>
-    <button data-t="historicos">📈 Históricos</button>
-    <button data-t="config">⚙️ Configuración</button>
-  </nav>
-  <span class="modo" id="modo"></span>
+<script>
+// ─── DATOS DEL RESTAURANTE ─ edita aquí. Lo que quede vacío no se muestra.
+window.ENCINO_SITIO = {
+  lema: 'Desayunos y comidas de fin de semana en Oaxaca',
+  descripcion: '',          // 2-3 líneas: qué tipo de cocina, ambiente, especialidades
+  direccion: '',            // Calle, número, colonia, Oaxaca de Juárez, Oax., C.P.
+  telefono: '',             // 951 000 0000
+  whatsapp: '',             // mismo formato; opcional
+  mapa: '',                 // liga "Compartir" de Google Maps
+  facebook: '', instagram: '',
+  cocina: 'Mexicana, oaxaqueña',
+  rangoPrecio: '$$'
+};
+</script>
+<header class="portada w">
+  <div class="eyebrow">Oaxaca</div>
+  <h1>Restaurante Encino</h1>
+  <p class="lema" id="lema"></p>
+  <span class="sep" aria-hidden="true"></span>
+  <div class="acciones"><a class="btn p" href="carta.html">Ver el menú</a><a class="btn" href="pedidos.html">Ordenar en línea</a></div>
 </header>
-<main id="main"><p class="mut">Cargando…</p></main>
-
+<main class="w">
+  <section id="sobre" hidden><h2>Encino</h2><p id="desc"></p></section>
+  <section>
+    <h2>Horario</h2>
+    <div class="horario" id="horario"></div>
+    <p class="hoy" id="hoy"></p>
+  </section>
+  <section class="menu-hoy">
+    <h2 id="mhTit">Menú</h2>
+    <p class="mut" id="mhSub">Consulta la carta completa con precios.</p>
+    <div id="mh"></div>
+    <p style="margin-top:18px"><a href="carta.html">Ver la carta completa →</a></p>
+  </section>
+  <section id="visita" hidden>
+    <h2>Visítanos</h2>
+    <dl class="datos" id="datos"></dl>
+  </section>
+</main>
+<footer class="w">Restaurante Encino · Oaxaca, México</footer>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <script src="config.js"></script>
 <script src="store.js"></script>
 <script src="comun.js"></script>
 <script>
 (function(){
-'use strict';
-var E = Encino, esc = E.esc, money = E.money, dkey = E.dkey;
-var $ = function(id){ return document.getElementById(id); };
-function num(v){ if (v == null || v === '') return null; var n = parseFloat(String(v).replace(/[$,\s]/g, '')); return isFinite(n) ? n : null; }
-function r2(n){ return Math.round((Number(n) || 0) * 100) / 100; }
-function fmtCant(n){ n = Number(n) || 0; return Math.abs(n % 1) < 1e-9 ? String(n) : n.toFixed(3).replace(/0+$/, ''); }
-function fecha(ts){ return new Date(ts).toLocaleString('es-MX', { dateStyle: 'short', timeStyle: 'short' }); }
-function toast(msg){ var t = document.createElement('div'); t.className = 'toast'; t.textContent = msg; document.body.appendChild(t); setTimeout(function(){ t.remove(); }, 2600); }
+  var E = Encino, esc = E.esc, D = window.ENCINO_SITIO, cfg = E.cfgFrom([]), menu = [];
+  var $ = function(id){ return document.getElementById(id); };
+  var DIAS_EN = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
 
-// ── Estado (se llena desde Store.watch) ────────────────────────────────
-var S = { menu: [], insumos: [], ordenes: [], ventas: [], movimientos: [], compras: [], pedidos: [], preparaciones: [], configDocs: [], config: E.cfgFrom([]) };
-var TAB = 'mesas', listo = false;
-
-// ── Modales ─────────────────────────────────────────────────────────────
-function modal(html, opts){
-  opts = opts || {};
-  var ov = document.createElement('div'); ov.className = 'ov';
-  ov.innerHTML = '<div class="md' + (opts.wide ? ' wide' : '') + '"><button class="cx" title="Cerrar">×</button>' + html + '</div>';
-  var md = ov.firstChild;
-  md.close = function(){ ov.remove(); if (opts.onClose) opts.onClose(); };
-  md.querySelector('.cx').onclick = md.close;
-  ov.addEventListener('mousedown', function(e){ if (e.target === ov && !opts.sticky) md.close(); });
-  document.body.appendChild(ov);
-  return md;
-}
-
-// ── Impresión (ticket / comanda) en iframe oculto ──────────────────────
-function imprimir(html){
-  var w = S.config.anchoTicket == 58 ? 48 : 72;
-  var css = '@page{size:' + (w + 8) + 'mm auto;margin:0}body{width:' + w + 'mm;margin:0 auto;padding:3mm 0;font:12px/1.3 "Courier New",monospace;color:#000}' +
-    '.c{text-align:center}.r{text-align:right}.b{font-weight:bold}.g{font-size:15px}hr{border:0;border-top:1px dashed #000;margin:4px 0}table{width:100%;border-collapse:collapse}td{padding:1px 0;vertical-align:top}';
-  var f = document.createElement('iframe');
-  f.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0';
-  document.body.appendChild(f);
-  var d = f.contentWindow.document;
-  d.open(); d.write('<!doctype html><html><head><meta charset="utf-8"><style>' + css + '</style></head><body>' + html + '</body></html>'); d.close();
-  setTimeout(function(){ try { f.contentWindow.focus(); f.contentWindow.print(); } catch(e){ console.error(e); } setTimeout(function(){ f.remove(); }, 1500); }, 250);
-}
-function ticketHTML(v){
-  var c = S.config, h = '<div class="c b g">' + esc(c.nombre) + '</div>';
-  [c.direccion, c.telefono ? 'Tel. ' + c.telefono : '', c.rfc ? 'RFC ' + c.rfc : ''].filter(Boolean).forEach(function(x){ h += '<div class="c">' + esc(x) + '</div>'; });
-  h += '<hr><div>Ticket: <b>' + v.folio + '</b></div><div>' + esc(fecha(v.fecha)) + '</div><div>' + esc(etiquetaOrden(v)) + (v.personas ? ' · ' + v.personas + ' pers.' : '') + '</div>';
-  if (v.mesero) h += '<div>Atendió: ' + esc(v.mesero) + '</div>';
-  if (v.estado === 'cancelada') h += '<div class="c b">*** CANCELADO ***</div>';
-  h += '<hr><table>';
-  v.items.forEach(function(i){
-    h += '<tr><td>' + i.cant + ' ' + esc(i.nombre) + (i.nota ? '<br>&nbsp;&nbsp;(' + esc(i.nota) + ')' : '') + '</td><td class="r">' + money(i.precio * i.cant) + '</td></tr>';
-  });
-  h += '</table><hr><table><tr><td>Subtotal</td><td class="r">' + money(v.subtotal) + '</td></tr>';
-  if (v.descuento) h += '<tr><td>Descuento ' + (v.descPct ? v.descPct + '%' : '') + '</td><td class="r">-' + money(v.descuento) + '</td></tr>';
-  var base = v.subtotal - (v.descuento || 0);
-  h += '<tr><td class="b g">TOTAL</td><td class="r b g">' + money(base) + '</td></tr>';
-  if (v.propina) h += '<tr><td>Propina</td><td class="r">' + money(v.propina) + '</td></tr><tr><td class="b">Total con propina</td><td class="r b">' + money(v.total) + '</td></tr>';
-  h += '<tr><td>Pago: ' + esc(v.metodo) + '</td><td class="r">' + (v.pagoCon ? money(v.pagoCon) : '') + '</td></tr>';
-  if (v.cambio) h += '<tr><td>Cambio</td><td class="r">' + money(v.cambio) + '</td></tr>';
-  h += '</table><div class="c" style="margin-top:4px;font-size:10px">IVA incluido: ' + money(base - base / 1.16) + '</div><hr>';
-  if (c.leyenda) h += '<div class="c">' + esc(c.leyenda) + '</div>';
-  return h;
-}
-function etiquetaOrden(o){
-  if (o.tipo === 'mesa') return 'Mesa ' + o.mesa;
-  if (o.tipo === 'linea') return 'En línea: ' + (o.cliente || '');
-  return 'Para llevar' + (o.cliente ? ': ' + o.cliente : '');
-}
-
-// ── Navegación ──────────────────────────────────────────────────────────
-$('nav').addEventListener('click', function(e){
-  var b = e.target.closest('button'); if (!b) return;
-  TAB = b.dataset.t;
-  document.querySelectorAll('#nav button').forEach(function(x){ x.classList.toggle('on', x === b); });
-  render(true);
-});
-function render(forzar){
-  if (!listo) return;
-  badges();
-  // Configuración tiene un formulario largo: solo se redibuja al entrar,
-  // para no borrar lo que la persona esté escribiendo.
-  if (TAB === 'config' && !forzar) return;
-  var f = { mesas: vMesas, pedidos: vPedidos, menu: vMenu, inventario: vInventario, compras: vCompras, historicos: vHistoricos, config: vConfig }[TAB];
-  var y = window.scrollY; f(); if (!forzar) window.scrollTo(0, y);
-}
-function badges(){
-  var np = S.pedidos.filter(function(p){ return p.estado === 'nuevo'; }).length;
-  var nb = S.insumos.filter(bajo).length;
-  $('bPed').innerHTML = np ? '<span class="badge">' + np + '</span>' : '';
-  $('bInv').innerHTML = nb ? '<span class="badge" style="background:var(--warn)">' + nb + '</span>' : '';
-}
-function bajo(i){ return i.minimo != null && i.minimo !== '' && (Number(i.existencia) || 0) <= Number(i.minimo); }
-
-// ═════════════════════════ MESAS / ÓRDENES ═════════════════════════════
-function totalOrden(o){ return (o.items || []).reduce(function(s, i){ return s + i.precio * i.cant; }, 0); }
-function getOrden(id){ return S.ordenes.find(function(o){ return o.id === id; }); }
-function minutos(ts){ var m = Math.round((Date.now() - ts) / 60000); return m < 60 ? m + ' min' : Math.floor(m / 60) + ' h ' + (m % 60) + ' min'; }
-
-function vMesas(){
-  var n = parseInt(S.config.mesas, 10) || 10, h = '<div class="toolbar"><h2 style="margin:0">Mesas</h2><span class="sp"></span><button class="b p" id="nLlevar">🥡 Nueva orden para llevar</button></div><div class="mesas">';
-  for (var i = 1; i <= n; i++) {
-    var o = S.ordenes.find(function(x){ return x.tipo === 'mesa' && x.mesa === String(i); });
-    h += '<button class="mesa' + (o ? ' oc' : '') + '" data-mesa="' + i + '"><div class="x">Mesa</div><div class="num">' + i + '</div>' +
-      (o ? '<div class="t">' + money(totalOrden(o)) + '</div><div class="x">' + minutos(o.abierta) + (o.mesero ? ' · ' + esc(o.mesero) : '') + '</div>' : '<div class="x">Libre</div>') + '</button>';
+  // Horario por día a partir de los menús configurados (el más temprano y el más tarde)
+  function horarioPorDia(){
+    var h = {};
+    (cfg.menus || []).forEach(function(m){ (m.dias || []).forEach(function(d){
+      h[d] = h[d] || { desde: m.desde, hasta: m.hasta };
+      if (m.desde && m.desde < h[d].desde) h[d].desde = m.desde;
+      if (m.hasta && m.hasta > h[d].hasta) h[d].hasta = m.hasta;
+    }); });
+    return h;
   }
-  h += '</div>';
-  var otras = S.ordenes.filter(function(x){ return x.tipo !== 'mesa'; }).sort(function(a, b){ return a.abierta - b.abierta; });
-  h += '<h3>Para llevar / en línea</h3>';
-  if (!otras.length) h += '<p class="mut">No hay órdenes abiertas.</p>';
-  else {
-    h += '<div class="mesas">';
-    otras.forEach(function(o){ h += '<button class="mesa oc" data-orden="' + o.id + '"><div class="x">' + (o.tipo === 'linea' ? '🌐 En línea' : '🥡 Llevar') + '</div><div class="t">' + esc(o.cliente || '—') + '</div><div class="t">' + money(totalOrden(o)) + '</div><div class="x">' + minutos(o.abierta) + '</div></button>'; });
-    h += '</div>';
-  }
-  $('main').innerHTML = h;
-  $('nLlevar').onclick = function(){
-    var cli = prompt('Nombre del cliente (opcional):', ''); if (cli === null) return;
-    var o = { id: Store.uid(), tipo: 'llevar', mesa: '', cliente: cli.trim(), items: [], abierta: Date.now() };
-    Store.put('ordenes', o).then(function(){ abrirOrden(o.id); });
-  };
-  $('main').querySelectorAll('[data-mesa]').forEach(function(b){ b.onclick = function(){ abrirMesa(b.dataset.mesa); }; });
-  $('main').querySelectorAll('[data-orden]').forEach(function(b){ b.onclick = function(){ abrirOrden(b.dataset.orden); }; });
-}
-function abrirMesa(m){
-  var o = S.ordenes.find(function(x){ return x.tipo === 'mesa' && x.mesa === String(m); });
-  if (o) return abrirOrden(o.id);
-  o = { id: Store.uid(), tipo: 'mesa', mesa: String(m), items: [], abierta: Date.now(), mesero: localStorage.getItem('encino:mesero') || '' };
-  Store.put('ordenes', o).then(function(){ abrirOrden(o.id); });
-}
-
-var OM = null; // modal de la orden abierta
-var oFiltro = { cat: 'Todo', q: '', menu: '' };
-function abrirOrden(id){
-  var o = getOrden(id); if (!o) return;
-  var act = E.menuActual(S.config);
-  oFiltro = { cat: 'Todo', q: '', menu: act ? act.id : '' };
-  OM = modal('<h2 id="oTit"></h2><div class="ord"><div><div class="toolbar" style="margin:0"><input id="oQ" placeholder="🔎 Buscar platillo o bebida…" style="flex:1"><select id="oMenu"><option value="">Todos los menús</option>' +
-    S.config.menus.map(function(m){ return '<option value="' + esc(m.id) + '">' + esc(m.nombre) + '</option>'; }).join('') + '</select></div><div class="chips" id="oCats"></div><div class="items" id="oItems"></div></div>' +
-    '<div class="cuenta"><div class="grid2"><div><label class="f">Mesero</label><input id="oMesero" class="w100"></div><div><label class="f">Personas</label><input id="oPers" type="number" min="1" class="w100"></div></div>' +
-    '<div id="oLines" style="margin-top:8px"></div><div class="tot"><span>Total</span><span id="oTot"></span></div>' +
-    '<div class="toolbar"><button class="b" id="oComanda">🧾 Enviar comanda</button><button class="b" id="oCambiar">↔️ Cambiar mesa</button><button class="b d" id="oCancelar">Cancelar orden</button><span class="sp"></span><button class="b p" id="oCobrar">💵 Cobrar</button></div></div></div>',
-    { wide: true, onClose: function(){ OM = null; } });
-  OM.dataset.id = id;
-  $('oMenu').value = oFiltro.menu;
-  $('oQ').oninput = function(){ oFiltro.q = this.value.toLowerCase(); pintaItems(); };
-  $('oMenu').onchange = function(){ oFiltro.menu = this.value; pintaItems(); };
-  $('oMesero').value = o.mesero || ''; $('oPers').value = o.personas || '';
-  $('oMesero').onchange = function(){ try { localStorage.setItem('encino:mesero', this.value); } catch(e){} Store.put('ordenes', { id: id, mesero: this.value.trim() }); };
-  $('oPers').onchange = function(){ Store.put('ordenes', { id: id, personas: parseInt(this.value, 10) || null }); };
-  $('oCats').onclick = function(e){ var b = e.target.closest('button'); if (!b) return; oFiltro.cat = b.dataset.c; pintaItems(); };
-  $('oItems').onclick = function(e){ var b = e.target.closest('[data-add]'); if (b) agregar(b.dataset.add); };
-  $('oLines').onclick = function(e){ var b = e.target.closest('button'); if (b) accionLinea(b.dataset.a, b.dataset.l); };
-  $('oCobrar').onclick = cobrar;
-  $('oComanda').onclick = comanda;
-  $('oCancelar').onclick = function(){
-    var o = getOrden(id);
-    if ((o.items || []).length && !confirm('¿Cancelar esta orden completa? Se descartan ' + o.items.length + ' renglones y no se registra venta.')) return;
-    Store.del('ordenes', id); if (o.pedidoId) Store.put('pedidos', { id: o.pedidoId, estado: 'rechazado', motivo: 'Cancelado por el restaurante' }); OM.close();
-  };
-  $('oCambiar').onclick = function(){
-    var o = getOrden(id);
-    var m = prompt('¿A qué mesa se cambia? (número)', o.mesa || ''); if (!m) return;
-    m = String(parseInt(m, 10));
-    if (m === 'NaN') return;
-    if (S.ordenes.some(function(x){ return x.tipo === 'mesa' && x.mesa === m && x.id !== id; })) return alert('La mesa ' + m + ' ya tiene una orden abierta.');
-    Store.put('ordenes', { id: id, tipo: 'mesa', mesa: m }).then(pintaOrden);
-  };
-  pintaItems(); pintaOrden();
-}
-function pintaItems(){
-  if (!OM) return;
-  var base = S.menu.filter(function(i){ return E.enMenu(i, oFiltro.menu); });
-  var cats = ['Todo', 'Alimentos', 'Bebidas'].concat(Array.from(new Set(base.map(function(i){ return i.categoria; }).filter(Boolean))).sort());
-  $('oCats').innerHTML = cats.map(function(c){ return '<button data-c="' + esc(c) + '"' + (c === oFiltro.cat ? ' class="on"' : '') + '>' + esc(c) + '</button>'; }).join('');
-  var its = base.filter(function(i){
-    if (oFiltro.cat === 'Alimentos' && i.tipo === 'bebida') return false;
-    if (oFiltro.cat === 'Bebidas' && i.tipo !== 'bebida') return false;
-    if (['Todo', 'Alimentos', 'Bebidas'].indexOf(oFiltro.cat) < 0 && i.categoria !== oFiltro.cat) return false;
-    return !oFiltro.q || (i.nombre || '').toLowerCase().indexOf(oFiltro.q) >= 0;
-  }).sort(function(a, b){ return (a.nombre || '').localeCompare(b.nombre || '', 'es'); });
-  $('oItems').innerHTML = its.length ? its.map(function(i){
-    var st = stockPlatillo(i);
-    return '<button class="item' + (i.tipo === 'bebida' ? ' beb' : '') + (i.disponible === false ? ' off' : '') + '" data-add="' + i.id + '"><div class="nm">' + esc(i.nombre) + '</div><div class="pr">' + money(i.precio) + '</div>' +
-      (st != null ? '<div class="small ' + (st <= 0 ? 'mut' : 'mut') + '">' + (st <= 0 ? '⚠️ sin existencia' : 'quedan ' + st) + '</div>' : '') + '</button>';
-  }).join('') : '<p class="mut">Sin resultados. Da de alta platillos en la pestaña Menú.</p>';
-}
-// Cuántas porciones alcanzan con la existencia actual (solo si tiene receta)
-function stockPlatillo(m){
-  if (!m.receta || !m.receta.length) return null;
-  var min = Infinity;
-  m.receta.forEach(function(r){ var ins = S.insumos.find(function(x){ return x.id === r.insumoId; }); if (ins && r.cant > 0) min = Math.min(min, Math.floor((Number(ins.existencia) || 0) / r.cant)); });
-  return min === Infinity ? null : Math.max(0, min);
-}
-function pintaOrden(){
-  if (!OM) return;
-  var o = getOrden(OM.dataset.id);
-  if (!o) { OM.close(); return; }
-  $('oTit').textContent = etiquetaOrden(o) + ' · abierta hace ' + minutos(o.abierta);
-  var its = o.items || [];
-  $('oLines').innerHTML = its.length ? its.map(function(l){
-    return '<div class="ln"><span class="nm">' + (l.enviado ? '✔︎ ' : '') + esc(l.nombre) + (l.nota ? '<span class="nt">📝 ' + esc(l.nota) + '</span>' : '') + '<span class="small mut">' + money(l.precio) + ' c/u</span></span>' +
-      '<span class="q"><button data-a="menos" data-l="' + l.lid + '">−</button><b>' + l.cant + '</b><button data-a="mas" data-l="' + l.lid + '">+</button></span>' +
-      '<b style="min-width:74px;text-align:right">' + money(l.precio * l.cant) + '</b><button class="b s" data-a="nota" data-l="' + l.lid + '" title="Nota">📝</button><button class="b s" data-a="quitar" data-l="' + l.lid + '" title="Quitar">🗑</button></div>';
-  }).join('') : '<p class="mut">Toca un platillo o bebida para agregarlo.</p>';
-  $('oTot').textContent = money(totalOrden(o));
-}
-function agregar(menuId){
-  var o = getOrden(OM.dataset.id), m = S.menu.find(function(x){ return x.id === menuId; });
-  if (!o || !m) return;
-  if (m.disponible === false && !confirm(m.nombre + ' está marcado como NO disponible. ¿Agregarlo de todos modos?')) return;
-  var items = (o.items || []).slice();
-  var l = items.find(function(x){ return x.menuId === menuId && !x.nota && !x.enviado; });
-  if (l) l.cant++;
-  else items.push({ lid: Store.uid(), menuId: m.id, nombre: m.nombre, precio: Number(m.precio) || 0, tipo: m.tipo, categoria: m.categoria || '', cant: 1 });
-  Store.put('ordenes', { id: o.id, items: items }).then(pintaOrden);
-  pintaOrden();
-}
-function accionLinea(a, lid){
-  var o = getOrden(OM.dataset.id); if (!o) return;
-  var items = (o.items || []).map(function(x){ return Object.assign({}, x); }), l = items.find(function(x){ return x.lid === lid; });
-  if (!l) return;
-  if (a === 'mas') l.cant++;
-  else if (a === 'menos') { if (l.cant > 1) l.cant--; else a = 'quitar'; }
-  if (a === 'nota') { var n = prompt('Nota para cocina (ej. sin cebolla, término medio):', l.nota || ''); if (n === null) return; l.nota = n.trim(); l.enviado = false; }
-  if (a === 'quitar') {
-    if (l.enviado && !confirm('Este renglón ya se envió a cocina. ¿Quitarlo de la cuenta?')) return;
-    items = items.filter(function(x){ return x.lid !== lid; });
-  }
-  Store.put('ordenes', { id: o.id, items: items }).then(pintaOrden);
-}
-function comanda(){
-  var o = getOrden(OM.dataset.id); if (!o) return;
-  var pend = (o.items || []).filter(function(l){ return !l.enviado; });
-  if (!pend.length) return toast('No hay renglones nuevos para enviar.');
-  var grupos = [['Cocina', pend.filter(function(l){ return l.tipo !== 'bebida'; })], ['Barra', pend.filter(function(l){ return l.tipo === 'bebida'; })]];
-  var h = '';
-  grupos.forEach(function(g){
-    if (!g[1].length) return;
-    if (h) h += '<div style="page-break-after:always"></div>';
-    h += '<div class="c b g">COMANDA · ' + g[0].toUpperCase() + '</div><div class="c b">' + esc(etiquetaOrden(o)) + '</div><div class="c">' + esc(fecha(Date.now())) + (o.mesero ? ' · ' + esc(o.mesero) : '') + '</div><hr>';
-    g[1].forEach(function(l){ h += '<div class="g"><b>' + l.cant + '</b> ' + esc(l.nombre) + '</div>' + (l.nota ? '<div>&nbsp;&nbsp;» ' + esc(l.nota) + '</div>' : ''); });
-    h += '<hr>';
-  });
-  imprimir(h);
-  Store.put('ordenes', { id: o.id, items: o.items.map(function(l){ return Object.assign({}, l, { enviado: true }); }) }).then(pintaOrden);
-}
-
-// ── Cobro ───────────────────────────────────────────────────────────────
-function cobrar(){
-  var o = getOrden(OM.dataset.id); if (!o) return;
-  if (!(o.items || []).length) return alert('La orden no tiene nada que cobrar.');
-  var sub = r2(totalOrden(o));
-  var md = modal('<h2>Cobrar · ' + esc(etiquetaOrden(o)) + '</h2><div class="tot"><span>Subtotal</span><span>' + money(sub) + '</span></div>' +
-    '<div class="grid2"><div><label class="f">Descuento %</label><input id="cDesc" type="number" min="0" max="100" value="0" class="w100"></div>' +
-    '<div><label class="f">Propina $</label><input id="cProp" type="number" min="0" value="0" class="w100"></div>' +
-    '<div><label class="f">Forma de pago</label><select id="cMet" class="w100"><option>Efectivo</option><option>Tarjeta</option><option>Transferencia</option></select></div>' +
-    '<div><label class="f">Pagó con $ (efectivo)</label><input id="cCon" type="number" min="0" class="w100"></div></div>' +
-    '<div class="tot"><span>Total a cobrar</span><span id="cTot"></span></div><div id="cCambio" class="mut"></div>' +
-    '<div class="foot"><button class="b" id="cNo">Regresar</button><button class="b p" id="cSi">✔ Cerrar venta e imprimir ticket</button></div>', { sticky: true });
-  function calc(){
-    var dp = Math.min(100, Math.max(0, num($('cDesc').value) || 0)), desc = r2(sub * dp / 100), prop = r2(num($('cProp').value) || 0);
-    var tot = r2(sub - desc + prop), con = num($('cCon').value);
-    $('cTot').textContent = money(tot);
-    $('cCambio').textContent = con != null && $('cMet').value === 'Efectivo' ? (con >= tot ? 'Cambio: ' + money(con - tot) : 'Faltan ' + money(tot - con)) : '';
-    return { descPct: dp, descuento: desc, propina: prop, total: tot, metodo: $('cMet').value, pagoCon: con, cambio: con != null && con >= tot ? r2(con - tot) : 0 };
-  }
-  ['cDesc', 'cProp', 'cCon', 'cMet'].forEach(function(id){ $(id).oninput = calc; });
-  calc();
-  $('cNo').onclick = md.close;
-  $('cSi').onclick = function(){
-    var p = calc();
-    if (p.metodo === 'Efectivo' && p.pagoCon != null && p.pagoCon < p.total) return alert('El pago en efectivo no cubre el total.');
-    this.disabled = true;
-    cerrarVenta(o, sub, p).then(function(v){ md.close(); if (OM) OM.close(); verTicket(v, true); })
-      .catch(function(e){ alert('No se pudo registrar la venta: ' + e.message); $('cSi').disabled = false; });
-  };
-}
-function consumoDe(items){
-  var agg = {};
-  items.forEach(function(it){
-    var m = S.menu.find(function(x){ return x.id === it.menuId; });
-    if (!m || !m.receta) return;
-    m.receta.forEach(function(r){ if (r.insumoId && r.cant > 0) agg[r.insumoId] = (agg[r.insumoId] || 0) + r.cant * it.cant; });
-  });
-  return agg;
-}
-function moverInventario(agg, signo, tipo, ref, ts){
-  return Promise.all(Object.keys(agg).map(function(id){
-    var c = signo * agg[id];
-    return Promise.all([Store.inc('insumos', id, 'existencia', c), Store.put('movimientos', { id: Store.uid(), fecha: ts || Date.now(), insumoId: id, tipo: tipo, cantidad: c, ref: ref })]);
-  }));
-}
-function cerrarVenta(o, sub, p){
-  var o2 = getOrden(o.id) || o; // lo más reciente
-  return Store.nextFolio().then(function(folio){
-    var items = o2.items.map(function(i){ return { menuId: i.menuId, nombre: i.nombre, precio: i.precio, tipo: i.tipo || 'alimento', categoria: i.categoria || '', cant: i.cant, nota: i.nota || '' }; });
-    var consumo = consumoDe(items);
-    var v = Object.assign({ id: Store.uid(), folio: folio, fecha: Date.now(), estado: 'pagada', tipo: o2.tipo, mesa: o2.mesa || '', cliente: o2.cliente || '', mesero: o2.mesero || '',
-      personas: o2.personas || null, pedidoId: o2.pedidoId || null, items: items, subtotal: sub, consumo: consumo }, p);
-    // Primero se guarda la venta; hasta entonces se toca inventario y se cierra la orden.
-    return Store.put('ventas', v).then(function(){ return moverInventario(consumo, -1, 'venta', 'Ticket ' + folio, v.fecha); })
-      .then(function(){ if (o2.pedidoId) return Store.put('pedidos', { id: o2.pedidoId, estado: 'entregado' }); })
-      .then(function(){ return Store.del('ordenes', o2.id); })
-      .then(function(){ return v; });
-  });
-}
-function verTicket(v, auto){
-  var md = modal('<h2>Ticket ' + v.folio + (v.estado === 'cancelada' ? ' <span class="pill bad">Cancelado</span>' : '') + '</h2><div class="ticket">' + ticketHTML(v) + '</div><div class="foot">' +
-    (v.estado !== 'cancelada' ? '<button class="b d" id="tCanc">Cancelar ticket</button>' : '') + '<button class="b" id="tCerrar">Cerrar</button><button class="b p" id="tImp">🖨️ Imprimir</button></div>');
-  $('tImp').onclick = function(){ imprimir(ticketHTML(v)); };
-  $('tCerrar').onclick = md.close;
-  if ($('tCanc')) $('tCanc').onclick = function(){
-    var mot = prompt('Motivo de cancelación del ticket ' + v.folio + ' (el inventario de lo vendido se regresa):'); if (!mot) return;
-    Store.put('ventas', { id: v.id, estado: 'cancelada', motivoCancel: mot, canceladaEn: Date.now() })
-      .then(function(){ return moverInventario(v.consumo || {}, +1, 'cancelación', 'Ticket ' + v.folio + ' cancelado'); })
-      .then(function(){ md.close(); toast('Ticket cancelado'); });
-  };
-  if (auto) imprimir(ticketHTML(v));
-}
-
-// ═════════════════════════ PEDIDOS EN LÍNEA ════════════════════════════
-var pedFiltro = 'activos';
-function vPedidos(){
-  var url = urlDe('pedidos.html');
-  var lista = S.pedidos.filter(function(p){ return pedFiltro === 'todos' || ['nuevo', 'aceptado', 'listo'].indexOf(p.estado) >= 0; }).sort(function(a, b){ return b.creado - a.creado; });
-  var h = '<div class="toolbar"><h2 style="margin:0">Pedidos en línea</h2><span class="sp"></span><select id="pF"><option value="activos">Activos</option><option value="todos">Todos</option></select>' +
-    '<a class="b" href="pedidos.html" target="_blank">Abrir página de pedidos ↗</a></div>';
-  if (!S.config.pedidosActivos) h += '<div class="card"><span class="pill warn">Pausado</span> La página pública no está recibiendo pedidos (actívalo en Configuración).</div>';
-  if (Store.mode === 'local') h += '<div class="card small mut">Modo local: solo llegan pedidos hechos en este mismo navegador. Para recibir pedidos de clientes desde sus celulares, pasa a modo Firebase (ver README).</div>';
-  h += '<p class="small mut">Liga para clientes: <code>' + esc(url) + '</code></p>';
-  if (!lista.length) h += '<p class="mut">No hay pedidos.</p>';
-  lista.forEach(function(p){
-    var est = { nuevo: '<span class="pill bad">Nuevo</span>', aceptado: '<span class="pill busy">En preparación</span>', listo: '<span class="pill">Listo</span>', entregado: '<span class="pill">Entregado</span>', rechazado: '<span class="pill bad">Rechazado</span>' }[p.estado] || esc(p.estado);
-    h += '<div class="ped ' + esc(p.estado) + '"><div class="toolbar" style="margin:0 0 6px"><b>' + esc(p.cliente) + '</b> ' + est + '<span class="mut small">#' + esc(p.id.slice(-5).toUpperCase()) + ' · ' + fecha(p.creado) + '</span><span class="sp"></span><b>' + money(p.total) + '</b></div>' +
-      '<div class="small">📞 ' + esc(p.telefono) + ' · ' + (p.entrega === 'domicilio' ? '🛵 A domicilio: ' + esc(p.direccion) : '🏃 Pasa a recoger') + (p.hora ? ' · ⏰ ' + esc(p.hora) : '') + '</div>' +
-      '<div style="margin:6px 0">' + (p.items || []).map(function(i){ return i.cant + '× ' + esc(i.nombre); }).join(', ') + '</div>' + (p.notas ? '<div class="small" style="color:var(--warn)">📝 ' + esc(p.notas) + '</div>' : '') +
-      '<div class="toolbar" style="margin:8px 0 0">' +
-      (p.estado === 'nuevo' ? '<button class="b p" data-pa="aceptar" data-id="' + p.id + '">✔ Aceptar</button><button class="b d" data-pa="rechazar" data-id="' + p.id + '">Rechazar</button>' : '') +
-      (p.estado === 'aceptado' ? '<button class="b p" data-pa="listo" data-id="' + p.id + '">Marcar listo</button>' : '') +
-      (p.ordenId && getOrden(p.ordenId) ? '<button class="b" data-pa="orden" data-id="' + p.id + '">Ver orden / cobrar</button>' : '') + '</div></div>';
-  });
-  $('main').innerHTML = h;
-  $('pF').value = pedFiltro; $('pF').onchange = function(){ pedFiltro = this.value; vPedidos(); };
-  $('main').querySelectorAll('[data-pa]').forEach(function(b){ b.onclick = function(){ accionPedido(b.dataset.pa, b.dataset.id); }; });
-}
-function accionPedido(a, id){
-  var p = S.pedidos.find(function(x){ return x.id === id; }); if (!p) return;
-  if (a === 'aceptar') {
-    var o = { id: Store.uid(), tipo: 'linea', mesa: '', cliente: p.cliente, pedidoId: p.id, abierta: Date.now(),
-      items: (p.items || []).map(function(i){ var m = S.menu.find(function(x){ return x.id === i.menuId; });
-        return { lid: Store.uid(), menuId: i.menuId, nombre: i.nombre, precio: Number(i.precio) || 0, tipo: i.tipo || (m && m.tipo) || 'alimento', categoria: (m && m.categoria) || '', cant: i.cant, nota: '' }; }) };
-    if (p.notas && o.items[0]) o.items[0].nota = p.notas;
-    Store.put('ordenes', o).then(function(){ return Store.put('pedidos', { id: id, estado: 'aceptado', ordenId: o.id }); }).then(function(){ toast('Pedido aceptado — quedó como orden abierta'); });
-  } else if (a === 'rechazar') {
-    var mot = prompt('Motivo (lo verá el cliente):', 'No tenemos disponible el platillo'); if (mot === null) return;
-    Store.put('pedidos', { id: id, estado: 'rechazado', motivo: mot });
-  } else if (a === 'listo') Store.put('pedidos', { id: id, estado: 'listo' });
-  else if (a === 'orden') abrirOrden(p.ordenId);
-}
-var pedVistos = null;
-function avisoPedidos(){
-  var nuevos = S.pedidos.filter(function(p){ return p.estado === 'nuevo'; }).map(function(p){ return p.id; });
-  if (pedVistos === null) { pedVistos = new Set(nuevos); return; }
-  var llegaron = nuevos.filter(function(id){ return !pedVistos.has(id); });
-  nuevos.forEach(function(id){ pedVistos.add(id); });
-  if (llegaron.length) { toast('🌐 ¡Nuevo pedido en línea!'); beep(); }
-}
-function beep(){ try { var c = new (window.AudioContext || window.webkitAudioContext)(); [0, .25].forEach(function(t){ var o = c.createOscillator(), g = c.createGain(); o.frequency.value = 880; o.connect(g); g.connect(c.destination); g.gain.value = .15; o.start(c.currentTime + t); o.stop(c.currentTime + t + .15); }); } catch(e){} }
-
-// ═════════════════════════ MENÚ ════════════════════════════════════════
-var mFiltro = { tipo: '', menu: '', q: '' };
-function vMenu(){
-  var its = S.menu.filter(function(i){
-    return (!mFiltro.tipo || (i.tipo || 'alimento') === mFiltro.tipo) && (!mFiltro.menu || E.enMenu(i, mFiltro.menu)) && (!mFiltro.q || (i.nombre + ' ' + (i.categoria || '')).toLowerCase().indexOf(mFiltro.q) >= 0);
-  }).sort(function(a, b){ return ((a.categoria || '') + a.nombre).localeCompare((b.categoria || '') + b.nombre, 'es'); });
-  var h = '<div class="toolbar"><h2 style="margin:0">Menú (' + S.menu.length + ')</h2><span class="sp"></span><button class="b p" id="mNuevo">＋ Nuevo platillo / bebida</button>' +
-    '<label class="b">⬆️ Importar CSV<input type="file" id="mCsv" accept=".csv,text/csv" hidden></label><button class="b" id="mExp">⬇️ Exportar CSV</button><a class="b" href="carta.html" target="_blank">Ver carta QR ↗</a></div>' +
-    '<div class="toolbar"><input id="mQ" placeholder="🔎 Buscar…" value="' + esc(mFiltro.q) + '"><select id="mT"><option value="">Alimentos y bebidas</option><option value="alimento">Solo alimentos</option><option value="bebida">Solo bebidas</option></select>' +
-    '<select id="mM"><option value="">Todos los menús</option>' + S.config.menus.map(function(m){ return '<option value="' + esc(m.id) + '">' + esc(m.nombre) + '</option>'; }).join('') + '</select></div>';
-  if (!S.menu.length) h += '<div class="card">Aún no hay platillos. Agrégalos uno por uno, importa un CSV (columnas: <code>nombre,categoria,tipo,precio,descripcion,menus</code>) o carga datos de ejemplo en Configuración.</div>';
-  else {
-    h += '<div class="card tw"><table><tr><th>Platillo</th><th>Categoría</th><th>Tipo</th><th>Menús</th><th class="n">Precio</th><th>Inventario</th><th></th></tr>';
-    its.forEach(function(i){
-      var ms = (i.menus || []).length ? i.menus.map(function(id){ var m = S.config.menus.find(function(x){ return x.id === id; }); return m ? m.nombre : id; }).join('<br>') : '<span class="mut">Todos</span>';
-      var st = stockPlatillo(i);
-      h += '<tr><td><b>' + esc(i.nombre) + '</b>' + (i.disponible === false ? ' <span class="pill bad">No disponible</span>' : '') + (i.enLinea === false ? ' <span class="pill warn">No en línea</span>' : '') + (i.descripcion ? '<div class="small mut">' + esc(i.descripcion) + '</div>' : '') + '</td>' +
-        '<td>' + esc(i.categoria || '') + '</td><td>' + (i.tipo === 'bebida' ? '🥤 Bebida' : '🍽️ Alimento') + '</td><td class="small">' + ms + '</td><td class="n">' + money(i.precio) + '</td>' +
-        '<td class="small">' + ((i.receta || []).length ? (st != null ? 'Alcanza para ' + st : '') + '<br>' + i.receta.length + ' insumo(s)' : '<span class="mut">No descuenta</span>') + '</td>' +
-        '<td class="n"><button class="b s" data-ed="' + i.id + '">Editar</button></td></tr>';
-    });
-    h += '</table></div>';
-  }
-  $('main').innerHTML = h;
-  $('mT').value = mFiltro.tipo; $('mM').value = mFiltro.menu;
-  $('mQ').oninput = function(){ mFiltro.q = this.value.toLowerCase(); var p = this.selectionStart; vMenu(); $('mQ').focus(); $('mQ').setSelectionRange(p, p); };
-  $('mT').onchange = function(){ mFiltro.tipo = this.value; vMenu(); };
-  $('mM').onchange = function(){ mFiltro.menu = this.value; vMenu(); };
-  $('mNuevo').onclick = function(){ editarPlatillo(null); };
-  $('mExp').onclick = exportarMenuCSV;
-  $('mCsv').onchange = function(){ if (this.files[0]) importarMenuCSV(this.files[0]); this.value = ''; };
-  $('main').querySelectorAll('[data-ed]').forEach(function(b){ b.onclick = function(){ editarPlatillo(b.dataset.ed); }; });
-}
-function opcionesInsumo(sel){
-  return '<option value="">— insumo —</option>' + S.insumos.slice().sort(function(a, b){ return a.nombre.localeCompare(b.nombre, 'es'); })
-    .map(function(i){ return '<option value="' + i.id + '"' + (i.id === sel ? ' selected' : '') + '>' + esc(i.nombre) + ' (' + esc(i.unidad || 'pza') + ')</option>'; }).join('');
-}
-function editarPlatillo(id){
-  var m = id ? Object.assign({}, S.menu.find(function(x){ return x.id === id; })) : { tipo: 'alimento', disponible: true, enLinea: true, enCarta: true, menus: [], receta: [] };
-  var cats = Array.from(new Set(S.menu.map(function(i){ return i.categoria; }).filter(Boolean))).sort();
-  var md = modal('<h2>' + (id ? 'Editar' : 'Nuevo') + ' platillo / bebida</h2>' +
-    '<label class="f">Nombre *</label><input id="pNom" class="w100" value="' + esc(m.nombre || '') + '">' +
-    '<div class="grid3"><div><label class="f">Tipo</label><select id="pTipo" class="w100"><option value="alimento">🍽️ Alimento</option><option value="bebida">🥤 Bebida</option></select></div>' +
-    '<div><label class="f">Categoría</label><input id="pCat" class="w100" list="dlCats" value="' + esc(m.categoria || '') + '" placeholder="Ej. Huevos, Cortes, Cervezas"><datalist id="dlCats">' + cats.map(function(c){ return '<option value="' + esc(c) + '">'; }).join('') + '</datalist></div>' +
-    '<div><label class="f">Precio (IVA incluido) *</label><input id="pPre" type="number" min="0" step="0.5" class="w100" value="' + (m.precio != null ? m.precio : '') + '"></div></div>' +
-    '<label class="f">Descripción (aparece en la carta)</label><textarea id="pDes" rows="2" class="w100">' + esc(m.descripcion || '') + '</textarea>' +
-    '<label class="f">¿En qué menús aparece? (si no marcas ninguno, aparece en todos)</label><div id="pMenus">' +
-    S.config.menus.map(function(x){ return '<label style="display:block;margin:3px 0"><input type="checkbox" value="' + esc(x.id) + '"' + ((m.menus || []).indexOf(x.id) >= 0 ? ' checked' : '') + '> ' + esc(x.nombre) + '</label>'; }).join('') + '</div>' +
-    '<div class="toolbar" style="margin-top:10px"><label><input type="checkbox" id="pDisp"' + (m.disponible !== false ? ' checked' : '') + '> Disponible</label><label><input type="checkbox" id="pCarta"' + (m.enCarta !== false ? ' checked' : '') + '> En carta QR</label><label><input type="checkbox" id="pLinea"' + (m.enLinea !== false ? ' checked' : '') + '> Se puede ordenar en línea</label></div>' +
-    '<h3>Descuento de inventario por cada venta</h3><p class="small mut">Qué insumos (y cuánto) salen del inventario cada vez que se vende 1. Para una bebida embotellada normalmente es 1 pieza de esa misma bebida.</p>' +
-    '<div id="pRec"></div><div class="toolbar"><button class="b s" id="pAddRec">＋ Insumo</button>' + (!id ? '<label class="small"><input type="checkbox" id="pCrearIns"> Crear también un insumo de inventario con este nombre (1 pza por venta)</label>' : '') + '</div>' +
-    '<div class="foot">' + (id ? '<button class="b d" id="pDel">Eliminar</button><span style="flex:1"></span>' : '') + '<button class="b" id="pNo">Cancelar</button><button class="b p" id="pOk">Guardar</button></div>');
-  $('pTipo').value = m.tipo || 'alimento';
-  var rec = (m.receta || []).map(function(r){ return Object.assign({}, r); });
-  function pintaRec(){
-    $('pRec').innerHTML = rec.map(function(r, k){ return '<div class="toolbar" style="margin:4px 0"><select data-k="' + k + '" data-f="insumoId" style="flex:2">' + opcionesInsumo(r.insumoId) + '</select><input data-k="' + k + '" data-f="cant" type="number" step="0.001" min="0" placeholder="Cantidad" value="' + (r.cant != null ? r.cant : '') + '" style="width:110px"><button class="b s d" data-rm="' + k + '">×</button></div>'; }).join('') || '<p class="small mut">Sin insumos: esta venta no descuenta inventario.</p>';
-  }
-  $('pRec').oninput = $('pRec').onchange = function(e){ var t = e.target; if (t.dataset.k == null) return; rec[t.dataset.k][t.dataset.f] = t.dataset.f === 'cant' ? num(t.value) : t.value; };
-  $('pRec').onclick = function(e){ var b = e.target.closest('[data-rm]'); if (b) { rec.splice(+b.dataset.rm, 1); pintaRec(); } };
-  $('pAddRec').onclick = function(){ rec.push({ insumoId: '', cant: 1 }); pintaRec(); };
-  $('pTipo').onchange = function(){ if ($('pCrearIns')) $('pCrearIns').checked = this.value === 'bebida'; };
-  pintaRec();
-  $('pNo').onclick = md.close;
-  if ($('pDel')) $('pDel').onclick = function(){ if (confirm('¿Eliminar "' + m.nombre + '" del menú? Las ventas pasadas no se borran.')) { Store.del('menu', id); md.close(); } };
-  $('pOk').onclick = function(){
-    var nom = $('pNom').value.trim(), pre = num($('pPre').value);
-    if (!nom) return alert('Falta el nombre.');
-    if (pre == null || pre < 0) return alert('Falta el precio (puede ser 0 si es cortesía).');
-    var d = { id: id || Store.uid(), nombre: nom, tipo: $('pTipo').value, categoria: $('pCat').value.trim(), precio: pre, descripcion: $('pDes').value.trim(),
-      disponible: $('pDisp').checked, enCarta: $('pCarta').checked, enLinea: $('pLinea').checked,
-      menus: Array.from($('pMenus').querySelectorAll('input:checked')).map(function(x){ return x.value; }),
-      receta: rec.filter(function(r){ return r.insumoId && r.cant > 0; }) };
-    var pr = Promise.resolve();
-    if ($('pCrearIns') && $('pCrearIns').checked) {
-      var ya = S.insumos.find(function(x){ return x.nombre.toLowerCase() === nom.toLowerCase(); });
-      var ins = ya || { id: Store.uid(), nombre: nom, categoria: d.tipo === 'bebida' ? 'Bebidas' : (d.categoria || ''), unidad: 'pza', existencia: 0, minimo: null, costo: 0 };
-      if (!d.receta.some(function(r){ return r.insumoId === ins.id; })) d.receta.push({ insumoId: ins.id, cant: 1 });
-      if (!ya) pr = Store.put('insumos', ins);
-    }
-    pr.then(function(){ return Store.put('menu', d); }).then(function(){ md.close(); toast('Guardado'); });
-  };
-}
-function csvParse(txt){
-  var rows = [], row = [], f = '', q = false;
-  for (var i = 0; i < txt.length; i++) {
-    var c = txt[i];
-    if (q) { if (c === '"') { if (txt[i + 1] === '"') { f += '"'; i++; } else q = false; } else f += c; }
-    else if (c === '"') q = true;
-    else if (c === ',' || c === ';') { row.push(f); f = ''; }
-    else if (c === '\n' || c === '\r') { if (c === '\r' && txt[i + 1] === '\n') i++; row.push(f); rows.push(row); row = []; f = ''; }
-    else f += c;
-  }
-  if (f || row.length) { row.push(f); rows.push(row); }
-  return rows.filter(function(r){ return r.some(function(x){ return x.trim(); }); });
-}
-function csvCell(v){ v = String(v == null ? '' : v); return /[",\n;]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; }
-function descargar(nombre, contenido, tipo){
-  var a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([contenido], { type: tipo || 'text/plain;charset=utf-8' })); a.download = nombre;
-  document.body.appendChild(a); a.click(); setTimeout(function(){ URL.revokeObjectURL(a.href); a.remove(); }, 500);
-}
-function exportarMenuCSV(){
-  var lines = [['nombre', 'categoria', 'tipo', 'precio', 'descripcion', 'menus', 'disponible']].concat(S.menu.map(function(i){
-    return [i.nombre, i.categoria, i.tipo, i.precio, i.descripcion, (i.menus || []).join('|'), i.disponible !== false ? 'si' : 'no']; }));
-  descargar('menu-encino.csv', '﻿' + lines.map(function(r){ return r.map(csvCell).join(','); }).join('\n'), 'text/csv;charset=utf-8');
-}
-function importarMenuCSV(file){
-  var rd = new FileReader();
-  rd.onload = function(){
-    var rows = csvParse(String(rd.result).replace(/^﻿/, ''));
-    if (rows.length < 2) return alert('El archivo no tiene renglones.');
-    var hd = rows[0].map(function(x){ return x.trim().toLowerCase(); }), ix = function(k){ return hd.indexOf(k); };
-    if (ix('nombre') < 0 || ix('precio') < 0) return alert('El CSV debe tener al menos las columnas "nombre" y "precio".');
-    var nuevos = 0, act = 0, err = [];
-    var ops = rows.slice(1).map(function(r, k){
-      var g = function(c){ return ix(c) >= 0 ? (r[ix(c)] || '').trim() : ''; };
-      var nom = g('nombre'), pre = num(g('precio'));
-      if (!nom || pre == null) { err.push('Renglón ' + (k + 2)); return null; }
-      var ya = S.menu.find(function(x){ return x.nombre.toLowerCase() === nom.toLowerCase(); });
-      var tipo = /beb/i.test(g('tipo')) ? 'bebida' : 'alimento';
-      var ms = g('menus') ? g('menus').split(/[|/]/).map(function(s){ s = s.trim().toLowerCase();
-        var m = S.config.menus.find(function(x){ return x.id === s || x.nombre.toLowerCase() === s; }); return m ? m.id : null; }).filter(Boolean) : null;
-      var d = { id: ya ? ya.id : Store.uid(), nombre: nom, precio: pre };
-      if (g('categoria')) d.categoria = g('categoria');
-      if (ix('tipo') >= 0 || !ya) d.tipo = tipo;
-      if (g('descripcion')) d.descripcion = g('descripcion');
-      if (ms) d.menus = ms; else if (!ya) d.menus = [];
-      if (g('disponible')) d.disponible = !/^(no|0|false)$/i.test(g('disponible')); else if (!ya) d.disponible = true;
-      if (!ya) { d.enLinea = true; d.enCarta = true; d.receta = []; }
-      ya ? act++ : nuevos++;
-      return d;
-    }).filter(Boolean);
-    if (!confirm('Se van a agregar ' + nuevos + ' y actualizar ' + act + ' platillos (por nombre). Nada se borra.' + (err.length ? '\nSe omiten por falta de nombre/precio: ' + err.join(', ') : '') + '\n¿Continuar?')) return;
-    Promise.all(ops.map(function(d){ return Store.put('menu', d); })).then(function(){ toast('Menú importado'); });
-  };
-  rd.readAsText(file, 'utf-8');
-}
-
-// ═════════════════════════ INVENTARIO ══════════════════════════════════
-var iFiltro = { q: '', soloBajo: false };
-function vInventario(){
-  var valor = S.insumos.reduce(function(s, i){ return s + (Number(i.existencia) || 0) * (Number(i.costo) || 0); }, 0);
-  var nb = S.insumos.filter(bajo).length;
-  var its = S.insumos.filter(function(i){ return (!iFiltro.soloBajo || bajo(i)) && (!iFiltro.q || (i.nombre + ' ' + (i.categoria || '')).toLowerCase().indexOf(iFiltro.q) >= 0); })
-    .sort(function(a, b){ return ((a.categoria || '') + a.nombre).localeCompare((b.categoria || '') + b.nombre, 'es'); });
-  var h = '<div class="toolbar"><h2 style="margin:0">Inventario</h2><span class="sp"></span><button class="b p" id="iNuevo">＋ Nuevo insumo</button><button class="b" id="iCompra">🛒 Registrar compra</button><button class="b" id="iMovs">Movimientos</button></div>' +
-    '<div class="kpis"><div class="kpi"><div class="v">' + S.insumos.length + '</div><div class="l">Insumos</div></div><div class="kpi"><div class="v" style="color:' + (nb ? 'var(--warn)' : 'inherit') + '">' + nb + '</div><div class="l">En o bajo mínimo</div></div><div class="kpi"><div class="v">' + money(valor) + '</div><div class="l">Valor del inventario (a costo)</div></div></div>' +
-    '<div class="toolbar"><input id="iQ" placeholder="🔎 Buscar…" value="' + esc(iFiltro.q) + '"><label><input type="checkbox" id="iB"' + (iFiltro.soloBajo ? ' checked' : '') + '> Solo en/bajo mínimo</label></div>';
-  if (!S.insumos.length) h += '<div class="card">Da de alta lo que compras (bebidas, carnes, verduras, abarrotes…). Las compras suman existencias; las ventas de platillos/bebidas con receta las restan.</div>';
-  else {
-    h += '<div class="card tw"><table><tr><th>Insumo</th><th>Categoría</th><th class="n">Existencia</th><th class="n">Mínimo</th><th class="n">Costo unit.</th><th class="n">Valor</th><th></th></tr>';
-    its.forEach(function(i){
-      var ex = Number(i.existencia) || 0;
-      h += '<tr><td><b>' + esc(i.nombre) + '</b> ' + (ex < 0 ? '<span class="pill bad">Negativo — revisa conteo</span>' : bajo(i) ? '<span class="pill warn">Comprar</span>' : '') + '</td><td>' + esc(i.categoria || '') + '</td>' +
-        '<td class="n"><b>' + fmtCant(ex) + '</b> ' + esc(i.unidad || '') + '</td><td class="n">' + (i.minimo != null && i.minimo !== '' ? fmtCant(i.minimo) : '—') + '</td><td class="n">' + money(i.costo) + '</td><td class="n">' + money(ex * (Number(i.costo) || 0)) + '</td>' +
-        '<td class="n"><button class="b s" data-aj="' + i.id + '">Conteo</button> <button class="b s" data-mv="' + i.id + '">Movs.</button> <button class="b s" data-ed="' + i.id + '">Editar</button></td></tr>';
-    });
-    h += '</table></div>';
-  }
-  $('main').innerHTML = h;
-  $('iQ').oninput = function(){ iFiltro.q = this.value.toLowerCase(); var p = this.selectionStart; vInventario(); $('iQ').focus(); $('iQ').setSelectionRange(p, p); };
-  $('iB').onchange = function(){ iFiltro.soloBajo = this.checked; vInventario(); };
-  $('iNuevo').onclick = function(){ editarInsumo(null); };
-  $('iCompra').onclick = function(){ nuevaCompra(); };
-  $('iMovs').onclick = function(){ verMovimientos(null); };
-  $('main').querySelectorAll('[data-ed]').forEach(function(b){ b.onclick = function(){ editarInsumo(b.dataset.ed); }; });
-  $('main').querySelectorAll('[data-aj]').forEach(function(b){ b.onclick = function(){ ajustar(b.dataset.aj); }; });
-  $('main').querySelectorAll('[data-mv]').forEach(function(b){ b.onclick = function(){ verMovimientos(b.dataset.mv); }; });
-}
-function editarInsumo(id, cb){
-  var i = id ? S.insumos.find(function(x){ return x.id === id; }) : {};
-  var cats = Array.from(new Set(S.insumos.map(function(x){ return x.categoria; }).filter(Boolean))).sort();
-  var md = modal('<h2>' + (id ? 'Editar' : 'Nuevo') + ' insumo</h2><label class="f">Nombre *</label><input id="nNom" class="w100" value="' + esc(i.nombre || '') + '">' +
-    '<div class="grid2"><div><label class="f">Categoría</label><input id="nCat" class="w100" list="dlIC" value="' + esc(i.categoria || '') + '" placeholder="Bebidas, Carnes, Abarrotes…"><datalist id="dlIC">' + cats.map(function(c){ return '<option value="' + esc(c) + '">'; }).join('') + '</datalist></div>' +
-    '<div><label class="f">Unidad</label><select id="nUni" class="w100">' + ['pza', 'kg', 'g', 'lt', 'ml', 'botella', 'caja', 'paquete', 'orden'].map(function(u){ return '<option' + ((i.unidad || 'pza') === u ? ' selected' : '') + '>' + u + '</option>'; }).join('') + '</select></div>' +
-    '<div><label class="f">Existencia mínima (aviso de compra)</label><input id="nMin" type="number" step="0.001" class="w100" value="' + (i.minimo != null ? i.minimo : '') + '"></div>' +
-    '<div><label class="f">Costo unitario</label><input id="nCos" type="number" step="0.01" class="w100" value="' + (i.costo != null ? i.costo : '') + '"></div>' +
-    (!id ? '<div><label class="f">Existencia inicial</label><input id="nIni" type="number" step="0.001" class="w100" value="0"></div>' : '') + '</div>' +
-    (id ? '<p class="small mut">La existencia no se edita aquí: cambia con compras, ventas o con "Conteo" (ajuste físico), para que quede registro.</p>' : '') +
-    '<div class="foot">' + (id ? '<button class="b d" id="nDel">Eliminar</button><span style="flex:1"></span>' : '') + '<button class="b" id="nNo">Cancelar</button><button class="b p" id="nOk">Guardar</button></div>');
-  $('nNo').onclick = md.close;
-  if ($('nDel')) $('nDel').onclick = function(){
-    var usado = S.menu.filter(function(m){ return (m.receta || []).some(function(r){ return r.insumoId === id; }); });
-    if (!confirm('¿Eliminar el insumo "' + i.nombre + '"?' + (usado.length ? '\nLo usan: ' + usado.map(function(m){ return m.nombre; }).join(', ') + ' (dejarán de descontarlo).' : ''))) return;
-    Store.del('insumos', id); md.close();
-  };
-  $('nOk').onclick = function(){
-    var nom = $('nNom').value.trim(); if (!nom) return alert('Falta el nombre.');
-    if (!id && S.insumos.some(function(x){ return x.nombre.toLowerCase() === nom.toLowerCase(); })) return alert('Ya existe un insumo con ese nombre.');
-    var d = { id: id || Store.uid(), nombre: nom, categoria: $('nCat').value.trim(), unidad: $('nUni').value, minimo: num($('nMin').value), costo: num($('nCos').value) || 0 };
-    if (!id) d.existencia = num($('nIni').value) || 0;
-    Store.put('insumos', d).then(function(){
-      if (!id && d.existencia) Store.put('movimientos', { id: Store.uid(), fecha: Date.now(), insumoId: d.id, tipo: 'inicial', cantidad: d.existencia, ref: 'Existencia inicial' });
-      md.close(); if (cb) cb(d);
-    });
-  };
-}
-function ajustar(id){
-  var i = S.insumos.find(function(x){ return x.id === id; }); if (!i) return;
-  var md = modal('<h2>Conteo físico · ' + esc(i.nombre) + '</h2><p>El sistema tiene <b>' + fmtCant(i.existencia) + ' ' + esc(i.unidad || '') + '</b>. ¿Cuánto hay realmente?</p>' +
-    '<label class="f">Cantidad contada</label><input id="aC" type="number" step="0.001" class="w100"><label class="f">Motivo / nota</label><input id="aN" class="w100" placeholder="Conteo semanal, merma, se rompió una botella…">' +
-    '<div class="foot"><button class="b" id="aNo">Cancelar</button><button class="b p" id="aOk">Registrar ajuste</button></div>');
-  $('aNo').onclick = md.close;
-  $('aOk').onclick = function(){
-    var c = num($('aC').value); if (c == null) return alert('Escribe la cantidad contada.');
-    var actual = Number((S.insumos.find(function(x){ return x.id === id; }) || i).existencia) || 0, delta = Math.round((c - actual) * 1e6) / 1e6;
-    if (!delta) { md.close(); return toast('Sin diferencia'); }
-    Promise.all([Store.inc('insumos', id, 'existencia', delta), Store.put('movimientos', { id: Store.uid(), fecha: Date.now(), insumoId: id, tipo: 'ajuste', cantidad: delta, ref: $('aN').value.trim() || 'Conteo físico' })])
-      .then(function(){ md.close(); toast('Ajuste registrado: ' + (delta > 0 ? '+' : '') + fmtCant(delta)); });
-  };
-}
-function verMovimientos(id){
-  var movs = S.movimientos.filter(function(m){ return !id || m.insumoId === id; }).sort(function(a, b){ return b.fecha - a.fecha; }).slice(0, 400);
-  var nom = function(iid){ var x = S.insumos.find(function(i){ return i.id === iid; }); return x ? x.nombre : '(eliminado)'; };
-  modal('<h2>Movimientos' + (id ? ' · ' + esc(nom(id)) : '') + '</h2><div class="tw"><table><tr><th>Fecha</th>' + (id ? '' : '<th>Insumo</th>') + '<th>Tipo</th><th class="n">Cantidad</th><th>Referencia</th></tr>' +
-    (movs.length ? movs.map(function(m){ return '<tr><td class="small">' + fecha(m.fecha) + '</td>' + (id ? '' : '<td>' + esc(nom(m.insumoId)) + '</td>') + '<td>' + esc(m.tipo) + '</td><td class="n" style="color:' + (m.cantidad < 0 ? 'var(--bad)' : 'var(--ok)') + '">' + (m.cantidad > 0 ? '+' : '') + fmtCant(m.cantidad) + '</td><td class="small">' + esc(m.ref || '') + '</td></tr>'; }).join('') : '<tr><td colspan="5" class="mut">Sin movimientos</td></tr>') +
-    '</table></div>', { wide: true });
-}
-
-// ═════════════════════════ COMPRAS ═════════════════════════════════════
-function vCompras(){
-  var cs = S.compras.slice().sort(function(a, b){ return b.fecha - a.fecha; });
-  var mes = dkey(Date.now()).slice(0, 7), totMes = cs.filter(function(c){ return dkey(c.fecha).slice(0, 7) === mes; }).reduce(function(s, c){ return s + (c.total || 0); }, 0);
-  var h = '<div class="toolbar"><h2 style="margin:0">Compras</h2><span class="sp"></span><button class="b p" id="cNueva">＋ Registrar compra</button></div>' +
-    '<div class="kpis"><div class="kpi"><div class="v">' + money(totMes) + '</div><div class="l">Compras de este mes</div></div><div class="kpi"><div class="v">' + cs.length + '</div><div class="l">Compras registradas</div></div></div>';
-  if (!cs.length) h += '<div class="card">Todo lo que se compre regístralo aquí: suma automáticamente a las existencias del inventario y actualiza el costo promedio.</div>';
-  else {
-    h += '<div class="card tw"><table><tr><th>Fecha</th><th>Proveedor</th><th>Factura / nota</th><th>Artículos</th><th class="n">Total</th></tr>';
-    cs.forEach(function(c){ h += '<tr><td>' + new Date(c.fecha).toLocaleDateString('es-MX') + '</td><td>' + esc(c.proveedor || '') + '</td><td>' + esc(c.factura || '') + '</td><td class="small">' +
-      (c.lineas || []).map(function(l){ var i = S.insumos.find(function(x){ return x.id === l.insumoId; }); return fmtCant(l.cant) + ' ' + esc(i ? i.unidad : '') + ' ' + esc(i ? i.nombre : l.nombre || '?'); }).join(', ') + '</td><td class="n">' + money(c.total) + '</td></tr>'; });
-    h += '</table></div>';
-  }
-  $('main').innerHTML = h;
-  $('cNueva').onclick = function(){ nuevaCompra(); };
-}
-function nuevaCompra(){
-  var lineas = [{ insumoId: '', cant: null, costoU: null }];
-  var provs = Array.from(new Set(S.compras.map(function(c){ return c.proveedor; }).filter(Boolean))).sort();
-  var md = modal('<h2>Registrar compra</h2><div class="grid3"><div><label class="f">Fecha</label><input id="kF" type="date" class="w100" value="' + dkey(Date.now()) + '"></div>' +
-    '<div><label class="f">Proveedor</label><input id="kP" class="w100" list="dlProv"><datalist id="dlProv">' + provs.map(function(p){ return '<option value="' + esc(p) + '">'; }).join('') + '</datalist></div>' +
-    '<div><label class="f">Factura / nota</label><input id="kFa" class="w100"></div></div><h3>Artículos</h3><div id="kL"></div>' +
-    '<div class="toolbar"><button class="b s" id="kAdd">＋ Renglón</button><button class="b s" id="kNI">＋ Insumo nuevo</button><span class="sp"></span><b>Total: <span id="kT">$0.00</span></b></div>' +
-    '<div class="foot"><button class="b" id="kNo">Cancelar</button><button class="b p" id="kOk">Guardar compra y sumar al inventario</button></div>', { wide: true, sticky: true });
   function pinta(){
-    $('kL').innerHTML = '<div class="tw"><table><tr><th>Insumo</th><th class="n">Cantidad</th><th class="n">Costo unitario</th><th class="n">Importe</th><th></th></tr>' + lineas.map(function(l, k){
-      return '<tr><td><select data-k="' + k + '" data-f="insumoId" style="width:100%">' + opcionesInsumo(l.insumoId) + '</select></td><td class="n"><input data-k="' + k + '" data-f="cant" type="number" step="0.001" min="0" style="width:100px" value="' + (l.cant != null ? l.cant : '') + '"></td>' +
-        '<td class="n"><input data-k="' + k + '" data-f="costoU" type="number" step="0.01" min="0" style="width:110px" value="' + (l.costoU != null ? l.costoU : '') + '"></td><td class="n" id="kI' + k + '">' + money((l.cant || 0) * (l.costoU || 0)) + '</td><td><button class="b s d" data-rm="' + k + '">×</button></td></tr>'; }).join('') + '</table></div>';
-    tot();
+    $('lema').textContent = D.lema || '';
+    if (D.descripcion) { $('sobre').hidden = false; $('desc').textContent = D.descripcion; }
+    var h = horarioPorDia(), orden = [1,2,3,4,5,6,0];
+    $('horario').innerHTML = orden.filter(function(d){ return h[d]; }).map(function(d){ return '<div class="dia"><b>' + E.DIAS[d] + '</b><span>' + esc(h[d].desde || '') + ' – ' + esc(h[d].hasta || '') + '</span></div>'; }).join('') || '<p class="mut">Horario por confirmar.</p>';
+    var ahora = new Date(), hoy = h[ahora.getDay()], t = E.hm(ahora);
+    $('hoy').textContent = hoy && t >= hoy.desde && t < hoy.hasta ? 'Abierto ahora, hasta las ' + hoy.hasta + '.' : 'Ahora estamos cerrados.';
+    var m = E.menuActual(cfg);
+    var its = menu.filter(function(i){ return i.disponible !== false && i.enCarta !== false && i.tipo !== 'bebida' && m && E.enMenu(i, m.id); });
+    if (m && its.length) {
+      $('mhTit').textContent = m.nombre;
+      $('mhSub').textContent = E.diasTxt(m);
+      $('mh').innerHTML = E.porCategoria(its).map(function(g){ return '<div class="cat"><h3>' + esc(g.categoria) + '</h3>' + g.items.map(function(i){
+        return '<div class="pl"><span class="n">' + esc(i.nombre) + (i.descripcion ? '<span class="d">' + esc(i.descripcion) + '</span>' : '') + '</span><span class="p">' + E.money(i.precio) + '</span></div>'; }).join('') + '</div>'; }).join('');
+    }
+    var datos = [['Dirección', D.direccion, D.mapa ? '<a href="' + esc(D.mapa) + '" target="_blank" rel="noopener">' + esc(D.direccion || 'Ver en el mapa') + '</a>' : null],
+      ['Teléfono', D.telefono, '<a href="tel:' + esc((D.telefono || '').replace(/\s/g, '')) + '">' + esc(D.telefono) + '</a>'],
+      ['WhatsApp', D.whatsapp, '<a href="https://wa.me/52' + esc((D.whatsapp || '').replace(/\D/g, '')) + '" target="_blank" rel="noopener">' + esc(D.whatsapp) + '</a>'],
+      ['Facebook', D.facebook, '<a href="' + esc(D.facebook) + '" target="_blank" rel="noopener">Facebook</a>'],
+      ['Instagram', D.instagram, '<a href="' + esc(D.instagram) + '" target="_blank" rel="noopener">Instagram</a>']].filter(function(x){ return x[1]; });
+    if (datos.length) { $('visita').hidden = false; $('datos').innerHTML = datos.map(function(x){ return '<div><dt>' + x[0] + '</dt><dd>' + (x[2] || esc(x[1])) + '</dd></div>'; }).join(''); }
+    jsonLd(h);
   }
-  function tot(){ var t = 0; lineas.forEach(function(l, k){ var x = (l.cant || 0) * (l.costoU || 0); t += x; var c = $('kI' + k); if (c) c.textContent = money(x); }); $('kT').textContent = money(t); return r2(t); }
-  $('kL').oninput = $('kL').onchange = function(e){
-    var t = e.target; if (t.dataset.k == null) return;
-    var l = lineas[t.dataset.k];
-    if (t.dataset.f === 'insumoId') { l.insumoId = t.value; var ins = S.insumos.find(function(x){ return x.id === t.value; }); if (ins && l.costoU == null && ins.costo) { l.costoU = ins.costo; pinta(); return; } }
-    else l[t.dataset.f] = num(t.value);
-    tot();
-  };
-  $('kL').onclick = function(e){ var b = e.target.closest('[data-rm]'); if (b) { lineas.splice(+b.dataset.rm, 1); if (!lineas.length) lineas.push({ insumoId: '', cant: null, costoU: null }); pinta(); } };
-  $('kAdd').onclick = function(){ lineas.push({ insumoId: '', cant: null, costoU: null }); pinta(); };
-  $('kNI').onclick = function(){ editarInsumo(null, function(d){ var v = lineas.find(function(l){ return !l.insumoId; }); if (v) v.insumoId = d.id; else lineas.push({ insumoId: d.id, cant: null, costoU: d.costo || null }); setTimeout(pinta, 50); }); };
-  $('kNo').onclick = function(){ if (confirm('¿Descartar esta compra?')) md.close(); };
-  $('kOk').onclick = function(){
-    var ls = lineas.filter(function(l){ return l.insumoId && l.cant > 0; });
-    if (!ls.length) return alert('Agrega al menos un insumo con cantidad.');
-    var ts = new Date($('kF').value + 'T12:00:00').getTime() || Date.now();
-    var c = { id: Store.uid(), fecha: ts, registrada: Date.now(), proveedor: $('kP').value.trim(), factura: $('kFa').value.trim(),
-      lineas: ls.map(function(l){ var i = S.insumos.find(function(x){ return x.id === l.insumoId; }); return { insumoId: l.insumoId, nombre: i ? i.nombre : '', cant: l.cant, costoU: l.costoU || 0 }; }), total: tot() };
-    this.disabled = true;
-    Store.put('compras', c).then(function(){
-      return Promise.all(c.lineas.map(function(l){
-        var i = S.insumos.find(function(x){ return x.id === l.insumoId; }) || {};
-        var ex = Math.max(0, Number(i.existencia) || 0), co = Number(i.costo) || 0;
-        var nuevoCosto = l.costoU ? (ex > 0 && co > 0 ? r2((ex * co + l.cant * l.costoU) / (ex + l.cant)) : l.costoU) : co;
-        return Promise.all([Store.put('insumos', { id: l.insumoId, costo: nuevoCosto }), Store.inc('insumos', l.insumoId, 'existencia', l.cant),
-          Store.put('movimientos', { id: Store.uid(), fecha: ts, insumoId: l.insumoId, tipo: 'compra', cantidad: l.cant, ref: (c.proveedor || 'Compra') + (c.factura ? ' · ' + c.factura : '') })]);
-      }));
-    }).then(function(){ md.close(); toast('Compra registrada y sumada al inventario'); })
-      .catch(function(e){ alert('Error: ' + e.message); });
-  };
+  // Datos estructurados para Google (tipo Restaurant)
+  function jsonLd(h){
+    var ld = { '@context': 'https://schema.org', '@type': 'Restaurant', name: 'Restaurante Encino', url: 'https://encino.app/',
+      servesCuisine: D.cocina || undefined, priceRange: D.rangoPrecio || undefined, telephone: D.telefono || undefined,
+      hasMenu: 'https://encino.app/carta.html', acceptsReservations: false,
+      address: D.direccion ? { '@type': 'PostalAddress', streetAddress: D.direccion, addressLocality: 'Oaxaca de Juárez', addressRegion: 'Oaxaca', addressCountry: 'MX' } : undefined,
+      sameAs: [D.facebook, D.instagram].filter(Boolean),
+      openingHoursSpecification: Object.keys(h).map(function(d){ return { '@type': 'OpeningHoursSpecification', dayOfWeek: DIAS_EN[d], opens: h[d].desde, closes: h[d].hasta }; }),
+      potentialAction: { '@type': 'OrderAction', target: 'https://encino.app/pedidos.html' } };
+    var s = document.getElementById('ld') || document.createElement('script');
+    s.id = 'ld'; s.type = 'application/ld+json'; s.textContent = JSON.stringify(ld);
+    document.head.appendChild(s);
+  }
   pinta();
-}
-
-// ═════════════════════════ HISTÓRICOS ══════════════════════════════════
-var H = { desde: dkey(Date.now() - 29 * 864e5), hasta: dkey(Date.now()), sub: 'ventas', objetivo: dkey(Date.now() + 864e5) };
-function ventasRango(){
-  var a = new Date(H.desde + 'T00:00:00').getTime(), b = new Date(H.hasta + 'T23:59:59').getTime();
-  return S.ventas.filter(function(v){ return v.estado !== 'cancelada' && v.fecha >= a && v.fecha <= b; });
-}
-function vHistoricos(){
-  var subs = [['ventas', 'Ventas'], ['productos', 'Productos'], ['bebidas', 'Salida de bebidas'], ['preparaciones', 'Preparaciones'], ['recomendaciones', '💡 Recomendaciones'], ['tickets', 'Tickets']];
-  var h = '<div class="toolbar"><h2 style="margin:0">Históricos</h2><span class="sp"></span>' + (H.sub !== 'recomendaciones' ? 'Del <input type="date" id="hD" value="' + H.desde + '"> al <input type="date" id="hH" value="' + H.hasta + '">' : '') + '</div>' +
-    '<div class="chips" id="hSubs">' + subs.map(function(s){ return '<button data-s="' + s[0] + '"' + (H.sub === s[0] ? ' class="on"' : '') + '>' + s[1] + '</button>'; }).join('') + '</div><div id="hBody"></div>';
-  $('main').innerHTML = h;
-  if ($('hD')) { $('hD').onchange = function(){ H.desde = this.value; vHistoricos(); }; $('hH').onchange = function(){ H.hasta = this.value; vHistoricos(); }; }
-  $('hSubs').onclick = function(e){ var b = e.target.closest('button'); if (b) { H.sub = b.dataset.s; vHistoricos(); } };
-  ({ ventas: hVentas, productos: hProductos, bebidas: hBebidas, preparaciones: hPreparaciones, recomendaciones: hRecomendaciones, tickets: hTickets })[H.sub]();
-}
-function kpi(v, l){ return '<div class="kpi"><div class="v">' + v + '</div><div class="l">' + l + '</div></div>'; }
-function hVentas(){
-  var vs = ventasRango(), tot = 0, prop = 0, porDia = {}, porMet = {};
-  vs.forEach(function(v){ var neto = v.subtotal - (v.descuento || 0); tot += neto; prop += v.propina || 0; var k = dkey(v.fecha); porDia[k] = (porDia[k] || 0) + neto; porMet[v.metodo] = (porMet[v.metodo] || 0) + neto; });
-  var h = '<div class="kpis">' + kpi(money(tot), 'Ventas (sin propina)') + kpi(vs.length, 'Tickets') + kpi(money(vs.length ? tot / vs.length : 0), 'Ticket promedio') + kpi(money(prop), 'Propinas') + '</div>';
-  var dias = Object.keys(porDia).sort().reverse(), max = Math.max.apply(null, [1].concat(dias.map(function(d){ return porDia[d]; })));
-  h += '<div class="card"><h3 style="margin-top:0">Por forma de pago</h3>' + (Object.keys(porMet).map(function(m){ return esc(m) + ': <b>' + money(porMet[m]) + '</b>'; }).join(' · ') || '<span class="mut">—</span>') + '</div>';
-  h += '<div class="card tw"><h3 style="margin-top:0">Por día</h3><table><tr><th>Día</th><th class="n">Venta</th><th style="width:50%"></th></tr>' + (dias.map(function(d){
-    return '<tr><td>' + E.DIAS[new Date(d + 'T12:00').getDay()].slice(0, 3) + ' ' + d + '</td><td class="n">' + money(porDia[d]) + '</td><td><div class="bar" style="width:' + (porDia[d] / max * 100) + '%"></div></td></tr>'; }).join('') || '<tr><td colspan="3" class="mut">Sin ventas en el rango.</td></tr>') + '</table></div>';
-  $('hBody').innerHTML = h;
-}
-function agregaProductos(vs){
-  var p = {};
-  vs.forEach(function(v){ v.items.forEach(function(i){ var k = i.menuId || i.nombre; p[k] = p[k] || { nombre: i.nombre, tipo: i.tipo, categoria: i.categoria, cant: 0, importe: 0 }; p[k].cant += i.cant; p[k].importe += i.cant * i.precio; }); });
-  return p;
-}
-function hProductos(){
-  var p = agregaProductos(ventasRango()), arr = Object.keys(p).map(function(k){ return p[k]; }).sort(function(a, b){ return b.importe - a.importe; });
-  var tabla = function(t, tit){
-    var xs = arr.filter(function(x){ return (x.tipo === 'bebida') === (t === 'bebida'); });
-    return '<div class="card tw"><h3 style="margin-top:0">' + tit + '</h3><table><tr><th>#</th><th>Producto</th><th>Categoría</th><th class="n">Vendidos</th><th class="n">Importe</th></tr>' +
-      (xs.map(function(x, k){ return '<tr><td>' + (k + 1) + '</td><td>' + esc(x.nombre) + '</td><td>' + esc(x.categoria || '') + '</td><td class="n">' + x.cant + '</td><td class="n">' + money(x.importe) + '</td></tr>'; }).join('') || '<tr><td colspan="5" class="mut">Sin ventas.</td></tr>') + '</table></div>';
-  };
-  $('hBody').innerHTML = tabla('alimento', '🍽️ Alimentos más vendidos') + tabla('bebida', '🥤 Bebidas más vendidas');
-}
-function hBebidas(){
-  // Salidas de inventario por ventas, agrupadas por insumo, solo de bebidas
-  var a = new Date(H.desde + 'T00:00:00').getTime(), b = new Date(H.hasta + 'T23:59:59').getTime();
-  var bebIns = {};
-  S.menu.forEach(function(m){ if (m.tipo === 'bebida') (m.receta || []).forEach(function(r){ bebIns[r.insumoId] = true; }); });
-  S.insumos.forEach(function(i){ if (/bebida/i.test(i.categoria || '')) bebIns[i.id] = true; });
-  var agg = {};
-  S.movimientos.forEach(function(m){
-    if (!bebIns[m.insumoId] || m.fecha < a || m.fecha > b) return;
-    var x = agg[m.insumoId] = agg[m.insumoId] || { ventas: 0, compras: 0, ajustes: 0 };
-    if (m.tipo === 'venta' || m.tipo === 'cancelación') x.ventas += -m.cantidad; else if (m.tipo === 'compra') x.compras += m.cantidad; else x.ajustes += m.cantidad;
+  Store.init().then(function(){
+    Store.watch('config', function(d){ cfg = E.cfgFrom(d); pinta(); });
+    Store.watch('menu', function(d){ menu = d; pinta(); });
   });
-  var ids = Object.keys(bebIns).filter(function(id){ return S.insumos.some(function(i){ return i.id === id; }); });
-  var h = '<p class="small mut">Lo que salió del inventario de bebidas por ventas en el rango, contra lo que entró por compras y los ajustes de conteo (mermas / diferencias). Una bebida aparece aquí si está vinculada a un producto tipo bebida del menú, o si su categoría de insumo es "Bebidas".</p>' +
-    '<div class="card tw"><table><tr><th>Bebida (insumo)</th><th class="n">Salió por ventas</th><th class="n">Entró por compras</th><th class="n">Ajustes/mermas</th><th class="n">Existencia hoy</th></tr>';
-  h += ids.length ? ids.map(function(id){ var i = S.insumos.find(function(x){ return x.id === id; }), x = agg[id] || { ventas: 0, compras: 0, ajustes: 0 };
-    return '<tr><td>' + esc(i.nombre) + '</td><td class="n"><b>' + fmtCant(x.ventas) + '</b></td><td class="n">' + fmtCant(x.compras) + '</td><td class="n" style="color:' + (x.ajustes < 0 ? 'var(--bad)' : 'inherit') + '">' + fmtCant(x.ajustes) + '</td><td class="n">' + fmtCant(i.existencia) + ' ' + esc(i.unidad || '') + (bajo(i) ? ' <span class="pill warn">Comprar</span>' : '') + '</td></tr>'; }).join('')
-    : '<tr><td colspan="5" class="mut">No hay bebidas vinculadas al inventario. En Menú → editar bebida → "Descuento de inventario".</td></tr>';
-  $('hBody').innerHTML = h + '</table></div>';
-}
-function hPreparaciones(){
-  var a = H.desde, b = H.hasta;
-  var preps = S.preparaciones.filter(function(p){ return p.dia >= a && p.dia <= b; });
-  var vend = {};
-  ventasRango().forEach(function(v){ var d = dkey(v.fecha); v.items.forEach(function(i){ var k = d + '|' + i.menuId; vend[k] = (vend[k] || 0) + i.cant; }); });
-  var filas = {};
-  preps.forEach(function(p){ var k = p.dia + '|' + p.menuId; filas[k] = filas[k] || { dia: p.dia, menuId: p.menuId, prep: 0, ids: [] }; filas[k].prep += p.cantidad; filas[k].ids.push(p.id); });
-  var arr = Object.keys(filas).map(function(k){ var f = filas[k]; f.vend = vend[k] || 0; return f; }).sort(function(x, y){ return x.dia < y.dia ? 1 : -1; });
-  var nom = function(id){ var m = S.menu.find(function(x){ return x.id === id; }); return m ? m.nombre : '(eliminado)'; };
-  var h = '<div class="toolbar"><p class="small mut" style="margin:0;flex:1">Registra cuántas porciones se prepararon cada día (sopas, guisados, aguas frescas…) y compáralo con lo vendido para ajustar la producción.</p><button class="b p" id="prN">＋ Registrar preparación</button></div>' +
-    '<div class="card tw"><table><tr><th>Día</th><th>Platillo</th><th class="n">Preparado</th><th class="n">Vendido</th><th class="n">Sobrante</th><th></th></tr>' +
-    (arr.map(function(f){ var s = f.prep - f.vend; return '<tr><td>' + E.DIAS[new Date(f.dia + 'T12:00').getDay()].slice(0, 3) + ' ' + f.dia + '</td><td>' + esc(nom(f.menuId)) + '</td><td class="n">' + fmtCant(f.prep) + '</td><td class="n">' + f.vend + '</td><td class="n" style="color:' + (s > 0 ? 'var(--warn)' : s < 0 ? 'var(--bad)' : 'var(--ok)') + '">' + (s < 0 ? 'faltaron ' + fmtCant(-s) : fmtCant(s)) + '</td><td class="n"><button class="b s d" data-del="' + f.ids.join(',') + '">×</button></td></tr>'; }).join('') || '<tr><td colspan="6" class="mut">Sin preparaciones registradas en el rango.</td></tr>') + '</table></div>';
-  $('hBody').innerHTML = h;
-  $('prN').onclick = registrarPreparacion;
-  $('hBody').querySelectorAll('[data-del]').forEach(function(b){ b.onclick = function(){ if (confirm('¿Borrar este registro de preparación?')) b.dataset.del.split(',').forEach(function(id){ Store.del('preparaciones', id); }); }; });
-}
-function registrarPreparacion(){
-  var opts = S.menu.filter(function(m){ return m.tipo !== 'bebida' || /agua|fresca|jarra/i.test(m.nombre); }).sort(function(a, b){ return a.nombre.localeCompare(b.nombre, 'es'); });
-  var md = modal('<h2>Registrar preparación</h2><div class="grid2"><div><label class="f">Día</label><input id="rD" type="date" class="w100" value="' + dkey(Date.now()) + '"></div><div><label class="f">Porciones preparadas</label><input id="rC" type="number" min="0" step="0.5" class="w100"></div></div>' +
-    '<label class="f">Platillo</label><select id="rM" class="w100">' + opts.map(function(m){ return '<option value="' + m.id + '">' + esc(m.nombre) + '</option>'; }).join('') + '</select>' +
-    '<label class="f">Nota</label><input id="rN" class="w100"><div class="foot"><button class="b" id="rNo">Cancelar</button><button class="b p" id="rOk">Guardar</button></div>');
-  $('rNo').onclick = md.close;
-  $('rOk').onclick = function(){
-    var c = num($('rC').value); if (c == null || c < 0 || !$('rM').value) return alert('Indica platillo y cantidad.');
-    Store.put('preparaciones', { id: Store.uid(), dia: $('rD').value, menuId: $('rM').value, cantidad: c, nota: $('rN').value.trim(), registrada: Date.now() }).then(md.close);
-  };
-}
-function hRecomendaciones(){
-  var obj = new Date(H.objetivo + 'T12:00:00'), dow = obj.getDay();
-  var vs = S.ventas.filter(function(v){ return v.estado !== 'cancelada'; });
-  var h = '<div class="toolbar">Preparar para el <input type="date" id="rObj" value="' + H.objetivo + '"> <b>(' + E.DIAS[dow] + ')</b></div>';
-  if (!vs.length) { $('hBody').innerHTML = h + '<div class="card">Todavía no hay ventas registradas. Las recomendaciones salen del historial: en cuanto haya algunas semanas de ventas aparecerán aquí.</div>'; $('rObj').onchange = function(){ H.objetivo = this.value; vHistoricos(); }; return; }
-  // Últimas 8 semanas: promedio del mismo día de la semana (contando solo
-  // días desde que hay historial) y promedio general diario.
-  var hoy0 = new Date(dkey(Date.now()) + 'T00:00:00').getTime(), ini = hoy0 - 56 * 864e5;
-  var primera = Math.min.apply(null, vs.map(function(v){ return v.fecha; }));
-  var desde = Math.max(ini, new Date(dkey(primera) + 'T00:00:00').getTime());
-  var nMismo = 0, nDias = 0;
-  for (var t = desde; t < hoy0; t += 864e5) { nDias++; if (new Date(t + 43200000).getDay() === dow) nMismo++; }
-  var mismo = {}, todos = {};
-  vs.forEach(function(v){ if (v.fecha < desde || v.fecha >= hoy0) return; var d = new Date(v.fecha).getDay() === dow;
-    v.items.forEach(function(i){ todos[i.menuId] = (todos[i.menuId] || 0) + i.cant; if (d) mismo[i.menuId] = (mismo[i.menuId] || 0) + i.cant; }); });
-  var filas = S.menu.map(function(m){
-    var pm = nMismo ? (mismo[m.id] || 0) / nMismo : null, pg = nDias ? (todos[m.id] || 0) / nDias : 0;
-    var base = pm != null ? pm : pg;
-    return { m: m, pm: pm, pg: pg, sug: base > 0 ? Math.ceil(base * 1.1) : 0 };
-  }).filter(function(f){ return f.pg > 0 || (f.pm || 0) > 0; }).sort(function(a, b){ return b.sug - a.sug; });
-  var menuDia = S.config.menus.filter(function(m){ return (m.dias || []).indexOf(dow) >= 0; });
-  h += '<p class="small mut">Basado en ' + nMismo + ' ' + E.DIAS[dow].toLowerCase() + '(s) y ' + nDias + ' días de historial (máx. 8 semanas). Sugerido = promedio de ese día de la semana + 10% de margen.' + (menuDia.length ? ' Menús de ese día: ' + menuDia.map(function(m){ return esc(m.nombre); }).join(', ') + '.' : '') + '</p>';
-  h += '<div class="card tw"><h3 style="margin-top:0">🍳 Qué preparar</h3><table><tr><th>Platillo</th><th class="n">Prom. ' + E.DIAS[dow].toLowerCase() + '</th><th class="n">Prom. diario</th><th class="n">Sugerido</th></tr>' +
-    (filas.filter(function(f){ return f.m.tipo !== 'bebida'; }).map(function(f){ return '<tr><td>' + esc(f.m.nombre) + (menuDia.length && !menuDia.some(function(md){ return E.enMenu(f.m, md.id); }) ? ' <span class="pill warn">no está en el menú de ese día</span>' : '') + '</td><td class="n">' + (f.pm != null ? f.pm.toFixed(1) : '—') + '</td><td class="n">' + f.pg.toFixed(1) + '</td><td class="n"><b>' + f.sug + '</b></td></tr>'; }).join('') || '<tr><td colspan="4" class="mut">Sin datos.</td></tr>') + '</table></div>';
-  // Insumos: consumo diario promedio (últimos 30 días) vs existencia
-  var d30 = hoy0 - 30 * 864e5, cons = {};
-  var diasCons = Math.max(1, Math.min(30, Math.round((hoy0 - Math.max(d30, new Date(dkey(primera) + 'T00:00:00').getTime())) / 864e5)));
-  S.movimientos.forEach(function(m){ if (m.fecha >= d30 && (m.tipo === 'venta' || m.tipo === 'cancelación')) cons[m.insumoId] = (cons[m.insumoId] || 0) - m.cantidad; });
-  var comp = S.insumos.map(function(i){
-    var c = (cons[i.id] || 0) / diasCons, ex = Number(i.existencia) || 0;
-    return { i: i, c: c, dias: c > 0 ? ex / c : Infinity, comprar: c > 0 ? Math.max(0, Math.ceil(c * 7 - ex)) : (bajo(i) ? Math.max(0, Math.ceil((Number(i.minimo) || 0) * 2 - ex)) : 0) };
-  }).filter(function(x){ return x.comprar > 0 || x.dias < 7; }).sort(function(a, b){ return a.dias - b.dias; });
-  h += '<div class="card tw"><h3 style="margin-top:0">🛒 Qué comprar (para cubrir 7 días)</h3><table><tr><th>Insumo</th><th class="n">Existencia</th><th class="n">Consumo/día</th><th class="n">Alcanza para</th><th class="n">Comprar</th></tr>' +
-    (comp.map(function(x){ return '<tr><td>' + esc(x.i.nombre) + '</td><td class="n">' + fmtCant(x.i.existencia) + ' ' + esc(x.i.unidad || '') + '</td><td class="n">' + (x.c ? x.c.toFixed(2) : '—') + '</td><td class="n">' + (isFinite(x.dias) ? x.dias.toFixed(1) + ' días' : '—') + '</td><td class="n"><b>' + x.comprar + '</b> ' + esc(x.i.unidad || '') + '</td></tr>'; }).join('') || '<tr><td colspan="5" class="mut">Nada urgente.</td></tr>') + '</table></div>';
-  // Bebidas
-  h += '<div class="card tw"><h3 style="margin-top:0">🥤 Bebidas esperadas ese día</h3><table><tr><th>Bebida</th><th class="n">Prom. ' + E.DIAS[dow].toLowerCase() + '</th><th class="n">Sugerido tener frío</th></tr>' +
-    (filas.filter(function(f){ return f.m.tipo === 'bebida'; }).map(function(f){ return '<tr><td>' + esc(f.m.nombre) + '</td><td class="n">' + (f.pm != null ? f.pm.toFixed(1) : '—') + '</td><td class="n"><b>' + f.sug + '</b></td></tr>'; }).join('') || '<tr><td colspan="3" class="mut">Sin datos.</td></tr>') + '</table></div>';
-  $('hBody').innerHTML = h;
-  $('rObj').onchange = function(){ H.objetivo = this.value; vHistoricos(); };
-}
-function hTickets(){
-  var a = new Date(H.desde + 'T00:00:00').getTime(), b = new Date(H.hasta + 'T23:59:59').getTime();
-  var vs = S.ventas.filter(function(v){ return v.fecha >= a && v.fecha <= b; }).sort(function(x, y){ return y.fecha - x.fecha; });
-  $('hBody').innerHTML = '<div class="card tw"><table><tr><th>Folio</th><th>Fecha</th><th>Orden</th><th>Pago</th><th class="n">Total</th><th></th></tr>' +
-    (vs.map(function(v){ return '<tr><td>' + v.folio + '</td><td>' + fecha(v.fecha) + '</td><td>' + esc(etiquetaOrden(v)) + '</td><td>' + esc(v.metodo) + '</td><td class="n">' + money(v.total) + (v.estado === 'cancelada' ? ' <span class="pill bad">Cancelado</span>' : '') + '</td><td class="n"><button class="b s" data-v="' + v.id + '">Ver</button></td></tr>'; }).join('') || '<tr><td colspan="6" class="mut">Sin tickets.</td></tr>') + '</table></div>';
-  $('hBody').querySelectorAll('[data-v]').forEach(function(bt){ bt.onclick = function(){ verTicket(S.ventas.find(function(v){ return v.id === bt.dataset.v; })); }; });
-}
-
-// ═════════════════════════ CONFIGURACIÓN ═══════════════════════════════
-function urlDe(p){
-  var base = (S.config.urlPublica || '').trim();
-  if (base) return base.replace(/\/?$/, '/') + p;
-  return location.href.replace(/[^/]*([?#].*)?$/, '') + p;
-}
-function vConfig(){
-  var c = S.config;
-  var h = '<h2>Configuración</h2><div class="card"><div class="grid2"><div><label class="f">Nombre del restaurante</label><input id="gNom" class="w100" value="' + esc(c.nombre) + '"></div>' +
-    '<div><label class="f">Teléfono</label><input id="gTel" class="w100" value="' + esc(c.telefono) + '"></div><div><label class="f">Dirección</label><input id="gDir" class="w100" value="' + esc(c.direccion) + '"></div>' +
-    '<div><label class="f">RFC (ticket)</label><input id="gRfc" class="w100" value="' + esc(c.rfc) + '"></div><div><label class="f">Leyenda al pie del ticket</label><input id="gLey" class="w100" value="' + esc(c.leyenda) + '"></div>' +
-    '<div><label class="f">Número de mesas</label><input id="gMes" type="number" min="1" max="99" class="w100" value="' + esc(c.mesas) + '"></div>' +
-    '<div><label class="f">Ancho del papel del ticket</label><select id="gAn" class="w100"><option value="80">80 mm</option><option value="58">58 mm</option></select></div>' +
-    '<div><label class="f">Dirección web pública (donde quedará publicado, para el QR)</label><input id="gUrl" class="w100" placeholder="https://encino.ejemplo.com" value="' + esc(c.urlPublica) + '"></div></div>' +
-    '<label style="display:block;margin-top:10px"><input type="checkbox" id="gPed"' + (c.pedidosActivos ? ' checked' : '') + '> Recibir pedidos en línea</label>' +
-    '<h3>Menús (carta)</h3><p class="small mut">Cada platillo se asigna a uno o varios menús en la pestaña Menú. Días: 0 = domingo … 6 = sábado.</p><div id="gMenus"></div><button class="b s" id="gAddMenu">＋ Menú</button>' +
-    '<div class="foot"><button class="b p" id="gOk">Guardar configuración</button></div></div>';
-  h += '<div class="card"><h3 style="margin-top:0">📱 Menú por QR</h3><p class="small">Dos opciones:</p><ol class="small"><li><b>Carta en vivo</b> (<code>carta.html</code>): siempre muestra el menú y precios actuales. Requiere modo Firebase para verse en celulares de clientes.</li>' +
-    '<li><b>Carta estática</b>: descarga un solo archivo HTML con el menú de hoy "congelado". Súbelo a cualquier hosting y apunta el QR ahí; vuelve a descargarlo cuando cambien precios.</li></ol>' +
-    '<div class="toolbar"><button class="b p" id="gEst">⬇️ Descargar carta estática</button><a class="b" href="carta.html" target="_blank">Ver carta en vivo ↗</a></div>' +
-    '<div class="grid2"><div><p class="small">QR carta:<br><code>' + esc(urlDe('carta.html')) + '</code></p><div class="qr" id="qrC"></div></div><div><p class="small">QR pedidos en línea:<br><code>' + esc(urlDe('pedidos.html')) + '</code></p><div class="qr" id="qrP"></div></div></div></div>';
-  h += '<div class="card"><h3 style="margin-top:0">💾 Respaldo</h3><p class="small mut">Modo actual: <b>' + (Store.mode === 'firebase' ? 'Firebase (compartido entre dispositivos)' : 'Local (solo este navegador)') + '</b>. En modo local descarga respaldos seguido: si se borran los datos del navegador, se pierde todo.</p>' +
-    '<div class="toolbar"><button class="b" id="gExp">⬇️ Descargar respaldo</button><label class="b">⬆️ Restaurar respaldo<input type="file" id="gImp" accept=".json" hidden></label><button class="b" id="gDemo">Cargar datos de ejemplo</button>' +
-    (Store.mode === 'firebase' ? '<button class="b d" id="gSalir">Cerrar sesión</button>' : '') + '</div></div>';
-  $('main').innerHTML = h;
-  $('gAn').value = String(c.anchoTicket || 80);
-  var menus = c.menus.map(function(m){ return Object.assign({}, m, { dias: (m.dias || []).slice() }); });
-  function pintaMenus(){
-    $('gMenus').innerHTML = menus.map(function(m, k){ return '<div class="toolbar" style="margin:4px 0"><input data-k="' + k + '" data-f="nombre" value="' + esc(m.nombre) + '" style="flex:2" placeholder="Nombre"><input data-k="' + k + '" data-f="dias" value="' + esc(m.dias.join(',')) + '" style="width:80px" title="Días (0=dom … 6=sáb)" placeholder="5 ó 6,0">' +
-      '<input data-k="' + k + '" data-f="desde" type="time" value="' + esc(m.desde || '') + '"><input data-k="' + k + '" data-f="hasta" type="time" value="' + esc(m.hasta || '') + '"><button class="b s d" data-rm="' + k + '">×</button></div>'; }).join('');
-  }
-  pintaMenus();
-  $('gMenus').oninput = function(e){ var t = e.target, m = menus[t.dataset.k]; if (!m) return; m[t.dataset.f] = t.dataset.f === 'dias' ? t.value.split(/[,\s]+/).map(Number).filter(function(x){ return x >= 0 && x <= 6 && t.value !== ''; }) : t.value; };
-  $('gMenus').onclick = function(e){ var b = e.target.closest('[data-rm]'); if (!b) return; var m = menus[+b.dataset.rm];
-    var uso = S.menu.filter(function(i){ return (i.menus || []).indexOf(m.id) >= 0; }).length;
-    if (!confirm('¿Quitar el menú "' + m.nombre + '"?' + (uso ? ' ' + uso + ' platillos lo tienen asignado.' : ''))) return; menus.splice(+b.dataset.rm, 1); pintaMenus(); };
-  $('gAddMenu').onclick = function(){ menus.push({ id: Store.uid(), nombre: 'Nuevo menú', dias: [], desde: '', hasta: '' }); pintaMenus(); };
-  $('gOk').onclick = function(){
-    Store.put('config', { id: 'general', nombre: $('gNom').value.trim() || 'Restaurante Encino', telefono: $('gTel').value.trim(), direccion: $('gDir').value.trim(), rfc: $('gRfc').value.trim(),
-      leyenda: $('gLey').value.trim(), mesas: Math.max(1, parseInt($('gMes').value, 10) || 10), anchoTicket: +$('gAn').value, urlPublica: $('gUrl').value.trim(), pedidosActivos: $('gPed').checked,
-      menus: menus.filter(function(m){ return m.nombre.trim(); }) }).then(function(){ toast('Configuración guardada'); vConfig(); });
-  };
-  $('gEst').onclick = function(){ descargar('carta-encino.html', E.cartaEstatica(S.config, S.menu, { linkPedidos: S.config.pedidosActivos && S.config.urlPublica ? urlDe('pedidos.html') : '' }), 'text/html;charset=utf-8'); };
-  if (window.QRCode) { new QRCode($('qrC'), { text: urlDe('carta.html'), width: 150, height: 150 }); new QRCode($('qrP'), { text: urlDe('pedidos.html'), width: 150, height: 150 }); }
-  else { $('qrC').textContent = 'Sin conexión para generar QR'; $('qrP').textContent = ''; }
-  $('gExp').onclick = function(){
-    var d = { app: 'encino', version: 1, exportado: new Date().toISOString(), folio: null };
-    COLS.forEach(function(c){ d[c] = S[c]; });
-    try { d.folio = localStorage.getItem('encino:folio'); } catch(e){}
-    descargar('respaldo-encino-' + dkey(Date.now()) + '.json', JSON.stringify(d, null, 1), 'application/json');
-  };
-  $('gImp').onchange = function(){
-    var f = this.files[0]; this.value = ''; if (!f) return;
-    var rd = new FileReader();
-    rd.onload = function(){
-      var d; try { d = JSON.parse(rd.result); } catch(e){ return alert('Archivo inválido.'); }
-      if (d.app !== 'encino') return alert('Este archivo no es un respaldo de Encino.');
-      var n = COLS.reduce(function(s, c){ return s + (Array.isArray(d[c]) ? d[c].length : 0); }, 0);
-      if (!confirm('Se van a agregar/actualizar ' + n + ' registros del respaldo (por su id). No se borra nada de lo que ya existe. ¿Continuar?')) return;
-      var ps = [];
-      COLS.forEach(function(c){ (Array.isArray(d[c]) ? d[c] : []).forEach(function(doc){ if (doc && doc.id) ps.push(Store.put(c === 'configDocs' ? 'config' : c, doc)); }); });
-      if (Store.mode === 'local' && d.folio && (parseInt(d.folio, 10) || 0) > (parseInt(localStorage.getItem('encino:folio'), 10) || 0)) localStorage.setItem('encino:folio', d.folio);
-      Promise.all(ps).then(function(){ toast('Respaldo restaurado'); render(true); });
-    };
-    rd.readAsText(f);
-  };
-  $('gDemo').onclick = cargarDemo;
-  if ($('gSalir')) $('gSalir').onclick = function(){ Store.auth().signOut().then(function(){ location.reload(); }); };
-}
-var COLS = ['menu', 'insumos', 'ordenes', 'ventas', 'movimientos', 'compras', 'pedidos', 'preparaciones', 'configDocs'];
-function cargarDemo(){
-  if (S.menu.length || S.insumos.length) { if (!confirm('Ya hay datos. Los de ejemplo se AGREGAN (no se borra nada). ¿Continuar?')) return; }
-  var ins = {}, ps = [];
-  [['Coca-Cola 355 ml', 'Bebidas', 'pza', 48, 12, 11], ['Cerveza Victoria', 'Bebidas', 'pza', 60, 24, 17], ['Agua natural 600 ml', 'Bebidas', 'pza', 36, 12, 6], ['Café de grano', 'Abarrotes', 'kg', 2, 0.5, 280],
-   ['Huevo', 'Abarrotes', 'pza', 180, 60, 2.8], ['Arrachera', 'Carnes', 'kg', 8, 3, 320], ['Tortilla de maíz', 'Abarrotes', 'kg', 5, 2, 24], ['Jugo de naranja (litro)', 'Bebidas', 'lt', 6, 3, 30]]
-    .forEach(function(r){ var i = { id: Store.uid(), nombre: r[0], categoria: r[1], unidad: r[2], existencia: r[3], minimo: r[4], costo: r[5] }; ins[r[0]] = i.id; ps.push(Store.put('insumos', i)); });
-  var M = function(nombre, categoria, tipo, precio, menus, receta, desc){ ps.push(Store.put('menu', { id: Store.uid(), nombre: nombre, categoria: categoria, tipo: tipo, precio: precio, menus: menus, descripcion: desc || '', disponible: true, enLinea: true, enCarta: true, receta: receta })); };
-  M('Chilaquiles verdes con huevo', 'Desayunos', 'alimento', 125, ['vie-des', 'fds-des'], [{ insumoId: ins['Huevo'], cant: 2 }, { insumoId: ins['Tortilla de maíz'], cant: 0.15 }], 'Con crema, queso y cebolla');
-  M('Huevos al gusto', 'Desayunos', 'alimento', 110, ['vie-des', 'fds-des'], [{ insumoId: ins['Huevo'], cant: 2 }], 'Rancheros, a la mexicana o con jamón');
-  M('Molletes', 'Desayunos', 'alimento', 95, ['fds-des'], [], 'Con pico de gallo');
-  M('Arrachera Encino', 'Cortes', 'alimento', 285, ['vie-com', 'fds-com'], [{ insumoId: ins['Arrachera'], cant: 0.3 }, { insumoId: ins['Tortilla de maíz'], cant: 0.1 }], '300 g con guacamole y frijoles');
-  M('Sopa de tortilla', 'Entradas', 'alimento', 85, ['vie-com', 'fds-com'], []);
-  M('Enchiladas suizas', 'Platos fuertes', 'alimento', 145, ['vie-com'], [{ insumoId: ins['Tortilla de maíz'], cant: 0.12 }]);
-  M('Coca-Cola', 'Refrescos', 'bebida', 40, [], [{ insumoId: ins['Coca-Cola 355 ml'], cant: 1 }]);
-  M('Cerveza Victoria', 'Cervezas', 'bebida', 55, ['vie-com', 'fds-com'], [{ insumoId: ins['Cerveza Victoria'], cant: 1 }]);
-  M('Agua natural', 'Refrescos', 'bebida', 30, [], [{ insumoId: ins['Agua natural 600 ml'], cant: 1 }]);
-  M('Café americano', 'Café', 'bebida', 45, [], [{ insumoId: ins['Café de grano'], cant: 0.015 }]);
-  M('Jugo de naranja', 'Jugos', 'bebida', 50, ['vie-des', 'fds-des'], [{ insumoId: ins['Jugo de naranja (litro)'], cant: 0.35 }]);
-  Promise.all(ps).then(function(){ toast('Datos de ejemplo cargados'); });
-}
-
-// ── Arranque ────────────────────────────────────────────────────────────
-$('modo').textContent = Store.mode === 'firebase' ? '☁️ Firebase' : '💻 Local';
-function arrancar(){
-  var cols = ['menu', 'insumos', 'ordenes', 'ventas', 'movimientos', 'compras', 'pedidos', 'preparaciones'];
-  var ps = cols.map(function(c){ return Store.watch(c, function(arr){
-    S[c] = arr;
-    if (c === 'pedidos' && listo) avisoPedidos();
-    if (c === 'ordenes' && OM) pintaOrden();
-    if ((c === 'menu' || c === 'insumos') && OM) pintaItems();
-    render(false);
-  }); });
-  ps.push(Store.watch('config', function(arr){ S.config = E.cfgFrom(arr); S.configDocs = arr.filter(function(d){ return d.id === 'general'; }); render(false); }));
-  Promise.all(ps).then(function(){ listo = true; avisoPedidos(); render(true); });
-  setInterval(function(){ if (TAB === 'mesas' && !OM) render(false); }, 60000);
-}
-window.onStoreError = function(c, err){ if (err && err.code === 'permission-denied') toast('Sin permiso para leer ' + c + ' — revisa las reglas de Firestore / tu sesión.'); };
-Store.init().then(function(){
-  if (Store.mode !== 'firebase') return arrancar();
-  Store.auth().onAuthStateChanged(function(u){
-    if (u) { if (!listo) arrancar(); return; }
-    $('main').innerHTML = '<div id="login" class="card"><h2>Iniciar sesión</h2><label class="f">Correo</label><input id="lE" type="email" class="w100"><label class="f">Contraseña</label><input id="lP" type="password" class="w100"><p id="lErr" class="small" style="color:var(--bad)"></p><button class="b p" id="lOk">Entrar</button></div>';
-    var go = function(){ Store.auth().signInWithEmailAndPassword($('lE').value.trim(), $('lP').value).catch(function(e){ $('lErr').textContent = 'No se pudo entrar: ' + e.message; }); };
-    $('lOk').onclick = go; $('lP').onkeydown = function(e){ if (e.key === 'Enter') go(); };
-  });
-});
 })();
 </script>
 </body>
