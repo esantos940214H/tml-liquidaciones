@@ -14,7 +14,7 @@
 //   Ver encino/README.md → "Pasar a modo Firebase".
 // ─────────────────────────────────────────────────────────────────────────
 window.ENCINO_FIREBASE_CONFIG = {
-  apiKey: "AIzaSyACB1MqFgZfPcZzh205u71sbfcAe9Jv6ac",
+  apiKey: "AIzaSyACB1MqFgZfPcZzh2O5u71sbfcAe9Jv6ac",
   authDomain: "restaurante-encino.firebaseapp.com",
   projectId: "restaurante-encino",
   storageBucket: "restaurante-encino.firebasestorage.app",
