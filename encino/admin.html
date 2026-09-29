@@ -1044,8 +1044,9 @@ function cargarDemo(){
     { id: Store.uid(), nombre: 'Solos', precio: 95, receta: [] }, { id: Store.uid(), nombre: 'Con huevo', precio: 115, receta: [{ insumoId: ins['Huevo'], cant: 2 }] },
     { id: Store.uid(), nombre: 'Con pollo', precio: 125, receta: [] }, { id: Store.uid(), nombre: 'Con tasajo', precio: 145, receta: [] },
     { id: Store.uid(), nombre: 'Con cecina', precio: 145, receta: [] }, { id: Store.uid(), nombre: 'Con arrachera', precio: 165, receta: [{ insumoId: ins['Arrachera'], cant: 0.15 }] }]);
-  M('Agranda tu paquete', 'Paquetes', 'alimento', 50, ['vie-des', 'fds-des'], [{ insumoId: ins['Café de grano'], cant: 0.015 }], 'Café, pan y jugo o fruta', [
-    { id: Store.uid(), nombre: 'Con jugo', precio: 50, receta: [{ insumoId: ins['Jugo de naranja (litro)'], cant: 0.25 }] }, { id: Store.uid(), nombre: 'Con fruta', precio: 50, receta: [] }], { esPaquete: true });
+  var P = function(n, jugo){ return { id: Store.uid(), nombre: n, precio: 50, receta: jugo ? [{ insumoId: ins['Jugo de naranja (litro)'], cant: 0.25 }] : [] }; };
+  M('Hazlo paquete', 'Paquetes', 'alimento', 50, ['vie-des', 'fds-des'], [{ insumoId: ins['Café de grano'], cant: 0.015 }], 'Jugo o fruta, café o té y pan',
+    [P('Jugo y café', true), P('Jugo y té', true), P('Fruta y café'), P('Fruta y té')], { esPaquete: true });
   M('Huevos al gusto', 'Desayunos', 'alimento', 110, ['vie-des', 'fds-des'], [{ insumoId: ins['Huevo'], cant: 2 }], 'Rancheros, a la mexicana o con jamón');
   M('Molletes', 'Desayunos', 'alimento', 95, ['fds-des'], [], 'Con pico de gallo');
   M('Arrachera Encino', 'Cortes', 'alimento', 285, ['vie-com', 'fds-com'], [{ insumoId: ins['Arrachera'], cant: 0.3 }, { insumoId: ins['Tortilla de maíz'], cant: 0.1 }], '300 g con guacamole y frijoles');
