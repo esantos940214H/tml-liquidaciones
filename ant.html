@@ -989,8 +989,24 @@ async function recuperarAnticiposHistorialUI(){
   if(boton)boton.disabled=true;
   try{
     var sim=await _llamarRecuperarAnticipos(false);
+    // fechaMinimaReupload: los anticipos que YA estaban "pendientes" (sin
+    // liquidar) al momento del borrón no dejaron rastro en ningún lado —
+    // esos NO los recupera esta herramienta. Para no perderlos hay que
+    // volver a subir el estado de cuenta BBVA de cada operador desde el
+    // día siguiente a la llegada de su ÚLTIMA liquidación cerrada. Aquí se
+    // muestra la más antigua de esas fechas entre todos los operadores,
+    // como punto de partida seguro para no dejar a nadie fuera.
+    var textoReupload='';
+    if(sim.fechaMinimaReupload){
+      var porOpTexto=Object.keys(sim.ultimaLiquidacionPorOperador||{}).map(function(opId){
+        var v=sim.ultimaLiquidacionPorOperador[opId];
+        return '  · '+v.op+': última liq. #'+v.num+', llegada '+v.fecha;
+      }).join('\n');
+      textoReupload='\n\n📥 Anticipos que quedaron "pendientes" (sin liquidar) al momento del borrón NO se pueden recuperar con esta herramienta — no dejaron rastro en ningún lado. Para no perderlos, vuelve a subir el estado de cuenta BBVA de cada operador desde el día siguiente a su ÚLTIMA liquidación cerrada:\n'+porOpTexto+
+        '\n\nPara cubrir a TODOS sin dejar a nadie fuera, sube el estado de cuenta completo desde: '+sim.fechaMinimaReupload+' hasta hoy.';
+    }
     if(!sim.totalCorregidos&&!sim.totalRecreados){
-      alert('✅ No hay nada que reparar — todos los anticipos de las '+sim.liquidacionesRevisadas+' liquidaciones cerradas en Historial ya coinciden con lo que hay en Anticipos.');
+      alert('✅ No hay nada que reparar — todos los anticipos de las '+sim.liquidacionesRevisadas+' liquidaciones cerradas en Historial ya coinciden con lo que hay en Anticipos.'+textoReupload);
       return;
     }
     var detalleTexto=sim.resumen.map(function(g){
@@ -1000,6 +1016,7 @@ async function recuperarAnticiposHistorialUI(){
       '🔧 '+sim.totalCorregidos+' anticipo(s) que siguen en el sistema pero quedaron mal marcados como "pendiente" — se corregirían a "liquidado".\n'+
       '♻️ '+sim.totalRecreados+' anticipo(s) que ya no existen ni como pendientes (se perdieron por completo) — se volverían a crear, ya marcados "liquidado" (sin número de Referencia bancaria, ese dato no se pudo recuperar).\n\n'+
       'Por liquidación:\n'+detalleTexto+
+      textoReupload+
       '\n\n¿Aplicar esta corrección ahora? Esto SÍ escribe en Firestore.';
     if(!confirm(msg))return;
     var res=await _llamarRecuperarAnticipos(true);
