@@ -1050,7 +1050,7 @@ function vConfig(){
     '<div><label class="f">Ancho del papel del ticket</label><select id="gAn" class="w100"><option value="80">80 mm</option><option value="58">58 mm</option></select></div>' +
     '<div><label class="f">Dirección web pública (donde quedará publicado, para el QR)</label><input id="gUrl" class="w100" placeholder="https://encino.ejemplo.com" value="' + esc(c.urlPublica) + '"></div></div>' +
     '<label style="display:block;margin-top:10px"><input type="checkbox" id="gPed"' + (c.pedidosActivos ? ' checked' : '') + '> Recibir pedidos en línea</label>' +
-    '<h3>Menús (carta)</h3><p class="small mut">Cada platillo se asigna a uno o varios menús en la pestaña Menú. Días: 0 = domingo … 6 = sábado.</p><div id="gMenus"></div><button class="b s" id="gAddMenu">＋ Menú</button>' +
+    '<h3>Menús (carta)</h3><p class="small mut">Cada renglón es un menú: su nombre, <b>qué días</b> se sirve (toca los días para marcarlos) y <b>de qué hora a qué hora</b>. La carta abre sola en el menú que toca; si dos horarios se enciman (ej. 12:30 a 13:00), le pregunta al cliente cuál quiere ver. Qué platillos van en cada menú se elige en la pestaña Menú.</p><div id="gMenus"></div><button class="b s" id="gAddMenu">＋ Menú</button>' +
     '<div class="foot"><button class="b p" id="gOk">Guardar configuración</button></div></div>';
   var fondo = S.config.fondo;
   h += '<div class="card"><h3 style="margin-top:0">🖼️ Fondo de la carta (por temporada)</h3><p class="small mut" style="margin-top:0">Una imagen que se ve difuminada detrás de la carta QR: Día de Muertos, Navidad, San Valentín… Cámbiala cuando quieras; se ve al momento en los celulares.</p>' +
@@ -1068,13 +1068,21 @@ function vConfig(){
   $('main').innerHTML = h;
   $('gAn').value = String(c.anchoTicket || 80);
   var menus = c.menus.map(function(m){ return Object.assign({}, m, { dias: (m.dias || []).slice() }); });
+  // Días en orden de lunes a domingo (0 = domingo internamente)
+  var DSEM = [[1, 'L', 'Lunes'], [2, 'M', 'Martes'], [3, 'M', 'Miércoles'], [4, 'J', 'Jueves'], [5, 'V', 'Viernes'], [6, 'S', 'Sábado'], [0, 'D', 'Domingo']];
   function pintaMenus(){
-    $('gMenus').innerHTML = menus.map(function(m, k){ return '<div class="toolbar" style="margin:4px 0"><input data-k="' + k + '" data-f="nombre" value="' + esc(m.nombre) + '" style="flex:2" placeholder="Nombre"><input data-k="' + k + '" data-f="dias" value="' + esc(m.dias.join(',')) + '" style="width:80px" title="Días (0=dom … 6=sáb)" placeholder="5 ó 6,0">' +
-      '<input data-k="' + k + '" data-f="desde" type="time" value="' + esc(m.desde || '') + '"><input data-k="' + k + '" data-f="hasta" type="time" value="' + esc(m.hasta || '') + '"><button class="b s d" data-rm="' + k + '">×</button></div>'; }).join('');
+    $('gMenus').innerHTML = '<div class="tw"><table><tr><th>Nombre del menú</th><th>Días</th><th>Desde</th><th>Hasta</th><th></th></tr>' + menus.map(function(m, k){
+      return '<tr><td><input data-k="' + k + '" data-f="nombre" value="' + esc(m.nombre) + '" style="width:100%;min-width:180px" placeholder="Ej. Viernes · Desayunos"></td>' +
+        '<td><div class="chips" style="margin:0;flex-wrap:nowrap">' + DSEM.map(function(d){ return '<button type="button" data-k="' + k + '" data-dia="' + d[0] + '" title="' + d[2] + '"' + (m.dias.indexOf(d[0]) >= 0 ? ' class="on"' : '') + ' style="width:32px;padding:5px 0">' + d[1] + '</button>'; }).join('') + '</div></td>' +
+        '<td><input data-k="' + k + '" data-f="desde" type="time" value="' + esc(m.desde || '') + '"></td><td><input data-k="' + k + '" data-f="hasta" type="time" value="' + esc(m.hasta || '') + '"></td>' +
+        '<td><button class="b s d" data-rm="' + k + '" title="Borrar este menú">×</button></td></tr>'; }).join('') + '</table></div>';
   }
   pintaMenus();
-  $('gMenus').oninput = function(e){ var t = e.target, m = menus[t.dataset.k]; if (!m) return; m[t.dataset.f] = t.dataset.f === 'dias' ? t.value.split(/[,\s]+/).map(Number).filter(function(x){ return x >= 0 && x <= 6 && t.value !== ''; }) : t.value; };
-  $('gMenus').onclick = function(e){ var b = e.target.closest('[data-rm]'); if (!b) return; var m = menus[+b.dataset.rm];
+  $('gMenus').oninput = function(e){ var t = e.target, m = menus[t.dataset.k]; if (!m || !t.dataset.f) return; m[t.dataset.f] = t.value; };
+  $('gMenus').onclick = function(e){
+    var d = e.target.closest('[data-dia]');
+    if (d) { var mm = menus[d.dataset.k], n = +d.dataset.dia, i = mm.dias.indexOf(n); if (i >= 0) mm.dias.splice(i, 1); else mm.dias.push(n); d.classList.toggle('on', i < 0); return; }
+    var b = e.target.closest('[data-rm]'); if (!b) return; var m = menus[+b.dataset.rm];
     var uso = S.menu.filter(function(i){ return (i.menus || []).indexOf(m.id) >= 0; }).length;
     if (!confirm('¿Quitar el menú "' + m.nombre + '"?' + (uso ? ' ' + uso + ' platillos lo tienen asignado.' : ''))) return; menus.splice(+b.dataset.rm, 1); pintaMenus(); };
   $('gAddMenu').onclick = function(){ menus.push({ id: Store.uid(), nombre: 'Nuevo menú', dias: [], desde: '', hasta: '' }); pintaMenus(); };
