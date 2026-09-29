@@ -286,6 +286,13 @@ window.onFBReady=function(cb){if(window._fbInit)cb();else window._fbCallbacks.pu
     window.FB={
       set:function(col,id,data,options){return db.collection(col).doc(id).set(data,options);},
       get:async function(col,id){try{var s=await db.collection(col).doc(id).get();return s.exists?s.data():null;}catch(e){console.error('FB.get:',e);return null;}},
+      // getEstricto: a diferencia de get(), NO convierte un error de red/
+      // conexión en "documento vacío" — lo deja tronar. Usarlo SIEMPRE antes
+      // de escribir sobre un blob compartido (anticiposDB): si la lectura
+      // falla y se tratara como vacío, se guardaría un documento vacío
+      // encima de datos reales de TODOS los operadores (mismo criterio que
+      // ya usa liq.html al cerrar una liquidación).
+      getEstricto:async function(col,id){var s=await db.collection(col).doc(id).get();return s.exists?s.data():null;},
       del:function(col,id){return db.collection(col).doc(id).delete();},
       listen:function(col,id,cb){return db.collection(col).doc(id).onSnapshot(function(s){cb(s.exists?s.data():null);});},
       getAll:async function(col){
@@ -602,10 +609,40 @@ setTimeout(()=>{
   if(!fbReady){$('fbStatus').textContent='❌ Sin conexión';$('fbStatus').className='fb-status fb-err';}
 },6000);
 
-function guardar(){
+// guardar(mutar): relee anticiposDB FRESCO de Firestore justo antes de
+// escribir y le aplica el cambio ahí — nunca serializa a ciegas la copia
+// que está en memoria (esa sí puede estar desactualizada: el listener en
+// vivo actualiza `anticiposDB` de fondo, pero si esta pestaña llevaba rato
+// abierta y mientras tanto otra pestaña — por ejemplo liq.html al cerrar
+// una liquidación — escribió en el mismo documento, guardar la copia local
+// pisaría ese cambio). `mutar(freshDB)` recibe el objeto recién leído y lo
+// modifica en el lugar (agregar/quitar/editar) — mismo criterio que ya usa
+// liq.html al cerrar una liquidación (ver _blobFresco ahí).
+// BUG REAL que motivó esto: el documento estado/anticiposDB se sobrescribió
+// por completo con solo lo capturado en septiembre 2026, borrando todos
+// los anticipos de meses anteriores Y las marcas "liquidado" de las 33
+// liquidaciones ya cerradas en Historial — porque esta función antes
+// guardaba directo la copia en memoria de `anticiposDB` sin releer.
+async function guardar(mutar){
   if(!fbReady)return;
   if(!PUEDE_EDITAR_ANT)return;
-  window.FB.set('estado','anticiposDB',{data:JSON.stringify(anticiposDB)});
+  let fresco;
+  try{
+    // getEstricto (no get): si la lectura falla por conexión, esto debe
+    // TRONAR, no devolver "vacío" — si se tratara como vacío se guardaría
+    // un documento vacío encima de datos reales de TODOS los operadores.
+    fresco=await window.FB.getEstricto('estado','anticiposDB');
+  }catch(e){
+    console.error('guardar (anticipos): no se pudo releer fresco, se cancela para no arriesgar sobrescribir con datos vacíos:',e);
+    alert('⚠️ No se guardó nada: hubo un problema de conexión al releer los anticipos antes de guardar. Revisa tu conexión e inténtalo de nuevo.');
+    return;
+  }
+  let freshDB=(fresco&&fresco.data)?JSON.parse(fresco.data):{};
+  if(Array.isArray(freshDB))freshDB={}; // guard: nunca debe ser arreglo (ver CLAUDE.md)
+  mutar(freshDB);
+  anticiposDB=freshDB;
+  await window.FB.set('estado','anticiposDB',{data:JSON.stringify(anticiposDB)});
+  renderAnticipos();
 }
 
 // ── PARSERS ─────────────────────────────────────────────
@@ -670,53 +707,58 @@ function parseFechaTXT(str){
 }
 
 // ── PROCESAR ARCHIVO ─────────────────────────────────────
-function procesarRows(rows,fname){
+async function procesarRows(rows,fname){
   if(!PUEDE_EDITAR_ANT){alert('Tu usuario solo puede VER Anticipos — no puedes subir archivos.');return;}
   let nuevos=0,duplicados=0,saldosExcl=0;
   const sinMatch=[];
-  rows.forEach(r=>{
-    if(esSaldo(r.concepto)){saldosExcl++;return;}
-    const op=matchOp(r.concepto,r.beneficiario);
-    if(!op){sinMatch.push(r);return;}
-    if(!anticiposDB[op.operadorId])anticiposDB[op.operadorId]=[];
-    // Verificar duplicado. Si el archivo trae "Referencia" (folio único del
-    // banco por transacción — ver parseCSV) y el registro existente también
-    // la tiene, comparar SOLO por referencia (+ mismo importe, por
-    // seguridad) — ES el identificador más confiable, así que basta con que
-    // coincida SIN exigir que la fecha también sea idéntica: BBVA a veces
-    // reporta la misma transacción con un día de diferencia entre dos
-    // exportaciones del mismo periodo (fecha de operación vs. fecha de
-    // aplicación/liquidación), y antes esa diferencia de un día bastaba
-    // para que el mismo depósito se insertara de nuevo como si fuera un
-    // anticipo distinto (caso real: reportado por Esa, archivo subido a los
-    // pocos días de otro con transacciones que se traslapaban). Si a alguno
-    // le falta la referencia (captura manual, o un archivo sin esa
-    // columna), se cae al criterio anterior (fecha+monto+concepto).
-    const existe=anticiposDB[op.operadorId].some(a=>{
-      // Comparar sin ceros a la izquierda — BBVA a veces trae la misma
-      // referencia con distinto padding entre archivos ("9346852" vs
-      // "009346852"), y compararla como texto exacto dejaba pasar
-      // duplicados reales sin detectarlos (caso real: anticipo de Martín
-      // Flores del 22-jul duplicado por esto exacto).
-      if(a.referencia&&r.referencia)return a.referencia.replace(/^0+/,'')===r.referencia.replace(/^0+/,'')&&Math.abs(a.importe-r.importe)<0.01;
-      if(a.fecha!==r.fecha||Math.abs(a.importe-r.importe)>=0.01)return false;
-      return norm(a.concepto)===norm(r.concepto);
+  // Todo el matching/dedupe se hace DENTRO de guardar(), contra la copia
+  // FRESCA de anticiposDB recién leída de Firestore (no contra la variable
+  // global `anticiposDB`, que puede estar desactualizada) — así la
+  // detección de duplicados también ve lo que haya guardado otra pestaña
+  // mientras tanto, y no se pierde nada al escribir.
+  await guardar(function(freshDB){
+    rows.forEach(r=>{
+      if(esSaldo(r.concepto)){saldosExcl++;return;}
+      const op=matchOp(r.concepto,r.beneficiario);
+      if(!op){sinMatch.push(r);return;}
+      if(!freshDB[op.operadorId])freshDB[op.operadorId]=[];
+      // Verificar duplicado. Si el archivo trae "Referencia" (folio único del
+      // banco por transacción — ver parseCSV) y el registro existente también
+      // la tiene, comparar SOLO por referencia (+ mismo importe, por
+      // seguridad) — ES el identificador más confiable, así que basta con que
+      // coincida SIN exigir que la fecha también sea idéntica: BBVA a veces
+      // reporta la misma transacción con un día de diferencia entre dos
+      // exportaciones del mismo periodo (fecha de operación vs. fecha de
+      // aplicación/liquidación), y antes esa diferencia de un día bastaba
+      // para que el mismo depósito se insertara de nuevo como si fuera un
+      // anticipo distinto (caso real: reportado por Esa, archivo subido a los
+      // pocos días de otro con transacciones que se traslapaban). Si a alguno
+      // le falta la referencia (captura manual, o un archivo sin esa
+      // columna), se cae al criterio anterior (fecha+monto+concepto).
+      const existe=freshDB[op.operadorId].some(a=>{
+        // Comparar sin ceros a la izquierda — BBVA a veces trae la misma
+        // referencia con distinto padding entre archivos ("9346852" vs
+        // "009346852"), y compararla como texto exacto dejaba pasar
+        // duplicados reales sin detectarlos (caso real: anticipo de Martín
+        // Flores del 22-jul duplicado por esto exacto).
+        if(a.referencia&&r.referencia)return a.referencia.replace(/^0+/,'')===r.referencia.replace(/^0+/,'')&&Math.abs(a.importe-r.importe)<0.01;
+        if(a.fecha!==r.fecha||Math.abs(a.importe-r.importe)>=0.01)return false;
+        return norm(a.concepto)===norm(r.concepto);
+      });
+      if(existe){duplicados++;return;}
+      // unidadAlCapturar: la unidad que el operador traía asignada EN LA
+      // FECHA REAL de este movimiento (según el historial de asignaciones de
+      // flota.html — automático) — a diferencia del campo "unidad" de arriba
+      // (que en realidad es su identidad/operadorId, ver comentario en
+      // initSelects), este SÍ es un dato histórico real. Se calcula por la
+      // fecha del banco, NO por la fecha en que se sube el archivo — así, si
+      // una reasignación se captura tarde en el sistema pero con su fecha
+      // real, los anticipos de antes de esa fecha se quedan bien ligados al
+      // camión anterior aunque se suban después del cambio.
+      freshDB[op.operadorId].push({id:uid(),fecha:r.fecha,importe:r.importe,concepto:r.concepto,referencia:r.referencia||'',estado:'pendiente',liqNum:null,origen:'archivo',unidadAlCapturar:unidadHistorica(op.operadorId,r.fecha)});
+      nuevos++;
     });
-    if(existe){duplicados++;return;}
-    // unidadAlCapturar: la unidad que el operador traía asignada EN LA
-    // FECHA REAL de este movimiento (según el historial de asignaciones de
-    // flota.html — automático) — a diferencia del campo "unidad" de arriba
-    // (que en realidad es su identidad/operadorId, ver comentario en
-    // initSelects), este SÍ es un dato histórico real. Se calcula por la
-    // fecha del banco, NO por la fecha en que se sube el archivo — así, si
-    // una reasignación se captura tarde en el sistema pero con su fecha
-    // real, los anticipos de antes de esa fecha se quedan bien ligados al
-    // camión anterior aunque se suban después del cambio.
-    anticiposDB[op.operadorId].push({id:uid(),fecha:r.fecha,importe:r.importe,concepto:r.concepto,referencia:r.referencia||'',estado:'pendiente',liqNum:null,origen:'archivo',unidadAlCapturar:unidadHistorica(op.operadorId,r.fecha)});
-    nuevos++;
   });
-  guardar();
-  renderAnticipos();
   $('uploadInfo').style.display='block';
   $('uploadInfo').innerHTML=`<div class="alert alert-ok">✅ <strong>${fname}</strong> — ${nuevos} anticipos nuevos · ${duplicados} duplicados ignorados · ${saldosExcl} saldos excluidos${sinMatch.length?' · <span style="color:#92400e">'+sinMatch.length+' sin identificar</span>':''}</div>`;
   // Mostrar sin match
@@ -758,13 +800,13 @@ function agregarManualReal(){
   const fecha=$('mFecha').value||hoy();
   const concepto=$('mConcepto').value||$('mForma').value;
   if(esSaldo(concepto)){alert('Este concepto corresponde a un saldo de liquidación, no a un anticipo. No se puede registrar aquí.');return;}
-  if(!anticiposDB[unidad])anticiposDB[unidad]=[];
-  // unidadAlCapturar: automático, según el historial de asignaciones y la
-  // fecha real del anticipo (ver nota en procesarRows) — queda fija en
-  // este registro aunque después lo reasignen de camión.
-  anticiposDB[unidad].push({id:uid(),fecha,importe,concepto,estado:'pendiente',liqNum:null,origen:'manual',unidadAlCapturar:unidadHistorica(unidad,fecha)});
-  guardar();
-  renderAnticipos();
+  guardar(function(freshDB){
+    if(!freshDB[unidad])freshDB[unidad]=[];
+    // unidadAlCapturar: automático, según el historial de asignaciones y la
+    // fecha real del anticipo (ver nota en procesarRows) — queda fija en
+    // este registro aunque después lo reasignen de camión.
+    freshDB[unidad].push({id:uid(),fecha,importe,concepto,estado:'pendiente',liqNum:null,origen:'manual',unidadAlCapturar:unidadHistorica(unidad,fecha)});
+  });
   hideManual();
   $('mOp').value='';$('mImporte').value='';$('mConcepto').value='';
 }
@@ -857,8 +899,9 @@ function eliminarAnticipo(unidad,id){
   if(!PUEDE_EDITAR_ANT){alert('Tu usuario solo puede VER Anticipos — no puedes eliminar ninguno.');return;}
   if(!confirm('¿Eliminar este anticipo? Esto NO se puede deshacer.'))return;
   lockRequest('Eliminar anticipo', function(){
-    if(anticiposDB[unidad])anticiposDB[unidad]=anticiposDB[unidad].filter(a=>a.id!==id);
-    guardar();renderAnticipos();
+    guardar(function(freshDB){
+      if(freshDB[unidad])freshDB[unidad]=freshDB[unidad].filter(a=>a.id!==id);
+    });
   });
 }
 
@@ -886,10 +929,11 @@ function eliminarSeleccionadosAnts(){
   var sel=Array.from(chks).map(function(c){return{id:c.dataset.id,unidad:parseInt(c.dataset.unidad)};});
   if(!confirm('¿Eliminar '+sel.length+' anticipo(s) seleccionado(s)? Esto NO se puede deshacer.'))return;
   lockRequest('Eliminar '+sel.length+' anticipo(s)', function(){
-    sel.forEach(function(s){
-      if(anticiposDB[s.unidad])anticiposDB[s.unidad]=anticiposDB[s.unidad].filter(function(a){return a.id!==s.id;});
+    guardar(function(freshDB){
+      sel.forEach(function(s){
+        if(freshDB[s.unidad])freshDB[s.unidad]=freshDB[s.unidad].filter(function(a){return a.id!==s.id;});
+      });
     });
-    guardar();renderAnticipos();
   });
 }
 
