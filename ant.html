@@ -170,6 +170,7 @@ tr:hover td{background:#fafafa}
     <div class="card-title">📂 Cargar estado de cuenta
       <div class="row">
         <button class="btn btn-green btn-sm" onclick="showManual()">+ Anticipo manual</button>
+        <button class="btn btn-out btn-sm" id="btnRecuperarHist" style="display:none" onclick="recuperarAnticiposHistorialUI()">🩹 Recuperar desde Historial (admin)</button>
       </div>
     </div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
@@ -531,6 +532,7 @@ function mostrarSesionEnHeader(){
   if($('sesionUsuarioLabel'))$('sesionUsuarioLabel').textContent='👤 '+(u.nombre||u.usuario)+(u.esAdmin?' (admin)':'');
   if($('btnCerrarSesion'))$('btnCerrarSesion').style.display='inline';
   if($('btnCambiarPass'))$('btnCambiarPass').style.display='inline';
+  if($('btnRecuperarHist'))$('btnRecuperarHist').style.display=u.esAdmin?'inline-block':'none';
   aplicarPermisosNav(u);
 }
 function verificarSesionModulo(){
@@ -963,6 +965,51 @@ function lockRequest(desc, callback){
 
 function agregarManual(){
   lockRequest('Registrar anticipo manual', function(){ agregarManualReal(); });
+}
+
+// ── RECUPERAR ANTICIPOS DESDE HISTORIAL (admin, uso único) ───────────────
+// Repara estado/anticiposDB después del bug de sobrescritura ya corregido
+// (ver guardar()) — reconstruye desde el snapshot que cada liquidación
+// cerrada guarda de sus propios anticipos (historial/liq-*.snapshot.antsList,
+// ver functions/index.js → recuperarAnticiposDesdeHistorial). SIEMPRE corre
+// primero en modo simular (no escribe nada) y solo aplica si confirmas el
+// resumen que te muestra.
+const FUNCTION_URL_RECUPERAR_ANTICIPOS='https://us-central1-tml-liquidaciones.cloudfunctions.net/recuperarAnticiposDesdeHistorial';
+async function _llamarRecuperarAnticipos(aplicar){
+  var idToken=await firebase.auth().currentUser.getIdToken();
+  var r=await fetch(FUNCTION_URL_RECUPERAR_ANTICIPOS,{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+idToken},body:JSON.stringify({aplicar:!!aplicar})});
+  var data=await r.json();
+  if(!r.ok)throw new Error(data.error||'Error desconocido');
+  return data;
+}
+async function recuperarAnticiposHistorialUI(){
+  var u=usuarioSesion();
+  if(!u||!u.esAdmin){alert('Solo un administrador puede usar esto.');return;}
+  var boton=$('btnRecuperarHist');
+  if(boton)boton.disabled=true;
+  try{
+    var sim=await _llamarRecuperarAnticipos(false);
+    if(!sim.totalCorregidos&&!sim.totalRecreados){
+      alert('✅ No hay nada que reparar — todos los anticipos de las '+sim.liquidacionesRevisadas+' liquidaciones cerradas en Historial ya coinciden con lo que hay en Anticipos.');
+      return;
+    }
+    var detalleTexto=sim.resumen.map(function(g){
+      return 'Liquidación #'+g.num+' ('+g.op+'): '+g.detalle.length+' anticipo(s)';
+    }).join('\n');
+    var msg='Se revisaron '+sim.liquidacionesRevisadas+' liquidaciones cerradas en Historial.\n\n'+
+      '🔧 '+sim.totalCorregidos+' anticipo(s) que siguen en el sistema pero quedaron mal marcados como "pendiente" — se corregirían a "liquidado".\n'+
+      '♻️ '+sim.totalRecreados+' anticipo(s) que ya no existen ni como pendientes (se perdieron por completo) — se volverían a crear, ya marcados "liquidado" (sin número de Referencia bancaria, ese dato no se pudo recuperar).\n\n'+
+      'Por liquidación:\n'+detalleTexto+
+      '\n\n¿Aplicar esta corrección ahora? Esto SÍ escribe en Firestore.';
+    if(!confirm(msg))return;
+    var res=await _llamarRecuperarAnticipos(true);
+    alert('✅ Listo. '+res.totalCorregidos+' anticipo(s) corregidos a "liquidado" y '+res.totalRecreados+' recreados desde Historial.\n\nAhora falta que revisemos los duplicados restantes (los que sí quedaron mal insertados por el bug de fecha en BBVA) — mándame el CSV exportado para identificarlos.');
+    await window.FB.get('estado','anticiposDB').then(function(data){if(data&&data.data){anticiposDB=JSON.parse(data.data);renderAnticipos();}});
+  }catch(e){
+    alert('⚠️ '+e.message);
+  }finally{
+    if(boton)boton.disabled=false;
+  }
 }
 </script>
 
