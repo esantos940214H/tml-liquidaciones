@@ -100,17 +100,23 @@
   function rutaCalle(cfg, destino){
     var e = entregaCfg(cfg);
     if (!e.orsKey || !e.ok) return Promise.reject(new Error('sin clave'));
-    var ctl = window.AbortController ? new AbortController() : null, t = setTimeout(function(){ if (ctl) ctl.abort(); }, 8000);
-    var url = 'https://api.openrouteservice.org/v2/directions/driving-car?api_key=' + encodeURIComponent(e.orsKey) +
-      '&start=' + e.lng + ',' + e.lat + '&end=' + destino.lng + ',' + destino.lat;
-    return fetch(url, ctl ? { signal: ctl.signal } : {}).then(function(r){
-      clearTimeout(t);
-      return r.json().then(function(d){
-        var s = d && d.features && d.features[0] && d.features[0].properties && d.features[0].properties.summary;
-        if (!r.ok || !s || s.distance == null) throw new Error((d && d.error && (d.error.message || d.error)) || ('HTTP ' + r.status));
-        return { km: s.distance / 1000, min: (s.duration || 0) / 60 };
-      });
-    }, function(err){ clearTimeout(t); throw err; });
+    var q = '/v2/directions/driving-car?api_key=' + encodeURIComponent(e.orsKey) + '&start=' + e.lng + ',' + e.lat + '&end=' + destino.lng + ',' + destino.lat;
+    // HeiGIT está cambiando api.openrouteservice.org por api.heigit.org:
+    // se intenta la dirección nueva y, si falla, la anterior.
+    var urls = ['https://api.heigit.org/openrouteservice' + q, 'https://api.openrouteservice.org' + q];
+    function intentar(i, errPrevio){
+      if (i >= urls.length) return Promise.reject(errPrevio || new Error('sin respuesta'));
+      var ctl = window.AbortController ? new AbortController() : null, t = setTimeout(function(){ if (ctl) ctl.abort(); }, 7000);
+      return fetch(urls[i], ctl ? { signal: ctl.signal } : {}).then(function(r){
+        clearTimeout(t);
+        return r.json().then(function(d){
+          var s = d && d.features && d.features[0] && d.features[0].properties && d.features[0].properties.summary;
+          if (!r.ok || !s || s.distance == null) throw new Error((d && d.error && (d.error.message || d.error)) || ('HTTP ' + r.status));
+          return { km: s.distance / 1000, min: (s.duration || 0) / 60 };
+        });
+      }).catch(function(err){ clearTimeout(t); return intentar(i + 1, err); });
+    }
+    return intentar(0);
   }
   // Tiempo estimado: preparación + trayecto. Las calles no van en línea recta,
   // así que se considera 1.3 veces la distancia.

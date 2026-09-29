@@ -489,7 +489,7 @@ function vPedidos(){
   h += '<p class="small mut">Liga para clientes: <code>' + esc(url) + '</code></p>';
   if (!lista.length) h += '<p class="mut">No hay pedidos.</p>';
   lista.forEach(function(p){
-    var est = { nuevo: '<span class="pill bad">Nuevo</span>', aceptado: '<span class="pill busy">En preparación</span>', listo: '<span class="pill">Listo</span>', entregado: '<span class="pill">Entregado</span>', rechazado: '<span class="pill bad">Rechazado</span>' }[p.estado] || esc(p.estado);
+    var est = { nuevo: '<span class="pill bad">Nuevo</span>', aceptado: '<span class="pill busy">En preparación</span>', listo: '<span class="pill">' + (p.entrega === 'domicilio' ? 'En camino' : 'Listo para recoger') + '</span>', entregado: '<span class="pill">Entregado</span>', rechazado: '<span class="pill bad">Rechazado</span>' }[p.estado] || esc(p.estado);
     h += '<div class="ped ' + esc(p.estado) + '"><div class="toolbar" style="margin:0 0 6px"><b>' + esc(p.cliente) + '</b> ' + est + '<span class="mut small">#' + esc(p.id.slice(-5).toUpperCase()) + ' · ' + fecha(p.creado) + '</span><span class="sp"></span><b>' + money(p.total) + '</b></div>' +
       '<div class="small">📞 ' + esc(p.telefono) + ' · ' + (p.entrega === 'domicilio' ? '🛵 A domicilio: ' + esc(p.direccion) +
         (p.ubicacion ? ' · <b>' + p.distanciaKm + ' km' + (p.porCalle ? ' por calle' : ' en línea recta') + '</b> · <a href="https://www.google.com/maps/dir/?api=1&destination=' + Number(p.ubicacion.lat) + ',' + Number(p.ubicacion.lng) + '" target="_blank" rel="noopener">🗺️ Ver ruta</a>' : '') : '🏃 Pasa a recoger') +
@@ -497,7 +497,7 @@ function vPedidos(){
       '<div style="margin:6px 0">' + (p.items || []).map(function(i){ return i.cant + '× ' + esc(i.nombre); }).join(', ') + '</div>' + (p.notas ? '<div class="small" style="color:var(--warn)">📝 ' + esc(p.notas) + '</div>' : '') +
       '<div class="toolbar" style="margin:8px 0 0">' +
       (p.estado === 'nuevo' ? '<button class="b p" data-pa="aceptar" data-id="' + p.id + '">✔ Aceptar</button><button class="b d" data-pa="rechazar" data-id="' + p.id + '">Rechazar</button>' : '') +
-      (p.estado === 'aceptado' ? '<button class="b p" data-pa="listo" data-id="' + p.id + '">Marcar listo</button>' : '') +
+      (p.estado === 'aceptado' ? '<button class="b p" data-pa="listo" data-id="' + p.id + '">' + (p.entrega === 'domicilio' ? '🛵 Salió a entregar' : '✅ Listo para recoger') + '</button>' : '') +
       (p.ordenId && getOrden(p.ordenId) ? '<button class="b" data-pa="orden" data-id="' + p.id + '">Ver orden / cobrar</button>' : '') + '</div></div>';
   });
   $('main').innerHTML = h;

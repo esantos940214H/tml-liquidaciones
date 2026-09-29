@@ -240,11 +240,18 @@ a{color:var(--acc)}
   }
   var ESTADOS = { nuevo: '⏳ Recibido — esperando confirmación del restaurante', aceptado: '👨‍🍳 Confirmado, en preparación', listo: '✅ ¡Listo! Ya puedes pasar / va en camino',
     entregado: '🎉 Entregado. ¡Gracias!', rechazado: '❌ El restaurante no pudo tomar tu pedido' };
+  // "Listo" y "entregado" se dicen distinto si es a domicilio o para recoger
+  function textoEstado(p){
+    var dom = p.entrega === 'domicilio';
+    if (p.estado === 'listo') return dom ? '🛵 ¡Tu pedido va en camino!' : '✅ ¡Tu pedido está listo! Ya puedes pasar por él';
+    if (p.estado === 'entregado') return dom ? '🎉 ¡Pedido entregado! Buen provecho' : '🎉 ¡Pedido recogido! Buen provecho';
+    return ESTADOS[p.estado];
+  }
   function verEstado(id){
     paso = 'estado'; bar.hidden = true;
     Store.watchDoc('pedidos', id, function(p){
       if (!p) { app.innerHTML = '<div class="box">No encontramos tu pedido.</div>'; return; }
-      app.innerHTML = '<h1>' + esc(cfg.nombre) + '</h1><div class="box"><p class="mut" style="text-align:center">Pedido #' + esc(p.id.slice(-5).toUpperCase()) + ' · ' + esc(p.cliente) + '</p><div class="st">' + (ESTADOS[p.estado] || esc(p.estado)) + '</div>' +
+      app.innerHTML = '<h1>' + esc(cfg.nombre) + '</h1><div class="box"><p class="mut" style="text-align:center">Pedido #' + esc(p.id.slice(-5).toUpperCase()) + ' · ' + esc(p.cliente) + '</p><div class="st">' + (textoEstado(p) || esc(p.estado)) + '</div>' +
         (p.motivo ? '<p style="text-align:center" class="mut">' + esc(p.motivo) + '</p>' : '') +
         '<p style="text-align:center">Total: <b>' + money(p.total) + '</b></p>' +
         (p.etaMin && ['nuevo', 'aceptado'].indexOf(p.estado) >= 0 ? '<p style="text-align:center" class="mut">' + (p.entrega === 'domicilio' ? '🛵 Tiempo estimado de entrega: ' : '⏱️ Listo en aprox. ') + '<b>' + E.etaTxt(p.etaMin) + '</b></p>' : '') + (cfg.telefono ? '<p style="text-align:center" class="mut">Dudas: ' + esc(cfg.telefono) + '</p>' : '') +
