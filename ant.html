@@ -171,6 +171,7 @@ tr:hover td{background:#fafafa}
       <div class="row">
         <button class="btn btn-green btn-sm" onclick="showManual()">+ Anticipo manual</button>
         <button class="btn btn-out btn-sm" id="btnRecuperarHist" style="display:none" onclick="recuperarAnticiposHistorialUI()">🩹 Recuperar desde Historial (admin)</button>
+        <button class="btn btn-out btn-sm" id="btnLimpiarPrevios" style="display:none;border-color:#e63946;color:#e63946" onclick="limpiarAnticiposPendientesPreviosUI()">🧹 Limpiar pendientes previos a última liquidación (admin, provisional)</button>
       </div>
     </div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
@@ -533,6 +534,7 @@ function mostrarSesionEnHeader(){
   if($('btnCerrarSesion'))$('btnCerrarSesion').style.display='inline';
   if($('btnCambiarPass'))$('btnCambiarPass').style.display='inline';
   if($('btnRecuperarHist'))$('btnRecuperarHist').style.display=u.esAdmin?'inline-block':'none';
+  if($('btnLimpiarPrevios'))$('btnLimpiarPrevios').style.display=u.esAdmin?'inline-block':'none';
   aplicarPermisosNav(u);
 }
 function verificarSesionModulo(){
@@ -1035,6 +1037,54 @@ async function recuperarAnticiposHistorialUI(){
     if(!confirm(msg))return;
     var res=await _llamarRecuperarAnticipos(true);
     alert('✅ Listo. '+res.totalCorregidos+' anticipo(s) corregidos a "liquidado" y '+res.totalRecreados+' recreados desde Historial.\n\nAhora falta que revisemos los duplicados restantes (los que sí quedaron mal insertados por el bug de fecha en BBVA) — mándame el CSV exportado para identificarlos.');
+    await window.FB.get('estado','anticiposDB').then(function(data){if(data&&data.data){anticiposDB=JSON.parse(data.data);renderAnticipos();}});
+  }catch(e){
+    alert('⚠️ '+e.message);
+  }finally{
+    if(boton)boton.disabled=false;
+  }
+}
+
+// ── LIMPIAR PENDIENTES PREVIOS A LA ÚLTIMA LIQUIDACIÓN (admin, provisional) ──
+// Cualquier anticipo "pendiente" con fecha ANTERIOR a la llegada de la
+// última liquidación CERRADA de ese operador ya tuvo que haberse liquidado
+// (liq.html mete TODOS los pendientes al cerrar, sin filtrar por fecha) —
+// si sigue "pendiente" es basura del bug de sobrescritura (duplicado no
+// detectado, o algo que se volvió a subir sin coincidir con nada). RIESGO:
+// si algo de antes de esa fecha nunca se había subido al sistema (llegó
+// tarde de verdad), esto también lo borraría por error — por eso siempre
+// muestra cada candidato antes de borrar nada.
+const FUNCTION_URL_LIMPIAR_PENDIENTES_PREVIOS='https://us-central1-tml-liquidaciones.cloudfunctions.net/limpiarAnticiposPendientesPrevios';
+async function _llamarLimpiarPendientesPrevios(aplicar){
+  var idToken=await firebase.auth().currentUser.getIdToken();
+  var r=await fetch(FUNCTION_URL_LIMPIAR_PENDIENTES_PREVIOS,{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+idToken},body:JSON.stringify({aplicar:!!aplicar})});
+  var data=await r.json();
+  if(!r.ok)throw new Error(data.error||'Error desconocido');
+  return data;
+}
+async function limpiarAnticiposPendientesPreviosUI(){
+  var u=usuarioSesion();
+  if(!u||!u.esAdmin){alert('Solo un administrador puede usar esto.');return;}
+  var boton=$('btnLimpiarPrevios');
+  if(boton)boton.disabled=true;
+  try{
+    var sim=await _llamarLimpiarPendientesPrevios(false);
+    if(!sim.totalEliminados){
+      alert('✅ No hay nada que limpiar — ningún operador tiene anticipos "pendiente" con fecha anterior a su última liquidación cerrada.');
+      return;
+    }
+    var detalleTexto=sim.resumen.map(function(g){
+      var lineas=g.eliminados.map(function(e){return '      '+e.fecha+' · '+fmt(e.importe)+' · '+e.concepto;}).join('\n');
+      return g.op+' (última liq. #'+g.ultimaLiquidacion+', cerró '+g.fechaCorte+') — '+g.eliminados.length+' a eliminar:\n'+lineas;
+    }).join('\n\n');
+    var msg='⚠️ Esto ELIMINA anticipos, no se puede deshacer.\n\n'+
+      'Se encontraron '+sim.totalEliminados+' anticipo(s) "pendiente" con fecha ANTERIOR a la última liquidación cerrada de su operador — por regla, ya deberían estar liquidados.\n\n'+
+      detalleTexto+
+      '\n\n⚠️ RIESGO: si alguno de estos es un anticipo real que nunca se había subido a tiempo (no basura del bug), esto lo borraría por error — revísalos arriba antes de continuar.\n\n'+
+      '¿Eliminar estos '+sim.totalEliminados+' anticipo(s) ahora?';
+    if(!confirm(msg))return;
+    var res=await _llamarLimpiarPendientesPrevios(true);
+    alert('✅ Listo. Se eliminaron '+res.totalEliminados+' anticipo(s).');
     await window.FB.get('estado','anticiposDB').then(function(data){if(data&&data.data){anticiposDB=JSON.parse(data.data);renderAnticipos();}});
   }catch(e){
     alert('⚠️ '+e.message);
