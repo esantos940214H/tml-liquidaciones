@@ -115,6 +115,7 @@ td.n,th.n{text-align:right;white-space:nowrap}
 <script>
 (function(){
 'use strict';
+window.ENCINO_PERSISTENCIA = true;
 var E = Encino, esc = E.esc, money = E.money, dkey = E.dkey;
 var $ = function(id){ return document.getElementById(id); };
 function num(v){ if (v == null || v === '') return null; var n = parseFloat(String(v).replace(/[$,\s]/g, '')); return isFinite(n) ? n : null; }
@@ -1285,6 +1286,7 @@ Store.init().then(function(){
   if (Store.mode !== 'firebase') return arrancar();
   Store.auth().onAuthStateChanged(function(u){
     if (u) { if (!listo) arrancar(); return; }
+    if (listo) { location.reload(); return; } // la sesión terminó: empezar limpio
     $('main').innerHTML = '<div id="login" class="card"><h2>Iniciar sesión</h2><label class="f">Correo</label><input id="lE" type="email" class="w100"><label class="f">Contraseña</label><input id="lP" type="password" class="w100"><p id="lErr" class="small" style="color:var(--bad)"></p><button class="b p" id="lOk">Entrar</button></div>';
     var go = function(){ Store.auth().signInWithEmailAndPassword($('lE').value.trim(), $('lP').value).catch(function(e){ $('lErr').textContent = 'No se pudo entrar: ' + e.message; }); };
     $('lOk').onclick = go; $('lP').onkeydown = function(e){ if (e.key === 'Enter') go(); };

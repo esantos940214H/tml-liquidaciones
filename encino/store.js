@@ -40,7 +40,12 @@
     if (MODE === 'firebase') {
       if (!firebase.apps.length) firebase.initializeApp(CFG);
       db = firebase.firestore();
-      try { db.enablePersistence({ synchronizeTabs: true }).catch(function(){}); } catch(e){}
+      // Guardado local (para seguir funcionando con mala señal) solo en la
+      // administración y sin compartir entre pestañas: con pestañas
+      // compartidas, una pestaña pública (carta/pedidos, sin sesión) podía
+      // quedar a cargo de la conexión y Firebase rechazaba las consultas del
+      // personal ("sin permiso").
+      if (window.ENCINO_PERSISTENCIA) { try { db.enablePersistence().catch(function(){}); } catch(e){} }
     } else {
       window.addEventListener('storage', function(e){
         if (!e.key || e.key.indexOf('encino:') !== 0) return;
