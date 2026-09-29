@@ -84,7 +84,9 @@ td.n,th.n{text-align:right;white-space:nowrap}
 .ped.nuevo{border:2px solid var(--bad)}
 #login{max-width:360px;margin:60px auto}
 .qr{background:#fff;padding:10px;display:inline-block;border-radius:8px}
+.mapaCfg{height:280px;border-radius:10px;border:1px solid var(--line);z-index:0}
 </style>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
 </head>
 <body>
 <header>
@@ -102,6 +104,7 @@ td.n,th.n{text-align:right;white-space:nowrap}
 </header>
 <main id="main"><p class="mut">Cargando…</p></main>
 
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
@@ -487,7 +490,9 @@ function vPedidos(){
   lista.forEach(function(p){
     var est = { nuevo: '<span class="pill bad">Nuevo</span>', aceptado: '<span class="pill busy">En preparación</span>', listo: '<span class="pill">Listo</span>', entregado: '<span class="pill">Entregado</span>', rechazado: '<span class="pill bad">Rechazado</span>' }[p.estado] || esc(p.estado);
     h += '<div class="ped ' + esc(p.estado) + '"><div class="toolbar" style="margin:0 0 6px"><b>' + esc(p.cliente) + '</b> ' + est + '<span class="mut small">#' + esc(p.id.slice(-5).toUpperCase()) + ' · ' + fecha(p.creado) + '</span><span class="sp"></span><b>' + money(p.total) + '</b></div>' +
-      '<div class="small">📞 ' + esc(p.telefono) + ' · ' + (p.entrega === 'domicilio' ? '🛵 A domicilio: ' + esc(p.direccion) : '🏃 Pasa a recoger') + (p.hora ? ' · ⏰ ' + esc(p.hora) : '') + '</div>' +
+      '<div class="small">📞 ' + esc(p.telefono) + ' · ' + (p.entrega === 'domicilio' ? '🛵 A domicilio: ' + esc(p.direccion) +
+        (p.ubicacion ? ' · <b>' + p.distanciaKm + ' km</b> · <a href="https://www.google.com/maps/dir/?api=1&destination=' + Number(p.ubicacion.lat) + ',' + Number(p.ubicacion.lng) + '" target="_blank" rel="noopener">🗺️ Ver ruta</a>' : '') : '🏃 Pasa a recoger') +
+        (p.etaMin ? ' · ⏱️ ' + E.etaTxt(p.etaMin) : '') + (p.hora ? ' · ⏰ ' + esc(p.hora) : '') + '</div>' +
       '<div style="margin:6px 0">' + (p.items || []).map(function(i){ return i.cant + '× ' + esc(i.nombre); }).join(', ') + '</div>' + (p.notas ? '<div class="small" style="color:var(--warn)">📝 ' + esc(p.notas) + '</div>' : '') +
       '<div class="toolbar" style="margin:8px 0 0">' +
       (p.estado === 'nuevo' ? '<button class="b p" data-pa="aceptar" data-id="' + p.id + '">✔ Aceptar</button><button class="b d" data-pa="rechazar" data-id="' + p.id + '">Rechazar</button>' : '') +
@@ -1085,6 +1090,14 @@ function vConfig(){
     '<h3>Menús (carta)</h3><p class="small mut">Cada renglón es un menú: su nombre, <b>qué días</b> se sirve (toca los días para marcarlos) y <b>de qué hora a qué hora</b>. La carta abre sola en el menú que toca; si dos horarios se enciman (ej. 12:30 a 13:00), le pregunta al cliente cuál quiere ver. Qué platillos van en cada menú se elige en la pestaña Menú.</p><div id="gMenus"></div><button class="b s" id="gAddMenu">＋ Menú</button>' +
     '<div class="foot"><button class="b p" id="gOk">Guardar configuración</button></div></div>';
   var fondo = S.config.fondo;
+  var ent = E.entregaCfg(S.config);
+  h += '<div class="card"><h3 style="margin-top:0">🛵 Entregas a domicilio</h3><p class="small mut" style="margin-top:0">Marca dónde está el restaurante (toca el mapa o usa la ubicación de este dispositivo si estás ahí). Los clientes que pidan a domicilio marcan su ubicación y el sistema no deja pedir fuera del radio; también les calcula el tiempo estimado.</p>' +
+    '<div class="toolbar"><button class="b" id="eAqui">📍 Estoy en el restaurante: usar esta ubicación</button><span class="small mut" id="eCoord">' + (ent.ok ? 'Ubicación: ' + ent.lat.toFixed(5) + ', ' + ent.lng.toFixed(5) : '⚠️ Sin ubicación: los pedidos a domicilio no se limitan por distancia') + '</span></div>' +
+    '<div class="mapaCfg" id="eMapa"></div>' +
+    '<div class="grid3"><div><label class="f">Radio de entrega (km)</label><input id="eRadio" type="number" min="0.5" step="0.5" class="w100" value="' + ent.radioKm + '"></div>' +
+    '<div><label class="f">Tiempo de preparación (min)</label><input id="ePrep" type="number" min="0" step="5" class="w100" value="' + ent.prepMin + '"></div>' +
+    '<div><label class="f">Minutos por km del repartidor</label><input id="eMinKm" type="number" min="1" step="0.5" class="w100" value="' + ent.minPorKm + '"></div></div>' +
+    '<p class="small mut" id="eEj"></p><div class="foot" style="margin-top:6px"><button class="b p" id="eOk">Guardar entregas</button></div></div>';
   h += '<div class="card"><h3 style="margin-top:0">🖼️ Fondo de la carta (por temporada)</h3><p class="small mut" style="margin-top:0">Una imagen que se ve difuminada detrás de la carta QR: Día de Muertos, Navidad, San Valentín… Cámbiala cuando quieras; se ve al momento en los celulares.</p>' +
     '<div class="toolbar" style="align-items:flex-start"><div id="fPrev" style="width:160px;height:110px;border-radius:10px;border:1px solid var(--line);background:var(--bg) center/cover no-repeat;' + (fondo ? 'background-image:url(\'' + fondo.imagen + '\')' : '') + '"></div>' +
     '<div style="flex:1;min-width:220px"><label class="b">🖼️ ' + (fondo ? 'Cambiar imagen' : 'Subir imagen') + '<input type="file" id="fImg" accept="image/*" hidden></label> ' + (fondo ? '<button class="b d" id="fQuitar">Quitar fondo</button>' : '') +
@@ -1125,6 +1138,41 @@ function vConfig(){
   };
   // Fondo de temporada: se reduce y comprime en el navegador (documento de
   // Firestore < 1 MB); al estar difuminado no se necesita más resolución.
+  // Entregas a domicilio: ubicación del restaurante, radio y tiempos
+  var ePunto = ent.ok ? { lat: ent.lat, lng: ent.lng } : null, eMapa = null, ePin = null, eCirc = null;
+  function eEjemplo(){
+    var cfgTmp = { entrega: { lat: 0, lng: 0, radioKm: num($('eRadio').value), prepMin: num($('ePrep').value), minPorKm: num($('eMinKm').value) } };
+    $('eEj').textContent = 'Ejemplo: a 2 km el cliente verá "llega en aprox. ' + E.etaTxt(E.etaMin(cfgTmp, 2)) + '"; en el límite (' + (num($('eRadio').value) || 4) + ' km), ' + E.etaTxt(E.etaMin(cfgTmp, num($('eRadio').value) || 4)) + '.';
+    if (eCirc) eCirc.setRadius((num($('eRadio').value) || 4) * 1000);
+  }
+  function ePoner(lat, lng){
+    ePunto = { lat: lat, lng: lng };
+    $('eCoord').textContent = 'Ubicación: ' + lat.toFixed(5) + ', ' + lng.toFixed(5) + ' (falta guardar)';
+    if (!eMapa) return;
+    if (!ePin) { ePin = L.marker([lat, lng], { draggable: true, icon: E.pinIcono() }).addTo(eMapa); ePin.on('dragend', function(){ var q = ePin.getLatLng(); ePoner(q.lat, q.lng); }); } else ePin.setLatLng([lat, lng]);
+    if (!eCirc) eCirc = L.circle([lat, lng], { radius: (num($('eRadio').value) || 4) * 1000, color: '#4f6b3a', weight: 1, fillOpacity: .06 }).addTo(eMapa); else eCirc.setLatLng([lat, lng]);
+  }
+  if (window.L) {
+    eMapa = L.map('eMapa').setView(ePunto ? [ePunto.lat, ePunto.lng] : [17.0654, -96.7236], ePunto ? 13 : 12); // Oaxaca de Juárez
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '© OpenStreetMap' }).addTo(eMapa);
+    eMapa.on('click', function(ev){ ePoner(ev.latlng.lat, ev.latlng.lng); });
+    if (ePunto) { var pp = ePunto; ePoner(pp.lat, pp.lng); $('eCoord').textContent = 'Ubicación: ' + pp.lat.toFixed(5) + ', ' + pp.lng.toFixed(5); }
+  } else $('eMapa').innerHTML = '<p class="small mut" style="padding:10px">No se pudo cargar el mapa (sin conexión). Puedes usar el botón de ubicación.</p>';
+  ['eRadio', 'ePrep', 'eMinKm'].forEach(function(id){ $(id).oninput = eEjemplo; });
+  eEjemplo();
+  $('eAqui').onclick = function(){
+    if (!navigator.geolocation) return toast('Este dispositivo no permite obtener la ubicación.');
+    toast('Buscando ubicación…');
+    navigator.geolocation.getCurrentPosition(function(pos){ ePoner(pos.coords.latitude, pos.coords.longitude); if (eMapa) eMapa.setView([pos.coords.latitude, pos.coords.longitude], 15); },
+      function(){ toast('No se pudo obtener la ubicación (revisa el permiso). Puedes tocar el mapa.', 5000); }, { enableHighAccuracy: true, timeout: 15000 });
+  };
+  $('eOk').onclick = function(){
+    var r = num($('eRadio').value), pr = num($('ePrep').value), mk = num($('eMinKm').value);
+    if (!(r > 0)) return alert('El radio debe ser mayor a 0.');
+    var d = { radioKm: r, prepMin: pr != null ? pr : 20, minPorKm: mk > 0 ? mk : 4 };
+    if (ePunto) { d.lat = +ePunto.lat.toFixed(6); d.lng = +ePunto.lng.toFixed(6); }
+    Store.put('config', { id: 'general', entrega: d }).then(function(){ toast('Entregas guardadas'); if (ePunto) $('eCoord').textContent = 'Ubicación: ' + ePunto.lat.toFixed(5) + ', ' + ePunto.lng.toFixed(5); });
+  };
   $('fImg').onchange = function(){
     var f = this.files[0]; this.value = ''; if (!f) return;
     $('fMsg').textContent = 'Procesando imagen…';

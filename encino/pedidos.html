@@ -39,11 +39,15 @@ input,select,textarea{width:100%;padding:10px;border:1px solid var(--line);borde
 .st{font-size:1.2rem;font-weight:700;text-align:center;margin:10px 0}
 .mut{color:var(--mut)}.bad{color:var(--bad)}
 a{color:var(--acc)}
+.mapa{height:260px;border-radius:10px;border:1px solid var(--line);margin-top:8px;z-index:0}
+.ok{color:var(--acc)}
 </style>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
 </head>
 <body>
 <div class="wrap" id="app"><p class="sub">Cargando…</p></div>
 <div class="bar" id="bar" hidden><div class="in"><div style="flex:1"><b id="barTot">$0.00</b><div class="mut" id="barN" style="font-size:.8rem"></div></div><button class="btn" id="barBtn">Continuar</button></div></div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
 <script src="config.js"></script>
@@ -129,23 +133,90 @@ a{color:var(--acc)}
     h += '<div class="box"><label>Nombre *</label><input id="fNom" autocomplete="name"><label>Teléfono *</label><input id="fTel" type="tel" autocomplete="tel">' +
       '<div class="row"><div><label>Entrega</label><select id="fTipo"><option value="recoger">Paso a recoger</option><option value="domicilio">A domicilio</option></select></div>' +
       '<div><label>¿A qué hora?</label><input id="fHora" type="time"></div></div>' +
-      '<div id="dirBox" hidden><label>Dirección *</label><textarea id="fDir" rows="2"></textarea></div>' +
+      '<div id="dirBox" hidden>' + (E.entregaCfg(cfg).ok ? '<label>¿Dónde entregamos? *</label><button class="btn" id="miUbic" type="button" style="width:100%">📍 Usar mi ubicación</button>' +
+        '<div class="mapa" id="mapa"></div><p class="mut" style="font-size:.8rem;margin:4px 0">También puedes tocar el mapa o arrastrar el pin.</p><p id="distInfo"></p>' : '') +
+        '<label>Dirección y referencias *</label><textarea id="fDir" rows="2" placeholder="Calle, número, colonia, entre calles, color de la casa…"></textarea></div>' +
       '<label>Notas (sin cebolla, etc.)</label><textarea id="fNotas" rows="2"></textarea><p id="fErr" class="bad"></p>' +
       '<button class="btn" id="volver" style="background:transparent;color:var(--acc);padding-left:0">← Seguir agregando</button></div>';
     app.innerHTML = h;
-    document.getElementById('fTipo').onchange = function(){ document.getElementById('dirBox').hidden = this.value !== 'domicilio'; };
+    document.getElementById('fTipo').onchange = function(){ document.getElementById('dirBox').hidden = this.value !== 'domicilio'; if (this.value === 'domicilio') iniciarMapa(); infoEntrega(); };
     document.getElementById('volver').onclick = function(){ paso = 'menu'; pinta(); };
     pintaBar();
+  }
+  // ── Ubicación de entrega (mapa) ──────────────────────────────────────
+  var mapa = null, pin = null, ubic = null;
+  function iniciarMapa(){
+    var e = E.entregaCfg(cfg), div = document.getElementById('mapa');
+    if (!e.ok || !div) return;
+    document.getElementById('miUbic').onclick = usarMiUbicacion;
+    if (!window.L) { div.innerHTML = '<p class="mut" style="padding:10px">No se pudo cargar el mapa. Usa el botón de arriba.</p>'; return; }
+    if (mapa) { mapa.remove(); mapa = null; pin = null; }
+    mapa = L.map(div).setView(ubic ? [ubic.lat, ubic.lng] : [e.lat, e.lng], 14);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '© OpenStreetMap' }).addTo(mapa);
+    L.circle([e.lat, e.lng], { radius: e.radioKm * 1000, color: '#4f6b3a', weight: 1, fillOpacity: .06 }).addTo(mapa);
+    L.circleMarker([e.lat, e.lng], { radius: 7, color: '#4f6b3a', fillColor: '#4f6b3a', fillOpacity: 1 }).addTo(mapa).bindTooltip(cfg.nombre);
+    mapa.on('click', function(ev){ ponerUbic(ev.latlng.lat, ev.latlng.lng); });
+    if (ubic) ponerUbic(ubic.lat, ubic.lng, true);
+    setTimeout(function(){ mapa.invalidateSize(); }, 100);
+  }
+  function ponerUbic(lat, lng, sinDireccion){
+    ubic = { lat: lat, lng: lng };
+    if (mapa) {
+      if (!pin) { pin = L.marker([lat, lng], { draggable: true, icon: E.pinIcono() }).addTo(mapa); pin.on('dragend', function(){ var q = pin.getLatLng(); ponerUbic(q.lat, q.lng); }); }
+      else pin.setLatLng([lat, lng]);
+    }
+    infoEntrega();
+    if (!sinDireccion) direccionDe(lat, lng);
+  }
+  function usarMiUbicacion(){
+    var info = document.getElementById('distInfo');
+    if (!navigator.geolocation) { info.innerHTML = '<span class="bad">Tu navegador no permite ubicar. Toca el mapa para marcar el lugar.</span>'; return; }
+    info.textContent = 'Buscando tu ubicación…';
+    navigator.geolocation.getCurrentPosition(function(pos){
+      ponerUbic(pos.coords.latitude, pos.coords.longitude);
+      if (mapa) mapa.setView([pos.coords.latitude, pos.coords.longitude], 16);
+    }, function(){ info.innerHTML = '<span class="bad">No pudimos obtener tu ubicación (revisa que el permiso esté activado). Toca el mapa para marcar el lugar.</span>'; },
+    { enableHighAccuracy: true, timeout: 15000 });
+  }
+  // Rellena la dirección con la calle aproximada (si el cliente no escribió nada)
+  function direccionDe(lat, lng){
+    var f = document.getElementById('fDir'); if (!f || f.value.trim()) return;
+    fetch('https://nominatim.openstreetmap.org/reverse?format=json&zoom=18&accept-language=es&lat=' + lat + '&lon=' + lng)
+      .then(function(r){ return r.json(); }).then(function(d){
+        var a = d && d.address || {}, t = [[a.road, a.house_number].filter(Boolean).join(' '), a.suburb || a.neighbourhood || a.quarter].filter(Boolean).join(', ');
+        if (t && !f.value.trim()) f.value = t + ' — ';
+      }).catch(function(){});
+  }
+  // Distancia, tiempo y si está dentro de la zona. Devuelve null si no aplica.
+  function estadoEntrega(){
+    var e = E.entregaCfg(cfg), tipo = document.getElementById('fTipo');
+    if (!tipo) return null;
+    if (tipo.value !== 'domicilio') return { km: 0, eta: e.prepMin, dentro: true };
+    if (!e.ok) return null;
+    if (!ubic) return { falta: true };
+    var km = E.distanciaKm(e, ubic);
+    return { km: km, eta: E.etaMin(cfg, km), dentro: km <= e.radioKm };
+  }
+  function infoEntrega(){
+    var info = document.getElementById('distInfo'), st = estadoEntrega(), e = E.entregaCfg(cfg);
+    if (!info || !st || st.falta) { if (info && st && st.falta) info.textContent = ''; return; }
+    info.innerHTML = st.dentro
+      ? '<span class="ok">✔ A ' + st.km.toFixed(1) + ' km · llega en aprox. <b>' + E.etaTxt(st.eta) + '</b></span>'
+      : '<span class="bad">✖ Está a ' + st.km.toFixed(1) + ' km y solo entregamos hasta ' + e.radioKm + ' km. Puedes elegir "Paso a recoger".</span>';
   }
   function enviar(){
     var v = function(id){ return document.getElementById(id).value.trim(); };
     var err = document.getElementById('fErr');
     if (!v('fNom') || !v('fTel')) { err.textContent = 'Nombre y teléfono son obligatorios.'; return; }
     if (v('fTipo') === 'domicilio' && !v('fDir')) { err.textContent = 'Escribe la dirección de entrega.'; return; }
+    var st = estadoEntrega();
+    if (st && st.falta) { err.textContent = 'Marca en el mapa dónde entregamos (o toca "Usar mi ubicación").'; return; }
+    if (st && !st.dentro) { err.textContent = 'Esa ubicación está fuera de nuestra zona de entrega (' + E.entregaCfg(cfg).radioKm + ' km).'; return; }
     var lineas = Object.keys(cart).map(function(k){ var l = linea(k); return l ? Object.assign(l, { cant: cart[k] }) : null; }).filter(Boolean);
     var btn = document.getElementById('barBtn'); btn.disabled = true;
     var p = { id: Store.uid(), estado: 'nuevo', creado: Date.now(), cliente: v('fNom'), telefono: v('fTel'), entrega: v('fTipo'),
       direccion: v('fDir'), hora: v('fHora'), notas: v('fNotas'), items: lineas, total: total() };
+    if (st) { p.etaMin = st.eta; if (v('fTipo') === 'domicilio' && ubic) { p.ubicacion = { lat: +ubic.lat.toFixed(6), lng: +ubic.lng.toFixed(6) }; p.distanciaKm = Math.round(st.km * 10) / 10; } }
     Store.put('pedidos', p).then(function(){
       try { localStorage.setItem('encino:miPedido', p.id); } catch(e){}
       cart = {}; verEstado(p.id);
@@ -159,7 +230,8 @@ a{color:var(--acc)}
       if (!p) { app.innerHTML = '<div class="box">No encontramos tu pedido.</div>'; return; }
       app.innerHTML = '<h1>' + esc(cfg.nombre) + '</h1><div class="box"><p class="mut" style="text-align:center">Pedido #' + esc(p.id.slice(-5).toUpperCase()) + ' · ' + esc(p.cliente) + '</p><div class="st">' + (ESTADOS[p.estado] || esc(p.estado)) + '</div>' +
         (p.motivo ? '<p style="text-align:center" class="mut">' + esc(p.motivo) + '</p>' : '') +
-        '<p style="text-align:center">Total: <b>' + money(p.total) + '</b></p>' + (cfg.telefono ? '<p style="text-align:center" class="mut">Dudas: ' + esc(cfg.telefono) + '</p>' : '') +
+        '<p style="text-align:center">Total: <b>' + money(p.total) + '</b></p>' +
+        (p.etaMin && ['nuevo', 'aceptado'].indexOf(p.estado) >= 0 ? '<p style="text-align:center" class="mut">' + (p.entrega === 'domicilio' ? '🛵 Tiempo estimado de entrega: ' : '⏱️ Listo en aprox. ') + '<b>' + E.etaTxt(p.etaMin) + '</b></p>' : '') + (cfg.telefono ? '<p style="text-align:center" class="mut">Dudas: ' + esc(cfg.telefono) + '</p>' : '') +
         '<p style="text-align:center"><button class="btn" id="nuevo">Hacer otro pedido</button></p></div>';
       document.getElementById('nuevo').onclick = function(){ try { localStorage.removeItem('encino:miPedido'); } catch(e){} location.reload(); };
     });
