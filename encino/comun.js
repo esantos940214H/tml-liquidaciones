@@ -35,6 +35,21 @@
   function dkey(ts){ var d = new Date(ts); return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0'); }
   function hm(d){ return String(d.getHours()).padStart(2,'0') + ':' + String(d.getMinutes()).padStart(2,'0'); }
 
+  // Variantes de un platillo (ej. chilaquiles solos / con pollo / con
+  // tasajo), cada una con su precio. Vacío = platillo de precio único.
+  function variantes(item){ return Array.isArray(item.variantes) ? item.variantes.filter(function(v){ return v && v.nombre; }) : []; }
+  function precioMin(item){
+    var vs = variantes(item);
+    if (!vs.length) return Number(item.precio) || 0;
+    return Math.min.apply(null, vs.map(function(v){ return Number(v.precio) || 0; }));
+  }
+  function precioTxt(item){
+    var vs = variantes(item);
+    if (!vs.length) return money(item.precio);
+    var min = precioMin(item), iguales = vs.every(function(v){ return (Number(v.precio) || 0) === min; });
+    return (iguales ? '' : 'desde ') + money(min);
+  }
+
   // ¿En qué menús aparece el platillo? (vacío = en todos)
   function enMenu(item, menuId){
     var ms = Array.isArray(item.menus) ? item.menus : [];
@@ -96,6 +111,8 @@
     '.c-it{display:flex;gap:12px;align-items:baseline;padding:9px 0;border-bottom:1px dashed var(--line)}.c-it:last-child{border-bottom:0}',
     '.c-it .n{flex:1;font-weight:600}.c-it .d{display:block;font-weight:400;color:var(--mut);font-size:.88rem;margin-top:2px}',
     '.c-it .p{white-space:nowrap;font-family:system-ui,sans-serif;font-weight:700}',
+    '.c-vars{display:block;margin-top:6px;font-weight:400}.c-var{display:flex;gap:10px;justify-content:space-between;font-family:system-ui,sans-serif;font-size:.88rem;padding:2px 0 2px 12px;border-left:2px solid var(--line)}',
+    '.c-var b{white-space:nowrap}',
     '.c-foot{text-align:center;color:var(--mut);font:.8rem system-ui,sans-serif;margin-top:24px}',
     '.c-foot a{color:var(--acc)}'
   ].join('\n');
@@ -120,7 +137,10 @@
       porCategoria(its).forEach(function(g){
         h += '<div class="c-cat"><h3>' + esc(g.categoria) + '</h3>';
         g.items.forEach(function(i){
-          h += '<div class="c-it"><span class="n">' + esc(i.nombre) + (i.descripcion ? '<span class="d">' + esc(i.descripcion) + '</span>' : '') + '</span><span class="p">' + money(i.precio) + '</span></div>';
+          var vs = variantes(i);
+          h += '<div class="c-it"><span class="n">' + esc(i.nombre) + (i.descripcion ? '<span class="d">' + esc(i.descripcion) + '</span>' : '') +
+            (vs.length ? '<span class="c-vars">' + vs.map(function(v){ return '<span class="c-var"><span>' + esc(v.nombre) + '</span><b>' + money(v.precio) + '</b></span>'; }).join('') + '</span>' : '') +
+            '</span><span class="p">' + (vs.length ? '' : money(i.precio)) + '</span></div>';
         });
         h += '</div>';
       });
@@ -141,7 +161,7 @@
 
   window.Encino = {
     DIAS: DIAS, DEFAULT_CFG: DEFAULT_CFG, cfgFrom: cfgFrom, money: money, esc: esc, dkey: dkey, hm: hm,
-    enMenu: enMenu, menuActual: menuActual, diasTxt: diasTxt, porCategoria: porCategoria,
+    variantes: variantes, precioMin: precioMin, precioTxt: precioTxt, enMenu: enMenu, menuActual: menuActual, diasTxt: diasTxt, porCategoria: porCategoria,
     CARTA_CSS: CARTA_CSS, CARTA_JS: CARTA_JS, cartaBody: cartaBody, cartaEstatica: cartaEstatica
   };
 })();

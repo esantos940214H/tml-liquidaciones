@@ -13,7 +13,7 @@ Carpeta independiente: **no forma parte del despliegue de TML** (`build.sh` y
 
 ## Cómo funciona
 
-- **Menú:** alta manual o importando CSV (`nombre,categoria,tipo,precio,descripcion,menus`; en `menus` separa con `|`, p. ej. `vie-des|fds-des`). Un platillo sin menús asignados sale en todos (útil para bebidas).
+- **Menú:** alta manual o importando CSV (`nombre,categoria,tipo,precio,descripcion,menus,variantes`; en `menus` separa con `|`, p. ej. `vie-des|fds-des`; en `variantes` así: `Solos=95|Con pollo=120|Con tasajo=145`). Un platillo puede tener **variantes** con precio distinto (y su propio insumo extra que descuenta del inventario); al capturar la orden o pedir en línea se elige cuál. Un platillo sin menús asignados sale en todos (útil para bebidas).
 - **Órdenes por mesa:** toca la mesa → agrega alimentos y bebidas → "Enviar comanda" (imprime para cocina y barra por separado) → "Cobrar" (descuento, propina, forma de pago, cambio) → imprime el ticket (80 o 58 mm).
 - **Inventario:** cada platillo/bebida puede tener una "receta" de insumos. Al cobrar se descuenta del inventario; al cancelar un ticket se regresa. Las compras suman existencias y recalculan costo promedio. "Conteo" registra ajustes físicos (mermas).
 - **Históricos:** ventas por día y forma de pago, productos más vendidos, salida de bebidas (ventas vs compras vs ajustes), preparaciones (preparado vs vendido), tickets (reimprimir / cancelar) y **recomendaciones**: qué preparar según el promedio de ese día de la semana (últimas 8 semanas + 10%) y qué comprar para cubrir 7 días.
