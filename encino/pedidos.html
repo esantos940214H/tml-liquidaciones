@@ -132,14 +132,14 @@ a{color:var(--acc)}
     h += '<div class="it"><span class="n">Total</span><span class="p">' + money(total()) + '</span></div></div>';
     h += '<div class="box"><label>Nombre *</label><input id="fNom" autocomplete="name"><label>Teléfono *</label><input id="fTel" type="tel" autocomplete="tel">' +
       '<div class="row"><div><label>Entrega</label><select id="fTipo"><option value="recoger">Paso a recoger</option><option value="domicilio">A domicilio</option></select></div>' +
-      '<div><label>¿A qué hora?</label><input id="fHora" type="time"></div></div>' +
+      '<div id="horaBox"><label>¿A qué hora pasas? (opcional)</label><input id="fHora" type="time"></div></div>' +
       '<div id="dirBox" hidden>' + (E.entregaCfg(cfg).ok ? '<label>¿Dónde entregamos? *</label><button class="btn" id="miUbic" type="button" style="width:100%">📍 Usar mi ubicación</button>' +
         '<div class="mapa" id="mapa"></div><p class="mut" style="font-size:.8rem;margin:4px 0">También puedes tocar el mapa o arrastrar el pin.</p><p id="distInfo"></p>' : '') +
         '<label>Dirección y referencias *</label><textarea id="fDir" rows="2" placeholder="Calle, número, colonia, entre calles, color de la casa…"></textarea></div>' +
       '<label>Notas (sin cebolla, etc.)</label><textarea id="fNotas" rows="2"></textarea><p id="fErr" class="bad"></p>' +
       '<button class="btn" id="volver" style="background:transparent;color:var(--acc);padding-left:0">← Seguir agregando</button></div>';
     app.innerHTML = h;
-    document.getElementById('fTipo').onchange = function(){ document.getElementById('dirBox').hidden = this.value !== 'domicilio'; if (this.value === 'domicilio') iniciarMapa(); infoEntrega(); };
+    document.getElementById('fTipo').onchange = function(){ document.getElementById('dirBox').hidden = this.value !== 'domicilio'; if (this.value === 'domicilio') iniciarMapa(); document.getElementById('horaBox').hidden = this.value === 'domicilio'; infoEntrega(); };
     document.getElementById('volver').onclick = function(){ paso = 'menu'; pinta(); };
     pintaBar();
   }
@@ -228,11 +228,14 @@ a{color:var(--acc)}
     if (st && st.falta) { err.textContent = 'Marca en el mapa dónde entregamos (o toca "Usar mi ubicación").'; return; }
     if (st && st.pendiente) { err.textContent = 'Estamos calculando la ruta, intenta de nuevo en un segundo.'; return; }
     if (st && !st.dentro) { err.textContent = 'Esa ubicación está fuera de nuestra zona de entrega (' + E.entregaCfg(cfg).radioKm + ' km).'; return; }
+    // Hora para recoger (a domicilio no se pide: sale en cuanto está listo)
+    var hora = v('fTipo') === 'recoger' ? v('fHora') : '';
+    if (hora && hora < E.hm(new Date())) { err.textContent = 'Esa hora ya pasó; elige una hora más tarde o déjala vacía para lo antes posible.'; return; }
     var lineas = Object.keys(cart).map(function(k){ var l = linea(k); return l ? Object.assign(l, { cant: cart[k] }) : null; }).filter(Boolean);
     var btn = document.getElementById('barBtn'); btn.disabled = true;
     var p = { id: Store.uid(), estado: 'nuevo', creado: Date.now(), cliente: v('fNom'), telefono: v('fTel'), entrega: v('fTipo'),
-      direccion: v('fDir'), hora: v('fHora'), notas: v('fNotas'), items: lineas, total: total() };
-    if (st) { p.etaMin = st.eta; if (v('fTipo') === 'domicilio' && ubic) { p.ubicacion = { lat: +ubic.lat.toFixed(6), lng: +ubic.lng.toFixed(6) }; p.distanciaKm = Math.round(st.km * 10) / 10; p.porCalle = !!st.porCalle; } }
+      direccion: v('fTipo') === 'domicilio' ? v('fDir') : '', hora: hora, notas: v('fNotas'), items: lineas, total: total() };
+    if (st && !hora) { p.etaMin = st.eta; if (v('fTipo') === 'domicilio' && ubic) { p.ubicacion = { lat: +ubic.lat.toFixed(6), lng: +ubic.lng.toFixed(6) }; p.distanciaKm = Math.round(st.km * 10) / 10; p.porCalle = !!st.porCalle; } }
     Store.put('pedidos', p).then(function(){
       try { localStorage.setItem('encino:miPedido', p.id); } catch(e){}
       cart = {}; verEstado(p.id);
@@ -254,7 +257,8 @@ a{color:var(--acc)}
       app.innerHTML = '<h1>' + esc(cfg.nombre) + '</h1><div class="box"><p class="mut" style="text-align:center">Pedido #' + esc(p.id.slice(-5).toUpperCase()) + ' · ' + esc(p.cliente) + '</p><div class="st">' + (textoEstado(p) || esc(p.estado)) + '</div>' +
         (p.motivo ? '<p style="text-align:center" class="mut">' + esc(p.motivo) + '</p>' : '') +
         '<p style="text-align:center">Total: <b>' + money(p.total) + '</b></p>' +
-        (p.etaMin && ['nuevo', 'aceptado'].indexOf(p.estado) >= 0 ? '<p style="text-align:center" class="mut">' + (p.entrega === 'domicilio' ? '🛵 Tiempo estimado de entrega: ' : '⏱️ Listo en aprox. ') + '<b>' + E.etaTxt(p.etaMin) + '</b></p>' : '') + (cfg.telefono ? '<p style="text-align:center" class="mut">Dudas: ' + esc(cfg.telefono) + '</p>' : '') +
+        (p.etaMin && ['nuevo', 'aceptado'].indexOf(p.estado) >= 0 ? '<p style="text-align:center" class="mut">' + (p.entrega === 'domicilio' ? '🛵 Tiempo estimado de entrega: ' : '⏱️ Listo en aprox. ') + '<b>' + E.etaTxt(p.etaMin) + '</b></p>' : '') +
+        (p.hora && ['nuevo', 'aceptado'].indexOf(p.estado) >= 0 ? '<p style="text-align:center" class="mut">⏰ Tu pedido estará listo para las <b>' + esc(p.hora) + '</b></p>' : '') + (cfg.telefono ? '<p style="text-align:center" class="mut">Dudas: ' + esc(cfg.telefono) + '</p>' : '') +
         '<p style="text-align:center"><button class="btn" id="nuevo">Hacer otro pedido</button></p></div>';
       document.getElementById('nuevo').onclick = function(){ try { localStorage.removeItem('encino:miPedido'); } catch(e){} location.reload(); };
     });
