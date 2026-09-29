@@ -73,7 +73,15 @@ a{color:var(--acc)}
     var h = '<h1>' + esc(cfg.nombre) + '</h1><p class="sub">Ordena en línea' + (cfg.telefono ? ' · ' + esc(cfg.telefono) : '') + '</p><div class="tabs">';
     (cfg.menus || []).forEach(function(m){ h += '<button data-m="' + esc(m.id) + '"' + (m.id === menuSel ? ' class="on"' : '') + '>' + esc(m.nombre) + '</button>'; });
     h += '</div>';
-    var its = items().filter(function(i){ return E.enMenu(i, menuSel); });
+    var its = items().filter(function(i){ return E.enMenu(i, menuSel) && !i.esPaquete; });
+    var paqs = items().filter(function(i){ return i.esPaquete && E.enMenu(i, menuSel); });
+    var paqH = '';
+    paqs.forEach(function(p){
+      var vs = E.variantes(p);
+      paqH += '<div class="cat" style="border:2px dashed var(--acc)"><h3>🥐 ' + esc(p.nombre) + '</h3><p class="mut" style="margin:0 0 4px;font-size:.85rem">' + esc(p.descripcion || '') + ' Se agrega a un platillo de tu pedido (uno por platillo).</p>' +
+        (vs.length ? vs.map(function(v){ return '<div class="it var"><span class="n">' + esc(v.nombre) + '</span><span class="p">+' + money(v.precio) + '</span>' + qtyBtns(p.id + '|' + v.id) + '</div>'; }).join('')
+          : '<div class="it"><span class="n">' + esc(p.nombre) + '</span><span class="p">+' + money(p.precio) + '</span>' + qtyBtns(p.id) + '</div>') + '</div>';
+    });
     if (!its.length) h += '<div class="box mut">No hay platillos disponibles en este menú.</div>';
     E.porCategoria(its).forEach(function(g){
       h += '<div class="cat"><h3>' + esc(g.categoria) + '</h3>';
@@ -90,6 +98,7 @@ a{color:var(--acc)}
       });
       h += '</div>';
     });
+    if (its.length) h += paqH;
     app.innerHTML = h;
     pintaBar();
   }
@@ -102,7 +111,9 @@ a{color:var(--acc)}
   }
   function pintaDatos(){
     var h = '<h1>' + esc(cfg.nombre) + '</h1><p class="sub">Revisa tu pedido</p><div class="box">';
-    Object.keys(cart).forEach(function(k){ var l = linea(k); if (!l) return;
+    // platillos primero, paquetes al final
+    var esPaq = function(k){ var m = menu.find(function(x){ return x.id === k.split('|')[0]; }); return m && m.esPaquete ? 1 : 0; };
+    Object.keys(cart).sort(function(a, b){ return esPaq(a) - esPaq(b); }).forEach(function(k){ var l = linea(k); if (!l) return;
       h += '<div class="it"><span class="n">' + cart[k] + ' × ' + esc(l.nombre) + '</span><span class="p">' + money(l.precio * cart[k]) + '</span></div>'; });
     h += '<div class="it"><span class="n">Total</span><span class="p">' + money(total()) + '</span></div></div>';
     h += '<div class="box"><label>Nombre *</label><input id="fNom" autocomplete="name"><label>Teléfono *</label><input id="fTel" type="tel" autocomplete="tel">' +
@@ -149,7 +160,17 @@ a{color:var(--acc)}
     else if (t.dataset.mas) { cart[t.dataset.mas] = (cart[t.dataset.mas] || 0) + 1; pinta(); }
     else if (t.dataset.menos) { var k = t.dataset.menos; cart[k]--; if (cart[k] <= 0) delete cart[k]; pinta(); }
   });
-  document.getElementById('barBtn').onclick = function(){ if (paso === 'menu') { paso = 'datos'; pinta(); window.scrollTo(0,0); } else enviar(); };
+  // No más paquetes que platillos a los que se les puede agregar
+  function paquetesOk(){
+    var np = 0, nd = 0;
+    Object.keys(cart).forEach(function(k){ var m = menu.find(function(x){ return x.id === k.split('|')[0]; }); if (!m) return;
+      if (m.esPaquete) np += cart[k]; else if (E.paquetesPara(m, menu).length) nd += cart[k]; });
+    return np <= nd;
+  }
+  document.getElementById('barBtn').onclick = function(){
+    if (!paquetesOk()) { alert('El paquete se agrega a un platillo: agrega al menos un platillo por cada paquete.'); return; }
+    if (paso === 'menu') { paso = 'datos'; pinta(); window.scrollTo(0,0); } else enviar();
+  };
 
   Store.init().then(function(){
     Store.watch('config', function(d){ cfg = E.cfgFrom(d); document.title = 'Ordenar en línea — ' + cfg.nombre; if (paso === 'menu') pinta(); });

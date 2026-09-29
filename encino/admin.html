@@ -279,9 +279,10 @@ function abrirOrden(id){
 function pintaItems(){
   if (!OM) return;
   var base = S.menu.filter(function(i){ return E.enMenu(i, oFiltro.menu); });
-  var cats = ['Todo', 'Alimentos', 'Bebidas'].concat(Array.from(new Set(base.map(function(i){ return i.categoria; }).filter(Boolean))).sort());
+  var cats = ['Todo', 'Alimentos', 'Bebidas'].concat(Array.from(new Set(base.filter(function(i){ return !i.esPaquete; }).map(function(i){ return i.categoria; }).filter(Boolean))).sort());
   $('oCats').innerHTML = cats.map(function(c){ return '<button data-c="' + esc(c) + '"' + (c === oFiltro.cat ? ' class="on"' : '') + '>' + esc(c) + '</button>'; }).join('');
   var its = base.filter(function(i){
+    if (i.esPaquete) return false; // los paquetes se agregan desde el renglón del platillo
     if (oFiltro.cat === 'Alimentos' && i.tipo === 'bebida') return false;
     if (oFiltro.cat === 'Bebidas' && i.tipo !== 'bebida') return false;
     if (['Todo', 'Alimentos', 'Bebidas'].indexOf(oFiltro.cat) < 0 && i.categoria !== oFiltro.cat) return false;
@@ -307,7 +308,10 @@ function pintaOrden(){
   $('oTit').textContent = etiquetaOrden(o) + ' · abierta hace ' + minutos(o.abierta);
   var its = o.items || [];
   $('oLines').innerHTML = its.length ? its.map(function(l){
-    return '<div class="ln"><span class="nm">' + (l.enviado ? '✔︎ ' : '') + esc(l.nombre) + (l.nota ? '<span class="nt">📝 ' + esc(l.nota) + '</span>' : '') + '<span class="small mut">' + money(l.precio) + ' c/u</span></span>' +
+    var mi = S.menu.find(function(x){ return x.id === l.menuId; });
+    var puedePaq = !l.paqueteDe && E.paquetesPara(mi, S.menu).length && !its.some(function(x){ return x.paqueteDe === l.lid; });
+    return '<div class="ln"' + (l.paqueteDe ? ' style="padding-left:18px"' : '') + '><span class="nm">' + (l.enviado ? '✔︎ ' : '') + esc(l.nombre) +
+      (puedePaq ? ' <button class="b s" data-a="paq" data-l="' + l.lid + '" title="Agregar paquete">🥐 ＋Paquete</button>' : '') + (l.nota ? '<span class="nt">📝 ' + esc(l.nota) + '</span>' : '') + '<span class="small mut">' + money(l.precio) + ' c/u</span></span>' +
       '<span class="q"><button data-a="menos" data-l="' + l.lid + '">−</button><b>' + l.cant + '</b><button data-a="mas" data-l="' + l.lid + '">+</button></span>' +
       '<b style="min-width:74px;text-align:right">' + money(l.precio * l.cant) + '</b><button class="b s" data-a="nota" data-l="' + l.lid + '" title="Nota">📝</button><button class="b s" data-a="quitar" data-l="' + l.lid + '" title="Quitar">🗑</button></div>';
   }).join('') : '<p class="mut">Toca un platillo o bebida para agregarlo.</p>';
@@ -327,7 +331,7 @@ function agregar(menuId){
 function agregarLinea(m, v){
   var o = getOrden(OM.dataset.id); if (!o) return;
   var items = (o.items || []).slice(), varId = v ? v.id : null;
-  var l = items.find(function(x){ return x.menuId === m.id && (x.varId || null) === varId && !x.nota && !x.enviado; });
+  var l = items.find(function(x){ return x.menuId === m.id && (x.varId || null) === varId && !x.nota && !x.enviado && !x.paqueteDe; });
   if (l) l.cant++;
   else items.push({ lid: Store.uid(), menuId: m.id, varId: varId, nombre: m.nombre + (v ? ' · ' + v.nombre : ''), precio: Number(v ? v.precio : m.precio) || 0, tipo: m.tipo, categoria: m.categoria || '', cant: 1 });
   Store.put('ordenes', { id: o.id, items: items }).then(pintaOrden);
@@ -340,11 +344,33 @@ function accionLinea(a, lid){
   if (a === 'mas') l.cant++;
   else if (a === 'menos') { if (l.cant > 1) l.cant--; else a = 'quitar'; }
   if (a === 'nota') { var n = prompt('Nota para cocina (ej. sin cebolla, término medio):', l.nota || ''); if (n === null) return; l.nota = n.trim(); l.enviado = false; }
+  if (a === 'paq') return elegirPaquete(o, l);
   if (a === 'quitar') {
     if (l.enviado && !confirm('Este renglón ya se envió a cocina. ¿Quitarlo de la cuenta?')) return;
-    items = items.filter(function(x){ return x.lid !== lid; });
+    // quitar un platillo quita también su paquete
+    items = items.filter(function(x){ return x.lid !== lid && x.paqueteDe !== lid; });
   }
   Store.put('ordenes', { id: o.id, items: items }).then(pintaOrden);
+}
+// Agrega un paquete (ej. café, pan y jugo o fruta) ligado a un platillo de la orden
+function elegirPaquete(o, l){
+  var mi = S.menu.find(function(x){ return x.id === l.menuId; });
+  var ops = [];
+  E.paquetesPara(mi, S.menu).forEach(function(p){
+    var vs = E.variantes(p);
+    if (vs.length) vs.forEach(function(v){ ops.push({ p: p, v: v }); }); else ops.push({ p: p, v: null });
+  });
+  var md = modal('<h2>Paquete para ' + esc(l.nombre) + '</h2><div class="items" id="pqSel">' + ops.map(function(x, k){
+    return '<button class="item" data-k="' + k + '"><div class="nm">' + esc(x.p.nombre) + (x.v ? ' · ' + esc(x.v.nombre) : '') + '</div><div class="pr">+' + money(x.v ? x.v.precio : x.p.precio) + '</div>' + (x.p.descripcion ? '<div class="small mut">' + esc(x.p.descripcion) + '</div>' : '') + '</button>'; }).join('') + '</div>');
+  $('pqSel').onclick = function(e){
+    var b = e.target.closest('[data-k]'); if (!b) return;
+    var x = ops[+b.dataset.k], o2 = getOrden(o.id); md.close(); if (!o2) return;
+    var items = (o2.items || []).slice(), ix = items.findIndex(function(y){ return y.lid === l.lid; });
+    if (ix < 0) return;
+    items.splice(ix + 1, 0, { lid: Store.uid(), menuId: x.p.id, varId: x.v ? x.v.id : null, paqueteDe: l.lid, nombre: '↳ ' + x.p.nombre + (x.v ? ' · ' + x.v.nombre : ''),
+      precio: Number(x.v ? x.v.precio : x.p.precio) || 0, tipo: 'alimento', categoria: x.p.categoria || '', cant: items[ix].cant });
+    Store.put('ordenes', { id: o2.id, items: items }).then(pintaOrden);
+  };
 }
 function comanda(){
   var o = getOrden(OM.dataset.id); if (!o) return;
@@ -502,7 +528,7 @@ function vMenu(){
     its.forEach(function(i){
       var ms = (i.menus || []).length ? i.menus.map(function(id){ var m = S.config.menus.find(function(x){ return x.id === id; }); return m ? m.nombre : id; }).join('<br>') : '<span class="mut">Todos</span>';
       var st = stockPlatillo(i);
-      h += '<tr><td><b>' + esc(i.nombre) + '</b>' + (i.disponible === false ? ' <span class="pill bad">No disponible</span>' : '') + (i.enLinea === false ? ' <span class="pill warn">No en línea</span>' : '') + (i.descripcion ? '<div class="small mut">' + esc(i.descripcion) + '</div>' : '') + '</td>' +
+      h += '<tr><td><b>' + esc(i.nombre) + '</b>' + (i.esPaquete ? ' <span class="pill">🥐 Paquete</span>' : '') + (i.disponible === false ? ' <span class="pill bad">No disponible</span>' : '') + (i.enLinea === false ? ' <span class="pill warn">No en línea</span>' : '') + (i.descripcion ? '<div class="small mut">' + esc(i.descripcion) + '</div>' : '') + '</td>' +
         '<td>' + esc(i.categoria || '') + '</td><td>' + (i.tipo === 'bebida' ? '🥤 Bebida' : '🍽️ Alimento') + '</td><td class="small">' + ms + '</td><td class="n">' + (E.variantes(i).length ? E.variantes(i).map(function(v){ return '<div class="small">' + esc(v.nombre) + ' <b>' + money(v.precio) + '</b></div>'; }).join('') : money(i.precio)) + '</td>' +
         '<td class="small">' + ((i.receta || []).length ? (st != null ? 'Alcanza para ' + st : '') + '<br>' + i.receta.length + ' insumo(s)' : '<span class="mut">No descuenta</span>') + '</td>' +
         '<td class="n"><button class="b s" data-ed="' + i.id + '">Editar</button></td></tr>';
@@ -537,6 +563,9 @@ function editarPlatillo(id){
     '<label class="f">¿En qué menús aparece? (si no marcas ninguno, aparece en todos)</label><div id="pMenus">' +
     S.config.menus.map(function(x){ return '<label style="display:block;margin:3px 0"><input type="checkbox" value="' + esc(x.id) + '"' + ((m.menus || []).indexOf(x.id) >= 0 ? ' checked' : '') + '> ' + esc(x.nombre) + '</label>'; }).join('') + '</div>' +
     '<div class="toolbar" style="margin-top:10px"><label><input type="checkbox" id="pDisp"' + (m.disponible !== false ? ' checked' : '') + '> Disponible</label><label><input type="checkbox" id="pCarta"' + (m.enCarta !== false ? ' checked' : '') + '> En carta QR</label><label><input type="checkbox" id="pLinea"' + (m.enLinea !== false ? ' checked' : '') + '> Se puede ordenar en línea</label></div>' +
+    '<div class="toolbar"><label title="No se vende solo: se ofrece como agregado en los alimentos de los mismos menús"><input type="checkbox" id="pPaq"' + (m.esPaquete ? ' checked' : '') + '> 🥐 Es un <b>paquete / complemento</b> (ej. "Agranda tu paquete +$50: café, pan y jugo o fruta")</label>' +
+    '<label><input type="checkbox" id="pSinPaq"' + (m.sinPaquete ? ' checked' : '') + '> No ofrecer paquete con este platillo</label></div>' +
+    '<p class="small mut" style="margin-top:0">Un paquete se ofrece en todos los alimentos de los menús donde está el paquete (ej. márcalo solo en los menús de desayuno). Usa las variantes para las opciones (ej. "Con jugo" $50 / "Con fruta" $50) y la receta para lo que descuenta (café, pan…).</p>' +
     '<h3>Descuento de inventario por cada venta</h3><p class="small mut">Qué insumos (y cuánto) salen del inventario cada vez que se vende 1. Para una bebida embotellada normalmente es 1 pieza de esa misma bebida.</p>' +
     '<div id="pRec"></div><div class="toolbar"><button class="b s" id="pAddRec">＋ Insumo</button>' + (!id ? '<label class="small"><input type="checkbox" id="pCrearIns"> Crear también un insumo de inventario con este nombre (1 pza por venta)</label>' : '') + '</div>' +
     '<div class="foot">' + (id ? '<button class="b d" id="pDel">Eliminar</button><span style="flex:1"></span>' : '') + '<button class="b" id="pNo">Cancelar</button><button class="b p" id="pOk">Guardar</button></div>');
@@ -578,7 +607,7 @@ function editarPlatillo(id){
     if (variantesD.length) pre = Math.min.apply(null, variantesD.map(function(v){ return v.precio; }));
     if (pre == null || pre < 0) return alert('Falta el precio (puede ser 0 si es cortesía).');
     var d = { id: id || Store.uid(), nombre: nom, tipo: $('pTipo').value, categoria: $('pCat').value.trim(), precio: pre, descripcion: $('pDes').value.trim(),
-      disponible: $('pDisp').checked, enCarta: $('pCarta').checked, enLinea: $('pLinea').checked,
+      disponible: $('pDisp').checked, enCarta: $('pCarta').checked, enLinea: $('pLinea').checked, esPaquete: $('pPaq').checked, sinPaquete: $('pSinPaq').checked,
       menus: Array.from($('pMenus').querySelectorAll('input:checked')).map(function(x){ return x.value; }),
       receta: rec.filter(function(r){ return r.insumoId && r.cant > 0; }), variantes: variantesD };
     var pr = Promise.resolve();
@@ -1009,11 +1038,13 @@ function cargarDemo(){
   [['Coca-Cola 355 ml', 'Bebidas', 'pza', 48, 12, 11], ['Cerveza Victoria', 'Bebidas', 'pza', 60, 24, 17], ['Agua natural 600 ml', 'Bebidas', 'pza', 36, 12, 6], ['Café de grano', 'Abarrotes', 'kg', 2, 0.5, 280],
    ['Huevo', 'Abarrotes', 'pza', 180, 60, 2.8], ['Arrachera', 'Carnes', 'kg', 8, 3, 320], ['Tortilla de maíz', 'Abarrotes', 'kg', 5, 2, 24], ['Jugo de naranja (litro)', 'Bebidas', 'lt', 6, 3, 30]]
     .forEach(function(r){ var i = { id: Store.uid(), nombre: r[0], categoria: r[1], unidad: r[2], existencia: r[3], minimo: r[4], costo: r[5] }; ins[r[0]] = i.id; ps.push(Store.put('insumos', i)); });
-  var M = function(nombre, categoria, tipo, precio, menus, receta, desc, variantes){ ps.push(Store.put('menu', { id: Store.uid(), nombre: nombre, categoria: categoria, tipo: tipo, precio: precio, menus: menus, descripcion: desc || '', disponible: true, enLinea: true, enCarta: true, receta: receta, variantes: variantes || [] })); };
+  var M = function(nombre, categoria, tipo, precio, menus, receta, desc, variantes, extra){ ps.push(Store.put('menu', Object.assign({ id: Store.uid(), nombre: nombre, categoria: categoria, tipo: tipo, precio: precio, menus: menus, descripcion: desc || '', disponible: true, enLinea: true, enCarta: true, receta: receta, variantes: variantes || [] }, extra || {}))); };
   M('Chilaquiles verdes', 'Desayunos', 'alimento', 95, ['vie-des', 'fds-des'], [{ insumoId: ins['Tortilla de maíz'], cant: 0.15 }], 'Con crema, queso y cebolla', [
     { id: Store.uid(), nombre: 'Solos', precio: 95, receta: [] }, { id: Store.uid(), nombre: 'Con huevo', precio: 115, receta: [{ insumoId: ins['Huevo'], cant: 2 }] },
     { id: Store.uid(), nombre: 'Con pollo', precio: 125, receta: [] }, { id: Store.uid(), nombre: 'Con tasajo', precio: 145, receta: [] },
     { id: Store.uid(), nombre: 'Con cecina', precio: 145, receta: [] }, { id: Store.uid(), nombre: 'Con arrachera', precio: 165, receta: [{ insumoId: ins['Arrachera'], cant: 0.15 }] }]);
+  M('Agranda tu paquete', 'Paquetes', 'alimento', 50, ['vie-des', 'fds-des'], [{ insumoId: ins['Café de grano'], cant: 0.015 }], 'Café, pan y jugo o fruta', [
+    { id: Store.uid(), nombre: 'Con jugo', precio: 50, receta: [{ insumoId: ins['Jugo de naranja (litro)'], cant: 0.25 }] }, { id: Store.uid(), nombre: 'Con fruta', precio: 50, receta: [] }], { esPaquete: true });
   M('Huevos al gusto', 'Desayunos', 'alimento', 110, ['vie-des', 'fds-des'], [{ insumoId: ins['Huevo'], cant: 2 }], 'Rancheros, a la mexicana o con jamón');
   M('Molletes', 'Desayunos', 'alimento', 95, ['fds-des'], [], 'Con pico de gallo');
   M('Arrachera Encino', 'Cortes', 'alimento', 285, ['vie-com', 'fds-com'], [{ insumoId: ins['Arrachera'], cant: 0.3 }, { insumoId: ins['Tortilla de maíz'], cant: 0.1 }], '300 g con guacamole y frijoles');
