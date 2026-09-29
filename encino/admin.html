@@ -481,7 +481,7 @@ function verTicket(v, auto){
 var pedFiltro = 'activos';
 function vPedidos(){
   var url = urlDe('pedidos.html');
-  var lista = S.pedidos.filter(function(p){ return pedFiltro === 'todos' || ['nuevo', 'aceptado', 'listo'].indexOf(p.estado) >= 0; }).sort(function(a, b){ return b.creado - a.creado; });
+  var lista = S.pedidos.filter(function(p){ return pedFiltro === 'todos' || ['nuevo', 'aceptado', 'listo', 'enCamino'].indexOf(p.estado) >= 0; }).sort(function(a, b){ return b.creado - a.creado; });
   var h = '<div class="toolbar"><h2 style="margin:0">Pedidos en línea</h2><span class="sp"></span><select id="pF"><option value="activos">Activos</option><option value="todos">Todos</option></select>' +
     '<a class="b" href="pedidos.html" target="_blank">Abrir página de pedidos ↗</a></div>';
   if (!S.config.pedidosActivos) h += '<div class="card"><span class="pill warn">Pausado</span> La página pública no está recibiendo pedidos (actívalo en Configuración).</div>';
@@ -489,7 +489,7 @@ function vPedidos(){
   h += '<p class="small mut">Liga para clientes: <code>' + esc(url) + '</code></p>';
   if (!lista.length) h += '<p class="mut">No hay pedidos.</p>';
   lista.forEach(function(p){
-    var est = { nuevo: '<span class="pill bad">Nuevo</span>', aceptado: '<span class="pill busy">En preparación</span>', listo: '<span class="pill">' + (p.entrega === 'domicilio' ? 'En camino' : 'Listo para recoger') + '</span>', entregado: '<span class="pill">Entregado</span>', rechazado: '<span class="pill bad">Rechazado</span>' }[p.estado] || esc(p.estado);
+    var est = { nuevo: '<span class="pill bad">Nuevo</span>', aceptado: '<span class="pill busy">En preparación</span>', listo: '<span class="pill">' + (p.entrega === 'domicilio' ? 'Listo · falta salir' : 'Listo para recoger') + '</span>', enCamino: '<span class="pill">🛵 En camino</span>', entregado: '<span class="pill">Entregado</span>', rechazado: '<span class="pill bad">Rechazado</span>' }[p.estado] || esc(p.estado);
     h += '<div class="ped ' + esc(p.estado) + '"' + (prepararYa(p) ? ' style="border:2px solid var(--bad)"' : '') + '><div class="toolbar" style="margin:0 0 6px"><b>' + esc(p.cliente) + '</b> ' + est + '<span class="mut small">#' + esc(p.id.slice(-5).toUpperCase()) + ' · ' + fecha(p.creado) + '</span><span class="sp"></span><b>' + money(p.total) + '</b></div>' +
       '<div class="small">📞 ' + esc(p.telefono) + ' · ' + (p.entrega === 'domicilio' ? '🛵 A domicilio: ' + esc(p.direccion) +
         (p.ubicacion ? ' · <b>' + p.distanciaKm + ' km' + (p.porCalle ? ' por calle' : ' en línea recta') + '</b> · <a href="https://www.google.com/maps/dir/?api=1&destination=' + Number(p.ubicacion.lat) + ',' + Number(p.ubicacion.lng) + '" target="_blank" rel="noopener">🗺️ Ver ruta</a>' : '') : '🏃 Pasa a recoger') +
@@ -498,7 +498,9 @@ function vPedidos(){
       '<div style="margin:6px 0">' + (p.items || []).map(function(i){ return i.cant + '× ' + esc(i.nombre); }).join(', ') + '</div>' + (p.notas ? '<div class="small" style="color:var(--warn)">📝 ' + esc(p.notas) + '</div>' : '') +
       '<div class="toolbar" style="margin:8px 0 0">' +
       (p.estado === 'nuevo' ? '<button class="b p" data-pa="aceptar" data-id="' + p.id + '">✔ Aceptar</button><button class="b d" data-pa="rechazar" data-id="' + p.id + '">Rechazar</button>' : '') +
-      (p.estado === 'aceptado' ? '<button class="b p" data-pa="listo" data-id="' + p.id + '">' + (p.entrega === 'domicilio' ? '🛵 Salió a entregar' : '✅ Listo para recoger') + '</button>' : '') +
+      (p.estado === 'aceptado' ? '<button class="b p" data-pa="listo" data-id="' + p.id + '">' + (p.entrega === 'domicilio' ? '✅ Listo' : '✅ Listo para recoger') + '</button>' : '') +
+      (p.estado === 'listo' && p.entrega === 'domicilio' ? '<button class="b p" data-pa="salio" data-id="' + p.id + '">🛵 Salió a entregar</button>' : '') +
+      (E.llegadaAprox(S.config, p) ? '<span class="small mut">Llega aprox. ' + E.hm(new Date(E.llegadaAprox(S.config, p))) + '</span>' : '') +
       (p.ordenId && getOrden(p.ordenId) ? '<button class="b" data-pa="orden" data-id="' + p.id + '">Ver orden / cobrar</button>' : '') + '</div></div>';
   });
   $('main').innerHTML = h;
@@ -516,7 +518,8 @@ function accionPedido(a, id){
   } else if (a === 'rechazar') {
     var mot = prompt('Motivo (lo verá el cliente):', 'No tenemos disponible el platillo'); if (mot === null) return;
     Store.put('pedidos', { id: id, estado: 'rechazado', motivo: mot });
-  } else if (a === 'listo') Store.put('pedidos', { id: id, estado: 'listo' });
+  } else if (a === 'listo') Store.put('pedidos', { id: id, estado: 'listo', listoEn: Date.now() });
+  else if (a === 'salio') Store.put('pedidos', { id: id, estado: 'enCamino', salioEn: Date.now() });
   else if (a === 'orden') abrirOrden(p.ordenId);
 }
 var pedVistos = null;
