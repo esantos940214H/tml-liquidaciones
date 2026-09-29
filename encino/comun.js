@@ -63,7 +63,10 @@
     if (!item || item.tipo === 'bebida' || item.esPaquete || item.sinPaquete) return [];
     return (menu || []).filter(function(p){ return p.esPaquete && p.disponible !== false && compartenMenu(p, item); });
   }
-  function opcionesPaquete(p){ var vs = variantes(p); return vs.length ? vs.map(function(v){ return v.nombre; }).join(' o ') : ''; }
+  // Texto de opciones del paquete para carta/inicio: si tiene descripción
+  // (ej. "Jugo o fruta, café o té y pan") basta con ella; si no, se listan
+  // las variantes.
+  function opcionesPaquete(p){ var vs = variantes(p); return !p.descripcion && vs.length ? vs.map(function(v){ return v.nombre; }).join(' o ') : ''; }
 
   // ¿En qué menús aparece el platillo? (vacío = en todos)
   function enMenu(item, menuId){
