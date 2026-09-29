@@ -32,6 +32,9 @@
     var c = Object.assign({}, DEFAULT_CFG, g);
     if (!Array.isArray(c.menus) || !c.menus.length) c.menus = DEFAULT_CFG.menus;
     if (!Array.isArray(c.categorias)) c.categorias = [];
+    // Fondo de temporada de la carta (documento aparte: la imagen pesa)
+    var f = (docs || []).find(function(d){ return d.id === 'fondo'; });
+    c.fondo = f && f.imagen ? { imagen: f.imagen, visibilidad: Number(f.visibilidad) || 35 } : null;
     return c;
   }
   function money(n){ return '$' + (Number(n) || 0).toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
@@ -140,7 +143,9 @@
     ':root{--bg:#f7f3ec;--card:#fffdf8;--ink:#2b2a26;--mut:#7a7466;--acc:#4f6b3a;--line:#e4dccd}',
     '@media (prefers-color-scheme:dark){:root{--bg:#171a15;--card:#1f231c;--ink:#ece8df;--mut:#a9a392;--acc:#a8c48c;--line:#343a2f}}',
     '*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font-family:Georgia,"Times New Roman",serif}',
-    '.c-wrap{max-width:720px;margin:0 auto;padding:24px 16px 48px}',
+    '.c-wrap{max-width:720px;margin:0 auto;padding:24px 16px 48px;position:relative;z-index:1}',
+    '.c-fondo{position:fixed;inset:-40px;z-index:0;background-size:cover;background-position:center;filter:blur(7px);pointer-events:none}',
+    '.c-fondo~.c-wrap h1,.c-fondo~.c-wrap .c-head p,.c-fondo~.c-wrap h2,.c-fondo~.c-wrap .c-hor,.c-fondo~.c-wrap .c-foot{text-shadow:0 0 6px var(--bg),0 0 2px var(--bg)}',
     '.c-head{text-align:center;margin-bottom:18px}.c-head h1{margin:0;font-size:2rem;letter-spacing:.04em;color:var(--acc)}',
     '.c-head p{margin:4px 0 0;color:var(--mut);font-family:system-ui,sans-serif;font-size:.85rem}',
     '.c-tabs{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;padding:6px 0 12px}',
@@ -155,7 +160,7 @@
     '.c-it .p{white-space:nowrap;font-family:system-ui,sans-serif;font-weight:700}',
     '.c-vars{display:block;margin-top:6px;font-weight:400}.c-var{display:flex;gap:10px;justify-content:space-between;font-family:system-ui,sans-serif;font-size:.88rem;padding:2px 0 2px 12px;border-left:2px solid var(--line)}',
     '.c-var b{white-space:nowrap}',
-    '.c-paq{border:2px dashed var(--acc);border-radius:14px;padding:10px 16px;margin:12px 0;font-family:system-ui,sans-serif}',
+    '.c-paq{background:var(--card);border:2px dashed var(--acc);border-radius:14px;padding:10px 16px;margin:12px 0;font-family:system-ui,sans-serif}',
     '.c-paq b{font-family:Georgia,serif;font-size:1.05rem;color:var(--acc)}.c-paq .pp{float:right;font-weight:700}.c-paq .d{color:var(--mut);font-size:.88rem;margin-top:2px}',
     '.c-foot{text-align:center;color:var(--mut);font:.8rem system-ui,sans-serif;margin-top:24px}',
     '.c-foot a{color:var(--acc)}',
@@ -170,7 +175,12 @@
     var visibles = items.filter(function(i){ return i.disponible !== false && i.enCarta !== false; });
     var actual = menuActual(cfg);
     var menus = cfg.menus || [];
-    var h = '<div class="c-wrap"><div class="c-head"><h1>' + esc(cfg.nombre) + '</h1>';
+    var h = '';
+    // Imagen difuminada de fondo; solo se aceptan imágenes guardadas por el sistema (data:image)
+    if (cfg.fondo && /^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+\/=]+$/.test(cfg.fondo.imagen)) {
+      h += '<div class="c-fondo" style="background-image:url(\'' + cfg.fondo.imagen + '\');opacity:' + Math.min(0.9, Math.max(0.05, cfg.fondo.visibilidad / 100)) + '"></div>';
+    }
+    h += '<div class="c-wrap"><div class="c-head"><h1>' + esc(cfg.nombre) + '</h1>';
     var sub = [cfg.direccion, cfg.telefono].filter(Boolean).map(esc).join(' · ');
     if (sub) h += '<p>' + sub + '</p>';
     h += '</div><div class="c-tabs">';
@@ -186,7 +196,7 @@
       if (!its.length) h += '<p class="c-hor">Sin platillos cargados todavía.</p>';
       paqs.forEach(function(p){
         var op = opcionesPaquete(p);
-        h += '<div class="c-paq"><span class="pp">+' + precioTxt(p) + '</span><b>' + esc(p.nombre) + '</b><div class="d">' + esc(p.descripcion || '') + (op ? (p.descripcion ? '. ' : '') + 'Elige: ' + esc(op) + '.' : '') + ' Aplica en cualquier platillo de este menú.</div></div>';
+        h += '<div class="c-paq"><span class="pp">+' + precioTxt(p) + '</span><b>' + esc(p.nombre) + '</b><div class="d">' + esc(p.descripcion || '') + (op ? (p.descripcion ? '. ' : '') + 'Elige: ' + esc(op) + '.' : (p.descripcion && !/[.!?]$/.test(p.descripcion.trim()) ? '.' : '')) + ' Aplica en cualquier platillo de este menú.</div></div>';
       });
       porCategoria(its, cfg.categorias).forEach(function(g){
         h += '<div class="c-cat"><h3>' + esc(g.categoria) + '</h3>';
