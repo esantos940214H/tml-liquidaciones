@@ -4360,6 +4360,31 @@ exports.recuperarAnticiposDesdeHistorial = onRequest({ cors: true, region: 'us-c
     // Firestore regresó los documentos.
     liquidaciones.sort(function (a, b) { return (a.fechaCierre || '').localeCompare(b.fechaCierre || ''); });
 
+    // ultimaLiquidacionPorOperador / fechaMinimaReupload: esta recuperación
+    // SOLO trae de vuelta anticipos que ya se habían usado para cerrar una
+    // liquidación (lo único que quedó registrado en algún lado) — los que
+    // seguían "pendientes" (capturados pero sin liquidar) al momento del
+    // borrón NO dejaron ningún rastro en Historial y se perdieron de verdad.
+    // Para esos no queda otra que volver a subir el estado de cuenta BBVA:
+    // aquí se calcula, por operador, la fecha de llegada de su ÚLTIMA
+    // liquidación cerrada (después de eso es cuando empezaron a acumularse
+    // anticipos "pendientes" que nunca se llegaron a cerrar) y la más
+    // antigua de esas fechas entre todos los operadores — ese es el punto
+    // de partida seguro para volver a subir el archivo del banco sin dejar
+    // a nadie fuera.
+    const ultimaPorOperador = {};
+    liquidaciones.forEach(function (liq) {
+      const opId = liq.opId != null ? parseInt(liq.opId) : null;
+      if (!opId) return;
+      const fechaRef = liq.llegada || liq.fechaCierre || '';
+      if (!fechaRef) return;
+      if (!ultimaPorOperador[opId] || fechaRef > ultimaPorOperador[opId].fecha) {
+        ultimaPorOperador[opId] = { num: liq.num, fecha: fechaRef, op: (liq.op && liq.op.nombre) || '' };
+      }
+    });
+    const fechasUltimas = Object.keys(ultimaPorOperador).map(function (k) { return ultimaPorOperador[k].fecha; }).filter(Boolean).sort();
+    const fechaMinimaReupload = fechasUltimas.length ? fechasUltimas[0] : null;
+
     // getEstricto (no un .get() que trague el error): si esto falla por
     // conexión debe TRONAR, no tratarse como "vacío" — escribir un blob
     // vacío encima de datos reales sería el mismo bug que estamos reparando.
@@ -4409,7 +4434,11 @@ exports.recuperarAnticiposDesdeHistorial = onRequest({ cors: true, region: 'us-c
       await db.collection('estado').doc('anticiposDB').set({ data: JSON.stringify(anticiposDB) });
     }
 
-    res.json({ ok: true, modo: aplicar ? 'aplicado' : 'simulado', totalCorregidos: totalCorregidos, totalRecreados: totalRecreados, liquidacionesRevisadas: liquidaciones.length, resumen: resumen });
+    res.json({
+      ok: true, modo: aplicar ? 'aplicado' : 'simulado', totalCorregidos: totalCorregidos, totalRecreados: totalRecreados,
+      liquidacionesRevisadas: liquidaciones.length, resumen: resumen,
+      ultimaLiquidacionPorOperador: ultimaPorOperador, fechaMinimaReupload: fechaMinimaReupload
+    });
   } catch (e) {
     console.error('recuperarAnticiposDesdeHistorial:', e);
     res.status(/administrador|sesión/.test(e.message || '') ? 403 : 500).json({ error: e.message || 'Error interno del servidor.' });
