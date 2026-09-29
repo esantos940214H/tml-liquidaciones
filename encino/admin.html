@@ -118,7 +118,12 @@ function num(v){ if (v == null || v === '') return null; var n = parseFloat(Stri
 function r2(n){ return Math.round((Number(n) || 0) * 100) / 100; }
 function fmtCant(n){ n = Number(n) || 0; return Math.abs(n % 1) < 1e-9 ? String(n) : n.toFixed(3).replace(/0+$/, ''); }
 function fecha(ts){ return new Date(ts).toLocaleString('es-MX', { dateStyle: 'short', timeStyle: 'short' }); }
-function toast(msg){ var t = document.createElement('div'); t.className = 'toast'; t.textContent = msg; document.body.appendChild(t); setTimeout(function(){ t.remove(); }, 2600); }
+function toast(msg, ms){ var t = document.createElement('div'); t.className = 'toast'; t.textContent = msg; document.body.appendChild(t); setTimeout(function(){ t.remove(); }, ms || 2600); }
+// Cualquier error que antes pasaba en silencio (p. ej. un guardado rechazado)
+// se muestra en pantalla para poder saber qué pasó.
+function errTxt(e){ return (e && (e.code ? e.code + ': ' : '') + (e.message || e)) || 'desconocido'; }
+window.addEventListener('unhandledrejection', function(ev){ toast('⚠️ Error: ' + errTxt(ev.reason), 8000); });
+window.addEventListener('error', function(ev){ toast('⚠️ Error: ' + (ev.message || 'desconocido'), 8000); });
 
 // ── Estado (se llena desde Store.watch) ────────────────────────────────
 var S = { menu: [], insumos: [], ordenes: [], ventas: [], movimientos: [], compras: [], pedidos: [], preparaciones: [], configDocs: [], config: E.cfgFrom([]) };
@@ -141,13 +146,17 @@ function modal(html, opts){
 function imprimir(html){
   var w = S.config.anchoTicket == 58 ? 48 : 72;
   var css = '@page{size:' + (w + 8) + 'mm auto;margin:0}body{width:' + w + 'mm;margin:0 auto;padding:3mm 0;font:12px/1.3 "Courier New",monospace;color:#000}' +
-    '.c{text-align:center}.r{text-align:right}.b{font-weight:bold}.g{font-size:15px}hr{border:0;border-top:1px dashed #000;margin:4px 0}table{width:100%;border-collapse:collapse}td{padding:1px 0;vertical-align:top}';
-  var f = document.createElement('iframe');
-  f.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0';
-  document.body.appendChild(f);
-  var d = f.contentWindow.document;
-  d.open(); d.write('<!doctype html><html><head><meta charset="utf-8"><style>' + css + '</style></head><body>' + html + '</body></html>'); d.close();
-  setTimeout(function(){ try { f.contentWindow.focus(); f.contentWindow.print(); } catch(e){ console.error(e); } setTimeout(function(){ f.remove(); }, 1500); }, 250);
+    '.c{text-align:center}.r{text-align:right}.b{font-weight:bold}.g{font-size:15px}hr{border:0;border-top:1px dashed #000;margin:4px 0}table{width:100%;border-collapse:collapse}td{padding:1px 0;vertical-align:top;border:0}';
+  // Se imprime la misma página mostrando solo el ticket (los navegadores de
+  // celular no imprimen desde un iframe oculto).
+  var zona = document.getElementById('zonaImpresion');
+  if (!zona) { zona = document.createElement('div'); zona.id = 'zonaImpresion'; document.body.appendChild(zona); }
+  var st = document.getElementById('estiloImpresion');
+  if (!st) { st = document.createElement('style'); st.id = 'estiloImpresion'; document.head.appendChild(st); }
+  st.textContent = '#zonaImpresion{display:none}@media print{' + css.replace(/(^|\})\s*([^@{}][^{}]*)\{/g, function(m, a, sel){ return a + sel.split(',').map(function(x){ x = x.trim(); return x === 'body' ? 'body' : '#zonaImpresion ' + x; }).join(',') + '{'; }) +
+    'body>*:not(#zonaImpresion){display:none!important}#zonaImpresion{display:block!important}html,body{background:#fff!important}}';
+  zona.innerHTML = html;
+  setTimeout(function(){ try { window.print(); } catch(e){ toast('No se pudo abrir la impresión: ' + e.message); } }, 50);
 }
 function ticketHTML(v){
   var c = S.config, h = '<div class="c b g">' + esc(c.nombre) + '</div>';
@@ -1208,7 +1217,10 @@ function arrancar(){
   Promise.all(ps).then(function(){ listo = true; avisoPedidos(); render(true); normalizarCategorias(); });
   setInterval(function(){ if (TAB === 'mesas' && !OM) render(false); }, 60000);
 }
-window.onStoreError = function(c, err){ if (err && err.code === 'permission-denied') toast('Sin permiso para leer ' + c + ' — revisa las reglas de Firestore / tu sesión.'); };
+window.onStoreError = function(c, err, escritura){
+  if (err && err.code === 'permission-denied') toast('⚠️ Sin permiso para ' + (escritura ? 'guardar en ' : 'leer ') + c + ': cierra sesión y vuelve a entrar.', 8000);
+  else toast('⚠️ No se pudo ' + (escritura ? 'guardar' : 'leer') + ' (' + c + '): ' + errTxt(err), 8000);
+};
 Store.init().then(function(){
   if (Store.mode !== 'firebase') return arrancar();
   Store.auth().onAuthStateChanged(function(u){

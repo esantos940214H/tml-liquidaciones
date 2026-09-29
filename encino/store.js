@@ -89,6 +89,22 @@
       function(err){ console.error(err); });
   }
 
+  // Firestore guarda primero en el dispositivo y luego lo sube; su promesa
+  // no se cumple hasta que el servidor confirma. Con señal débil eso deja
+  // la pantalla "atorada", así que se continúa a los 1.5 s (el cambio ya
+  // está en cola y se sube solo). Si el servidor lo rechaza, se avisa.
+  function pronto(p, c, valor){
+    return new Promise(function(res){
+      var fallo = false;
+      p.then(function(){ res(valor); }, function(err){
+        fallo = true;
+        console.error('encino guardar ' + c, err);
+        if (window.onStoreError) window.onStoreError(c, err, true);
+      });
+      setTimeout(function(){ if (!fallo) res(valor); }, 1500);
+    });
+  }
+
   function get(c, id){
     if (MODE === 'local') return Promise.resolve(lsRead(c)[id] || null);
     return db.collection(PREFIX + c).doc(id).get().then(function(d){ return d.exists ? Object.assign({}, d.data(), { id: d.id }) : null; });
@@ -105,7 +121,7 @@
       return Promise.resolve(m[id]);
     }
     if (watching[c]) { cache[c] = cache[c] || {}; cache[c][id] = Object.assign({}, cache[c][id] || {}, data); emit(c); }
-    return db.collection(PREFIX + c).doc(id).set(data, { merge: true }).then(function(){ return data; });
+    return pronto(db.collection(PREFIX + c).doc(id).set(data, { merge: true }), c, data);
   }
 
   function del(c, id){
@@ -114,7 +130,7 @@
       return Promise.resolve();
     }
     if (cache[c]) { delete cache[c][id]; emit(c); }
-    return db.collection(PREFIX + c).doc(id).delete();
+    return pronto(db.collection(PREFIX + c).doc(id).delete(), c);
   }
 
   // Suma "delta" a un campo numérico de forma atómica.
@@ -128,7 +144,7 @@
     }
     if (cache[c] && cache[c][id]) { cache[c][id][field] = (Number(cache[c][id][field]) || 0) + delta; emit(c); }
     var upd = {}; upd[field] = firebase.firestore.FieldValue.increment(delta);
-    return db.collection(PREFIX + c).doc(id).update(upd);
+    return pronto(db.collection(PREFIX + c).doc(id).update(upd), c);
   }
 
   // Folio consecutivo de tickets (transacción en Firebase para no repetir).
