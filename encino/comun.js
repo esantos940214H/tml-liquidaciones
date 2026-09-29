@@ -15,6 +15,9 @@
     anchoTicket: 80,
     pedidosActivos: true,
     urlPublica: '',
+    // Orden de las categorías en carta, inicio, pedidos y mesas. Las que no
+    // estén aquí van al final (alimentos antes que bebidas, alfabético).
+    categorias: [],
     // Un platillo sin menús asignados aparece en TODOS (útil para bebidas).
     menus: [
       { id: 'vie-des', nombre: 'Viernes · Desayunos', dias: [5], desde: '08:00', hasta: '13:00' },
@@ -28,6 +31,7 @@
     var g = (docs || []).find(function(d){ return d.id === 'general'; }) || {};
     var c = Object.assign({}, DEFAULT_CFG, g);
     if (!Array.isArray(c.menus) || !c.menus.length) c.menus = DEFAULT_CFG.menus;
+    if (!Array.isArray(c.categorias)) c.categorias = [];
     return c;
   }
   function money(n){ return '$' + (Number(n) || 0).toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
@@ -105,16 +109,26 @@
     return d.map(function(x){ return DIAS[x]; }).join(', ') + (m.desde ? ' · ' + m.desde + (m.hasta ? '–' + m.hasta : '') : '');
   }
   // Agrupa platillos por categoría manteniendo alimentos antes que bebidas.
-  function porCategoria(items){
+  function catDe(it){ return it.categoria || (it.tipo === 'bebida' ? 'Bebidas' : 'Platillos'); }
+  // Comparador: primero por el orden de categorías configurado, luego las no
+  // listadas (alimentos antes que bebidas, alfabético) y al final por nombre.
+  function cmpCat(orden){
+    var ix = {};
+    (orden || []).forEach(function(c, k){ ix[String(c).toLowerCase()] = k; });
+    function llave(it){
+      var c = catDe(it), k = ix[c.toLowerCase()];
+      return k != null ? [0, k, ''] : [1, it.tipo === 'bebida' ? 1 : 0, c.toLowerCase()];
+    }
+    return function(a, b){
+      var x = llave(a), y = llave(b);
+      for (var i = 0; i < 3; i++) { if (x[i] < y[i]) return -1; if (x[i] > y[i]) return 1; }
+      return (a.nombre || '').localeCompare(b.nombre || '', 'es');
+    };
+  }
+  function porCategoria(items, ordenCategorias){
     var g = {}, orden = [];
-    items.slice().sort(function(a,b){
-      var ta = a.tipo === 'bebida' ? 1 : 0, tb = b.tipo === 'bebida' ? 1 : 0;
-      if (ta !== tb) return ta - tb;
-      var ca = (a.categoria||'').toLowerCase(), cb = (b.categoria||'').toLowerCase();
-      if (ca !== cb) return ca < cb ? -1 : 1;
-      return (a.nombre||'').localeCompare(b.nombre||'', 'es');
-    }).forEach(function(it){
-      var k = it.categoria || (it.tipo === 'bebida' ? 'Bebidas' : 'Platillos');
+    items.slice().sort(cmpCat(ordenCategorias)).forEach(function(it){
+      var k = catDe(it);
       if (!g[k]) { g[k] = []; orden.push(k); }
       g[k].push(it);
     });
@@ -174,7 +188,7 @@
         var op = opcionesPaquete(p);
         h += '<div class="c-paq"><span class="pp">+' + precioTxt(p) + '</span><b>' + esc(p.nombre) + '</b><div class="d">' + esc(p.descripcion || '') + (op ? (p.descripcion ? '. ' : '') + 'Elige: ' + esc(op) + '.' : '') + ' Aplica en cualquier platillo de este menú.</div></div>';
       });
-      porCategoria(its).forEach(function(g){
+      porCategoria(its, cfg.categorias).forEach(function(g){
         h += '<div class="c-cat"><h3>' + esc(g.categoria) + '</h3>';
         g.items.forEach(function(i){
           var vs = variantes(i);
@@ -241,7 +255,7 @@
 
   window.Encino = {
     DIAS: DIAS, DEFAULT_CFG: DEFAULT_CFG, cfgFrom: cfgFrom, money: money, esc: esc, dkey: dkey, hm: hm,
-    variantes: variantes, paquetesPara: paquetesPara, opcionesPaquete: opcionesPaquete, precioMin: precioMin, precioTxt: precioTxt, enMenu: enMenu, menuActual: menuActual, menusActivos: menusActivos, nombreCorto: nombreCorto, diasTxt: diasTxt, porCategoria: porCategoria,
+    variantes: variantes, paquetesPara: paquetesPara, opcionesPaquete: opcionesPaquete, precioMin: precioMin, precioTxt: precioTxt, enMenu: enMenu, menuActual: menuActual, menusActivos: menusActivos, nombreCorto: nombreCorto, diasTxt: diasTxt, porCategoria: porCategoria, cmpCat: cmpCat, catDe: catDe,
     CARTA_CSS: CARTA_CSS, CARTA_JS: CARTA_JS, cartaBody: cartaBody, cartaEstatica: cartaEstatica
   };
 })();
