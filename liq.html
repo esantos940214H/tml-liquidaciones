@@ -709,6 +709,7 @@ tr:hover td{background:#fafafa}
 <!-- Firebase Auth (login del módulo — ver shared/sesion.js) -->
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
 <script src="shared/sesion.js"></script>
+<script src="shared/blobSeguro.js"></script>
 <script src="shared/avisoFacturasVencidas.js"></script>
 <script src="shared/operadores.js"></script>
 <script src="shared/reciboNomina.js"></script>
@@ -915,18 +916,29 @@ function validarPeriodoXML(comp,fname){
 // ══════════════════════════════════════════════
 let facturasUsadas={}; // {uuid: {liqNum, unidad, tipo}}
 
-function guardarFacturasUsadas(){
-  if(fbReady&&window.FB)window.FB.set('estado','facturasUsadas',{data:JSON.stringify(facturasUsadas)});
+// registrarFacturaUsada/liberarFacturaUsada: este registro es GLOBAL entre
+// TODOS los operadores/liquidaciones (anti-duplicados de CFDIs) — varias
+// pestañas de liq.html, cada una trabajando la liquidación de un operador
+// distinto, pueden estar escribiendo aquí al mismo tiempo. Por eso NUNCA se
+// serializa a ciegas la copia local: se usa guardarBlobSeguro (relee fresco
+// justo antes de escribir y aplica solo este cambio puntual) — mismo
+// criterio que ya corrigió el bug real de pérdida de datos en anticiposDB.
+async function registrarFacturaUsada(uuid,liqNum,unidad,tipo){
+  if(!uuid||!fbReady||!window.FB)return;
+  var key=uuid.toUpperCase();
+  var valor={liqNum:liqNum,unidad:unidad,tipo:tipo||''};
+  facturasUsadas[key]=valor;
+  try{
+    facturasUsadas=await window.guardarBlobSeguro('estado','facturasUsadas',false,function(fresh){fresh[key]=valor;});
+  }catch(e){console.error('registrarFacturaUsada:',e);}
 }
-function registrarFacturaUsada(uuid,liqNum,unidad,tipo){
-  if(!uuid)return;
-  facturasUsadas[uuid.toUpperCase()]={liqNum:liqNum,unidad:unidad,tipo:tipo||''};
-  guardarFacturasUsadas();
-}
-function liberarFacturaUsada(uuid){
-  if(!uuid)return;
-  delete facturasUsadas[uuid.toUpperCase()];
-  guardarFacturasUsadas();
+async function liberarFacturaUsada(uuid){
+  if(!uuid||!fbReady||!window.FB)return;
+  var key=uuid.toUpperCase();
+  delete facturasUsadas[key];
+  try{
+    facturasUsadas=await window.guardarBlobSeguro('estado','facturasUsadas',false,function(fresh){delete fresh[key];});
+  }catch(e){console.error('liberarFacturaUsada:',e);}
 }
 // liberarComprobantePrecarga: cuando se elimina de una liquidación un
 // gasto/caseta que se había jalado automático de Precarga (origenPrecarga),
@@ -1118,9 +1130,21 @@ async function validarCFDIsSATLiquidacion(soloNuevos){
     await validarUnaLista(autopistasXMLconUUID,
       function(a){return a.rfc||'';},function(){return TML_RFC;},function(a){return a.importe;},c,'casetas');
 
-    // ingresosDB es compartido con ant.html/ing.html/hist.html — se guarda completo
-    // (ya sincronizado por el listener en vivo) para reflejar el estado SAT ahí también.
-    if(fbReady)window.FB.set('estado','ingresosDB',{data:JSON.stringify(ingresosDB)});
+    // ingresosDB es compartido con ant.html/ing.html/hist.html — esta validación
+    // puede tardar minutos (un CFDI a la vez contra el SAT), así que NO se
+    // guarda la copia local completa a ciegas (podría estar desactualizada
+    // si otra pestaña escribió mientras tanto — mismo bug real ya corregido
+    // en anticiposDB). Se relee fresco y solo se actualizan, por id, los
+    // registros que sí se acaban de validar (viajesXML) — nunca se agrega
+    // ni se quita nada más.
+    if(fbReady){
+      try{
+        ingresosDB=await window.guardarBlobSeguro('estado','ingresosDB',true,function(freshArr){
+          var porId={};freshArr.forEach(function(v,i){porId[v.id]=i;});
+          viajesXML.forEach(function(v){if(porId.hasOwnProperty(v.id))freshArr[porId[v.id]]=v;});
+        });
+      }catch(e){console.error('validarSAT: no se pudo guardar el resultado del SAT en ingresosDB:',e);}
+    }
     guardarEstado();
     renderGastos();
     renderDieselXML();calcDiesel();
@@ -1512,8 +1536,41 @@ function guardarEstado(){
   // propia función, con un aviso explícito).
   if(!PUEDE_EDITAR_LIQ)return;
   // SOLO guarda lo que pertenece a liquidaciones — NO toca anticiposDB ni ingresosDB
-  window.FB.set('estado','arrastres',{data: JSON.stringify(arrastres)});
-  window.FB.set('estado','config',{ultimaLiqNum: ultimaLiqNum, ultimaLiqNumPorOp: ultimaLiqNumPorOp});
+  //
+  // arrastres/config: esta función se llama en cada edición mientras se
+  // trabaja una liquidación — sobrescribir el documento COMPLETO con la
+  // copia local (como antes) arriesga pisar el arrastre de OTRA unidad, o
+  // el contador de OTRO operador, que otra pestaña haya guardado mientras
+  // tanto (mismo bug real ya corregido en anticiposDB). Se fusiona por
+  // clave (solo la unidad/operador de ESTA liquidación) contra una copia
+  // fresca de Firestore — sin esperar el resultado (fire-and-forget), para
+  // no meter una lectura de red en cada tecleo; el guardado sigue siendo
+  // prácticamente inmediato, solo ya no arriesga datos ajenos.
+  var _unidadArr=liq?liq.unidad:null;
+  if(_unidadArr!=null&&window.FB.getEstricto){
+    window.FB.getEstricto('estado','arrastres').then(function(fresh){
+      var freshArr=(fresh&&fresh.data)?JSON.parse(fresh.data):{};
+      if(Array.isArray(freshArr))freshArr={};
+      freshArr[_unidadArr]=arrastres[_unidadArr];
+      return window.FB.set('estado','arrastres',{data:JSON.stringify(freshArr)});
+    }).catch(function(e){console.error('guardarEstado (arrastres):',e);});
+  }else{
+    window.FB.set('estado','arrastres',{data: JSON.stringify(arrastres)});
+  }
+  var _opIdCfg=liq?(liq.opId||liq.unidad):null;
+  if(_opIdCfg!=null&&window.FB.getEstricto){
+    window.FB.getEstricto('estado','config').then(function(freshCfg){
+      freshCfg=freshCfg||{};
+      var freshPorOp=freshCfg.ultimaLiqNumPorOp||{};
+      if(migracionFolioPorOpAplicada){
+        freshPorOp[_opIdCfg]=Math.max(freshPorOp[_opIdCfg]||0,ultimaLiqNumPorOp[_opIdCfg]||0);
+        return window.FB.set('estado','config',{ultimaLiqNum: freshCfg.ultimaLiqNum||ultimaLiqNum, ultimaLiqNumPorOp: freshPorOp});
+      }
+      return window.FB.set('estado','config',{ultimaLiqNum: Math.max(freshCfg.ultimaLiqNum||0,ultimaLiqNum), ultimaLiqNumPorOp: freshPorOp});
+    }).catch(function(e){console.error('guardarEstado (config):',e);});
+  }else{
+    window.FB.set('estado','config',{ultimaLiqNum: ultimaLiqNum, ultimaLiqNumPorOp: ultimaLiqNumPorOp});
+  }
   // liqActivas/{opId}: una liquidación activa POR OPERADOR, no un doc único
   // global. El borrado del doc de un operador se hace explícito en los
   // puntos donde se cierra/elimina/descarta su liquidación (no aquí), para
