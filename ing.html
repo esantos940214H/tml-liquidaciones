@@ -573,6 +573,7 @@ tr:hover td{background:#fafafa}
 <!-- Firebase Auth (login del módulo — ver shared/sesion.js) -->
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
 <script src="shared/sesion.js"></script>
+<script src="shared/blobSeguro.js"></script>
 <script src="shared/avisoFacturasVencidas.js"></script>
 <script src="shared/operadores.js"></script>
 <script src="shared/fletes.js"></script>
@@ -617,6 +618,10 @@ window.onFBReady=function(cb){if(window._fbInit)cb();else window._fbCallbacks.pu
     window.FB={
       set:function(col,id,data,options){return db.collection(col).doc(id).set(data,options);},
       get:async function(col,id){try{var s=await db.collection(col).doc(id).get();return s.exists?s.data():null;}catch(e){console.error('FB.get:',e);return null;}},
+      // getEstricto: a diferencia de get(), NO convierte un error de red/
+      // conexión en "documento vacío" — lo deja tronar. Usarlo SIEMPRE
+      // antes de escribir sobre un blob compartido (ver shared/blobSeguro.js).
+      getEstricto:async function(col,id){var s=await db.collection(col).doc(id).get();return s.exists?s.data():null;},
       del:function(col,id){return db.collection(col).doc(id).delete();},
       listen:function(col,id,cb){return db.collection(col).doc(id).onSnapshot(function(s){cb(s.exists?s.data():null);});},
       getAll:async function(col){
@@ -1064,7 +1069,11 @@ async function generarCargoOperador(manualId){
   }
   if(!confirm('Se va a generar un cargo (anticipo pendiente) de '+fmt(diferencia)+' contra '+(nombreOp(candidato.unidad)||candidato.unidad)+', por la diferencia entre lo reconocido ('+fmt(candidato.total)+') y lo realmente facturado ('+fmt(montoXML)+') en la liquidación #'+candidato.liqNum+' ya cerrada.\n\nSe descontará de su PRÓXIMA liquidación. ¿Confirmas?'))return;
   try{
-    var antRes=await window.FB.get('estado','anticiposDB');
+    // getEstricto (no get): si la lectura falla por conexión, esto debe
+    // TRONAR, no tratarse como "vacío" — guardar un documento vacío
+    // encima de datos reales de TODOS los operadores sería el mismo bug
+    // real que ya pasó (ver ant.html → guardar()).
+    var antRes=await window.FB.getEstricto('estado','anticiposDB');
     var antDB=(antRes&&antRes.data)?JSON.parse(antRes.data):{};
     if(Array.isArray(antDB))antDB={};
     if(!antDB[candidato.unidad])antDB[candidato.unidad]=[];
@@ -1206,7 +1215,10 @@ async function confirmarCorregirOperador(){
 // "correccion_sistema" — un tipo aparte de las causas de daños/reclamos que
 // ya existían (ajena/responsabilidad), sin montos asociados.
 async function _registrarIncidenciaCorreccionOperador(folio,operadorAnteriorId,operadorNuevoId,quien){
-  var data=await window.FB.get('estado','incidentesDB');
+  // getEstricto (no get): si la lectura falla por conexión, esto debe
+  // TRONAR (el catch de arriba, en el llamador, ya lo maneja), no
+  // tratarse como "vacío".
+  var data=await window.FB.getEstricto('estado','incidentesDB');
   var incidentesDB=(data&&data.data)?JSON.parse(data.data):{};
   if(Array.isArray(incidentesDB))incidentesDB={};
   if(!incidentesDB[operadorNuevoId])incidentesDB[operadorNuevoId]=[];
@@ -1271,6 +1283,13 @@ function initSelects(){
     su.value=actual;
   }
 }
+// _idsIngresosConocidos: todos los ids que esta pestaña ha visto alguna vez
+// en ingresosDB (por la carga inicial o por el listener en vivo) — sirve
+// para que guardar() pueda distinguir "esta pestaña lo borró a propósito"
+// de "nunca lo conoció porque otra pestaña lo agregó después de la última
+// actualización que recibió" (ver guardar() más abajo).
+let _idsIngresosConocidos=new Set();
+function _actualizarIdsConocidos(){ingresosDB.forEach(function(v){_idsIngresosConocidos.add(v.id);});}
 window.onFBReady(async function(){
   OPERADORES=await window.cargarOperadores();
   OPERADORES_TODOS=await window.cargarOperadoresTodos();
@@ -1280,9 +1299,10 @@ window.onFBReady(async function(){
   $('fbStatus').textContent='✅ Conectado';$('fbStatus').className='fb-status fb-ok';
   const data=await window.FB.get('estado','ingresosDB');
   if(data&&data.data)ingresosDB=JSON.parse(data.data);
+  _actualizarIdsConocidos();
   renderIngresos();
   window.FB.listen('estado','ingresosDB',data=>{
-    if(data&&data.data){ingresosDB=JSON.parse(data.data);renderIngresos();renderArchivoMaestroFletes();}
+    if(data&&data.data){ingresosDB=JSON.parse(data.data);_actualizarIdsConocidos();renderIngresos();renderArchivoMaestroFletes();}
   });
   cargarYRenderFletesPendientes();
   cargarCorreosPendientesPedidos();
@@ -1290,7 +1310,46 @@ window.onFBReady(async function(){
 });
 setTimeout(()=>{if(!fbReady){$('fbStatus').textContent='❌ Sin conexión';$('fbStatus').className='fb-status fb-err';}},6000);
 
-function guardar(){if(!fbReady)return;window.FB.set('estado','ingresosDB',{data:JSON.stringify(ingresosDB)});}
+// guardar(): NO serializa a ciegas la copia local de ingresosDB — eso fue
+// exactamente el bug real que borró meses de anticipos en Anticipos (ver
+// ant.html → guardar()); ingresosDB tiene todavía MÁS escritores
+// simultáneos (liq.html, maniobras.html, autorizaciones.html, flota.html,
+// hist.html), así que el mismo riesgo aplica aquí, más fuerte. En vez de
+// eso, relee fresco de Firestore justo antes de guardar y FUSIONA por id:
+// lo que esta pestaña agregó o editó localmente reemplaza/se agrega sobre
+// lo fresco; lo que esta pestaña quitó del arreglo local (y que SÍ había
+// visto antes, ver _idsIngresosConocidos) también se quita de lo fresco.
+// Cualquier ingreso que otra pestaña haya agregado mientras tanto, y que
+// esta pestaña nunca llegó a ver, se conserva tal cual — nunca se borra
+// por "no estar" en la copia local, que es justo la causa del bug viejo.
+async function guardar(){
+  if(!fbReady)return;
+  let fresco;
+  try{
+    // getEstricto (no get): si la lectura falla por conexión, esto debe
+    // TRONAR, no tratarse como "vacío" — guardar un documento vacío
+    // encima de datos reales de TODOS los operadores sería el mismo bug.
+    fresco=await window.FB.getEstricto('estado','ingresosDB');
+  }catch(e){
+    console.error('guardar (ingresos): no se pudo releer fresco, se cancela para no arriesgar sobrescribir con datos vacíos:',e);
+    alert('⚠️ No se guardó nada: hubo un problema de conexión al releer los ingresos antes de guardar. Revisa tu conexión e inténtalo de nuevo.');
+    return;
+  }
+  let freshArr=(fresco&&fresco.data)?JSON.parse(fresco.data):[];
+  if(!Array.isArray(freshArr))freshArr=[];
+  const freshPorId={};
+  freshArr.forEach(function(v,i){freshPorId[v.id]=i;});
+  ingresosDB.forEach(function(v){
+    if(freshPorId.hasOwnProperty(v.id))freshArr[freshPorId[v.id]]=v;
+    else freshArr.push(v);
+  });
+  const idsLocales={};
+  ingresosDB.forEach(function(v){idsLocales[v.id]=true;});
+  freshArr=freshArr.filter(function(v){return idsLocales[v.id]||!_idsIngresosConocidos.has(v.id);});
+  ingresosDB=freshArr;
+  _actualizarIdsConocidos();
+  await window.FB.set('estado','ingresosDB',{data:JSON.stringify(ingresosDB)});
+}
 
 
 // XML

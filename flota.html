@@ -425,6 +425,7 @@ tr:hover td{background:#fafafa}
 <!-- Firebase Auth (login del módulo — ver shared/sesion.js) -->
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
 <script src="shared/sesion.js"></script>
+<script src="shared/blobSeguro.js"></script>
 <script src="shared/avisoFacturasVencidas.js"></script>
 <script src="shared/autoActualizar.js"></script>
 <script src="shared/operadores.js"></script>
@@ -452,6 +453,10 @@ window.onFBReady=function(cb){if(window._fbInit)cb();else window._fbCallbacks.pu
     window.FB={
       set:function(col,id,data,options){return db.collection(col).doc(id).set(data,options);},
       get:async function(col,id){try{var s=await db.collection(col).doc(id).get();return s.exists?s.data():null;}catch(e){console.error('FB.get:',e);return null;}},
+      // getEstricto: a diferencia de get(), NO convierte un error de red/
+      // conexión en "documento vacío" — lo deja tronar. Usarlo SIEMPRE
+      // antes de escribir sobre un blob compartido (ver shared/blobSeguro.js).
+      getEstricto:async function(col,id){var s=await db.collection(col).doc(id).get();return s.exists?s.data():null;},
       del:function(col,id){return db.collection(col).doc(id).delete();},
       listen:function(col,id,cb){return db.collection(col).doc(id).onSnapshot(function(s){cb(s.exists?s.data():null);});},
       getAll:async function(col){
@@ -975,7 +980,7 @@ async function confirmarAsignacion(){
     // Arrastre de diesel de esta unidad: se lee TODO el doc, se modifica
     // SOLO la entrada de esta unidad, se guarda completo — nunca se
     // sobreescribe en bloque (ver CLAUDE.md).
-    var arRes=await window.FB.get('estado','arrastres');
+    var arRes=await window.FB.getEstricto('estado','arrastres');
     var arrastres=(arRes&&arRes.data)?JSON.parse(arRes.data):{};
     if(Array.isArray(arrastres))arrastres={};
     arrastres[unidadNum]={lts:litrosRecibe,precio:precio,cargasYaLiquidadas:[],iaveYaLiquidadas:[]};
@@ -1124,7 +1129,7 @@ async function guardarRevision(){
 
   try{
     // Leer y fusionar — nunca sobrescribir el blob completo (ver CLAUDE.md).
-    var rRes=await window.FB.get('estado','revisionesFlotaDB');
+    var rRes=await window.FB.getEstricto('estado','revisionesFlotaDB');
     var revisiones=(rRes&&rRes.data)?JSON.parse(rRes.data):{};
     if(Array.isArray(revisiones))revisiones={};
     if(!revisiones[numero])revisiones[numero]=[];
@@ -1132,7 +1137,7 @@ async function guardarRevision(){
     await window.FB.set('estado','revisionesFlotaDB',{data:JSON.stringify(revisiones)});
 
     if(op&&totalCargo>0){
-      var cRes=await window.FB.get('estado','cargosFlotaDB');
+      var cRes=await window.FB.getEstricto('estado','cargosFlotaDB');
       var cargosFlota=(cRes&&cRes.data)?JSON.parse(cRes.data):{};
       if(Array.isArray(cargosFlota))cargosFlota={};
       var opId=parseInt(op.id);
@@ -1263,7 +1268,9 @@ async function corConfirmar(){
     // escribir — para minimizar la ventana en la que otra pestaña/usuario
     // pudiera guardar algo nuevo entre medio (ver CLAUDE.md: nunca
     // sobrescribir estos documentos en bloque con datos desactualizados).
-    var antRes=await window.FB.get('estado','anticiposDB');
+    // getEstricto (no get): si la lectura falla por conexión, esto debe
+    // TRONAR (el catch de abajo ya lo maneja), no tratarse como "vacío".
+    var antRes=await window.FB.getEstricto('estado','anticiposDB');
     var anticipos=(antRes&&antRes.data)?JSON.parse(antRes.data):{};
     if(Array.isArray(anticipos))anticipos={};
     var antList=anticipos[origen]||anticipos[String(origen)]||[];
@@ -1275,7 +1282,7 @@ async function corConfirmar(){
       await window.FB.set('estado','anticiposDB',{data:JSON.stringify(anticipos)});
     }
 
-    var nomRes=await window.FB.get('estado','nominaDB');
+    var nomRes=await window.FB.getEstricto('estado','nominaDB');
     var nomina=(nomRes&&nomRes.data)?JSON.parse(nomRes.data):{};
     if(Array.isArray(nomina))nomina={};
     var nomList=nomina[origen]||nomina[String(origen)]||[];
@@ -1287,7 +1294,7 @@ async function corConfirmar(){
       await window.FB.set('estado','nominaDB',{data:JSON.stringify(nomina)});
     }
 
-    var ingRes=await window.FB.get('estado','ingresosDB');
+    var ingRes=await window.FB.getEstricto('estado','ingresosDB');
     var ingresos=(ingRes&&ingRes.data)?JSON.parse(ingRes.data):[];
     if(!Array.isArray(ingresos))ingresos=[];
     var nMovIng=0;

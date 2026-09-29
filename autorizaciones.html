@@ -176,6 +176,10 @@ window.onFBReady=function(cb){if(window._fbInit)cb();else window._fbCallbacks.pu
     window.FB={
       set:function(col,id,data,options){return db.collection(col).doc(id).set(data,options);},
       get:async function(col,id){try{var s=await db.collection(col).doc(id).get();return s.exists?s.data():null;}catch(e){console.error('FB.get:',e);return null;}},
+      // getEstricto: a diferencia de get(), NO convierte un error de red/
+      // conexión en "documento vacío" — lo deja tronar. Usarlo SIEMPRE
+      // antes de escribir sobre un blob compartido (ver shared/blobSeguro.js).
+      getEstricto:async function(col,id){var s=await db.collection(col).doc(id).get();return s.exists?s.data():null;},
       del:function(col,id){return db.collection(col).doc(id).delete();},
       listen:function(col,id,cb){return db.collection(col).doc(id).onSnapshot(function(s){cb(s.exists?s.data():null);});},
       getAll:async function(col){
@@ -611,7 +615,7 @@ async function aprobarDivisionesSeleccionadas(){
   if(!chks.length){alert('Selecciona al menos una división pendiente.');return;}
   var ids=Array.from(chks).map(function(c){return c.dataset.id;});
   try{
-    var data=await window.FB.get('estado','ingresosDB');
+    var data=await window.FB.getEstricto('estado','ingresosDB');
     var ingresosDB=(data&&data.data)?JSON.parse(data.data):[];
     var n=0;
     ingresosDB.forEach(function(v){
@@ -638,7 +642,7 @@ async function rechazarDivisionesSeleccionadas(){
   if(!confirm('¿Rechazar las '+chks.length+' solicitud(es) de división seleccionada(s)? El ingreso se queda como estaba (sin dividir).'))return;
   var ids=Array.from(chks).map(function(c){return c.dataset.id;});
   try{
-    var data=await window.FB.get('estado','ingresosDB');
+    var data=await window.FB.getEstricto('estado','ingresosDB');
     var ingresosDB=(data&&data.data)?JSON.parse(data.data):[];
     var n=0;
     ingresosDB.forEach(function(v){

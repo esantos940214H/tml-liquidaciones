@@ -574,8 +574,15 @@ async function confirmarDepositoManiobra(id){
   if(!v)return;
   var yaDeposito=confirm('¿Ya depositaste esta maniobra a '+(nombreOp(v.unidad)||v.unidad)+' por '+fmt(v.subtotal)+'?');
   if(!yaDeposito)return;
-  v.depositoConfirmado=true;
-  v.depositoConfirmadoEn=new Date().toISOString();
+  // Releer fresco justo antes de guardar — mismo criterio que el resto de
+  // este archivo (ver _procesarRenglonesExtraidos), para no pisar algo que
+  // el buzón automático u otra pestaña haya agregado mientras tanto.
+  try{await cargarIngresosEstricto();}
+  catch(e){console.error('confirmarDepositoManiobra:',e);alert('⚠️ No se pudo confirmar: problema de conexión al leer los datos actuales. Nada se guardó, intenta de nuevo.');return;}
+  var vv=ingresosDB.find(function(x){return x.id===id;});
+  if(!vv){alert('Ya no se encontró esta maniobra (¿la eliminaron mientras tanto?).');return;}
+  vv.depositoConfirmado=true;
+  vv.depositoConfirmadoEn=new Date().toISOString();
   await window.FB.set('estado','ingresosDB',{data:JSON.stringify(ingresosDB)});
   renderPendientes();
 }

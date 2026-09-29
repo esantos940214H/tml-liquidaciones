@@ -415,6 +415,10 @@ window.onFBReady=function(cb){if(window._fbInit)cb();else window._fbCallbacks.pu
       // merge:true que mandaba liq.html/hist.html se descartaba aquí.
       set:function(col,id,data,options){return db.collection(col).doc(id).set(data,options);},
       get:async function(col,id){try{var s=await db.collection(col).doc(id).get();return s.exists?s.data():null;}catch(e){console.error('FB.get:',e);return null;}},
+      // getEstricto: a diferencia de get(), NO convierte un error de red/
+      // conexión en "documento vacío" — lo deja tronar. Usarlo SIEMPRE
+      // antes de escribir sobre un blob compartido (ver shared/blobSeguro.js).
+      getEstricto:async function(col,id){var s=await db.collection(col).doc(id).get();return s.exists?s.data():null;},
       del:function(col,id){return db.collection(col).doc(id).delete();},
       listen:function(col,id,cb){return db.collection(col).doc(id).onSnapshot(function(s){cb(s.exists?s.data():null);});},
       getAll:async function(col){
@@ -1192,7 +1196,9 @@ async function recuperarCargosPerdidosReapertura(){
   var opIdL=parseInt(opEncontrado.operadorId);
   if(!confirm('Operador encontrado: '+opEncontrado.nombre+' (clave '+opEncontrado.clave+', identidad '+opIdL+').\n\n¿Buscar y liberar TODO lo que quedó marcado con la liquidación #'+liqNum+' de este operador (anticipos, ingresos/viajes, nómina, cargos de Flota y facturas de Proveedor)?\n\nEsto los pone "pendiente"/"sin_liquidar" otra vez para poder incluirlos en la liquidación activa.'))return;
   try{
-    var antRes2=await window.FB.get('estado','anticiposDB');
+    // getEstricto (no get): si la lectura falla por conexión, esto debe
+    // TRONAR (el catch de abajo ya lo maneja), no tratarse como "vacío".
+    var antRes2=await window.FB.getEstricto('estado','anticiposDB');
     var antDB2=(antRes2&&antRes2.data)?JSON.parse(antRes2.data):{};
     if(Array.isArray(antDB2))antDB2={};
     var nA2=0;
@@ -1205,13 +1211,13 @@ async function recuperarCargosPerdidosReapertura(){
         });
       }
     });
-    var ingRes2=await window.FB.get('estado','ingresosDB');
+    var ingRes2=await window.FB.getEstricto('estado','ingresosDB');
     var ingDB2=(ingRes2&&ingRes2.data)?JSON.parse(ingRes2.data):[];
     var nV2=0;
     ingDB2.forEach(function(v){
       if(parseInt(v.unidad)===opIdL&&v.liqNum===liqNum&&v.estado!=='sin_liquidar'){v.estado='sin_liquidar';v.liqNum=null;nV2++;}
     });
-    var nomRes2=await window.FB.get('estado','nominaDB');
+    var nomRes2=await window.FB.getEstricto('estado','nominaDB');
     var nomDB2=(nomRes2&&nomRes2.data)?JSON.parse(nomRes2.data):{};
     if(Array.isArray(nomDB2))nomDB2={};
     var nN2=0;
@@ -1222,7 +1228,7 @@ async function recuperarCargosPerdidosReapertura(){
         });
       }
     });
-    var cfRes=await window.FB.get('estado','cargosFlotaDB');
+    var cfRes=await window.FB.getEstricto('estado','cargosFlotaDB');
     var cfDB=(cfRes&&cfRes.data)?JSON.parse(cfRes.data):{};
     if(Array.isArray(cfDB))cfDB={};
     var nCF=0;
@@ -1429,11 +1435,15 @@ async function reabrirLiquidacion(){
     };
 
     // Liberar anticipos, viajes, incidentes y recibos de nómina que esta liquidación había marcado
+    // getEstricto (no get): si la lectura falla por conexión, esto debe
+    // TRONAR (el catch que envuelve esta función ya lo maneja), no
+    // tratarse como "vacío" — guardar documentos vacíos encima de datos
+    // reales de TODOS los operadores sería el mismo bug real que ya pasó.
     const [aRes,iRes,incRes,nomRes]=await Promise.all([
-      window.FB.get('estado','anticiposDB'),
-      window.FB.get('estado','ingresosDB'),
-      window.FB.get('estado','incidentesDB'),
-      window.FB.get('estado','nominaDB'),
+      window.FB.getEstricto('estado','anticiposDB'),
+      window.FB.getEstricto('estado','ingresosDB'),
+      window.FB.getEstricto('estado','incidentesDB'),
+      window.FB.getEstricto('estado','nominaDB'),
     ]);
     let antDB=(aRes&&aRes.data)?JSON.parse(aRes.data):{};
     if(Array.isArray(antDB))antDB={};
@@ -1496,7 +1506,7 @@ async function reabrirLiquidacion(){
     // reabrir, así que esos cargos desaparecían del reporte (ya no
     // aparecían "pendiente" para esta unidad, pero tampoco pertenecían ya
     // a ninguna liquidación activa).
-    const cfRes=await window.FB.get('estado','cargosFlotaDB');
+    const cfRes=await window.FB.getEstricto('estado','cargosFlotaDB');
     let cfDB=(cfRes&&cfRes.data)?JSON.parse(cfRes.data):{};
     if(Array.isArray(cfDB))cfDB={};
     var nCF=0;
@@ -1535,7 +1545,7 @@ async function reabrirLiquidacion(){
     // liquidación agregó al cerrarse originalmente, para que sus propias
     // cargas/cruces no salgan marcados como "ya liquidado" (de otra
     // liquidación) al volver a editarla y recalcular su diesel.
-    const arrRes=await window.FB.get('estado','arrastres');
+    const arrRes=await window.FB.getEstricto('estado','arrastres');
     let arrDB=(arrRes&&arrRes.data)?JSON.parse(arrRes.data):{};
     const arrU=arrDB[l.unidad]||arrDB[String(l.unidad)];
     if(arrU){
