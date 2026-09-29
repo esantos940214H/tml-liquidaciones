@@ -17,9 +17,9 @@
     urlPublica: '',
     // Un platillo sin menús asignados aparece en TODOS (útil para bebidas).
     menus: [
-      { id: 'vie-des', nombre: 'Viernes · Desayunos', dias: [5], desde: '08:00', hasta: '12:30' },
+      { id: 'vie-des', nombre: 'Viernes · Desayunos', dias: [5], desde: '08:00', hasta: '13:00' },
       { id: 'vie-com', nombre: 'Viernes · Comidas', dias: [5], desde: '12:30', hasta: '18:00' },
-      { id: 'fds-des', nombre: 'Sábado y Domingo · Desayunos', dias: [6, 0], desde: '08:00', hasta: '12:30' },
+      { id: 'fds-des', nombre: 'Sábado y Domingo · Desayunos', dias: [6, 0], desde: '08:00', hasta: '13:00' },
       { id: 'fds-com', nombre: 'Sábado y Domingo · Comidas', dias: [6, 0], desde: '12:30', hasta: '18:00' }
     ]
   };
@@ -70,6 +70,16 @@
     var ms = Array.isArray(item.menus) ? item.menus : [];
     return !menuId || !ms.length || ms.indexOf(menuId) >= 0;
   }
+  // Menús en horario en este momento. Puede haber más de uno cuando los
+  // horarios se enciman (ej. desayunos hasta 13:00 y comidas desde 12:30):
+  // en esa ventana el cliente elige qué menú ver.
+  function menusActivos(cfg, date){
+    date = date || new Date();
+    var t = hm(date), dow = date.getDay();
+    return (cfg.menus || []).filter(function(m){ return (m.dias || []).indexOf(dow) >= 0 && (!m.desde || t >= m.desde) && (!m.hasta || t < m.hasta); });
+  }
+  // Nombre corto para botones: "Viernes · Desayunos" → "Desayunos"
+  function nombreCorto(m){ var p = String(m.nombre || '').split('·'); return p[p.length - 1].trim() || m.nombre; }
   // Menú que corresponde a una fecha/hora; si ninguno está en horario, el
   // siguiente que va a abrir.
   function menuActual(cfg, date){
@@ -131,7 +141,11 @@
     '.c-paq{border:2px dashed var(--acc);border-radius:14px;padding:10px 16px;margin:12px 0;font-family:system-ui,sans-serif}',
     '.c-paq b{font-family:Georgia,serif;font-size:1.05rem;color:var(--acc)}.c-paq .pp{float:right;font-weight:700}.c-paq .d{color:var(--mut);font-size:.88rem;margin-top:2px}',
     '.c-foot{text-align:center;color:var(--mut);font:.8rem system-ui,sans-serif;margin-top:24px}',
-    '.c-foot a{color:var(--acc)}'
+    '.c-foot a{color:var(--acc)}',
+    '.c-tabs button.ahora::after{content:" · ahora";font-weight:400;opacity:.8}',
+    '.c-elige{background:var(--card);border:2px solid var(--acc);border-radius:14px;padding:12px 16px;margin:4px 0 12px;font-family:system-ui,sans-serif;text-align:center}',
+    '.c-elige p{margin:0 0 10px}.c-elige .ops{display:flex;gap:10px;justify-content:center;flex-wrap:wrap}',
+    '.c-elige button{flex:1 1 140px;border:0;border-radius:10px;padding:12px;background:var(--acc);color:var(--bg);font:700 1rem system-ui,sans-serif;cursor:pointer}'
   ].join('\n');
 
   function cartaBody(cfg, items, opts){
@@ -144,9 +158,10 @@
     if (sub) h += '<p>' + sub + '</p>';
     h += '</div><div class="c-tabs">';
     menus.forEach(function(m){
-      h += '<button data-m="' + esc(m.id) + '"' + (actual && actual.id === m.id ? ' class="on"' : '') + '>' + esc(m.nombre) + '</button>';
+      h += '<button data-m="' + esc(m.id) + '" data-dias="' + esc((m.dias || []).join(',')) + '" data-desde="' + esc(m.desde || '') + '" data-hasta="' + esc(m.hasta || '') + '" data-corto="' + esc(nombreCorto(m)) + '"' +
+        (actual && actual.id === m.id ? ' class="on"' : '') + '>' + esc(m.nombre) + '</button>';
     });
-    h += '</div>';
+    h += '</div><div class="c-elige" id="cElige" hidden><p>Son las <b class="hora"></b> y estamos sirviendo dos menús. ¿Vienes a…?</p><div class="ops"></div></div>';
     menus.forEach(function(m){
       var its = visibles.filter(function(i){ return enMenu(i, m.id) && !i.esPaquete; });
       var paqs = visibles.filter(function(i){ return i.esPaquete && enMenu(i, m.id); });
@@ -171,7 +186,47 @@
     h += '<div class="c-foot">Precios en MXN, IVA incluido.' + (opts.linkPedidos ? '<br><a href="' + esc(opts.linkPedidos) + '">Ordenar en línea →</a>' : '') + '</div></div>';
     return h;
   }
-  var CARTA_JS = "document.addEventListener('click',function(e){var b=e.target.closest('.c-tabs button');if(!b)return;var m=b.getAttribute('data-m');document.querySelectorAll('.c-tabs button').forEach(function(x){x.classList.toggle('on',x===b)});document.querySelectorAll('.c-menu').forEach(function(s){s.classList.toggle('on',s.getAttribute('data-m')===m)});window.scrollTo(0,0);});";
+  // Se ejecuta en el celular del cliente (carta en vivo y carta estática):
+  // según el día y la hora del celular elige el menú; si hay dos menús en
+  // horario (ventana de cambio) pregunta cuál quiere ver. window.cartaAuto()
+  // se vuelve a llamar cada vez que la carta en vivo se redibuja.
+  function cartaRuntime(){
+    function hm(d){ return ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2); }
+    function sel(m){
+      document.querySelectorAll('.c-tabs button').forEach(function(x){ x.classList.toggle('on', x.getAttribute('data-m') === m); });
+      document.querySelectorAll('.c-menu').forEach(function(s){ s.classList.toggle('on', s.getAttribute('data-m') === m); });
+    }
+    window.cartaElegida = null;
+    window.cartaAuto = function(){
+      var d = new Date(), t = hm(d), dow = d.getDay(), act = [];
+      document.querySelectorAll('.c-tabs button').forEach(function(b){
+        var dias = (b.getAttribute('data-dias') || '').split(',').filter(function(x){ return x !== ''; }).map(Number);
+        var de = b.getAttribute('data-desde') || '', ha = b.getAttribute('data-hasta') || '';
+        var on = dias.indexOf(dow) >= 0 && (!de || t >= de) && (!ha || t < ha);
+        b.classList.toggle('ahora', on);
+        if (on) act.push(b);
+      });
+      var el = document.getElementById('cElige');
+      if (window.cartaElegida) { sel(window.cartaElegida); if (el) el.hidden = true; return; }
+      if (act.length) sel(act[0].getAttribute('data-m'));
+      if (!el) return;
+      if (act.length > 1) {
+        el.querySelector('.hora').textContent = t;
+        var ops = el.querySelector('.ops'); ops.innerHTML = '';
+        act.forEach(function(b){ var x = document.createElement('button'); x.setAttribute('data-m', b.getAttribute('data-m')); x.textContent = b.getAttribute('data-corto'); ops.appendChild(x); });
+        el.hidden = false;
+      } else el.hidden = true;
+    };
+    document.addEventListener('click', function(e){
+      var b = e.target.closest('.c-tabs button, .c-elige button'); if (!b) return;
+      window.cartaElegida = b.getAttribute('data-m'); sel(window.cartaElegida);
+      var el = document.getElementById('cElige'); if (el) el.hidden = true;
+      window.scrollTo(0, 0);
+    });
+    window.cartaAuto();
+    setInterval(function(){ if (!window.cartaElegida) window.cartaAuto(); }, 60000);
+  }
+  var CARTA_JS = '(' + cartaRuntime.toString() + ')();';
 
   // Archivo HTML autocontenido (sin Firebase) para subir a cualquier hosting
   // y apuntar el QR ahí.
@@ -183,7 +238,7 @@
 
   window.Encino = {
     DIAS: DIAS, DEFAULT_CFG: DEFAULT_CFG, cfgFrom: cfgFrom, money: money, esc: esc, dkey: dkey, hm: hm,
-    variantes: variantes, paquetesPara: paquetesPara, opcionesPaquete: opcionesPaquete, precioMin: precioMin, precioTxt: precioTxt, enMenu: enMenu, menuActual: menuActual, diasTxt: diasTxt, porCategoria: porCategoria,
+    variantes: variantes, paquetesPara: paquetesPara, opcionesPaquete: opcionesPaquete, precioMin: precioMin, precioTxt: precioTxt, enMenu: enMenu, menuActual: menuActual, menusActivos: menusActivos, nombreCorto: nombreCorto, diasTxt: diasTxt, porCategoria: porCategoria,
     CARTA_CSS: CARTA_CSS, CARTA_JS: CARTA_JS, cartaBody: cartaBody, cartaEstatica: cartaEstatica
   };
 })();

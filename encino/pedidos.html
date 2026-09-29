@@ -49,7 +49,7 @@ a{color:var(--acc)}
 <script>
 (function(){
   var E = Encino, esc = E.esc, money = E.money;
-  var menu = [], cfg = E.cfgFrom([]), cart = {}, paso = 'menu', menuSel = null, miPedido = null;
+  var menu = [], cfg = E.cfgFrom([]), cart = {}, paso = 'menu', menuSel = null, menuElegido = false, miPedido = null;
   try { miPedido = localStorage.getItem('encino:miPedido'); } catch(e){}
   var app = document.getElementById('app'), bar = document.getElementById('bar');
 
@@ -73,6 +73,12 @@ a{color:var(--acc)}
     var h = '<h1>' + esc(cfg.nombre) + '</h1><p class="sub">Ordena en línea' + (cfg.telefono ? ' · ' + esc(cfg.telefono) : '') + '</p><div class="tabs">';
     (cfg.menus || []).forEach(function(m){ h += '<button data-m="' + esc(m.id) + '"' + (m.id === menuSel ? ' class="on"' : '') + '>' + esc(m.nombre) + '</button>'; });
     h += '</div>';
+    // Ventana de cambio (dos menús en horario): el cliente elige
+    var activos = E.menusActivos(cfg);
+    if (!menuElegido && activos.length > 1) {
+      h += '<div class="box" style="text-align:center;border:2px solid var(--acc)"><p style="margin:0 0 10px">Son las <b>' + E.hm(new Date()) + '</b> y estamos sirviendo dos menús. ¿Qué se te antoja?</p><div class="row">' +
+        activos.map(function(m){ return '<button class="btn" data-m="' + esc(m.id) + '">' + esc(E.nombreCorto(m)) + '</button>'; }).join('') + '</div></div>';
+    }
     var its = items().filter(function(i){ return E.enMenu(i, menuSel) && !i.esPaquete; });
     var paqs = items().filter(function(i){ return i.esPaquete && E.enMenu(i, menuSel); });
     var paqH = '';
@@ -156,7 +162,7 @@ a{color:var(--acc)}
   }
   app.addEventListener('click', function(e){
     var t = e.target.closest('button'); if (!t) return;
-    if (t.dataset.m) { menuSel = t.dataset.m; pinta(); }
+    if (t.dataset.m) { menuSel = t.dataset.m; menuElegido = true; pinta(); }
     else if (t.dataset.mas) { cart[t.dataset.mas] = (cart[t.dataset.mas] || 0) + 1; pinta(); }
     else if (t.dataset.menos) { var k = t.dataset.menos; cart[k]--; if (cart[k] <= 0) delete cart[k]; pinta(); }
   });

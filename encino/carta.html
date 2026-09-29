@@ -16,14 +16,13 @@
 <script>
 (function(){
   document.getElementById('cartaCss').textContent = Encino.CARTA_CSS;
-  var menu = [], cfg = Encino.cfgFrom([]), tabActual = null;
+  var menu = [], cfg = Encino.cfgFrom([]);
   function pinta(){
     document.title = 'Menú — ' + cfg.nombre;
     var link = cfg.pedidosActivos ? 'pedidos.html' : '';
     document.getElementById('app').innerHTML = Encino.cartaBody(cfg, menu, { linkPedidos: link });
-    if (tabActual) { var b = document.querySelector('.c-tabs button[data-m="' + tabActual + '"]'); if (b) b.click(); }
+    window.cartaAuto(); // respeta el menú que el cliente ya eligió
   }
-  document.addEventListener('click', function(e){ var b = e.target.closest('.c-tabs button'); if (b) tabActual = b.getAttribute('data-m'); });
   (new Function(Encino.CARTA_JS))();
   Store.init().then(function(){
     Store.watch('config', function(d){ cfg = Encino.cfgFrom(d); pinta(); });
