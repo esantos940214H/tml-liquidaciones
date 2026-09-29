@@ -4406,8 +4406,20 @@ exports.recuperarAnticiposDesdeHistorial = onRequest({ cors: true, region: 'us-c
         const fecha = item.fecha || '';
         const importe = parseFloat(item.importe) || 0;
         const concepto = item.concepto || '';
+        // referencia/hora: solo existen en snapshots de liquidaciones
+        // cerradas DESPUÉS de este cambio (ver liq.html → _snap.antsList) —
+        // en las viejas vienen vacíos, que es justo el caso que motivó
+        // agregar Hora como criterio de emparejamiento más confiable que
+        // el Concepto genérico cuando no hay Referencia.
+        const referencia = item.referencia || '';
+        const hora = item.hora || '';
         if (!fecha) return; // sin fecha no hay forma confiable de emparejar ni de recrear
-        const existente = anticiposDB[opId].find(function (a) { return a.fecha === fecha && Math.abs((a.importe || 0) - importe) < 0.01; });
+        const existente = anticiposDB[opId].find(function (a) {
+          if (a.referencia && referencia) return a.referencia.replace(/^0+/, '') === referencia.replace(/^0+/, '') && Math.abs((a.importe || 0) - importe) < 0.01;
+          if (a.fecha !== fecha || Math.abs((a.importe || 0) - importe) >= 0.01) return false;
+          if (a.hora && hora) return a.hora === hora;
+          return true; // fallback: fecha+importe ya coincide y no hay hora/referencia de ningún lado para afinar más
+        });
         if (existente) {
           if (existente.estado !== 'liquidado') {
             detalle.push({ accion: 'corregido', fecha: fecha, importe: importe, concepto: concepto, idExistente: existente.id });
@@ -4419,7 +4431,7 @@ exports.recuperarAnticiposDesdeHistorial = onRequest({ cors: true, region: 'us-c
           if (aplicar) {
             anticiposDB[opId].push({
               id: 'recup-' + num + '-' + opId + '-' + Date.now() + '-' + Math.random().toString(36).slice(2, 7),
-              fecha: fecha, importe: importe, concepto: concepto, referencia: '',
+              fecha: fecha, hora: hora, importe: importe, concepto: concepto, referencia: referencia,
               estado: 'liquidado', liqNum: num, origen: 'recuperado_historial',
               unidadAlCapturar: liq.unidad != null ? parseInt(liq.unidad) : null
             });
