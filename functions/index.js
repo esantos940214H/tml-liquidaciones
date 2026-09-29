@@ -4313,3 +4313,105 @@ exports.generarCartaPorteFlete = onRequest({ secrets: [FACTURAPI_TEST_KEY], cors
     res.status(/administrador|sesión/.test(e.message || '') ? 403 : 500).json({ error: e.message || 'Error interno del servidor.' });
   }
 });
+
+// ══════════════════════════════════════════════════════════════════════════
+// recuperarAnticiposDesdeHistorial — herramienta de UN SOLO USO para reparar
+// el documento estado/anticiposDB después del bug real de sobrescritura en
+// ant.html (guardar() escribía a ciegas la copia en memoria del navegador,
+// sin releer fresco antes — ya corregido, ver commit "Corregir sobrescritura
+// del blob anticiposDB al guardar"). Ese bug dejó anticiposDB reducido solo
+// a lo capturado en septiembre 2026 y borró las marcas "liquidado" de TODAS
+// las liquidaciones ya cerradas.
+//
+// Fuente de verdad para reparar: cada liquidación cerrada guarda su propia
+// copia de los anticipos que incluyó en historial/liq-{num}-{opId} →
+// snapshot.antsList = [{fecha,concepto,importe}, ...] (ver liq.html, línea
+// _snap.antsList) — independiente del blob dañado, así que sobrevivió.
+//
+// Por cada anticipo de cada antsList:
+//   - Si sigue existiendo en anticiposDB (por fecha+importe) pero quedó en
+//     "pendiente" → se corrige a "liquidado" con el liqNum de esa
+//     liquidación.
+//   - Si ya no existe ni como pendiente (se borró por completo) → se vuelve
+//     a crear, ya marcado "liquidado" desde el inicio. No se puede
+//     recuperar su número de Referencia bancaria original (el historial no
+//     lo guarda) — queda vacío, con origen "recuperado_historial" para que
+//     se note que es una reconstrucción.
+//
+// SIEMPRE corre primero con aplicar:false (default) — solo regresa el
+// resumen de qué haría, sin tocar Firestore. Solo escribe si el body trae
+// aplicar:true explícito. Idempotente: correrlo dos veces con aplicar:true
+// no duplica nada (un anticipo ya "liquidado" con el liqNum correcto se
+// deja tal cual).
+// ══════════════════════════════════════════════════════════════════════════
+exports.recuperarAnticiposDesdeHistorial = onRequest({ cors: true, region: 'us-central1', timeoutSeconds: 120 }, async (req, res) => {
+  if (req.method !== 'POST') { res.status(405).json({ error: 'Método no permitido, usa POST.' }); return; }
+  try {
+    await _verificarAdmin(req);
+    const aplicar = !!(req.body && req.body.aplicar === true);
+
+    const snapHist = await db.collection('historial').get();
+    const liquidaciones = [];
+    snapHist.forEach(function (d) { liquidaciones.push(d.data()); });
+    // Reparar en el orden en que se cerraron (fechaCierre asc) — así, si dos
+    // liquidaciones distintas comparten fecha+importe por coincidencia (dos
+    // anticipos separados del mismo monto el mismo día), el primer liqNum
+    // que los reclama es el más antiguo, no uno al azar por el orden en que
+    // Firestore regresó los documentos.
+    liquidaciones.sort(function (a, b) { return (a.fechaCierre || '').localeCompare(b.fechaCierre || ''); });
+
+    // getEstricto (no un .get() que trague el error): si esto falla por
+    // conexión debe TRONAR, no tratarse como "vacío" — escribir un blob
+    // vacío encima de datos reales sería el mismo bug que estamos reparando.
+    const snapAnt = await db.collection('estado').doc('anticiposDB').get();
+    let anticiposDB = (snapAnt.exists && snapAnt.data().data) ? JSON.parse(snapAnt.data().data) : {};
+    if (Array.isArray(anticiposDB)) anticiposDB = {};
+
+    let totalCorregidos = 0, totalRecreados = 0;
+    const resumen = [];
+
+    liquidaciones.forEach(function (liq) {
+      const opId = liq.opId != null ? parseInt(liq.opId) : null;
+      const num = liq.num;
+      const antsList = (liq.snapshot && Array.isArray(liq.snapshot.antsList)) ? liq.snapshot.antsList : [];
+      if (!opId || !antsList.length) return;
+      if (!anticiposDB[opId]) anticiposDB[opId] = [];
+      const detalle = [];
+      antsList.forEach(function (item) {
+        const fecha = item.fecha || '';
+        const importe = parseFloat(item.importe) || 0;
+        const concepto = item.concepto || '';
+        if (!fecha) return; // sin fecha no hay forma confiable de emparejar ni de recrear
+        const existente = anticiposDB[opId].find(function (a) { return a.fecha === fecha && Math.abs((a.importe || 0) - importe) < 0.01; });
+        if (existente) {
+          if (existente.estado !== 'liquidado') {
+            detalle.push({ accion: 'corregido', fecha: fecha, importe: importe, concepto: concepto, idExistente: existente.id });
+            if (aplicar) { existente.estado = 'liquidado'; existente.liqNum = num; }
+            totalCorregidos++;
+          }
+        } else {
+          detalle.push({ accion: 'recreado', fecha: fecha, importe: importe, concepto: concepto });
+          if (aplicar) {
+            anticiposDB[opId].push({
+              id: 'recup-' + num + '-' + opId + '-' + Date.now() + '-' + Math.random().toString(36).slice(2, 7),
+              fecha: fecha, importe: importe, concepto: concepto, referencia: '',
+              estado: 'liquidado', liqNum: num, origen: 'recuperado_historial',
+              unidadAlCapturar: liq.unidad != null ? parseInt(liq.unidad) : null
+            });
+          }
+          totalRecreados++;
+        }
+      });
+      if (detalle.length) resumen.push({ num: num, opId: opId, op: (liq.op && liq.op.nombre) || '', detalle: detalle });
+    });
+
+    if (aplicar) {
+      await db.collection('estado').doc('anticiposDB').set({ data: JSON.stringify(anticiposDB) });
+    }
+
+    res.json({ ok: true, modo: aplicar ? 'aplicado' : 'simulado', totalCorregidos: totalCorregidos, totalRecreados: totalRecreados, liquidacionesRevisadas: liquidaciones.length, resumen: resumen });
+  } catch (e) {
+    console.error('recuperarAnticiposDesdeHistorial:', e);
+    res.status(/administrador|sesión/.test(e.message || '') ? 403 : 500).json({ error: e.message || 'Error interno del servidor.' });
+  }
+});
