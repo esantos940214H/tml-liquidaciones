@@ -120,7 +120,8 @@
   // Nombre completo para administración: "Desayunos — Viernes · 08:00–13:00"
   function menuEtiqueta(m){ var t = diasTxt(m); return m.nombre + (t ? ' — ' + t : ''); }
   // Agrupa platillos por categoría manteniendo alimentos antes que bebidas.
-  function catDe(it){ return it.categoria || (it.tipo === 'bebida' ? 'Bebidas' : 'Platillos'); }
+  // Las categorías se manejan siempre en MAYÚSCULAS
+  function catDe(it){ return String(it.categoria || (it.tipo === 'bebida' ? 'Bebidas' : 'Platillos')).toUpperCase(); }
   // Comparador: primero por el orden de categorías configurado, luego las no
   // listadas (alimentos antes que bebidas, alfabético) y al final por nombre.
   function cmpCat(orden){

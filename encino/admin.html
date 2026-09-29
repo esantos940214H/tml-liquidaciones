@@ -286,7 +286,7 @@ function pintaItems(){
     if (i.esPaquete) return false; // los paquetes se agregan desde el renglón del platillo
     if (oFiltro.cat === 'Alimentos' && i.tipo === 'bebida') return false;
     if (oFiltro.cat === 'Bebidas' && i.tipo !== 'bebida') return false;
-    if (['Todo', 'Alimentos', 'Bebidas'].indexOf(oFiltro.cat) < 0 && i.categoria !== oFiltro.cat) return false;
+    if (['Todo', 'Alimentos', 'Bebidas'].indexOf(oFiltro.cat) < 0 && E.catDe(i) !== oFiltro.cat) return false;
     return !oFiltro.q || (i.nombre || '').toLowerCase().indexOf(oFiltro.q) >= 0;
   }).sort(E.cmpCat(S.config.categorias));
   $('oItems').innerHTML = its.length ? its.map(function(i){
@@ -551,7 +551,7 @@ function vMenu(){
 // Si todavía no se ha guardado un orden, se parte de las categorías que ya
 // usan los platillos, en el orden automático (alimentos, luego bebidas).
 function listaCategorias(){
-  var lista = (S.config.categorias || []).slice(), vistas = {};
+  var lista = (S.config.categorias || []).map(function(c){ return String(c).toUpperCase(); }), vistas = {};
   lista.forEach(function(c){ vistas[c.toLowerCase()] = true; });
   E.porCategoria(S.menu.filter(function(i){ return i.categoria && !i.esPaquete; }), lista).forEach(function(g){
     if (!vistas[g.categoria.toLowerCase()]) { vistas[g.categoria.toLowerCase()] = true; lista.push(g.categoria); }
@@ -566,8 +566,25 @@ function asegurarCategoria(nombre){
   if (!lista.some(function(c){ return c.toLowerCase() === nombre.toLowerCase(); })) lista.push(nombre);
   return Store.put('config', { id: 'general', categorias: lista });
 }
+// Convierte a mayúsculas lo que se va escribiendo sin mover el cursor
+function mayus(inp){ var p = inp.selectionStart, v = inp.value.toUpperCase(); if (v !== inp.value) { inp.value = v; try { inp.setSelectionRange(p, p); } catch(e){} } }
+// Una sola vez al abrir: pasa a MAYÚSCULAS las categorías guardadas antes
+// (solo actualiza el campo categoria de cada platillo y la lista de orden).
+var catsNormalizadas = false;
+function normalizarCategorias(){
+  if (catsNormalizadas) return; catsNormalizadas = true;
+  var ps = [];
+  S.menu.forEach(function(i){ if (i.categoria && i.categoria !== i.categoria.toUpperCase()) ps.push(Store.put('menu', { id: i.id, categoria: i.categoria.toUpperCase() })); });
+  var cs = S.config.categorias || [];
+  if (cs.some(function(c){ return c !== String(c).toUpperCase(); })) {
+    var vistos = {}, lista = [];
+    cs.forEach(function(c){ var u = String(c).toUpperCase(); if (!vistos[u]) { vistos[u] = true; lista.push(u); } });
+    ps.push(Store.put('config', { id: 'general', categorias: lista }));
+  }
+  return Promise.all(ps);
+}
 function editarCategorias(){
-  var filas = listaCategorias().map(function(c){ return { orig: c, nombre: c }; });
+  var filas = listaCategorias().map(function(c){ return { orig: c, nombre: c.toUpperCase() }; });
   function usados(nombre){ return S.menu.filter(function(i){ return (i.categoria || '').toLowerCase() === String(nombre || '').toLowerCase(); }).length; }
   var md = modal('<h2>Categorías del menú</h2><p class="small mut" style="margin-top:0">Este es el orden en que aparecen en la carta, la página de inicio, los pedidos en línea y la pantalla de mesas. Usa ↑ ↓ para acomodarlas. Si cambias un nombre, se actualiza en todos sus platillos.</p>' +
     '<div id="cLista"></div><div class="toolbar" style="margin-top:10px"><input id="cNueva" placeholder="Nueva categoría (ej. Postres, Coctelería)" style="flex:1"><button class="b" id="cAdd">＋ Agregar</button></div>' +
@@ -580,7 +597,7 @@ function editarCategorias(){
         '<button class="b s" data-up="' + k + '"' + (k ? '' : ' disabled') + ' title="Subir">↑</button><button class="b s" data-dn="' + k + '"' + (k < filas.length - 1 ? '' : ' disabled') + ' title="Bajar">↓</button>' +
         '<button class="b s d" data-rm="' + k + '" title="Quitar">×</button></div>'; }).join('') : '<p class="small mut">Sin categorías todavía.</p>';
   }
-  $('cLista').oninput = function(e){ var t = e.target; if (t.dataset.k != null) filas[t.dataset.k].nombre = t.value; };
+  $('cLista').oninput = function(e){ var t = e.target; if (t.dataset.k == null) return; mayus(t); filas[t.dataset.k].nombre = t.value; };
   $('cLista').onclick = function(e){
     var b = e.target.closest('button'); if (!b) return;
     var k;
@@ -594,23 +611,25 @@ function editarCategorias(){
     pinta();
   };
   function agregar(){
-    var n = $('cNueva').value.trim(); if (!n) return;
+    var n = $('cNueva').value.trim().toUpperCase(); if (!n) return;
     if (filas.some(function(f){ return f.nombre.trim().toLowerCase() === n.toLowerCase(); })) return alert('Esa categoría ya existe.');
     filas.push({ orig: null, nombre: n }); $('cNueva').value = ''; pinta(); $('cNueva').focus();
   }
   $('cAdd').onclick = agregar;
   $('cNueva').onkeydown = function(e){ if (e.key === 'Enter') agregar(); };
+  $('cNueva').oninput = function(){ mayus(this); };
   $('cNo').onclick = md.close;
   $('cOk').onclick = function(){
-    var nombres = filas.map(function(f){ return f.nombre.trim(); });
+    var nombres = filas.map(function(f){ return f.nombre.trim().toUpperCase(); });
     if (nombres.some(function(n){ return !n; })) return alert('Hay una categoría sin nombre.');
     var vistos = {};
     for (var i = 0; i < nombres.length; i++) { var l = nombres[i].toLowerCase(); if (vistos[l]) return alert('La categoría "' + nombres[i] + '" está repetida.'); vistos[l] = true; }
     // Renombres: se actualiza solo el campo categoria de cada platillo afectado
     var ps = [];
     filas.forEach(function(f){
-      if (!f.orig || f.orig === f.nombre.trim()) return;
-      S.menu.forEach(function(i){ if ((i.categoria || '').toLowerCase() === f.orig.toLowerCase()) ps.push(Store.put('menu', { id: i.id, categoria: f.nombre.trim() })); });
+      if (!f.orig) return;
+      var nuevo = f.nombre.trim().toUpperCase();
+      S.menu.forEach(function(i){ if ((i.categoria || '').toLowerCase() === f.orig.toLowerCase() && i.categoria !== nuevo) ps.push(Store.put('menu', { id: i.id, categoria: nuevo })); });
     });
     this.disabled = true;
     Promise.all(ps).then(function(){ return Store.put('config', { id: 'general', categorias: nombres }); })
@@ -628,7 +647,7 @@ function editarPlatillo(id){
   var md = modal('<h2>' + (id ? 'Editar' : 'Nuevo') + ' platillo / bebida</h2>' +
     '<label class="f">Nombre *</label><input id="pNom" class="w100" value="' + esc(m.nombre || '') + '">' +
     '<div class="grid3"><div><label class="f">Tipo</label><select id="pTipo" class="w100"><option value="alimento">🍽️ Alimento</option><option value="bebida">🥤 Bebida</option></select></div>' +
-    '<div><label class="f">Categoría</label><input id="pCat" class="w100" list="dlCats" value="' + esc(m.categoria || '') + '" placeholder="Elige o escribe una nueva"><datalist id="dlCats">' + cats.map(function(c){ return '<option value="' + esc(c) + '">'; }).join('') + '</datalist></div>' +
+    '<div><label class="f">Categoría</label><input id="pCat" class="w100" list="dlCats" value="' + esc(m.categoria || '') + '" placeholder="ELIGE O ESCRIBE UNA NUEVA" style="text-transform:uppercase"><datalist id="dlCats">' + cats.map(function(c){ return '<option value="' + esc(c) + '">'; }).join('') + '</datalist></div>' +
     '<div><label class="f">Precio (IVA incluido) *</label><input id="pPre" type="number" min="0" step="0.5" class="w100" value="' + (m.precio != null ? m.precio : '') + '"></div></div>' +
     '<h3>Variantes <span class="small mut" style="font-weight:400">(opcional)</span></h3><p class="small mut" style="margin-top:0">Si el platillo se pide de varias formas con precio distinto (ej. chilaquiles solos, con pollo, con tasajo, con cecina o con arrachera), agrega cada una aquí. Al capturar la orden se elige cuál. Si tiene variantes, el precio de arriba ya no se usa. En "Insumo extra" pon lo que esa variante descuenta además de la receta general (ej. 0.15 kg de tasajo).</p>' +
     '<div id="pVars"></div><button class="b s" id="pAddVar">＋ Variante</button>' +
@@ -651,6 +670,7 @@ function editarPlatillo(id){
   $('pRec').onclick = function(e){ var b = e.target.closest('[data-rm]'); if (b) { rec.splice(+b.dataset.rm, 1); pintaRec(); } };
   $('pAddRec').onclick = function(){ rec.push({ insumoId: '', cant: 1 }); pintaRec(); };
   $('pTipo').onchange = function(){ if ($('pCrearIns')) $('pCrearIns').checked = this.value === 'bebida'; };
+  $('pCat').oninput = function(){ mayus(this); };
   pintaRec();
   var vars = E.variantes(m).map(function(v){ var r = (v.receta || [])[0] || {}; return { id: v.id, nombre: v.nombre, precio: v.precio, insumoId: r.insumoId || '', cant: r.cant != null ? r.cant : null }; });
   function pintaVars(){
@@ -679,7 +699,7 @@ function editarPlatillo(id){
     var variantesD = vsOk.map(function(v){ return { id: v.id, nombre: v.nombre.trim(), precio: v.precio, receta: v.insumoId && v.cant > 0 ? [{ insumoId: v.insumoId, cant: v.cant }] : [] }; });
     if (variantesD.length) pre = Math.min.apply(null, variantesD.map(function(v){ return v.precio; }));
     if (pre == null || pre < 0) return alert('Falta el precio (puede ser 0 si es cortesía).');
-    var d = { id: id || Store.uid(), nombre: nom, tipo: $('pTipo').value, categoria: $('pCat').value.trim(), precio: pre, descripcion: $('pDes').value.trim(),
+    var d = { id: id || Store.uid(), nombre: nom, tipo: $('pTipo').value, categoria: $('pCat').value.trim().toUpperCase(), precio: pre, descripcion: $('pDes').value.trim(),
       disponible: $('pDisp').checked, enCarta: $('pCarta').checked, enLinea: $('pLinea').checked, esPaquete: $('pPaq').checked, sinPaquete: $('pSinPaq').checked,
       menus: Array.from($('pMenus').querySelectorAll('input:checked')).map(function(x){ return x.value; }),
       receta: rec.filter(function(r){ return r.insumoId && r.cant > 0; }), variantes: variantesD };
@@ -740,7 +760,7 @@ function importarMenuCSV(file){
       var ms = g('menus') ? g('menus').split(/[|/]/).map(function(s){ s = s.trim().toLowerCase();
         var m = S.config.menus.find(function(x){ return x.id === s || x.nombre.toLowerCase() === s; }); return m ? m.id : null; }).filter(Boolean) : null;
       var d = { id: ya ? ya.id : Store.uid(), nombre: nom, precio: pre };
-      if (g('categoria')) d.categoria = g('categoria');
+      if (g('categoria')) d.categoria = g('categoria').toUpperCase();
       if (ix('tipo') >= 0 || !ya) d.tipo = tipo;
       if (g('descripcion')) d.descripcion = g('descripcion');
       if (ms) d.menus = ms; else if (!ya) d.menus = [];
@@ -1182,7 +1202,7 @@ function arrancar(){
     render(false);
   }); });
   ps.push(Store.watch('config', function(arr){ S.config = E.cfgFrom(arr); S.configDocs = arr.filter(function(d){ return d.id === 'general'; }); render(false); }));
-  Promise.all(ps).then(function(){ listo = true; avisoPedidos(); render(true); });
+  Promise.all(ps).then(function(){ listo = true; avisoPedidos(); render(true); normalizarCategorias(); });
   setInterval(function(){ if (TAB === 'mesas' && !OM) render(false); }, 60000);
 }
 window.onStoreError = function(c, err){ if (err && err.code === 'permission-denied') toast('Sin permiso para leer ' + c + ' — revisa las reglas de Firestore / tu sesión.'); };
