@@ -127,7 +127,7 @@ window.ENCINO_SITIO = {
       $('mhTit').textContent = m.nombre;
       $('mhSub').textContent = E.diasTxt(m);
       $('mh').innerHTML = E.porCategoria(its).map(function(g){ return '<div class="cat"><h3>' + esc(g.categoria) + '</h3>' + g.items.map(function(i){
-        return '<div class="pl"><span class="n">' + esc(i.nombre) + (i.descripcion ? '<span class="d">' + esc(i.descripcion) + '</span>' : '') + '</span><span class="p">' + E.money(i.precio) + '</span></div>'; }).join('') + '</div>'; }).join('');
+        return '<div class="pl"><span class="n">' + esc(i.nombre) + (i.descripcion ? '<span class="d">' + esc(i.descripcion) + '</span>' : '') + '</span><span class="p">' + E.precioTxt(i) + '</span></div>'; }).join('') + '</div>'; }).join('');
     }
     var datos = [['Dirección', D.direccion, D.mapa ? '<a href="' + esc(D.mapa) + '" target="_blank" rel="noopener">' + esc(D.direccion || 'Ver en el mapa') + '</a>' : null],
       ['Teléfono', D.telefono, '<a href="tel:' + esc((D.telefono || '').replace(/\s/g, '')) + '">' + esc(D.telefono) + '</a>'],

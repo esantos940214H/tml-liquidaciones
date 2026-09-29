@@ -289,7 +289,7 @@ function pintaItems(){
   }).sort(function(a, b){ return (a.nombre || '').localeCompare(b.nombre || '', 'es'); });
   $('oItems').innerHTML = its.length ? its.map(function(i){
     var st = stockPlatillo(i);
-    return '<button class="item' + (i.tipo === 'bebida' ? ' beb' : '') + (i.disponible === false ? ' off' : '') + '" data-add="' + i.id + '"><div class="nm">' + esc(i.nombre) + '</div><div class="pr">' + money(i.precio) + '</div>' +
+    return '<button class="item' + (i.tipo === 'bebida' ? ' beb' : '') + (i.disponible === false ? ' off' : '') + '" data-add="' + i.id + '"><div class="nm">' + esc(i.nombre) + '</div><div class="pr">' + E.precioTxt(i) + (E.variantes(i).length ? ' · ' + E.variantes(i).length + ' opciones' : '') + '</div>' +
       (st != null ? '<div class="small ' + (st <= 0 ? 'mut' : 'mut') + '">' + (st <= 0 ? '⚠️ sin existencia' : 'quedan ' + st) + '</div>' : '') + '</button>';
   }).join('') : '<p class="mut">Sin resultados. Da de alta platillos en la pestaña Menú.</p>';
 }
@@ -317,10 +317,19 @@ function agregar(menuId){
   var o = getOrden(OM.dataset.id), m = S.menu.find(function(x){ return x.id === menuId; });
   if (!o || !m) return;
   if (m.disponible === false && !confirm(m.nombre + ' está marcado como NO disponible. ¿Agregarlo de todos modos?')) return;
-  var items = (o.items || []).slice();
-  var l = items.find(function(x){ return x.menuId === menuId && !x.nota && !x.enviado; });
+  var vs = E.variantes(m);
+  if (!vs.length) return agregarLinea(m, null);
+  // Platillo con variantes: se elige cuál (cada una con su precio)
+  var md = modal('<h2>' + esc(m.nombre) + '</h2><p class="mut small">¿Cuál?</p><div class="items" id="vSel">' +
+    vs.map(function(v){ return '<button class="item" data-v="' + esc(v.id) + '"><div class="nm">' + esc(v.nombre) + '</div><div class="pr">' + money(v.precio) + '</div></button>'; }).join('') + '</div>');
+  $('vSel').onclick = function(e){ var b = e.target.closest('[data-v]'); if (!b) return; md.close(); agregarLinea(m, vs.find(function(v){ return v.id === b.dataset.v; })); };
+}
+function agregarLinea(m, v){
+  var o = getOrden(OM.dataset.id); if (!o) return;
+  var items = (o.items || []).slice(), varId = v ? v.id : null;
+  var l = items.find(function(x){ return x.menuId === m.id && (x.varId || null) === varId && !x.nota && !x.enviado; });
   if (l) l.cant++;
-  else items.push({ lid: Store.uid(), menuId: m.id, nombre: m.nombre, precio: Number(m.precio) || 0, tipo: m.tipo, categoria: m.categoria || '', cant: 1 });
+  else items.push({ lid: Store.uid(), menuId: m.id, varId: varId, nombre: m.nombre + (v ? ' · ' + v.nombre : ''), precio: Number(v ? v.precio : m.precio) || 0, tipo: m.tipo, categoria: m.categoria || '', cant: 1 });
   Store.put('ordenes', { id: o.id, items: items }).then(pintaOrden);
   pintaOrden();
 }
@@ -388,8 +397,9 @@ function consumoDe(items){
   var agg = {};
   items.forEach(function(it){
     var m = S.menu.find(function(x){ return x.id === it.menuId; });
-    if (!m || !m.receta) return;
-    m.receta.forEach(function(r){ if (r.insumoId && r.cant > 0) agg[r.insumoId] = (agg[r.insumoId] || 0) + r.cant * it.cant; });
+    if (!m) return;
+    var v = it.varId ? E.variantes(m).find(function(x){ return x.id === it.varId; }) : null;
+    (m.receta || []).concat(v && v.receta || []).forEach(function(r){ if (r.insumoId && r.cant > 0) agg[r.insumoId] = (agg[r.insumoId] || 0) + r.cant * it.cant; });
   });
   return agg;
 }
@@ -402,7 +412,7 @@ function moverInventario(agg, signo, tipo, ref, ts){
 function cerrarVenta(o, sub, p){
   var o2 = getOrden(o.id) || o; // lo más reciente
   return Store.nextFolio().then(function(folio){
-    var items = o2.items.map(function(i){ return { menuId: i.menuId, nombre: i.nombre, precio: i.precio, tipo: i.tipo || 'alimento', categoria: i.categoria || '', cant: i.cant, nota: i.nota || '' }; });
+    var items = o2.items.map(function(i){ return { menuId: i.menuId, varId: i.varId || null, nombre: i.nombre, precio: i.precio, tipo: i.tipo || 'alimento', categoria: i.categoria || '', cant: i.cant, nota: i.nota || '' }; });
     var consumo = consumoDe(items);
     var v = Object.assign({ id: Store.uid(), folio: folio, fecha: Date.now(), estado: 'pagada', tipo: o2.tipo, mesa: o2.mesa || '', cliente: o2.cliente || '', mesero: o2.mesero || '',
       personas: o2.personas || null, pedidoId: o2.pedidoId || null, items: items, subtotal: sub, consumo: consumo }, p);
@@ -457,7 +467,7 @@ function accionPedido(a, id){
   if (a === 'aceptar') {
     var o = { id: Store.uid(), tipo: 'linea', mesa: '', cliente: p.cliente, pedidoId: p.id, abierta: Date.now(),
       items: (p.items || []).map(function(i){ var m = S.menu.find(function(x){ return x.id === i.menuId; });
-        return { lid: Store.uid(), menuId: i.menuId, nombre: i.nombre, precio: Number(i.precio) || 0, tipo: i.tipo || (m && m.tipo) || 'alimento', categoria: (m && m.categoria) || '', cant: i.cant, nota: '' }; }) };
+        return { lid: Store.uid(), menuId: i.menuId, varId: i.varId || null, nombre: i.nombre, precio: Number(i.precio) || 0, tipo: i.tipo || (m && m.tipo) || 'alimento', categoria: (m && m.categoria) || '', cant: i.cant, nota: '' }; }) };
     if (p.notas && o.items[0]) o.items[0].nota = p.notas;
     Store.put('ordenes', o).then(function(){ return Store.put('pedidos', { id: id, estado: 'aceptado', ordenId: o.id }); }).then(function(){ toast('Pedido aceptado — quedó como orden abierta'); });
   } else if (a === 'rechazar') {
@@ -486,14 +496,14 @@ function vMenu(){
     '<label class="b">⬆️ Importar CSV<input type="file" id="mCsv" accept=".csv,text/csv" hidden></label><button class="b" id="mExp">⬇️ Exportar CSV</button><a class="b" href="carta.html" target="_blank">Ver carta QR ↗</a></div>' +
     '<div class="toolbar"><input id="mQ" placeholder="🔎 Buscar…" value="' + esc(mFiltro.q) + '"><select id="mT"><option value="">Alimentos y bebidas</option><option value="alimento">Solo alimentos</option><option value="bebida">Solo bebidas</option></select>' +
     '<select id="mM"><option value="">Todos los menús</option>' + S.config.menus.map(function(m){ return '<option value="' + esc(m.id) + '">' + esc(m.nombre) + '</option>'; }).join('') + '</select></div>';
-  if (!S.menu.length) h += '<div class="card">Aún no hay platillos. Agrégalos uno por uno, importa un CSV (columnas: <code>nombre,categoria,tipo,precio,descripcion,menus</code>) o carga datos de ejemplo en Configuración.</div>';
+  if (!S.menu.length) h += '<div class="card">Aún no hay platillos. Agrégalos uno por uno, importa un CSV (columnas: <code>nombre,categoria,tipo,precio,descripcion,menus,variantes</code>; variantes así: <code>Solos=95|Con pollo=120</code>) o carga datos de ejemplo en Configuración.</div>';
   else {
     h += '<div class="card tw"><table><tr><th>Platillo</th><th>Categoría</th><th>Tipo</th><th>Menús</th><th class="n">Precio</th><th>Inventario</th><th></th></tr>';
     its.forEach(function(i){
       var ms = (i.menus || []).length ? i.menus.map(function(id){ var m = S.config.menus.find(function(x){ return x.id === id; }); return m ? m.nombre : id; }).join('<br>') : '<span class="mut">Todos</span>';
       var st = stockPlatillo(i);
       h += '<tr><td><b>' + esc(i.nombre) + '</b>' + (i.disponible === false ? ' <span class="pill bad">No disponible</span>' : '') + (i.enLinea === false ? ' <span class="pill warn">No en línea</span>' : '') + (i.descripcion ? '<div class="small mut">' + esc(i.descripcion) + '</div>' : '') + '</td>' +
-        '<td>' + esc(i.categoria || '') + '</td><td>' + (i.tipo === 'bebida' ? '🥤 Bebida' : '🍽️ Alimento') + '</td><td class="small">' + ms + '</td><td class="n">' + money(i.precio) + '</td>' +
+        '<td>' + esc(i.categoria || '') + '</td><td>' + (i.tipo === 'bebida' ? '🥤 Bebida' : '🍽️ Alimento') + '</td><td class="small">' + ms + '</td><td class="n">' + (E.variantes(i).length ? E.variantes(i).map(function(v){ return '<div class="small">' + esc(v.nombre) + ' <b>' + money(v.precio) + '</b></div>'; }).join('') : money(i.precio)) + '</td>' +
         '<td class="small">' + ((i.receta || []).length ? (st != null ? 'Alcanza para ' + st : '') + '<br>' + i.receta.length + ' insumo(s)' : '<span class="mut">No descuenta</span>') + '</td>' +
         '<td class="n"><button class="b s" data-ed="' + i.id + '">Editar</button></td></tr>';
     });
@@ -521,6 +531,8 @@ function editarPlatillo(id){
     '<div class="grid3"><div><label class="f">Tipo</label><select id="pTipo" class="w100"><option value="alimento">🍽️ Alimento</option><option value="bebida">🥤 Bebida</option></select></div>' +
     '<div><label class="f">Categoría</label><input id="pCat" class="w100" list="dlCats" value="' + esc(m.categoria || '') + '" placeholder="Ej. Huevos, Cortes, Cervezas"><datalist id="dlCats">' + cats.map(function(c){ return '<option value="' + esc(c) + '">'; }).join('') + '</datalist></div>' +
     '<div><label class="f">Precio (IVA incluido) *</label><input id="pPre" type="number" min="0" step="0.5" class="w100" value="' + (m.precio != null ? m.precio : '') + '"></div></div>' +
+    '<h3>Variantes <span class="small mut" style="font-weight:400">(opcional)</span></h3><p class="small mut" style="margin-top:0">Si el platillo se pide de varias formas con precio distinto (ej. chilaquiles solos, con pollo, con tasajo, con cecina o con arrachera), agrega cada una aquí. Al capturar la orden se elige cuál. Si tiene variantes, el precio de arriba ya no se usa. En "Insumo extra" pon lo que esa variante descuenta además de la receta general (ej. 0.15 kg de tasajo).</p>' +
+    '<div id="pVars"></div><button class="b s" id="pAddVar">＋ Variante</button>' +
     '<label class="f">Descripción (aparece en la carta)</label><textarea id="pDes" rows="2" class="w100">' + esc(m.descripcion || '') + '</textarea>' +
     '<label class="f">¿En qué menús aparece? (si no marcas ninguno, aparece en todos)</label><div id="pMenus">' +
     S.config.menus.map(function(x){ return '<label style="display:block;margin:3px 0"><input type="checkbox" value="' + esc(x.id) + '"' + ((m.menus || []).indexOf(x.id) >= 0 ? ' checked' : '') + '> ' + esc(x.nombre) + '</label>'; }).join('') + '</div>' +
@@ -538,16 +550,37 @@ function editarPlatillo(id){
   $('pAddRec').onclick = function(){ rec.push({ insumoId: '', cant: 1 }); pintaRec(); };
   $('pTipo').onchange = function(){ if ($('pCrearIns')) $('pCrearIns').checked = this.value === 'bebida'; };
   pintaRec();
+  var vars = E.variantes(m).map(function(v){ var r = (v.receta || [])[0] || {}; return { id: v.id, nombre: v.nombre, precio: v.precio, insumoId: r.insumoId || '', cant: r.cant != null ? r.cant : null }; });
+  function pintaVars(){
+    $('pVars').innerHTML = vars.length ? '<div class="tw"><table><tr><th>Variante</th><th class="n">Precio</th><th>Insumo extra</th><th class="n">Cantidad</th><th></th></tr>' + vars.map(function(v, k){
+      return '<tr><td><input data-k="' + k + '" data-f="nombre" value="' + esc(v.nombre || '') + '" placeholder="Ej. Con tasajo" style="width:100%;min-width:120px"></td>' +
+        '<td class="n"><input data-k="' + k + '" data-f="precio" type="number" min="0" step="0.5" value="' + (v.precio != null ? v.precio : '') + '" style="width:90px"></td>' +
+        '<td><select data-k="' + k + '" data-f="insumoId" style="width:100%;min-width:130px">' + opcionesInsumo(v.insumoId).replace('— insumo —', '— ninguno —') + '</select></td>' +
+        '<td class="n"><input data-k="' + k + '" data-f="cant" type="number" min="0" step="0.001" value="' + (v.cant != null ? v.cant : '') + '" style="width:80px"></td>' +
+        '<td><button class="b s d" data-rm="' + k + '">×</button></td></tr>'; }).join('') + '</table></div>' : '<p class="small mut">Sin variantes: precio único.</p>';
+    $('pPre').disabled = vars.length > 0;
+    $('pPre').placeholder = vars.length ? 'Por variante' : '';
+  }
+  $('pVars').oninput = $('pVars').onchange = function(e){ var t = e.target; if (t.dataset.k == null) return; var v = vars[t.dataset.k]; v[t.dataset.f] = (t.dataset.f === 'precio' || t.dataset.f === 'cant') ? num(t.value) : t.value; };
+  $('pVars').onclick = function(e){ var b = e.target.closest('[data-rm]'); if (b) { vars.splice(+b.dataset.rm, 1); pintaVars(); } };
+  $('pAddVar').onclick = function(){ vars.push({ id: Store.uid(), nombre: '', precio: null, insumoId: '', cant: null }); pintaVars(); var ins = $('pVars').querySelectorAll('input[data-f=nombre]'); if (ins.length) ins[ins.length - 1].focus(); };
+  pintaVars();
   $('pNo').onclick = md.close;
   if ($('pDel')) $('pDel').onclick = function(){ if (confirm('¿Eliminar "' + m.nombre + '" del menú? Las ventas pasadas no se borran.')) { Store.del('menu', id); md.close(); } };
   $('pOk').onclick = function(){
     var nom = $('pNom').value.trim(), pre = num($('pPre').value);
     if (!nom) return alert('Falta el nombre.');
+    var vsOk = vars.filter(function(v){ return (v.nombre || '').trim() || v.precio != null; });
+    if (vsOk.some(function(v){ return !(v.nombre || '').trim(); })) return alert('Hay una variante sin nombre.');
+    if (vsOk.some(function(v){ return v.precio == null || v.precio < 0; })) return alert('Cada variante necesita su precio (puede ser 0).');
+    if (vsOk.some(function(v){ return v.insumoId && !(v.cant > 0); })) return alert('Si una variante descuenta un insumo, indica la cantidad.');
+    var variantesD = vsOk.map(function(v){ return { id: v.id, nombre: v.nombre.trim(), precio: v.precio, receta: v.insumoId && v.cant > 0 ? [{ insumoId: v.insumoId, cant: v.cant }] : [] }; });
+    if (variantesD.length) pre = Math.min.apply(null, variantesD.map(function(v){ return v.precio; }));
     if (pre == null || pre < 0) return alert('Falta el precio (puede ser 0 si es cortesía).');
     var d = { id: id || Store.uid(), nombre: nom, tipo: $('pTipo').value, categoria: $('pCat').value.trim(), precio: pre, descripcion: $('pDes').value.trim(),
       disponible: $('pDisp').checked, enCarta: $('pCarta').checked, enLinea: $('pLinea').checked,
       menus: Array.from($('pMenus').querySelectorAll('input:checked')).map(function(x){ return x.value; }),
-      receta: rec.filter(function(r){ return r.insumoId && r.cant > 0; }) };
+      receta: rec.filter(function(r){ return r.insumoId && r.cant > 0; }), variantes: variantesD };
     var pr = Promise.resolve();
     if ($('pCrearIns') && $('pCrearIns').checked) {
       var ya = S.insumos.find(function(x){ return x.nombre.toLowerCase() === nom.toLowerCase(); });
@@ -577,8 +610,9 @@ function descargar(nombre, contenido, tipo){
   document.body.appendChild(a); a.click(); setTimeout(function(){ URL.revokeObjectURL(a.href); a.remove(); }, 500);
 }
 function exportarMenuCSV(){
-  var lines = [['nombre', 'categoria', 'tipo', 'precio', 'descripcion', 'menus', 'disponible']].concat(S.menu.map(function(i){
-    return [i.nombre, i.categoria, i.tipo, i.precio, i.descripcion, (i.menus || []).join('|'), i.disponible !== false ? 'si' : 'no']; }));
+  var lines = [['nombre', 'categoria', 'tipo', 'precio', 'descripcion', 'menus', 'disponible', 'variantes']].concat(S.menu.map(function(i){
+    return [i.nombre, i.categoria, i.tipo, i.precio, i.descripcion, (i.menus || []).join('|'), i.disponible !== false ? 'si' : 'no',
+      E.variantes(i).map(function(v){ return v.nombre + '=' + v.precio; }).join('|')]; }));
   descargar('menu-encino.csv', '﻿' + lines.map(function(r){ return r.map(csvCell).join(','); }).join('\n'), 'text/csv;charset=utf-8');
 }
 function importarMenuCSV(file){
@@ -592,8 +626,14 @@ function importarMenuCSV(file){
     var ops = rows.slice(1).map(function(r, k){
       var g = function(c){ return ix(c) >= 0 ? (r[ix(c)] || '').trim() : ''; };
       var nom = g('nombre'), pre = num(g('precio'));
-      if (!nom || pre == null) { err.push('Renglón ' + (k + 2)); return null; }
       var ya = S.menu.find(function(x){ return x.nombre.toLowerCase() === nom.toLowerCase(); });
+      // variantes: "Solos=95|Con pollo=120|Con tasajo=140"
+      var vars = g('variantes') ? g('variantes').split('|').map(function(t){ var x = t.split('='); var n = (x[0] || '').trim(), pr = num(x[1]);
+        if (!n || pr == null) return null;
+        var prev = ya ? E.variantes(ya).find(function(v){ return v.nombre.toLowerCase() === n.toLowerCase(); }) : null;
+        return { id: prev ? prev.id : Store.uid(), nombre: n, precio: pr, receta: prev ? (prev.receta || []) : [] }; }).filter(Boolean) : null;
+      if (vars && vars.length && pre == null) pre = Math.min.apply(null, vars.map(function(v){ return v.precio; }));
+      if (!nom || pre == null) { err.push('Renglón ' + (k + 2)); return null; }
       var tipo = /beb/i.test(g('tipo')) ? 'bebida' : 'alimento';
       var ms = g('menus') ? g('menus').split(/[|/]/).map(function(s){ s = s.trim().toLowerCase();
         var m = S.config.menus.find(function(x){ return x.id === s || x.nombre.toLowerCase() === s; }); return m ? m.id : null; }).filter(Boolean) : null;
@@ -603,6 +643,7 @@ function importarMenuCSV(file){
       if (g('descripcion')) d.descripcion = g('descripcion');
       if (ms) d.menus = ms; else if (!ya) d.menus = [];
       if (g('disponible')) d.disponible = !/^(no|0|false)$/i.test(g('disponible')); else if (!ya) d.disponible = true;
+      if (vars && vars.length) d.variantes = vars;
       if (!ya) { d.enLinea = true; d.enCarta = true; d.receta = []; }
       ya ? act++ : nuevos++;
       return d;
@@ -785,7 +826,7 @@ function hVentas(){
 }
 function agregaProductos(vs){
   var p = {};
-  vs.forEach(function(v){ v.items.forEach(function(i){ var k = i.menuId || i.nombre; p[k] = p[k] || { nombre: i.nombre, tipo: i.tipo, categoria: i.categoria, cant: 0, importe: 0 }; p[k].cant += i.cant; p[k].importe += i.cant * i.precio; }); });
+  vs.forEach(function(v){ v.items.forEach(function(i){ var k = (i.menuId || i.nombre) + '|' + (i.varId || ''); p[k] = p[k] || { nombre: i.nombre, tipo: i.tipo, categoria: i.categoria, cant: 0, importe: 0 }; p[k].cant += i.cant; p[k].importe += i.cant * i.precio; }); });
   return p;
 }
 function hProductos(){
@@ -968,8 +1009,11 @@ function cargarDemo(){
   [['Coca-Cola 355 ml', 'Bebidas', 'pza', 48, 12, 11], ['Cerveza Victoria', 'Bebidas', 'pza', 60, 24, 17], ['Agua natural 600 ml', 'Bebidas', 'pza', 36, 12, 6], ['Café de grano', 'Abarrotes', 'kg', 2, 0.5, 280],
    ['Huevo', 'Abarrotes', 'pza', 180, 60, 2.8], ['Arrachera', 'Carnes', 'kg', 8, 3, 320], ['Tortilla de maíz', 'Abarrotes', 'kg', 5, 2, 24], ['Jugo de naranja (litro)', 'Bebidas', 'lt', 6, 3, 30]]
     .forEach(function(r){ var i = { id: Store.uid(), nombre: r[0], categoria: r[1], unidad: r[2], existencia: r[3], minimo: r[4], costo: r[5] }; ins[r[0]] = i.id; ps.push(Store.put('insumos', i)); });
-  var M = function(nombre, categoria, tipo, precio, menus, receta, desc){ ps.push(Store.put('menu', { id: Store.uid(), nombre: nombre, categoria: categoria, tipo: tipo, precio: precio, menus: menus, descripcion: desc || '', disponible: true, enLinea: true, enCarta: true, receta: receta })); };
-  M('Chilaquiles verdes con huevo', 'Desayunos', 'alimento', 125, ['vie-des', 'fds-des'], [{ insumoId: ins['Huevo'], cant: 2 }, { insumoId: ins['Tortilla de maíz'], cant: 0.15 }], 'Con crema, queso y cebolla');
+  var M = function(nombre, categoria, tipo, precio, menus, receta, desc, variantes){ ps.push(Store.put('menu', { id: Store.uid(), nombre: nombre, categoria: categoria, tipo: tipo, precio: precio, menus: menus, descripcion: desc || '', disponible: true, enLinea: true, enCarta: true, receta: receta, variantes: variantes || [] })); };
+  M('Chilaquiles verdes', 'Desayunos', 'alimento', 95, ['vie-des', 'fds-des'], [{ insumoId: ins['Tortilla de maíz'], cant: 0.15 }], 'Con crema, queso y cebolla', [
+    { id: Store.uid(), nombre: 'Solos', precio: 95, receta: [] }, { id: Store.uid(), nombre: 'Con huevo', precio: 115, receta: [{ insumoId: ins['Huevo'], cant: 2 }] },
+    { id: Store.uid(), nombre: 'Con pollo', precio: 125, receta: [] }, { id: Store.uid(), nombre: 'Con tasajo', precio: 145, receta: [] },
+    { id: Store.uid(), nombre: 'Con cecina', precio: 145, receta: [] }, { id: Store.uid(), nombre: 'Con arrachera', precio: 165, receta: [{ insumoId: ins['Arrachera'], cant: 0.15 }] }]);
   M('Huevos al gusto', 'Desayunos', 'alimento', 110, ['vie-des', 'fds-des'], [{ insumoId: ins['Huevo'], cant: 2 }], 'Rancheros, a la mexicana o con jamón');
   M('Molletes', 'Desayunos', 'alimento', 95, ['fds-des'], [], 'Con pico de gallo');
   M('Arrachera Encino', 'Cortes', 'alimento', 285, ['vie-com', 'fds-com'], [{ insumoId: ins['Arrachera'], cant: 0.3 }, { insumoId: ins['Tortilla de maíz'], cant: 0.1 }], '300 g con guacamole y frijoles');

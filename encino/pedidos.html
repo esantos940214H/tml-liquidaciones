@@ -21,6 +21,7 @@ h1{margin:0;color:var(--acc);font-family:Georgia,serif;font-size:1.8rem;text-ali
 .it:last-child{border-bottom:0}
 .it .n{flex:1;font-weight:600}.it .d{display:block;font-weight:400;color:var(--mut);font-size:.85rem}
 .it .p{font-weight:700;white-space:nowrap}
+.it.var{padding:6px 0 6px 14px}.it.var .n{font-weight:400}
 .qty{display:flex;align-items:center;gap:6px}
 .qty button{width:34px;height:34px;border-radius:50%;border:1px solid var(--line);background:var(--bg);color:var(--ink);font-size:1.1rem;cursor:pointer}
 .qty b{min-width:18px;text-align:center}
@@ -53,7 +54,15 @@ a{color:var(--acc)}
   var app = document.getElementById('app'), bar = document.getElementById('bar');
 
   function items(){ return menu.filter(function(i){ return i.disponible !== false && i.enLinea !== false; }); }
-  function total(){ var t = 0; Object.keys(cart).forEach(function(id){ var m = menu.find(function(x){ return x.id === id; }); if (m) t += m.precio * cart[id]; }); return t; }
+  // El carrito usa claves "idPlatillo" o "idPlatillo|idVariante"
+  function linea(key){
+    var p = key.split('|'), m = menu.find(function(x){ return x.id === p[0]; }); if (!m) return null;
+    var v = p[1] ? E.variantes(m).find(function(x){ return x.id === p[1]; }) : null;
+    if (p[1] && !v) return null;
+    return { menuId: m.id, varId: v ? v.id : null, nombre: m.nombre + (v ? ' · ' + v.nombre : ''), precio: Number(v ? v.precio : m.precio) || 0, tipo: m.tipo };
+  }
+  function total(){ var t = 0; Object.keys(cart).forEach(function(k){ var l = linea(k); if (l) t += l.precio * cart[k]; }); return t; }
+  function qtyBtns(key){ var q = cart[key] || 0; return '<span class="qty">' + (q ? '<button data-menos="' + key + '">−</button><b>' + q + '</b>' : '') + '<button data-mas="' + key + '">+</button></span>'; }
   function nArt(){ return Object.keys(cart).reduce(function(s,k){ return s + cart[k]; }, 0); }
 
   function pinta(){
@@ -61,7 +70,7 @@ a{color:var(--acc)}
     if (!cfg.pedidosActivos) { app.innerHTML = '<h1>' + esc(cfg.nombre) + '</h1><div class="box st">Por el momento no estamos recibiendo pedidos en línea.</div><p style="text-align:center"><a href="carta.html">Ver el menú</a></p>'; bar.hidden = true; return; }
     if (paso === 'datos') return pintaDatos();
     if (!menuSel) { var a = E.menuActual(cfg); menuSel = a ? a.id : null; }
-    var h = '<h1>' + esc(cfg.nombre) + '</h1><p class="sub">Ordena en línea · ' + esc(cfg.telefono || '') + '</p><div class="tabs">';
+    var h = '<h1>' + esc(cfg.nombre) + '</h1><p class="sub">Ordena en línea' + (cfg.telefono ? ' · ' + esc(cfg.telefono) : '') + '</p><div class="tabs">';
     (cfg.menus || []).forEach(function(m){ h += '<button data-m="' + esc(m.id) + '"' + (m.id === menuSel ? ' class="on"' : '') + '>' + esc(m.nombre) + '</button>'; });
     h += '</div>';
     var its = items().filter(function(i){ return E.enMenu(i, menuSel); });
@@ -69,9 +78,15 @@ a{color:var(--acc)}
     E.porCategoria(its).forEach(function(g){
       h += '<div class="cat"><h3>' + esc(g.categoria) + '</h3>';
       g.items.forEach(function(i){
-        var q = cart[i.id] || 0;
-        h += '<div class="it"><span class="n">' + esc(i.nombre) + (i.descripcion ? '<span class="d">' + esc(i.descripcion) + '</span>' : '') + '</span><span class="p">' + money(i.precio) + '</span><span class="qty">' +
-          (q ? '<button data-menos="' + i.id + '">−</button><b>' + q + '</b>' : '') + '<button data-mas="' + i.id + '">+</button></span></div>';
+        var vs = E.variantes(i);
+        if (!vs.length) {
+          h += '<div class="it"><span class="n">' + esc(i.nombre) + (i.descripcion ? '<span class="d">' + esc(i.descripcion) + '</span>' : '') + '</span><span class="p">' + money(i.precio) + '</span>' + qtyBtns(i.id) + '</div>';
+          return;
+        }
+        h += '<div class="it" style="border-bottom:0;padding-bottom:0"><span class="n">' + esc(i.nombre) + (i.descripcion ? '<span class="d">' + esc(i.descripcion) + '</span>' : '') + '</span></div>';
+        vs.forEach(function(v, k){
+          h += '<div class="it var"' + (k < vs.length - 1 ? ' style="border-bottom:0"' : '') + '><span class="n">' + esc(v.nombre) + '</span><span class="p">' + money(v.precio) + '</span>' + qtyBtns(i.id + '|' + v.id) + '</div>';
+        });
       });
       h += '</div>';
     });
@@ -87,8 +102,8 @@ a{color:var(--acc)}
   }
   function pintaDatos(){
     var h = '<h1>' + esc(cfg.nombre) + '</h1><p class="sub">Revisa tu pedido</p><div class="box">';
-    Object.keys(cart).forEach(function(id){ var m = menu.find(function(x){ return x.id === id; }); if (!m) return;
-      h += '<div class="it"><span class="n">' + cart[id] + ' × ' + esc(m.nombre) + '</span><span class="p">' + money(m.precio * cart[id]) + '</span></div>'; });
+    Object.keys(cart).forEach(function(k){ var l = linea(k); if (!l) return;
+      h += '<div class="it"><span class="n">' + cart[k] + ' × ' + esc(l.nombre) + '</span><span class="p">' + money(l.precio * cart[k]) + '</span></div>'; });
     h += '<div class="it"><span class="n">Total</span><span class="p">' + money(total()) + '</span></div></div>';
     h += '<div class="box"><label>Nombre *</label><input id="fNom" autocomplete="name"><label>Teléfono *</label><input id="fTel" type="tel" autocomplete="tel">' +
       '<div class="row"><div><label>Entrega</label><select id="fTipo"><option value="recoger">Paso a recoger</option><option value="domicilio">A domicilio</option></select></div>' +
@@ -106,8 +121,7 @@ a{color:var(--acc)}
     var err = document.getElementById('fErr');
     if (!v('fNom') || !v('fTel')) { err.textContent = 'Nombre y teléfono son obligatorios.'; return; }
     if (v('fTipo') === 'domicilio' && !v('fDir')) { err.textContent = 'Escribe la dirección de entrega.'; return; }
-    var lineas = Object.keys(cart).map(function(id){ var m = menu.find(function(x){ return x.id === id; });
-      return m ? { menuId: m.id, nombre: m.nombre, precio: m.precio, tipo: m.tipo, cant: cart[id] } : null; }).filter(Boolean);
+    var lineas = Object.keys(cart).map(function(k){ var l = linea(k); return l ? Object.assign(l, { cant: cart[k] }) : null; }).filter(Boolean);
     var btn = document.getElementById('barBtn'); btn.disabled = true;
     var p = { id: Store.uid(), estado: 'nuevo', creado: Date.now(), cliente: v('fNom'), telefono: v('fTel'), entrega: v('fTipo'),
       direccion: v('fDir'), hora: v('fHora'), notas: v('fNotas'), items: lineas, total: total() };
