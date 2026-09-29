@@ -43,11 +43,11 @@
     if (!vs.length) return Number(item.precio) || 0;
     return Math.min.apply(null, vs.map(function(v){ return Number(v.precio) || 0; }));
   }
+  // Precio a mostrar junto al nombre: el de la primera variante capturada
+  // (ej. "Solos"), no un "desde $X".
   function precioTxt(item){
     var vs = variantes(item);
-    if (!vs.length) return money(item.precio);
-    var min = precioMin(item), iguales = vs.every(function(v){ return (Number(v.precio) || 0) === min; });
-    return (iguales ? '' : 'desde ') + money(min);
+    return money(vs.length ? vs[0].precio : item.precio);
   }
 
   // Paquetes / complementos (ej. "Agranda tu paquete +$50: café, pan y jugo
