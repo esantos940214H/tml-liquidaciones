@@ -490,10 +490,11 @@ function vPedidos(){
   if (!lista.length) h += '<p class="mut">No hay pedidos.</p>';
   lista.forEach(function(p){
     var est = { nuevo: '<span class="pill bad">Nuevo</span>', aceptado: '<span class="pill busy">En preparación</span>', listo: '<span class="pill">' + (p.entrega === 'domicilio' ? 'En camino' : 'Listo para recoger') + '</span>', entregado: '<span class="pill">Entregado</span>', rechazado: '<span class="pill bad">Rechazado</span>' }[p.estado] || esc(p.estado);
-    h += '<div class="ped ' + esc(p.estado) + '"><div class="toolbar" style="margin:0 0 6px"><b>' + esc(p.cliente) + '</b> ' + est + '<span class="mut small">#' + esc(p.id.slice(-5).toUpperCase()) + ' · ' + fecha(p.creado) + '</span><span class="sp"></span><b>' + money(p.total) + '</b></div>' +
+    h += '<div class="ped ' + esc(p.estado) + '"' + (prepararYa(p) ? ' style="border:2px solid var(--bad)"' : '') + '><div class="toolbar" style="margin:0 0 6px"><b>' + esc(p.cliente) + '</b> ' + est + '<span class="mut small">#' + esc(p.id.slice(-5).toUpperCase()) + ' · ' + fecha(p.creado) + '</span><span class="sp"></span><b>' + money(p.total) + '</b></div>' +
       '<div class="small">📞 ' + esc(p.telefono) + ' · ' + (p.entrega === 'domicilio' ? '🛵 A domicilio: ' + esc(p.direccion) +
         (p.ubicacion ? ' · <b>' + p.distanciaKm + ' km' + (p.porCalle ? ' por calle' : ' en línea recta') + '</b> · <a href="https://www.google.com/maps/dir/?api=1&destination=' + Number(p.ubicacion.lat) + ',' + Number(p.ubicacion.lng) + '" target="_blank" rel="noopener">🗺️ Ver ruta</a>' : '') : '🏃 Pasa a recoger') +
-        (p.etaMin ? ' · ⏱️ ' + E.etaTxt(p.etaMin) : '') + (p.hora ? ' · ⏰ ' + esc(p.hora) : '') + '</div>' +
+        (p.etaMin ? ' · ⏱️ ' + E.etaTxt(p.etaMin) : '') + (p.hora ? ' · ⏰ Pasa a las <b>' + esc(p.hora) + '</b> (preparar desde ' + horaMenos(p.hora, E.entregaCfg(S.config).avisoMin) + ')' : '') + '</div>' +
+      (prepararYa(p) ? '<div class="pill bad" style="margin-top:6px">⏰ ¡Empezar a preparar ya!</div>' : '') +
       '<div style="margin:6px 0">' + (p.items || []).map(function(i){ return i.cant + '× ' + esc(i.nombre); }).join(', ') + '</div>' + (p.notas ? '<div class="small" style="color:var(--warn)">📝 ' + esc(p.notas) + '</div>' : '') +
       '<div class="toolbar" style="margin:8px 0 0">' +
       (p.estado === 'nuevo' ? '<button class="b p" data-pa="aceptar" data-id="' + p.id + '">✔ Aceptar</button><button class="b d" data-pa="rechazar" data-id="' + p.id + '">Rechazar</button>' : '') +
@@ -525,6 +526,27 @@ function avisoPedidos(){
   var llegaron = nuevos.filter(function(id){ return !pedVistos.has(id); });
   nuevos.forEach(function(id){ pedVistos.add(id); });
   if (llegaron.length) { toast('🌐 ¡Nuevo pedido en línea!'); beep(); }
+}
+// ── Recordatorio de pedidos para recoger a una hora ────────────────────
+// X minutos antes de la hora (Configuración → Entregas, 25 por defecto)
+// suena un aviso para empezar a prepararlo y que salga caliente.
+function horaMenos(hhmm, min){ var p = String(hhmm).split(':'), t = (+p[0]) * 60 + (+p[1]) - min; t = (t + 1440) % 1440; return String(Math.floor(t / 60)).padStart(2, '0') + ':' + String(t % 60).padStart(2, '0'); }
+function momentoPreparar(p){
+  if (!p.hora || p.entrega === 'domicilio') return null;
+  var d = new Date(p.creado || Date.now()), h = String(p.hora).split(':');
+  d.setHours(+h[0], +h[1], 0, 0);
+  return d.getTime() - E.entregaCfg(S.config).avisoMin * 60000;
+}
+function prepararYa(p){ var t = momentoPreparar(p); return t != null && Date.now() >= t && ['nuevo', 'aceptado'].indexOf(p.estado) >= 0; }
+function recordatorios(){
+  var avisados = {};
+  try { avisados = JSON.parse(localStorage.getItem('encino:avisados') || '{}') || {}; } catch(e){}
+  var nuevos = S.pedidos.filter(function(p){ return prepararYa(p) && !avisados[p.id]; });
+  if (!nuevos.length) return;
+  nuevos.forEach(function(p){ avisados[p.id] = Date.now(); toast('⏰ Preparar ya: ' + (p.cliente || 'pedido') + ' pasa a las ' + p.hora, 15000); });
+  try { localStorage.setItem('encino:avisados', JSON.stringify(avisados)); } catch(e){}
+  beep(); setTimeout(beep, 700); setTimeout(beep, 1400);
+  if (TAB === 'pedidos') render(false);
 }
 function beep(){ try { var c = new (window.AudioContext || window.webkitAudioContext)(); [0, .25].forEach(function(t){ var o = c.createOscillator(), g = c.createGain(); o.frequency.value = 880; o.connect(g); g.connect(c.destination); g.gain.value = .15; o.start(c.currentTime + t); o.stop(c.currentTime + t + .15); }); } catch(e){} }
 
@@ -1097,7 +1119,8 @@ function vConfig(){
     '<div class="mapaCfg" id="eMapa"></div>' +
     '<div class="grid3"><div><label class="f">Radio de entrega (km)</label><input id="eRadio" type="number" min="0.5" step="0.5" class="w100" value="' + ent.radioKm + '"></div>' +
     '<div><label class="f">Tiempo de preparación (min)</label><input id="ePrep" type="number" min="0" step="5" class="w100" value="' + ent.prepMin + '"></div>' +
-    '<div><label class="f">Minutos por km del repartidor</label><input id="eMinKm" type="number" min="1" step="0.5" class="w100" value="' + ent.minPorKm + '"></div></div>' +
+    '<div><label class="f">Minutos por km del repartidor</label><input id="eMinKm" type="number" min="1" step="0.5" class="w100" value="' + ent.minPorKm + '"></div>' +
+    '<div><label class="f">Pedidos para recoger: avisar para preparar (min antes)</label><input id="eAviso" type="number" min="0" step="5" class="w100" value="' + ent.avisoMin + '"></div></div>' +
     '<p class="small mut" id="eEj"></p>' +
     '<h3>Distancia por calle (OpenRouteService)</h3><p class="small mut" style="margin-top:0">Con la clave, la distancia y el tiempo se calculan por la ruta real. Sin clave (o si el servicio no responde) se usa la línea recta.</p>' +
     '<div class="toolbar"><input id="eOrs" class="w100" style="flex:1;min-width:220px" placeholder="Pega aquí la clave (API key) de OpenRouteService" value="' + esc(ent.orsKey) + '"><button class="b" id="eProbar">Probar clave</button></div>' +
@@ -1182,7 +1205,8 @@ function vConfig(){
   $('eOk').onclick = function(){
     var r = num($('eRadio').value), pr = num($('ePrep').value), mk = num($('eMinKm').value);
     if (!(r > 0)) return alert('El radio debe ser mayor a 0.');
-    var d = { radioKm: r, prepMin: pr != null ? pr : 20, minPorKm: mk > 0 ? mk : 4, orsKey: $('eOrs').value.trim(), limitePorCalle: $('eLimCalle').checked };
+    var av = num($('eAviso').value);
+    var d = { radioKm: r, prepMin: pr != null ? pr : 20, minPorKm: mk > 0 ? mk : 4, avisoMin: av != null && av >= 0 ? av : 25, orsKey: $('eOrs').value.trim(), limitePorCalle: $('eLimCalle').checked };
     if (ePunto) { d.lat = +ePunto.lat.toFixed(6); d.lng = +ePunto.lng.toFixed(6); }
     Store.put('config', { id: 'general', entrega: d }).then(function(){ toast('Entregas guardadas'); if (ePunto) $('eCoord').textContent = 'Ubicación: ' + ePunto.lat.toFixed(5) + ', ' + ePunto.lng.toFixed(5); });
   };
@@ -1275,8 +1299,9 @@ function arrancar(){
     render(false);
   }); });
   ps.push(Store.watch('config', function(arr){ S.config = E.cfgFrom(arr); S.configDocs = arr.filter(function(d){ return d.id === 'general'; }); render(false); }));
-  Promise.all(ps).then(function(){ listo = true; avisoPedidos(); render(true); normalizarCategorias(); });
+  Promise.all(ps).then(function(){ listo = true; avisoPedidos(); render(true); normalizarCategorias(); recordatorios(); });
   setInterval(function(){ if (TAB === 'mesas' && !OM) render(false); }, 60000);
+  setInterval(recordatorios, 30000);
 }
 window.onStoreError = function(c, err, escritura){
   if (err && err.code === 'permission-denied') toast('⚠️ Sin permiso para ' + (escritura ? 'guardar en ' : 'leer ') + c + ': cierra sesión y vuelve a entrar.', 8000);

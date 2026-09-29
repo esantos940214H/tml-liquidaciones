@@ -91,7 +91,7 @@
   function entregaCfg(cfg){
     var e = cfg.entrega || {};
     return { lat: e.lat != null ? Number(e.lat) : null, lng: e.lng != null ? Number(e.lng) : null, radioKm: Number(e.radioKm) || 4,
-      prepMin: e.prepMin != null && e.prepMin !== '' ? Number(e.prepMin) : 20, minPorKm: e.minPorKm != null && e.minPorKm !== '' ? Number(e.minPorKm) : 4,
+      prepMin: e.prepMin != null && e.prepMin !== '' ? Number(e.prepMin) : 20, avisoMin: e.avisoMin != null && e.avisoMin !== '' ? Number(e.avisoMin) : 25, minPorKm: e.minPorKm != null && e.minPorKm !== '' ? Number(e.minPorKm) : 4,
       orsKey: String(e.orsKey || '').trim(), limitePorCalle: e.limitePorCalle === true, // por defecto el límite es en línea recta (radio)
       ok: e.lat != null && e.lng != null && isFinite(Number(e.lat)) && isFinite(Number(e.lng)) };
   }
