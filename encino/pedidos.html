@@ -12,8 +12,8 @@ body{margin:0;background:var(--bg);color:var(--ink);font-family:system-ui,-apple
 .wrap{max-width:760px;margin:0 auto;padding:20px 16px 120px}
 h1{margin:0;color:var(--acc);font-family:Georgia,serif;font-size:1.8rem;text-align:center}
 .sub{text-align:center;color:var(--mut);font-size:.85rem;margin:4px 0 14px}
-.tabs{display:flex;gap:8px;overflow-x:auto;padding:4px 0 10px;position:sticky;top:0;background:var(--bg);z-index:2}
-.tabs button{flex:0 0 auto;border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:999px;padding:8px 14px;font-weight:600;cursor:pointer}
+.tabs{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;padding:6px 0 10px}
+.tabs button{line-height:1.25;border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:999px;padding:8px 14px;font-weight:600;cursor:pointer}
 .tabs button.on{background:var(--acc);border-color:var(--acc);color:var(--bg)}
 .cat{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:4px 14px;margin:12px 0}
 .cat h3{margin:12px 0 4px;font-size:.85rem;letter-spacing:.12em;text-transform:uppercase;color:var(--acc)}
