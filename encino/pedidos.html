@@ -15,8 +15,11 @@ h1{margin:0;color:var(--acc);font-family:Georgia,serif;font-size:1.8rem;text-ali
 .tabs{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;padding:6px 0 10px}
 .tabs button{line-height:1.25;border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:999px;padding:8px 14px;font-weight:600;cursor:pointer}
 .tabs button.on{background:var(--acc);border-color:var(--acc);color:var(--bg)}
-.cat{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:4px 14px;margin:12px 0}
-.cat h3{margin:12px 0 4px;font-size:.85rem;letter-spacing:.12em;text-transform:uppercase;color:var(--acc)}
+.hoja{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:4px 16px 10px;margin:8px 0}
+.cat{margin:0}
+.cat h3{display:flex;align-items:center;gap:12px;margin:18px 0 4px;font-size:.9rem;letter-spacing:.16em;text-transform:uppercase;color:var(--acc)}
+.cat h3::before,.cat h3::after{content:"";flex:1;height:1px;background:var(--line)}
+.paq{background:var(--card);border:2px dashed var(--acc);border-radius:14px;padding:4px 16px 8px;margin:12px 0}
 .it{display:flex;gap:10px;align-items:center;padding:10px 0;border-bottom:1px dashed var(--line)}
 .it:last-child{border-bottom:0}
 .it .n{flex:1;font-weight:600}.it .d{display:block;font-weight:400;color:var(--mut);font-size:.85rem}
@@ -84,11 +87,12 @@ a{color:var(--acc)}
     var paqH = '';
     paqs.forEach(function(p){
       var vs = E.variantes(p);
-      paqH += '<div class="cat" style="border:2px dashed var(--acc)"><h3>🥐 ' + esc(p.nombre) + '</h3><p class="mut" style="margin:0 0 4px;font-size:.85rem">' + esc(p.descripcion || '') + ' Se agrega a un platillo de tu pedido (uno por platillo).</p>' +
+      paqH += '<div class="cat paq"><h3>🥐 ' + esc(p.nombre) + '</h3><p class="mut" style="margin:0 0 4px;font-size:.85rem">' + esc(p.descripcion || '') + (p.descripcion && !/[.!?]$/.test(p.descripcion.trim()) ? '.' : '') + ' Se agrega a un platillo de tu pedido (uno por platillo).</p>' +
         (vs.length ? vs.map(function(v){ return '<div class="it var"><span class="n">' + esc(v.nombre) + '</span><span class="p">+' + money(v.precio) + '</span>' + qtyBtns(p.id + '|' + v.id) + '</div>'; }).join('')
           : '<div class="it"><span class="n">' + esc(p.nombre) + '</span><span class="p">+' + money(p.precio) + '</span>' + qtyBtns(p.id) + '</div>') + '</div>';
     });
     if (!its.length) h += '<div class="box mut">No hay platillos disponibles en este menú.</div>';
+    if (its.length) h += '<div class="hoja">';
     E.porCategoria(its, cfg.categorias).forEach(function(g){
       h += '<div class="cat"><h3>' + esc(g.categoria) + '</h3>';
       g.items.forEach(function(i){
@@ -104,7 +108,7 @@ a{color:var(--acc)}
       });
       h += '</div>';
     });
-    if (its.length) h += paqH;
+    if (its.length) h += '</div>' + paqH;
     app.innerHTML = h;
     pintaBar();
   }

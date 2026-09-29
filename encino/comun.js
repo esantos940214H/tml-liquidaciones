@@ -160,16 +160,20 @@
     '.c-tabs{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;padding:6px 0 12px}',
     '.c-tabs button{line-height:1.25;border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:999px;padding:8px 14px;font:600 .85rem system-ui,sans-serif;cursor:pointer}',
     '.c-tabs button.on{background:var(--acc);border-color:var(--acc);color:var(--bg)}',
-    '.c-menu{display:none}.c-menu.on{display:block}.c-menu h2{font-size:1.3rem;margin:8px 0 2px}',
+    '.c-menu{display:none}.c-menu.on{display:block}',
+    // Una sola hoja por menú; dentro, secciones (DESAYUNOS, BEBIDAS, POSTRES…)
+    '.c-hoja{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:18px 20px 10px;margin-top:4px}',
+    '.c-hoja>h2{font-size:1.45rem;margin:0;text-align:center}.c-hoja>.c-hor{text-align:center}',
     '.c-hor{color:var(--mut);font:.8rem system-ui,sans-serif;margin-bottom:10px}',
-    '.c-cat{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:6px 16px 10px;margin:14px 0}',
-    '.c-cat h3{margin:10px 0 4px;font-size:1rem;text-transform:uppercase;letter-spacing:.12em;color:var(--acc)}',
+    '.c-cat{margin:24px 0 8px}',
+    '.c-cat h3{display:flex;align-items:center;gap:14px;margin:0 0 6px;font-size:1.05rem;text-transform:uppercase;letter-spacing:.18em;color:var(--acc);text-align:center}',
+    '.c-cat h3::before,.c-cat h3::after{content:"";flex:1;height:1px;background:var(--line)}',
     '.c-it{display:flex;gap:12px;align-items:baseline;padding:9px 0;border-bottom:1px dashed var(--line)}.c-it:last-child{border-bottom:0}',
     '.c-it .n{flex:1;font-weight:600}.c-it .d{display:block;font-weight:400;color:var(--mut);font-size:.88rem;margin-top:2px}',
     '.c-it .p{white-space:nowrap;font-family:system-ui,sans-serif;font-weight:700}',
     '.c-vars{display:block;margin-top:6px;font-weight:400}.c-var{display:flex;gap:10px;justify-content:space-between;font-family:system-ui,sans-serif;font-size:.88rem;padding:2px 0 2px 12px;border-left:2px solid var(--line)}',
     '.c-var b{white-space:nowrap}',
-    '.c-paq{background:var(--card);border:2px dashed var(--acc);border-radius:14px;padding:10px 16px;margin:12px 0;font-family:system-ui,sans-serif}',
+    '.c-paq{border-top:1px solid var(--line);border-bottom:1px solid var(--line);padding:10px 0;margin:14px 0 0;font-family:system-ui,sans-serif}',
     '.c-paq b{font-family:Georgia,serif;font-size:1.05rem;color:var(--acc)}.c-paq .pp{float:right;font-weight:700}.c-paq .d{color:var(--mut);font-size:.88rem;margin-top:2px}',
     '.c-foot{text-align:center;color:var(--mut);font:.8rem system-ui,sans-serif;margin-top:24px}',
     '.c-foot a{color:var(--acc)}',
@@ -202,7 +206,7 @@
     menus.forEach(function(m){
       var its = visibles.filter(function(i){ return enMenu(i, m.id) && !i.esPaquete; });
       var paqs = visibles.filter(function(i){ return i.esPaquete && enMenu(i, m.id); });
-      h += '<section class="c-menu' + (actual && actual.id === m.id ? ' on' : '') + '" data-m="' + esc(m.id) + '"><h2>' + esc(m.nombre) + '</h2><div class="c-hor">' + esc(diasTxt(m)) + '</div>';
+      h += '<section class="c-menu' + (actual && actual.id === m.id ? ' on' : '') + '" data-m="' + esc(m.id) + '"><div class="c-hoja"><h2>' + esc(m.nombre) + '</h2><div class="c-hor">' + esc(diasTxt(m)) + '</div>';
       if (!its.length) h += '<p class="c-hor">Sin platillos cargados todavía.</p>';
       paqs.forEach(function(p){
         var op = opcionesPaquete(p);
@@ -218,7 +222,7 @@
         });
         h += '</div>';
       });
-      h += '</section>';
+      h += '</div></section>';
     });
     h += '<div class="c-foot">Precios en MXN, IVA incluido.' + (opts.linkPedidos ? '<br><a href="' + esc(opts.linkPedidos) + '">Ordenar en línea →</a>' : '') + '</div></div>';
     return h;
