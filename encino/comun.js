@@ -111,6 +111,14 @@
     var d = (m.dias || []).slice().sort(function(a,b){ return ((a+6)%7) - ((b+6)%7); });
     return d.map(function(x){ return DIAS[x]; }).join(', ') + (m.desde ? ' · ' + m.desde + (m.hasta ? '–' + m.hasta : '') : '');
   }
+  // Días abreviados para pestañas: "Vie", "Sáb y Dom", "Lun, Mié y Vie"
+  var DIAS3 = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
+  function diasCorto(m){
+    var d = (m.dias || []).slice().sort(function(a,b){ return ((a+6)%7) - ((b+6)%7); }).map(function(x){ return DIAS3[x]; });
+    return d.length > 1 ? d.slice(0, -1).join(', ') + ' y ' + d[d.length - 1] : (d[0] || '');
+  }
+  // Nombre completo para administración: "Desayunos — Viernes · 08:00–13:00"
+  function menuEtiqueta(m){ var t = diasTxt(m); return m.nombre + (t ? ' — ' + t : ''); }
   // Agrupa platillos por categoría manteniendo alimentos antes que bebidas.
   function catDe(it){ return it.categoria || (it.tipo === 'bebida' ? 'Bebidas' : 'Platillos'); }
   // Comparador: primero por el orden de categorías configurado, luego las no
@@ -164,7 +172,8 @@
     '.c-paq b{font-family:Georgia,serif;font-size:1.05rem;color:var(--acc)}.c-paq .pp{float:right;font-weight:700}.c-paq .d{color:var(--mut);font-size:.88rem;margin-top:2px}',
     '.c-foot{text-align:center;color:var(--mut);font:.8rem system-ui,sans-serif;margin-top:24px}',
     '.c-foot a{color:var(--acc)}',
-    '.c-tabs button.ahora::after{content:" · ahora";font-weight:400;opacity:.8}',
+    '.c-dias{display:block;font-weight:400;font-size:.75rem;opacity:.8}',
+    '.c-tabs button.ahora .c-dias::after{content:" · ahora"}',
     '.c-elige{background:var(--card);border:2px solid var(--acc);border-radius:14px;padding:12px 16px;margin:4px 0 12px;font-family:system-ui,sans-serif;text-align:center}',
     '.c-elige p{margin:0 0 10px}.c-elige .ops{display:flex;gap:10px;justify-content:center;flex-wrap:wrap}',
     '.c-elige button{flex:1 1 140px;border:0;border-radius:10px;padding:12px;background:var(--acc);color:var(--bg);font:700 1rem system-ui,sans-serif;cursor:pointer}'
@@ -186,7 +195,7 @@
     h += '</div><div class="c-tabs">';
     menus.forEach(function(m){
       h += '<button data-m="' + esc(m.id) + '" data-dias="' + esc((m.dias || []).join(',')) + '" data-desde="' + esc(m.desde || '') + '" data-hasta="' + esc(m.hasta || '') + '" data-corto="' + esc(nombreCorto(m)) + '"' +
-        (actual && actual.id === m.id ? ' class="on"' : '') + '>' + esc(m.nombre) + '</button>';
+        (actual && actual.id === m.id ? ' class="on"' : '') + '>' + esc(m.nombre) + (diasCorto(m) ? '<small class="c-dias">' + esc(diasCorto(m)) + '</small>' : '') + '</button>';
     });
     h += '</div><div class="c-elige" id="cElige" hidden><p>Son las <b class="hora"></b> y estamos sirviendo dos menús. ¿Vienes a…?</p><div class="ops"></div></div>';
     menus.forEach(function(m){
@@ -265,7 +274,7 @@
 
   window.Encino = {
     DIAS: DIAS, DEFAULT_CFG: DEFAULT_CFG, cfgFrom: cfgFrom, money: money, esc: esc, dkey: dkey, hm: hm,
-    variantes: variantes, paquetesPara: paquetesPara, opcionesPaquete: opcionesPaquete, precioMin: precioMin, precioTxt: precioTxt, enMenu: enMenu, menuActual: menuActual, menusActivos: menusActivos, nombreCorto: nombreCorto, diasTxt: diasTxt, porCategoria: porCategoria, cmpCat: cmpCat, catDe: catDe,
+    variantes: variantes, paquetesPara: paquetesPara, opcionesPaquete: opcionesPaquete, precioMin: precioMin, precioTxt: precioTxt, enMenu: enMenu, menuActual: menuActual, menusActivos: menusActivos, nombreCorto: nombreCorto, diasTxt: diasTxt, diasCorto: diasCorto, menuEtiqueta: menuEtiqueta, porCategoria: porCategoria, cmpCat: cmpCat, catDe: catDe,
     CARTA_CSS: CARTA_CSS, CARTA_JS: CARTA_JS, cartaBody: cartaBody, cartaEstatica: cartaEstatica
   };
 })();
