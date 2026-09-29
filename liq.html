@@ -4921,7 +4921,15 @@ function generarReporte(){
     totGastosEmpTotal:totGastosEmpTotal,
     totAnts:totAnts, totNomina:totNomina, totalCargosReal:totalCargosReal, totalAbonosReal:totalAbonosReal,
     saldoReal:saldoReal, diesel:liq.diesel||{},
-    antsList:antsPendRep.map(function(a){return{fecha:a.fecha||a.fechaStr||'',concepto:a.concepto,importe:a.importe};}),
+    // referencia/hora: se agregan al snapshot para que, si algún día hace
+    // falta reconstruir anticiposDB desde aquí (ver
+    // recuperarAnticiposDesdeHistorial en functions/index.js — caso real:
+    // el documento se sobrescribió por completo y hubo que reconstruirlo
+    // desde estas mismas liquidaciones cerradas), el anticipo recreado
+    // pueda volver a emparejarse por Referencia/Hora al re-subir el estado
+    // de cuenta del banco, en vez de solo por fecha+monto+concepto (que
+    // puede confundir dos depósitos reales del mismo monto el mismo día).
+    antsList:antsPendRep.map(function(a){return{fecha:a.fecha||a.fechaStr||'',concepto:a.concepto,importe:a.importe,referencia:a.referencia||'',hora:a.hora||''};}),
     nominaList:nomPend.map(function(n){return{fecha:n.fecha||'',periodoIni:n.periodoIni||'',periodoFin:n.periodoFin||'',folio:n.folio||'',totalPercepciones:n.totalPercepciones||0,totalDeducciones:n.totalDeducciones||0,uuid:n.uuid||'',
       receptorNombre:n.receptorNombre||'',receptorRfc:n.receptorRfc||'',emisorNombre:n.emisorNombre||'',emisorRfc:n.emisorRfc||'',
       fechaTimbrado:n.fechaTimbrado||'',selloSAT:n.selloSAT||'',noCertificadoSAT:n.noCertificadoSAT||'',
