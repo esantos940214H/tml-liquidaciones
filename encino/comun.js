@@ -120,7 +120,18 @@
   }
   // Tiempo estimado: preparación + trayecto. Las calles no van en línea recta,
   // así que se considera 1.3 veces la distancia.
-  function etaMin(cfg, km, porCalle){ var e = entregaCfg(cfg); return Math.round(e.prepMin + (km || 0) * (porCalle ? 1 : 1.3) * e.minPorKm); }
+  function trayectoMin(cfg, km, porCalle){ var e = entregaCfg(cfg); return Math.round((km || 0) * (porCalle ? 1 : 1.3) * e.minPorKm); }
+  function etaMin(cfg, km, porCalle){ return Math.round(entregaCfg(cfg).prepMin + trayectoMin(cfg, km, porCalle)); }
+  // Hora aproximada de llegada del pedido a domicilio según su estado:
+  // listo → +5 min en lo que sale el repartidor + trayecto; en camino → trayecto desde que salió.
+  var SALIDA_MIN = 5;
+  function llegadaAprox(cfg, p){
+    var tr = p.trayectoMin != null ? p.trayectoMin : (p.distanciaKm != null ? trayectoMin(cfg, p.distanciaKm, p.porCalle) : null);
+    if (tr == null) return null;
+    if (p.estado === 'enCamino' && p.salioEn) return p.salioEn + tr * 60000;
+    if (p.estado === 'listo' && p.listoEn) return p.listoEn + (SALIDA_MIN + tr) * 60000;
+    return null;
+  }
   // Pin del mapa sin imágenes externas
   function pinIcono(){ return window.L ? L.divIcon({ className: '', html: '<div style="font-size:32px;line-height:32px;filter:drop-shadow(0 2px 2px rgba(0,0,0,.35))">📍</div>', iconSize: [32, 32], iconAnchor: [16, 30] }) : null; }
   function etaTxt(min){ var a = Math.max(5, Math.round(min / 5) * 5); return a + '–' + (a + 10) + ' min'; }
@@ -324,7 +335,7 @@
 
   window.Encino = {
     DIAS: DIAS, DEFAULT_CFG: DEFAULT_CFG, cfgFrom: cfgFrom, money: money, esc: esc, dkey: dkey, hm: hm,
-    variantes: variantes, paquetesPara: paquetesPara, opcionesPaquete: opcionesPaquete, precioMin: precioMin, precioTxt: precioTxt, enMenu: enMenu, menuActual: menuActual, menusActivos: menusActivos, nombreCorto: nombreCorto, distanciaKm: distanciaKm, entregaCfg: entregaCfg, etaMin: etaMin, etaTxt: etaTxt, rutaCalle: rutaCalle, pinIcono: pinIcono, diasTxt: diasTxt, diasCorto: diasCorto, menuEtiqueta: menuEtiqueta, porCategoria: porCategoria, cmpCat: cmpCat, catDe: catDe,
+    variantes: variantes, paquetesPara: paquetesPara, opcionesPaquete: opcionesPaquete, precioMin: precioMin, precioTxt: precioTxt, enMenu: enMenu, menuActual: menuActual, menusActivos: menusActivos, nombreCorto: nombreCorto, distanciaKm: distanciaKm, entregaCfg: entregaCfg, etaMin: etaMin, etaTxt: etaTxt, trayectoMin: trayectoMin, llegadaAprox: llegadaAprox, rutaCalle: rutaCalle, pinIcono: pinIcono, diasTxt: diasTxt, diasCorto: diasCorto, menuEtiqueta: menuEtiqueta, porCategoria: porCategoria, cmpCat: cmpCat, catDe: catDe,
     CARTA_CSS: CARTA_CSS, CARTA_JS: CARTA_JS, cartaBody: cartaBody, cartaEstatica: cartaEstatica
   };
 })();

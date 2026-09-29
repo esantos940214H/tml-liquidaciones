@@ -235,7 +235,7 @@ a{color:var(--acc)}
     var btn = document.getElementById('barBtn'); btn.disabled = true;
     var p = { id: Store.uid(), estado: 'nuevo', creado: Date.now(), cliente: v('fNom'), telefono: v('fTel'), entrega: v('fTipo'),
       direccion: v('fTipo') === 'domicilio' ? v('fDir') : '', hora: hora, notas: v('fNotas'), items: lineas, total: total() };
-    if (st && !hora) { p.etaMin = st.eta; if (v('fTipo') === 'domicilio' && ubic) { p.ubicacion = { lat: +ubic.lat.toFixed(6), lng: +ubic.lng.toFixed(6) }; p.distanciaKm = Math.round(st.km * 10) / 10; p.porCalle = !!st.porCalle; } }
+    if (st && !hora) { p.etaMin = st.eta; if (v('fTipo') === 'domicilio' && ubic) { p.ubicacion = { lat: +ubic.lat.toFixed(6), lng: +ubic.lng.toFixed(6) }; p.distanciaKm = Math.round(st.km * 10) / 10; p.porCalle = !!st.porCalle; p.trayectoMin = E.trayectoMin(cfg, st.km, st.porCalle); } }
     Store.put('pedidos', p).then(function(){
       try { localStorage.setItem('encino:miPedido', p.id); } catch(e){}
       cart = {}; verEstado(p.id);
@@ -246,7 +246,8 @@ a{color:var(--acc)}
   // "Listo" y "entregado" se dicen distinto si es a domicilio o para recoger
   function textoEstado(p){
     var dom = p.entrega === 'domicilio';
-    if (p.estado === 'listo') return dom ? '🛵 ¡Tu pedido va en camino!' : '✅ ¡Tu pedido está listo! Ya puedes pasar por él';
+    if (p.estado === 'listo') return dom ? '✅ ¡Tu pedido está listo! El repartidor sale en unos minutos' : '✅ ¡Tu pedido está listo! Ya puedes pasar por él';
+    if (p.estado === 'enCamino') return '🛵 ¡Tu pedido va en camino!';
     if (p.estado === 'entregado') return dom ? '🎉 ¡Pedido entregado! Buen provecho' : '🎉 ¡Pedido recogido! Buen provecho';
     return ESTADOS[p.estado];
   }
@@ -258,6 +259,7 @@ a{color:var(--acc)}
         (p.motivo ? '<p style="text-align:center" class="mut">' + esc(p.motivo) + '</p>' : '') +
         '<p style="text-align:center">Total: <b>' + money(p.total) + '</b></p>' +
         (p.etaMin && ['nuevo', 'aceptado'].indexOf(p.estado) >= 0 ? '<p style="text-align:center" class="mut">' + (p.entrega === 'domicilio' ? '🛵 Tiempo estimado de entrega: ' : '⏱️ Listo en aprox. ') + '<b>' + E.etaTxt(p.etaMin) + '</b></p>' : '') +
+        (E.llegadaAprox(cfg, p) ? '<p style="text-align:center">🕒 Llega aprox. a las <b>' + E.hm(new Date(E.llegadaAprox(cfg, p))) + '</b></p>' : '') +
         (p.hora && ['nuevo', 'aceptado'].indexOf(p.estado) >= 0 ? '<p style="text-align:center" class="mut">⏰ Tu pedido estará listo para las <b>' + esc(p.hora) + '</b></p>' : '') + (cfg.telefono ? '<p style="text-align:center" class="mut">Dudas: ' + esc(cfg.telefono) + '</p>' : '') +
         '<p style="text-align:center"><button class="btn" id="nuevo">Hacer otro pedido</button></p></div>';
       document.getElementById('nuevo').onclick = function(){ try { localStorage.removeItem('encino:miPedido'); } catch(e){} location.reload(); };
@@ -284,7 +286,7 @@ a{color:var(--acc)}
   Store.init().then(function(){
     Store.watch('config', function(d){ cfg = E.cfgFrom(d); document.title = 'Ordenar en línea — ' + cfg.nombre; if (paso === 'menu') pinta(); });
     Store.watch('menu', function(d){ menu = d; if (paso === 'menu') pinta(); });
-    if (miPedido) Store.get('pedidos', miPedido).then(function(p){ if (p && ['nuevo','aceptado','listo'].indexOf(p.estado) >= 0) verEstado(p.id); }).catch(function(){});
+    if (miPedido) Store.get('pedidos', miPedido).then(function(p){ if (p && ['nuevo','aceptado','listo','enCamino'].indexOf(p.estado) >= 0) verEstado(p.id); }).catch(function(){});
   });
 })();
 </script>
