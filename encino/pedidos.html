@@ -89,7 +89,7 @@ a{color:var(--acc)}
           : '<div class="it"><span class="n">' + esc(p.nombre) + '</span><span class="p">+' + money(p.precio) + '</span>' + qtyBtns(p.id) + '</div>') + '</div>';
     });
     if (!its.length) h += '<div class="box mut">No hay platillos disponibles en este menú.</div>';
-    E.porCategoria(its).forEach(function(g){
+    E.porCategoria(its, cfg.categorias).forEach(function(g){
       h += '<div class="cat"><h3>' + esc(g.categoria) + '</h3>';
       g.items.forEach(function(i){
         var vs = E.variantes(i);
