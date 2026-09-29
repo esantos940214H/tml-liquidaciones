@@ -71,7 +71,7 @@ a{color:var(--acc)}
     if (paso === 'datos') return pintaDatos();
     if (!menuSel) { var a = E.menuActual(cfg); menuSel = a ? a.id : null; }
     var h = '<h1>' + esc(cfg.nombre) + '</h1><p class="sub">Ordena en línea' + (cfg.telefono ? ' · ' + esc(cfg.telefono) : '') + '</p><div class="tabs">';
-    (cfg.menus || []).forEach(function(m){ h += '<button data-m="' + esc(m.id) + '"' + (m.id === menuSel ? ' class="on"' : '') + '>' + esc(m.nombre) + '</button>'; });
+    (cfg.menus || []).forEach(function(m){ h += '<button data-m="' + esc(m.id) + '"' + (m.id === menuSel ? ' class="on"' : '') + '>' + esc(m.nombre) + (E.diasCorto(m) ? '<small style="display:block;font-weight:400;font-size:.75rem;opacity:.8">' + esc(E.diasCorto(m)) + '</small>' : '') + '</button>'; });
     h += '</div>';
     // Ventana de cambio (dos menús en horario): el cliente elige
     var activos = E.menusActivos(cfg);

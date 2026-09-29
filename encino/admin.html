@@ -245,7 +245,7 @@ function abrirOrden(id){
   // En la ventana de cambio (dos menús en horario) se muestran todos
   oFiltro = { cat: 'Todo', q: '', menu: E.menusActivos(S.config).length > 1 ? '' : (act ? act.id : '') };
   OM = modal('<h2 id="oTit"></h2><div class="ord"><div><div class="toolbar" style="margin:0"><input id="oQ" placeholder="🔎 Buscar platillo o bebida…" style="flex:1"><select id="oMenu"><option value="">Todos los menús</option>' +
-    S.config.menus.map(function(m){ return '<option value="' + esc(m.id) + '">' + esc(m.nombre) + '</option>'; }).join('') + '</select></div><div class="chips" id="oCats"></div><div class="items" id="oItems"></div></div>' +
+    S.config.menus.map(function(m){ return '<option value="' + esc(m.id) + '">' + esc(E.menuEtiqueta(m)) + '</option>'; }).join('') + '</select></div><div class="chips" id="oCats"></div><div class="items" id="oItems"></div></div>' +
     '<div class="cuenta"><div class="grid2"><div><label class="f">Mesero</label><input id="oMesero" class="w100"></div><div><label class="f">Personas</label><input id="oPers" type="number" min="1" class="w100"></div></div>' +
     '<div id="oLines" style="margin-top:8px"></div><div class="tot"><span>Total</span><span id="oTot"></span></div>' +
     '<div class="toolbar"><button class="b" id="oComanda">🧾 Enviar comanda</button><button class="b" id="oCambiar">↔️ Cambiar mesa</button><button class="b d" id="oCancelar">Cancelar orden</button><span class="sp"></span><button class="b p" id="oCobrar">💵 Cobrar</button></div></div></div>',
@@ -522,12 +522,12 @@ function vMenu(){
   var h = '<div class="toolbar"><h2 style="margin:0">Menú (' + S.menu.length + ')</h2><span class="sp"></span><button class="b p" id="mNuevo">＋ Nuevo platillo / bebida</button><button class="b" id="mCats">📂 Categorías y orden</button>' +
     '<label class="b">⬆️ Importar CSV<input type="file" id="mCsv" accept=".csv,text/csv" hidden></label><button class="b" id="mExp">⬇️ Exportar CSV</button><a class="b" href="carta.html" target="_blank">Ver carta QR ↗</a></div>' +
     '<div class="toolbar"><input id="mQ" placeholder="🔎 Buscar…" value="' + esc(mFiltro.q) + '"><select id="mT"><option value="">Alimentos y bebidas</option><option value="alimento">Solo alimentos</option><option value="bebida">Solo bebidas</option></select>' +
-    '<select id="mM"><option value="">Todos los menús</option>' + S.config.menus.map(function(m){ return '<option value="' + esc(m.id) + '">' + esc(m.nombre) + '</option>'; }).join('') + '</select></div>';
+    '<select id="mM"><option value="">Todos los menús</option>' + S.config.menus.map(function(m){ return '<option value="' + esc(m.id) + '">' + esc(E.menuEtiqueta(m)) + '</option>'; }).join('') + '</select></div>';
   if (!S.menu.length) h += '<div class="card">Aún no hay platillos. Agrégalos uno por uno, importa un CSV (columnas: <code>nombre,categoria,tipo,precio,descripcion,menus,variantes</code>; variantes así: <code>Solos=95|Con pollo=120</code>) o carga datos de ejemplo en Configuración.</div>';
   else {
     h += '<div class="card tw"><table><tr><th>Platillo</th><th>Categoría</th><th>Tipo</th><th>Menús</th><th class="n">Precio</th><th>Inventario</th><th></th></tr>';
     its.forEach(function(i){
-      var ms = (i.menus || []).length ? i.menus.map(function(id){ var m = S.config.menus.find(function(x){ return x.id === id; }); return m ? m.nombre : id; }).join('<br>') : '<span class="mut">Todos</span>';
+      var ms = (i.menus || []).length ? i.menus.map(function(id){ var m = S.config.menus.find(function(x){ return x.id === id; }); return m ? esc(m.nombre) + ' <span class="mut">(' + esc(E.diasCorto(m)) + ')</span>' : esc(id); }).join('<br>') : '<span class="mut">Todos</span>';
       var st = stockPlatillo(i);
       h += '<tr><td><b>' + esc(i.nombre) + '</b>' + (i.esPaquete ? ' <span class="pill">🥐 Paquete</span>' : '') + (i.disponible === false ? ' <span class="pill bad">No disponible</span>' : '') + (i.enLinea === false ? ' <span class="pill warn">No en línea</span>' : '') + (i.descripcion ? '<div class="small mut">' + esc(i.descripcion) + '</div>' : '') + '</td>' +
         '<td>' + esc(i.categoria || '') + '</td><td>' + (i.tipo === 'bebida' ? '🥤 Bebida' : '🍽️ Alimento') + '</td><td class="small">' + ms + '</td><td class="n">' + (E.variantes(i).length ? E.variantes(i).map(function(v){ return '<div class="small">' + esc(v.nombre) + ' <b>' + money(v.precio) + '</b></div>'; }).join('') : money(i.precio)) + '</td>' +
@@ -634,7 +634,7 @@ function editarPlatillo(id){
     '<div id="pVars"></div><button class="b s" id="pAddVar">＋ Variante</button>' +
     '<label class="f">Descripción (aparece en la carta)</label><textarea id="pDes" rows="2" class="w100">' + esc(m.descripcion || '') + '</textarea>' +
     '<label class="f">¿En qué menús aparece? (si no marcas ninguno, aparece en todos)</label><div id="pMenus">' +
-    S.config.menus.map(function(x){ return '<label style="display:block;margin:3px 0"><input type="checkbox" value="' + esc(x.id) + '"' + ((m.menus || []).indexOf(x.id) >= 0 ? ' checked' : '') + '> ' + esc(x.nombre) + '</label>'; }).join('') + '</div>' +
+    S.config.menus.map(function(x){ return '<label style="display:block;margin:3px 0"><input type="checkbox" value="' + esc(x.id) + '"' + ((m.menus || []).indexOf(x.id) >= 0 ? ' checked' : '') + '> <b>' + esc(x.nombre) + '</b> <span class="mut small">' + esc(E.diasTxt(x)) + '</span></label>'; }).join('') + '</div>' +
     '<div class="toolbar" style="margin-top:10px"><label><input type="checkbox" id="pDisp"' + (m.disponible !== false ? ' checked' : '') + '> Disponible</label><label><input type="checkbox" id="pCarta"' + (m.enCarta !== false ? ' checked' : '') + '> En carta QR</label><label><input type="checkbox" id="pLinea"' + (m.enLinea !== false ? ' checked' : '') + '> Se puede ordenar en línea</label></div>' +
     '<div class="toolbar"><label title="No se vende solo: se ofrece como agregado en los alimentos de los mismos menús"><input type="checkbox" id="pPaq"' + (m.esPaquete ? ' checked' : '') + '> 🥐 Es un <b>paquete / complemento</b> (ej. "Agranda tu paquete +$50: café, pan y jugo o fruta")</label>' +
     '<label><input type="checkbox" id="pSinPaq"' + (m.sinPaquete ? ' checked' : '') + '> No ofrecer paquete con este platillo</label></div>' +
