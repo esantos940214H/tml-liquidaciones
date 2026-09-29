@@ -655,9 +655,11 @@ function editarPlatillo(id){
     '<label class="f">¿En qué menús aparece? (si no marcas ninguno, aparece en todos)</label><div id="pMenus">' +
     S.config.menus.map(function(x){ return '<label style="display:block;margin:3px 0"><input type="checkbox" value="' + esc(x.id) + '"' + ((m.menus || []).indexOf(x.id) >= 0 ? ' checked' : '') + '> <b>' + esc(x.nombre) + '</b> <span class="mut small">' + esc(E.diasTxt(x)) + '</span></label>'; }).join('') + '</div>' +
     '<div class="toolbar" style="margin-top:10px"><label><input type="checkbox" id="pDisp"' + (m.disponible !== false ? ' checked' : '') + '> Disponible</label><label><input type="checkbox" id="pCarta"' + (m.enCarta !== false ? ' checked' : '') + '> En carta QR</label><label><input type="checkbox" id="pLinea"' + (m.enLinea !== false ? ' checked' : '') + '> Se puede ordenar en línea</label></div>' +
-    '<div class="toolbar"><label title="No se vende solo: se ofrece como agregado en los alimentos de los mismos menús"><input type="checkbox" id="pPaq"' + (m.esPaquete ? ' checked' : '') + '> 🥐 Es un <b>paquete / complemento</b> (ej. "Agranda tu paquete +$50: café, pan y jugo o fruta")</label>' +
-    '<label><input type="checkbox" id="pSinPaq"' + (m.sinPaquete ? ' checked' : '') + '> No ofrecer paquete con este platillo</label></div>' +
-    '<p class="small mut" style="margin-top:0">Un paquete se ofrece en todos los alimentos de los menús donde está el paquete (ej. márcalo solo en los menús de desayuno). Usa las variantes para las opciones (ej. "Con jugo" $50 / "Con fruta" $50) y la receta para lo que descuenta (café, pan…).</p>' +
+    '<h3>🥐 Paquete</h3><div id="pPaqModo">' +
+    [['si', '<b>Platillo normal</b> — se le puede agregar el paquete (ej. "Hazlo paquete +$50") si está en un menú que tiene paquete'],
+     ['no', '<b>Platillo normal, sin paquete</b> — a este platillo no se le ofrece el paquete'],
+     ['es', '<b>Este ES el paquete / complemento</b> — no se vende solo; aparece como "＋Paquete" en los demás platillos de sus menús. Sus opciones van como variantes (ej. "Jugo y café" $50) y en la receta lo que descuenta (café, pan…)']]
+      .map(function(o){ var sel = (m.esPaquete ? 'es' : m.sinPaquete ? 'no' : 'si') === o[0]; return '<label style="display:block;margin:6px 0"><input type="radio" name="pPaqModo" value="' + o[0] + '"' + (sel ? ' checked' : '') + '> ' + o[1] + '</label>'; }).join('') + '</div>' +
     '<h3>Descuento de inventario por cada venta</h3><p class="small mut">Qué insumos (y cuánto) salen del inventario cada vez que se vende 1. Para una bebida embotellada normalmente es 1 pieza de esa misma bebida.</p>' +
     '<div id="pRec"></div><div class="toolbar"><button class="b s" id="pAddRec">＋ Insumo</button>' + (!id ? '<label class="small"><input type="checkbox" id="pCrearIns"> Crear también un insumo de inventario con este nombre (1 pza por venta)</label>' : '') + '</div>' +
     '<div class="foot">' + (id ? '<button class="b d" id="pDel">Eliminar</button><span style="flex:1"></span>' : '') + '<button class="b" id="pNo">Cancelar</button><button class="b p" id="pOk">Guardar</button></div>');
@@ -692,6 +694,7 @@ function editarPlatillo(id){
   $('pOk').onclick = function(){
     var nom = $('pNom').value.trim(), pre = num($('pPre').value);
     if (!nom) return alert('Falta el nombre.');
+    var paqModo = ($('pPaqModo').querySelector('input:checked') || {}).value || 'si';
     var vsOk = vars.filter(function(v){ return (v.nombre || '').trim() || v.precio != null; });
     if (vsOk.some(function(v){ return !(v.nombre || '').trim(); })) return alert('Hay una variante sin nombre.');
     if (vsOk.some(function(v){ return v.precio == null || v.precio < 0; })) return alert('Cada variante necesita su precio (puede ser 0).');
@@ -700,7 +703,7 @@ function editarPlatillo(id){
     if (variantesD.length) pre = Math.min.apply(null, variantesD.map(function(v){ return v.precio; }));
     if (pre == null || pre < 0) return alert('Falta el precio (puede ser 0 si es cortesía).');
     var d = { id: id || Store.uid(), nombre: nom, tipo: $('pTipo').value, categoria: $('pCat').value.trim().toUpperCase(), precio: pre, descripcion: $('pDes').value.trim(),
-      disponible: $('pDisp').checked, enCarta: $('pCarta').checked, enLinea: $('pLinea').checked, esPaquete: $('pPaq').checked, sinPaquete: $('pSinPaq').checked,
+      disponible: $('pDisp').checked, enCarta: $('pCarta').checked, enLinea: $('pLinea').checked, esPaquete: paqModo === 'es', sinPaquete: paqModo === 'no',
       menus: Array.from($('pMenus').querySelectorAll('input:checked')).map(function(x){ return x.value; }),
       receta: rec.filter(function(r){ return r.insumoId && r.cant > 0; }), variantes: variantesD };
     var pr = Promise.resolve();
