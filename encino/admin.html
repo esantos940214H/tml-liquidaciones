@@ -242,7 +242,8 @@ var oFiltro = { cat: 'Todo', q: '', menu: '' };
 function abrirOrden(id){
   var o = getOrden(id); if (!o) return;
   var act = E.menuActual(S.config);
-  oFiltro = { cat: 'Todo', q: '', menu: act ? act.id : '' };
+  // En la ventana de cambio (dos menús en horario) se muestran todos
+  oFiltro = { cat: 'Todo', q: '', menu: E.menusActivos(S.config).length > 1 ? '' : (act ? act.id : '') };
   OM = modal('<h2 id="oTit"></h2><div class="ord"><div><div class="toolbar" style="margin:0"><input id="oQ" placeholder="🔎 Buscar platillo o bebida…" style="flex:1"><select id="oMenu"><option value="">Todos los menús</option>' +
     S.config.menus.map(function(m){ return '<option value="' + esc(m.id) + '">' + esc(m.nombre) + '</option>'; }).join('') + '</select></div><div class="chips" id="oCats"></div><div class="items" id="oItems"></div></div>' +
     '<div class="cuenta"><div class="grid2"><div><label class="f">Mesero</label><input id="oMesero" class="w100"></div><div><label class="f">Personas</label><input id="oPers" type="number" min="1" class="w100"></div></div>' +
