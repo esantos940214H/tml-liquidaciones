@@ -50,6 +50,21 @@
     return (iguales ? '' : 'desde ') + money(min);
   }
 
+  // Paquetes / complementos (ej. "Agranda tu paquete +$50: café, pan y jugo
+  // o fruta"). Son platillos marcados esPaquete: no se venden solos, se
+  // agregan a cualquier alimento que comparta menú con el paquete (salvo
+  // los platillos marcados sinPaquete).
+  function compartenMenu(a, b){
+    var ma = Array.isArray(a.menus) ? a.menus : [], mb = Array.isArray(b.menus) ? b.menus : [];
+    if (!ma.length || !mb.length) return true;
+    return ma.some(function(x){ return mb.indexOf(x) >= 0; });
+  }
+  function paquetesPara(item, menu){
+    if (!item || item.tipo === 'bebida' || item.esPaquete || item.sinPaquete) return [];
+    return (menu || []).filter(function(p){ return p.esPaquete && p.disponible !== false && compartenMenu(p, item); });
+  }
+  function opcionesPaquete(p){ var vs = variantes(p); return vs.length ? vs.map(function(v){ return v.nombre; }).join(' o ') : ''; }
+
   // ¿En qué menús aparece el platillo? (vacío = en todos)
   function enMenu(item, menuId){
     var ms = Array.isArray(item.menus) ? item.menus : [];
@@ -113,6 +128,8 @@
     '.c-it .p{white-space:nowrap;font-family:system-ui,sans-serif;font-weight:700}',
     '.c-vars{display:block;margin-top:6px;font-weight:400}.c-var{display:flex;gap:10px;justify-content:space-between;font-family:system-ui,sans-serif;font-size:.88rem;padding:2px 0 2px 12px;border-left:2px solid var(--line)}',
     '.c-var b{white-space:nowrap}',
+    '.c-paq{border:2px dashed var(--acc);border-radius:14px;padding:10px 16px;margin:12px 0;font-family:system-ui,sans-serif}',
+    '.c-paq b{font-family:Georgia,serif;font-size:1.05rem;color:var(--acc)}.c-paq .pp{float:right;font-weight:700}.c-paq .d{color:var(--mut);font-size:.88rem;margin-top:2px}',
     '.c-foot{text-align:center;color:var(--mut);font:.8rem system-ui,sans-serif;margin-top:24px}',
     '.c-foot a{color:var(--acc)}'
   ].join('\n');
@@ -131,9 +148,14 @@
     });
     h += '</div>';
     menus.forEach(function(m){
-      var its = visibles.filter(function(i){ return enMenu(i, m.id); });
+      var its = visibles.filter(function(i){ return enMenu(i, m.id) && !i.esPaquete; });
+      var paqs = visibles.filter(function(i){ return i.esPaquete && enMenu(i, m.id); });
       h += '<section class="c-menu' + (actual && actual.id === m.id ? ' on' : '') + '" data-m="' + esc(m.id) + '"><h2>' + esc(m.nombre) + '</h2><div class="c-hor">' + esc(diasTxt(m)) + '</div>';
       if (!its.length) h += '<p class="c-hor">Sin platillos cargados todavía.</p>';
+      paqs.forEach(function(p){
+        var op = opcionesPaquete(p);
+        h += '<div class="c-paq"><span class="pp">+' + precioTxt(p) + '</span><b>' + esc(p.nombre) + '</b><div class="d">' + esc(p.descripcion || '') + (op ? (p.descripcion ? '. ' : '') + 'Elige: ' + esc(op) + '.' : '') + ' Aplica en cualquier platillo de este menú.</div></div>';
+      });
       porCategoria(its).forEach(function(g){
         h += '<div class="c-cat"><h3>' + esc(g.categoria) + '</h3>';
         g.items.forEach(function(i){
@@ -161,7 +183,7 @@
 
   window.Encino = {
     DIAS: DIAS, DEFAULT_CFG: DEFAULT_CFG, cfgFrom: cfgFrom, money: money, esc: esc, dkey: dkey, hm: hm,
-    variantes: variantes, precioMin: precioMin, precioTxt: precioTxt, enMenu: enMenu, menuActual: menuActual, diasTxt: diasTxt, porCategoria: porCategoria,
+    variantes: variantes, paquetesPara: paquetesPara, opcionesPaquete: opcionesPaquete, precioMin: precioMin, precioTxt: precioTxt, enMenu: enMenu, menuActual: menuActual, diasTxt: diasTxt, porCategoria: porCategoria,
     CARTA_CSS: CARTA_CSS, CARTA_JS: CARTA_JS, cartaBody: cartaBody, cartaEstatica: cartaEstatica
   };
 })();
