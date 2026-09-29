@@ -681,20 +681,25 @@ function procesarRows(rows,fname){
     if(!anticiposDB[op.operadorId])anticiposDB[op.operadorId]=[];
     // Verificar duplicado. Si el archivo trae "Referencia" (folio único del
     // banco por transacción — ver parseCSV) y el registro existente también
-    // la tiene, comparar SOLO por referencia: dos depósitos reales al mismo
-    // operador el mismo día por el mismo monto son transacciones distintas
-    // aunque el texto de "Concepto" se repita idéntico. Si a alguno le falta
-    // la referencia (captura manual, o un archivo sin esa columna), se cae
-    // al criterio anterior (fecha+monto+concepto) para no perder detección
-    // de duplicados en esos casos.
+    // la tiene, comparar SOLO por referencia (+ mismo importe, por
+    // seguridad) — ES el identificador más confiable, así que basta con que
+    // coincida SIN exigir que la fecha también sea idéntica: BBVA a veces
+    // reporta la misma transacción con un día de diferencia entre dos
+    // exportaciones del mismo periodo (fecha de operación vs. fecha de
+    // aplicación/liquidación), y antes esa diferencia de un día bastaba
+    // para que el mismo depósito se insertara de nuevo como si fuera un
+    // anticipo distinto (caso real: reportado por Esa, archivo subido a los
+    // pocos días de otro con transacciones que se traslapaban). Si a alguno
+    // le falta la referencia (captura manual, o un archivo sin esa
+    // columna), se cae al criterio anterior (fecha+monto+concepto).
     const existe=anticiposDB[op.operadorId].some(a=>{
-      if(a.fecha!==r.fecha||Math.abs(a.importe-r.importe)>=0.01)return false;
       // Comparar sin ceros a la izquierda — BBVA a veces trae la misma
       // referencia con distinto padding entre archivos ("9346852" vs
       // "009346852"), y compararla como texto exacto dejaba pasar
       // duplicados reales sin detectarlos (caso real: anticipo de Martín
       // Flores del 22-jul duplicado por esto exacto).
-      if(a.referencia&&r.referencia)return a.referencia.replace(/^0+/,'')===r.referencia.replace(/^0+/,'');
+      if(a.referencia&&r.referencia)return a.referencia.replace(/^0+/,'')===r.referencia.replace(/^0+/,'')&&Math.abs(a.importe-r.importe)<0.01;
+      if(a.fecha!==r.fecha||Math.abs(a.importe-r.importe)>=0.01)return false;
       return norm(a.concepto)===norm(r.concepto);
     });
     if(existe){duplicados++;return;}
