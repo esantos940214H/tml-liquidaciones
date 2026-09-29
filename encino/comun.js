@@ -92,11 +92,29 @@
     var e = cfg.entrega || {};
     return { lat: e.lat != null ? Number(e.lat) : null, lng: e.lng != null ? Number(e.lng) : null, radioKm: Number(e.radioKm) || 4,
       prepMin: e.prepMin != null && e.prepMin !== '' ? Number(e.prepMin) : 20, minPorKm: e.minPorKm != null && e.minPorKm !== '' ? Number(e.minPorKm) : 4,
+      orsKey: String(e.orsKey || '').trim(), limitePorCalle: e.limitePorCalle !== false,
       ok: e.lat != null && e.lng != null && isFinite(Number(e.lat)) && isFinite(Number(e.lng)) };
+  }
+  // Distancia por calle con OpenRouteService (ruta en coche). Resuelve {km}
+  // o falla (sin clave, sin internet, sin ruta) para usar la línea recta.
+  function rutaCalle(cfg, destino){
+    var e = entregaCfg(cfg);
+    if (!e.orsKey || !e.ok) return Promise.reject(new Error('sin clave'));
+    var ctl = window.AbortController ? new AbortController() : null, t = setTimeout(function(){ if (ctl) ctl.abort(); }, 8000);
+    var url = 'https://api.openrouteservice.org/v2/directions/driving-car?api_key=' + encodeURIComponent(e.orsKey) +
+      '&start=' + e.lng + ',' + e.lat + '&end=' + destino.lng + ',' + destino.lat;
+    return fetch(url, ctl ? { signal: ctl.signal } : {}).then(function(r){
+      clearTimeout(t);
+      return r.json().then(function(d){
+        var s = d && d.features && d.features[0] && d.features[0].properties && d.features[0].properties.summary;
+        if (!r.ok || !s || s.distance == null) throw new Error((d && d.error && (d.error.message || d.error)) || ('HTTP ' + r.status));
+        return { km: s.distance / 1000, min: (s.duration || 0) / 60 };
+      });
+    }, function(err){ clearTimeout(t); throw err; });
   }
   // Tiempo estimado: preparación + trayecto. Las calles no van en línea recta,
   // así que se considera 1.3 veces la distancia.
-  function etaMin(cfg, km){ var e = entregaCfg(cfg); return Math.round(e.prepMin + (km || 0) * 1.3 * e.minPorKm); }
+  function etaMin(cfg, km, porCalle){ var e = entregaCfg(cfg); return Math.round(e.prepMin + (km || 0) * (porCalle ? 1 : 1.3) * e.minPorKm); }
   // Pin del mapa sin imágenes externas
   function pinIcono(){ return window.L ? L.divIcon({ className: '', html: '<div style="font-size:32px;line-height:32px;filter:drop-shadow(0 2px 2px rgba(0,0,0,.35))">📍</div>', iconSize: [32, 32], iconAnchor: [16, 30] }) : null; }
   function etaTxt(min){ var a = Math.max(5, Math.round(min / 5) * 5); return a + '–' + (a + 10) + ' min'; }
@@ -300,7 +318,7 @@
 
   window.Encino = {
     DIAS: DIAS, DEFAULT_CFG: DEFAULT_CFG, cfgFrom: cfgFrom, money: money, esc: esc, dkey: dkey, hm: hm,
-    variantes: variantes, paquetesPara: paquetesPara, opcionesPaquete: opcionesPaquete, precioMin: precioMin, precioTxt: precioTxt, enMenu: enMenu, menuActual: menuActual, menusActivos: menusActivos, nombreCorto: nombreCorto, distanciaKm: distanciaKm, entregaCfg: entregaCfg, etaMin: etaMin, etaTxt: etaTxt, pinIcono: pinIcono, diasTxt: diasTxt, diasCorto: diasCorto, menuEtiqueta: menuEtiqueta, porCategoria: porCategoria, cmpCat: cmpCat, catDe: catDe,
+    variantes: variantes, paquetesPara: paquetesPara, opcionesPaquete: opcionesPaquete, precioMin: precioMin, precioTxt: precioTxt, enMenu: enMenu, menuActual: menuActual, menusActivos: menusActivos, nombreCorto: nombreCorto, distanciaKm: distanciaKm, entregaCfg: entregaCfg, etaMin: etaMin, etaTxt: etaTxt, rutaCalle: rutaCalle, pinIcono: pinIcono, diasTxt: diasTxt, diasCorto: diasCorto, menuEtiqueta: menuEtiqueta, porCategoria: porCategoria, cmpCat: cmpCat, catDe: catDe,
     CARTA_CSS: CARTA_CSS, CARTA_JS: CARTA_JS, cartaBody: cartaBody, cartaEstatica: cartaEstatica
   };
 })();

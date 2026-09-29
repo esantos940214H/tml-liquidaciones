@@ -491,7 +491,7 @@ function vPedidos(){
     var est = { nuevo: '<span class="pill bad">Nuevo</span>', aceptado: '<span class="pill busy">En preparación</span>', listo: '<span class="pill">Listo</span>', entregado: '<span class="pill">Entregado</span>', rechazado: '<span class="pill bad">Rechazado</span>' }[p.estado] || esc(p.estado);
     h += '<div class="ped ' + esc(p.estado) + '"><div class="toolbar" style="margin:0 0 6px"><b>' + esc(p.cliente) + '</b> ' + est + '<span class="mut small">#' + esc(p.id.slice(-5).toUpperCase()) + ' · ' + fecha(p.creado) + '</span><span class="sp"></span><b>' + money(p.total) + '</b></div>' +
       '<div class="small">📞 ' + esc(p.telefono) + ' · ' + (p.entrega === 'domicilio' ? '🛵 A domicilio: ' + esc(p.direccion) +
-        (p.ubicacion ? ' · <b>' + p.distanciaKm + ' km</b> · <a href="https://www.google.com/maps/dir/?api=1&destination=' + Number(p.ubicacion.lat) + ',' + Number(p.ubicacion.lng) + '" target="_blank" rel="noopener">🗺️ Ver ruta</a>' : '') : '🏃 Pasa a recoger') +
+        (p.ubicacion ? ' · <b>' + p.distanciaKm + ' km' + (p.porCalle ? ' por calle' : ' en línea recta') + '</b> · <a href="https://www.google.com/maps/dir/?api=1&destination=' + Number(p.ubicacion.lat) + ',' + Number(p.ubicacion.lng) + '" target="_blank" rel="noopener">🗺️ Ver ruta</a>' : '') : '🏃 Pasa a recoger') +
         (p.etaMin ? ' · ⏱️ ' + E.etaTxt(p.etaMin) : '') + (p.hora ? ' · ⏰ ' + esc(p.hora) : '') + '</div>' +
       '<div style="margin:6px 0">' + (p.items || []).map(function(i){ return i.cant + '× ' + esc(i.nombre); }).join(', ') + '</div>' + (p.notas ? '<div class="small" style="color:var(--warn)">📝 ' + esc(p.notas) + '</div>' : '') +
       '<div class="toolbar" style="margin:8px 0 0">' +
@@ -1097,7 +1097,11 @@ function vConfig(){
     '<div class="grid3"><div><label class="f">Radio de entrega (km)</label><input id="eRadio" type="number" min="0.5" step="0.5" class="w100" value="' + ent.radioKm + '"></div>' +
     '<div><label class="f">Tiempo de preparación (min)</label><input id="ePrep" type="number" min="0" step="5" class="w100" value="' + ent.prepMin + '"></div>' +
     '<div><label class="f">Minutos por km del repartidor</label><input id="eMinKm" type="number" min="1" step="0.5" class="w100" value="' + ent.minPorKm + '"></div></div>' +
-    '<p class="small mut" id="eEj"></p><div class="foot" style="margin-top:6px"><button class="b p" id="eOk">Guardar entregas</button></div></div>';
+    '<p class="small mut" id="eEj"></p>' +
+    '<h3>Distancia por calle (OpenRouteService)</h3><p class="small mut" style="margin-top:0">Con la clave, la distancia y el tiempo se calculan por la ruta real. Sin clave (o si el servicio no responde) se usa la línea recta.</p>' +
+    '<div class="toolbar"><input id="eOrs" class="w100" style="flex:1;min-width:220px" placeholder="Pega aquí la clave (API key) de OpenRouteService" value="' + esc(ent.orsKey) + '"><button class="b" id="eProbar">Probar clave</button></div>' +
+    '<label style="display:block;margin-top:6px"><input type="checkbox" id="eLimCalle"' + (ent.limitePorCalle ? ' checked' : '') + '> Medir el límite de entrega <b>por calle</b> (si no, en línea recta)</label>' +
+    '<div class="foot" style="margin-top:6px"><button class="b p" id="eOk">Guardar entregas</button></div></div>';
   h += '<div class="card"><h3 style="margin-top:0">🖼️ Fondo de la carta (por temporada)</h3><p class="small mut" style="margin-top:0">Una imagen que se ve difuminada detrás de la carta QR: Día de Muertos, Navidad, San Valentín… Cámbiala cuando quieras; se ve al momento en los celulares.</p>' +
     '<div class="toolbar" style="align-items:flex-start"><div id="fPrev" style="width:160px;height:110px;border-radius:10px;border:1px solid var(--line);background:var(--bg) center/cover no-repeat;' + (fondo ? 'background-image:url(\'' + fondo.imagen + '\')' : '') + '"></div>' +
     '<div style="flex:1;min-width:220px"><label class="b">🖼️ ' + (fondo ? 'Cambiar imagen' : 'Subir imagen') + '<input type="file" id="fImg" accept="image/*" hidden></label> ' + (fondo ? '<button class="b d" id="fQuitar">Quitar fondo</button>' : '') +
@@ -1166,10 +1170,18 @@ function vConfig(){
     navigator.geolocation.getCurrentPosition(function(pos){ ePoner(pos.coords.latitude, pos.coords.longitude); if (eMapa) eMapa.setView([pos.coords.latitude, pos.coords.longitude], 15); },
       function(){ toast('No se pudo obtener la ubicación (revisa el permiso). Puedes tocar el mapa.', 5000); }, { enableHighAccuracy: true, timeout: 15000 });
   };
+  $('eProbar').onclick = function(){
+    if (!ePunto) return toast('Primero marca la ubicación del restaurante.');
+    var key = $('eOrs').value.trim(); if (!key) return toast('Pega la clave primero.');
+    var cfgTmp = { entrega: { lat: ePunto.lat, lng: ePunto.lng, orsKey: key } }, destino = { lat: ePunto.lat + 0.018, lng: ePunto.lng }; // ~2 km al norte
+    toast('Probando…');
+    E.rutaCalle(cfgTmp, destino).then(function(r){ toast('✔ La clave funciona: a 2 km en línea recta hacia el norte hay ' + r.km.toFixed(1) + ' km por calle. No olvides Guardar.', 7000); },
+      function(e){ toast('✖ No funcionó: ' + (e && e.message || e) + '. Revisa que la clave esté completa.', 8000); });
+  };
   $('eOk').onclick = function(){
     var r = num($('eRadio').value), pr = num($('ePrep').value), mk = num($('eMinKm').value);
     if (!(r > 0)) return alert('El radio debe ser mayor a 0.');
-    var d = { radioKm: r, prepMin: pr != null ? pr : 20, minPorKm: mk > 0 ? mk : 4 };
+    var d = { radioKm: r, prepMin: pr != null ? pr : 20, minPorKm: mk > 0 ? mk : 4, orsKey: $('eOrs').value.trim(), limitePorCalle: $('eLimCalle').checked };
     if (ePunto) { d.lat = +ePunto.lat.toFixed(6); d.lng = +ePunto.lng.toFixed(6); }
     Store.put('config', { id: 'general', entrega: d }).then(function(){ toast('Entregas guardadas'); if (ePunto) $('eCoord').textContent = 'Ubicación: ' + ePunto.lat.toFixed(5) + ', ' + ePunto.lng.toFixed(5); });
   };

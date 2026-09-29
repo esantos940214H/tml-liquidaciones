@@ -144,7 +144,7 @@ a{color:var(--acc)}
     pintaBar();
   }
   // ── Ubicación de entrega (mapa) ──────────────────────────────────────
-  var mapa = null, pin = null, ubic = null;
+  var mapa = null, pin = null, ubic = null, ruta = null; // ruta: {clave, pendiente, km, porCalle}
   function iniciarMapa(){
     var e = E.entregaCfg(cfg), div = document.getElementById('mapa');
     if (!e.ok || !div) return;
@@ -165,8 +165,18 @@ a{color:var(--acc)}
       if (!pin) { pin = L.marker([lat, lng], { draggable: true, icon: E.pinIcono() }).addTo(mapa); pin.on('dragend', function(){ var q = pin.getLatLng(); ponerUbic(q.lat, q.lng); }); }
       else pin.setLatLng([lat, lng]);
     }
-    infoEntrega();
+    calcularRuta();
     if (!sinDireccion) direccionDe(lat, lng);
+  }
+  // Distancia por calle (OpenRouteService); si no se puede, línea recta
+  function calcularRuta(){
+    if (!ubic) return;
+    var e = E.entregaCfg(cfg), clave = ubic.lat.toFixed(5) + ',' + ubic.lng.toFixed(5);
+    if (!e.orsKey) { ruta = { clave: clave, km: E.distanciaKm(e, ubic), porCalle: false }; infoEntrega(); return; }
+    ruta = { clave: clave, pendiente: true }; infoEntrega();
+    var destino = { lat: ubic.lat, lng: ubic.lng };
+    E.rutaCalle(cfg, destino).then(function(r){ if (ruta && ruta.clave === clave) { ruta = { clave: clave, km: r.km, porCalle: true }; infoEntrega(); } },
+      function(){ if (ruta && ruta.clave === clave) { ruta = { clave: clave, km: E.distanciaKm(e, destino), porCalle: false }; infoEntrega(); } });
   }
   function usarMiUbicacion(){
     var info = document.getElementById('distInfo');
@@ -194,15 +204,20 @@ a{color:var(--acc)}
     if (tipo.value !== 'domicilio') return { km: 0, eta: e.prepMin, dentro: true };
     if (!e.ok) return null;
     if (!ubic) return { falta: true };
-    var km = E.distanciaKm(e, ubic);
-    return { km: km, eta: E.etaMin(cfg, km), dentro: km <= e.radioKm };
+    if (!ruta || ruta.pendiente) return { pendiente: true };
+    var recta = E.distanciaKm(e, ubic);
+    // El límite se mide por calle (si está activado y se pudo calcular) o en línea recta
+    var kmLimite = ruta.porCalle && e.limitePorCalle ? ruta.km : recta;
+    return { km: ruta.km, porCalle: ruta.porCalle, eta: E.etaMin(cfg, ruta.km, ruta.porCalle), dentro: kmLimite <= e.radioKm, kmLimite: kmLimite };
   }
   function infoEntrega(){
     var info = document.getElementById('distInfo'), st = estadoEntrega(), e = E.entregaCfg(cfg);
     if (!info || !st || st.falta) { if (info && st && st.falta) info.textContent = ''; return; }
+    if (st.pendiente) { info.innerHTML = '<span class="mut">Calculando la ruta…</span>'; return; }
+    var tipoKm = st.porCalle ? ' por calle' : '';
     info.innerHTML = st.dentro
-      ? '<span class="ok">✔ A ' + st.km.toFixed(1) + ' km · llega en aprox. <b>' + E.etaTxt(st.eta) + '</b></span>'
-      : '<span class="bad">✖ Está a ' + st.km.toFixed(1) + ' km y solo entregamos hasta ' + e.radioKm + ' km. Puedes elegir "Paso a recoger".</span>';
+      ? '<span class="ok">✔ A ' + st.km.toFixed(1) + ' km' + tipoKm + ' · llega en aprox. <b>' + E.etaTxt(st.eta) + '</b></span>'
+      : '<span class="bad">✖ Está a ' + st.kmLimite.toFixed(1) + ' km' + (st.porCalle && e.limitePorCalle ? ' por calle' : '') + ' y solo entregamos hasta ' + e.radioKm + ' km. Puedes elegir "Paso a recoger".</span>';
   }
   function enviar(){
     var v = function(id){ return document.getElementById(id).value.trim(); };
@@ -211,12 +226,13 @@ a{color:var(--acc)}
     if (v('fTipo') === 'domicilio' && !v('fDir')) { err.textContent = 'Escribe la dirección de entrega.'; return; }
     var st = estadoEntrega();
     if (st && st.falta) { err.textContent = 'Marca en el mapa dónde entregamos (o toca "Usar mi ubicación").'; return; }
+    if (st && st.pendiente) { err.textContent = 'Estamos calculando la ruta, intenta de nuevo en un segundo.'; return; }
     if (st && !st.dentro) { err.textContent = 'Esa ubicación está fuera de nuestra zona de entrega (' + E.entregaCfg(cfg).radioKm + ' km).'; return; }
     var lineas = Object.keys(cart).map(function(k){ var l = linea(k); return l ? Object.assign(l, { cant: cart[k] }) : null; }).filter(Boolean);
     var btn = document.getElementById('barBtn'); btn.disabled = true;
     var p = { id: Store.uid(), estado: 'nuevo', creado: Date.now(), cliente: v('fNom'), telefono: v('fTel'), entrega: v('fTipo'),
       direccion: v('fDir'), hora: v('fHora'), notas: v('fNotas'), items: lineas, total: total() };
-    if (st) { p.etaMin = st.eta; if (v('fTipo') === 'domicilio' && ubic) { p.ubicacion = { lat: +ubic.lat.toFixed(6), lng: +ubic.lng.toFixed(6) }; p.distanciaKm = Math.round(st.km * 10) / 10; } }
+    if (st) { p.etaMin = st.eta; if (v('fTipo') === 'domicilio' && ubic) { p.ubicacion = { lat: +ubic.lat.toFixed(6), lng: +ubic.lng.toFixed(6) }; p.distanciaKm = Math.round(st.km * 10) / 10; p.porCalle = !!st.porCalle; } }
     Store.put('pedidos', p).then(function(){
       try { localStorage.setItem('encino:miPedido', p.id); } catch(e){}
       cart = {}; verEstado(p.id);
