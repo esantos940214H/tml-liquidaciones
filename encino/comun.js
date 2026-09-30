@@ -228,9 +228,10 @@
     '.c-it .n{flex:1;font-weight:600}.c-it .d{display:block;font-weight:400;color:var(--mut);font-size:.88rem;margin-top:2px}',
     // Todos los precios (platillo, variante y paquete) con la misma letra,
     // tamaño y columna a la derecha.
-    '.c-it .p,.c-var b,.c-paq .pp{white-space:nowrap;font:700 1rem system-ui,sans-serif;font-variant-numeric:tabular-nums}',
+    '.c-it .p,.c-paq .pp{white-space:nowrap;font:700 1rem system-ui,sans-serif;font-variant-numeric:tabular-nums}',
     '.c-it .p:empty{display:none}',
-    '.c-vars{display:block;margin-top:6px;font-weight:400}.c-var{display:flex;gap:12px;align-items:baseline;justify-content:space-between;font-size:.95rem;padding:3px 0 3px 12px;border-left:2px solid var(--line)}',
+    '.c-vars{display:block;margin-top:4px;font-weight:400;font-size:.95rem;line-height:1.5}.c-var{white-space:nowrap}.c-sep{color:var(--mut)}',
+    '.c-var b{font:700 .95rem system-ui,sans-serif;font-variant-numeric:tabular-nums;color:var(--acc)}',
     '.c-paq{padding:9px 0;border-bottom:1px dashed var(--line)}.c-paq:last-child{border-bottom:0}',
     '.c-paq b{font-family:Georgia,serif;font-size:1.05rem;color:var(--acc)}.c-paq .pp{float:right;margin-left:12px}.c-paq .d{color:var(--mut);font-size:.88rem;margin-top:2px}',
     '.c-foot{text-align:center;color:var(--mut);font:.8rem system-ui,sans-serif;margin-top:24px}',
@@ -275,10 +276,15 @@
             h += '<div class="c-paq"><span class="pp">+' + precioTxt(i) + '</span><b>' + esc(i.nombre) + '</b><div class="d">' + esc(i.descripcion || '') + (op ? (i.descripcion ? '. ' : '') + 'Elige: ' + esc(op) + '.' : (i.descripcion && !/[.!?]$/.test(i.descripcion.trim()) ? '.' : '')) + ' Aplica en cualquier platillo de este menú.</div></div>';
             return;
           }
+          // Variantes en renglón corrido ("Con pollo $135.00 · Con tasajo
+          // $150.00…") para no alargar la carta. Si todas cuestan lo mismo
+          // (ej. salsa verde o roja), el precio va en la columna normal.
           var vs = variantes(i);
+          var mismo = vs.length > 0 && vs.every(function(v){ return Number(v.precio) === Number(vs[0].precio); });
           h += '<div class="c-it"><span class="n">' + esc(i.nombre) + (i.descripcion ? '<span class="d">' + esc(i.descripcion) + '</span>' : '') +
-            (vs.length ? '<span class="c-vars">' + vs.map(function(v){ return '<span class="c-var"><span>' + esc(v.nombre) + '</span><b>' + money(v.precio) + '</b></span>'; }).join('') + '</span>' : '') +
-            '</span><span class="p">' + (vs.length ? '' : money(i.precio)) + '</span></div>';
+            (mismo ? '<span class="c-vars">' + vs.map(function(v){ return esc(v.nombre); }).join(' o ') + '</span>' :
+             vs.length ? '<span class="c-vars">' + vs.map(function(v){ return '<span class="c-var">' + esc(v.nombre) + ' <b>' + money(v.precio) + '</b></span>'; }).join('<span class="c-sep"> · </span>') + '</span>' : '') +
+            '</span><span class="p">' + (mismo ? money(vs[0].precio) : vs.length ? '' : money(i.precio)) + '</span></div>';
         });
         h += '</div>';
       });
