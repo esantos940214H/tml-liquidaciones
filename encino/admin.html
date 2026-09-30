@@ -415,6 +415,8 @@ function cobrar(){
     '<div><label class="f">Pagó con $ (efectivo)</label><input id="cCon" type="number" min="0" class="w100"></div></div>' +
     '<div class="tot"><span>Total a cobrar</span><span id="cTot"></span></div><div id="cCambio" class="mut"></div>' +
     '<div class="foot"><button class="b" id="cNo">Regresar</button><button class="b p" id="cSi">✔ Cerrar venta e imprimir ticket</button></div>', { sticky: true });
+  if (o.metodoPago) $('cMet').value = o.metodoPago;
+  if (o.pagaCon) $('cCon').value = o.pagaCon;
   function calc(){
     var dp = Math.min(100, Math.max(0, num($('cDesc').value) || 0)), desc = r2(sub * dp / 100), prop = r2(num($('cProp').value) || 0);
     var tot = r2(sub - desc + prop), con = num($('cCon').value);
@@ -495,7 +497,8 @@ function vPedidos(){
         (p.ubicacion ? ' · <b>' + p.distanciaKm + ' km' + (p.porCalle ? ' por calle' : ' en línea recta') + '</b> · <a href="https://www.google.com/maps/dir/?api=1&destination=' + Number(p.ubicacion.lat) + ',' + Number(p.ubicacion.lng) + '" target="_blank" rel="noopener">🗺️ Ver ruta</a>' : '') : '🏃 Pasa a recoger') +
         (p.etaMin ? ' · ⏱️ ' + E.etaTxt(p.etaMin) : '') + (p.hora ? ' · ⏰ Pasa a las <b>' + esc(p.hora) + '</b> (preparar desde ' + horaMenos(p.hora, E.entregaCfg(S.config).avisoMin) + ')' : '') + '</div>' +
       (prepararYa(p) ? '<div class="pill bad" style="margin-top:6px">⏰ ¡Empezar a preparar ya!</div>' : '') +
-      '<div style="margin:6px 0">' + (p.items || []).map(function(i){ return i.cant + '× ' + esc(i.nombre); }).join(', ') + '</div>' + (p.notas ? '<div class="small" style="color:var(--warn)">📝 ' + esc(p.notas) + '</div>' : '') +
+      '<div style="margin:6px 0">' + (p.items || []).map(function(i){ return i.cant + '× ' + esc(i.nombre); }).join(', ') + '</div>' +
+      (p.metodoPago ? '<div class="small">💳 Paga con <b>' + esc(p.metodoPago) + '</b>' + (p.pagaCon ? ' · trae ' + money(p.pagaCon) + ' → cambio <b>' + money(p.pagaCon - p.total) + '</b>' : '') + '</div>' : '') + (p.notas ? '<div class="small" style="color:var(--warn)">📝 ' + esc(p.notas) + '</div>' : '') +
       '<div class="toolbar" style="margin:8px 0 0">' +
       (p.estado === 'nuevo' ? '<button class="b p" data-pa="aceptar" data-id="' + p.id + '">✔ Aceptar</button><button class="b d" data-pa="rechazar" data-id="' + p.id + '">Rechazar</button>' : '') +
       (p.estado === 'aceptado' ? '<button class="b p" data-pa="listo" data-id="' + p.id + '">' + (p.entrega === 'domicilio' ? '✅ Listo' : '✅ Listo para recoger') + '</button>' : '') +
@@ -510,7 +513,7 @@ function vPedidos(){
 function accionPedido(a, id){
   var p = S.pedidos.find(function(x){ return x.id === id; }); if (!p) return;
   if (a === 'aceptar') {
-    var o = { id: Store.uid(), tipo: 'linea', mesa: '', cliente: p.cliente, pedidoId: p.id, abierta: Date.now(),
+    var o = { id: Store.uid(), tipo: 'linea', mesa: '', cliente: p.cliente, pedidoId: p.id, abierta: Date.now(), metodoPago: p.metodoPago || '', pagaCon: p.pagaCon || null,
       items: (p.items || []).map(function(i){ var m = S.menu.find(function(x){ return x.id === i.menuId; });
         return { lid: Store.uid(), menuId: i.menuId, varId: i.varId || null, nombre: i.nombre, precio: Number(i.precio) || 0, tipo: i.tipo || (m && m.tipo) || 'alimento', categoria: (m && m.categoria) || '', cant: i.cant, nota: '' }; }) };
     if (p.notas && o.items[0]) o.items[0].nota = p.notas;
@@ -1112,6 +1115,7 @@ function vConfig(){
     '<div><label class="f">Número de mesas</label><input id="gMes" type="number" min="1" max="99" class="w100" value="' + esc(c.mesas) + '"></div>' +
     '<div><label class="f">Ancho del papel del ticket</label><select id="gAn" class="w100"><option value="80">80 mm</option><option value="58">58 mm</option></select></div>' +
     '<div><label class="f">Dirección web pública (donde quedará publicado, para el QR)</label><input id="gUrl" class="w100" placeholder="https://encino.ejemplo.com" value="' + esc(c.urlPublica) + '"></div></div>' +
+    '<label class="f">Datos para transferencia (se muestran al cliente que elige pagar por transferencia)</label><textarea id="gTransf" rows="3" class="w100" placeholder="Banco, titular, CLABE…">' + esc(c.datosTransferencia || '') + '</textarea>' +
     '<label style="display:block;margin-top:10px"><input type="checkbox" id="gPed"' + (c.pedidosActivos ? ' checked' : '') + '> Recibir pedidos en línea</label>' +
     '<h3>Menús (carta)</h3><p class="small mut">Cada renglón es un menú: su nombre, <b>qué días</b> se sirve (toca los días para marcarlos) y <b>de qué hora a qué hora</b>. La carta abre sola en el menú que toca; si dos horarios se enciman (ej. 12:30 a 13:00), le pregunta al cliente cuál quiere ver. Qué platillos van en cada menú se elige en la pestaña Menú.</p><div id="gMenus"></div><button class="b s" id="gAddMenu">＋ Menú</button>' +
     '<div class="foot"><button class="b p" id="gOk">Guardar configuración</button></div></div>';
@@ -1164,7 +1168,7 @@ function vConfig(){
   $('gAddMenu').onclick = function(){ menus.push({ id: Store.uid(), nombre: 'Nuevo menú', dias: [], desde: '', hasta: '' }); pintaMenus(); };
   $('gOk').onclick = function(){
     Store.put('config', { id: 'general', nombre: $('gNom').value.trim() || 'Restaurante Encino', telefono: $('gTel').value.trim(), direccion: $('gDir').value.trim(), rfc: $('gRfc').value.trim(),
-      leyenda: $('gLey').value.trim(), mesas: Math.max(1, parseInt($('gMes').value, 10) || 10), anchoTicket: +$('gAn').value, urlPublica: $('gUrl').value.trim(), pedidosActivos: $('gPed').checked,
+      leyenda: $('gLey').value.trim(), mesas: Math.max(1, parseInt($('gMes').value, 10) || 10), anchoTicket: +$('gAn').value, urlPublica: $('gUrl').value.trim(), datosTransferencia: $('gTransf').value.trim(), pedidosActivos: $('gPed').checked,
       menus: menus.filter(function(m){ return m.nombre.trim(); }) }).then(function(){ toast('Configuración guardada'); vConfig(); });
   };
   // Fondo de temporada: se reduce y comprime en el navegador (documento de
