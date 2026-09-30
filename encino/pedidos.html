@@ -154,11 +154,20 @@ a{color:var(--acc)}
       '<div id="dirBox" hidden>' + (E.entregaCfg(cfg).ok ? '<label>¿Dónde entregamos? *</label><button class="btn" id="miUbic" type="button" style="width:100%">📍 Usar mi ubicación</button>' +
         '<div class="mapa" id="mapa"></div><p class="mut" style="font-size:.8rem;margin:4px 0">También puedes tocar el mapa o arrastrar el pin.</p><p id="distInfo"></p>' : '') +
         '<label>Dirección y referencias *</label><textarea id="fDir" rows="2" placeholder="Calle, número, colonia, entre calles, color de la casa…"></textarea></div>' +
+      '<label>¿Cómo vas a pagar? *</label><select id="fPago"><option value="">— Elige —</option><option>Efectivo</option><option>Tarjeta</option><option>Transferencia</option></select>' +
+      '<div id="pagoEf" hidden><label>¿Con cuánto pagas? (para llevarte cambio)</label><input id="fPagaCon" type="number" min="0" step="1" inputmode="numeric" placeholder="Ej. 500"></div>' +
+      '<div id="pagoTar" hidden><p class="mut" style="font-size:.85rem;margin:6px 0 0">Pagas con tarjeta al recibir o recoger tu pedido.</p></div>' +
+      '<div id="pagoTr" hidden><p class="mut" style="font-size:.85rem;margin:6px 0 0;white-space:pre-line">' + (cfg.datosTransferencia ? 'Datos para transferir:\n' + esc(cfg.datosTransferencia) + '\nEnvía tu comprobante por WhatsApp' + (cfg.telefono ? ' al ' + esc(cfg.telefono) : '') + '.' : 'Te enviaremos los datos para transferir al confirmar tu pedido.') + '</p></div>' +
       '<label>Notas (sin cebolla, etc.)</label><textarea id="fNotas" rows="2"></textarea><p id="fErr" class="bad"></p>' +
       '<button class="btn" id="volver" style="background:transparent;color:var(--acc);padding-left:0">← Seguir agregando</button></div>';
     app.innerHTML = h;
     document.getElementById('fTipo').onchange = function(){ document.getElementById('dirBox').hidden = this.value !== 'domicilio'; if (this.value === 'domicilio') iniciarMapa(); document.getElementById('horaBox').hidden = this.value === 'domicilio'; infoEntrega(); };
     document.getElementById('volver').onclick = function(){ paso = 'menu'; pinta(); };
+    document.getElementById('fPago').onchange = function(){
+      document.getElementById('pagoEf').hidden = this.value !== 'Efectivo';
+      document.getElementById('pagoTar').hidden = this.value !== 'Tarjeta';
+      document.getElementById('pagoTr').hidden = this.value !== 'Transferencia';
+    };
     pintaBar();
   }
   // ── Ubicación de entrega (mapa) ──────────────────────────────────────
@@ -240,6 +249,9 @@ a{color:var(--acc)}
   function enviar(){
     var v = function(id){ return document.getElementById(id).value.trim(); };
     var err = document.getElementById('fErr');
+    var pago = v('fPago'), pagaCon = pago === 'Efectivo' && v('fPagaCon') !== '' ? Number(v('fPagaCon')) : null;
+    if (!pago) { err.textContent = 'Elige cómo vas a pagar.'; return; }
+    if (pagaCon != null && !(pagaCon >= total())) { err.textContent = 'El monto con el que pagas debe cubrir el total (' + money(total()) + ').'; return; }
     if (!v('fNom') || !v('fTel')) { err.textContent = 'Nombre y teléfono son obligatorios.'; return; }
     if (v('fTipo') === 'domicilio' && !v('fDir')) { err.textContent = 'Escribe la dirección de entrega.'; return; }
     var st = estadoEntrega();
@@ -252,7 +264,7 @@ a{color:var(--acc)}
     var lineas = Object.keys(cart).map(function(k){ var l = linea(k); return l ? Object.assign(l, { cant: cart[k] }) : null; }).filter(Boolean);
     var btn = document.getElementById('barBtn'); btn.disabled = true;
     var p = { id: Store.uid(), estado: 'nuevo', creado: Date.now(), cliente: v('fNom'), telefono: v('fTel'), entrega: v('fTipo'),
-      direccion: v('fTipo') === 'domicilio' ? v('fDir') : '', hora: hora, notas: v('fNotas'), items: lineas, total: total() };
+      direccion: v('fTipo') === 'domicilio' ? v('fDir') : '', hora: hora, notas: v('fNotas'), items: lineas, total: total(), metodoPago: pago, pagaCon: pagaCon };
     if (st && !hora) { p.etaMin = st.eta; if (v('fTipo') === 'domicilio' && ubic) { p.ubicacion = { lat: +ubic.lat.toFixed(6), lng: +ubic.lng.toFixed(6) }; p.distanciaKm = Math.round(st.km * 10) / 10; p.porCalle = !!st.porCalle; p.trayectoMin = E.trayectoMin(cfg, st.km, st.porCalle); } }
     Store.put('pedidos', p).then(function(){
       try { localStorage.setItem('encino:miPedido', p.id); } catch(e){}
