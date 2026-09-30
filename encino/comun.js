@@ -185,7 +185,7 @@
     (orden || []).forEach(function(c, k){ ix[String(c).toLowerCase()] = k; });
     function llave(it){
       var c = catDe(it), k = ix[c.toLowerCase()];
-      return k != null ? [0, k, ''] : [1, it.tipo === 'bebida' ? 1 : 0, c.toLowerCase()];
+      return k != null ? [0, k, ''] : [it.esPaquete ? 2 : 1, it.tipo === 'bebida' ? 1 : 0, c.toLowerCase()];
     }
     return function(a, b){
       var x = llave(a), y = llave(b);
@@ -226,11 +226,14 @@
     '.c-cat h3::before,.c-cat h3::after{content:"";flex:1;height:1px;background:var(--line)}',
     '.c-it{display:flex;gap:12px;align-items:baseline;padding:9px 0;border-bottom:1px dashed var(--line)}.c-it:last-child{border-bottom:0}',
     '.c-it .n{flex:1;font-weight:600}.c-it .d{display:block;font-weight:400;color:var(--mut);font-size:.88rem;margin-top:2px}',
-    '.c-it .p{white-space:nowrap;font-family:system-ui,sans-serif;font-weight:700}',
-    '.c-vars{display:block;margin-top:6px;font-weight:400}.c-var{display:flex;gap:10px;justify-content:space-between;font-family:system-ui,sans-serif;font-size:.88rem;padding:2px 0 2px 12px;border-left:2px solid var(--line)}',
-    '.c-var b{white-space:nowrap}',
-    '.c-paq{border-top:1px solid var(--line);border-bottom:1px solid var(--line);padding:10px 0;margin:14px 0 0;font-family:system-ui,sans-serif}',
-    '.c-paq b{font-family:Georgia,serif;font-size:1.05rem;color:var(--acc)}.c-paq .pp{float:right;font-weight:700}.c-paq .d{color:var(--mut);font-size:.88rem;margin-top:2px}',
+    // Todos los precios (platillo, variante y paquete) con la misma letra,
+    // tamaño y columna a la derecha.
+    '.c-it .p,.c-paq .pp{white-space:nowrap;font:700 1rem system-ui,sans-serif;font-variant-numeric:tabular-nums}',
+    '.c-it .p:empty{display:none}',
+    '.c-vars{display:block;margin-top:4px;font-weight:400;font-size:.95rem;line-height:1.5}.c-var{white-space:nowrap}.c-sep{color:var(--mut)}',
+    '.c-var b{font:700 .95rem system-ui,sans-serif;font-variant-numeric:tabular-nums;color:var(--acc)}',
+    '.c-paq{padding:9px 0;border-bottom:1px dashed var(--line)}.c-paq:last-child{border-bottom:0}',
+    '.c-paq b{font-family:Georgia,serif;font-size:1.05rem;color:var(--acc)}.c-paq .pp{float:right;margin-left:12px}.c-paq .d{color:var(--mut);font-size:.88rem;margin-top:2px}',
     '.c-foot{text-align:center;color:var(--mut);font:.8rem system-ui,sans-serif;margin-top:24px}',
     '.c-foot a{color:var(--acc)}',
     '.c-dias{display:block;font-weight:400;font-size:.75rem;opacity:.8}',
@@ -260,21 +263,28 @@
     });
     h += '</div><div class="c-elige" id="cElige" hidden><p>Son las <b class="hora"></b> y estamos sirviendo dos menús. ¿Vienes a…?</p><div class="ops"></div></div>';
     menus.forEach(function(m){
-      var its = visibles.filter(function(i){ return enMenu(i, m.id) && !i.esPaquete; });
-      var paqs = visibles.filter(function(i){ return i.esPaquete && enMenu(i, m.id); });
+      // Los paquetes van en su categoría (ej. PAQUETES), en el lugar que le
+      // toque según el orden de categorías; si no está en ese orden, al final.
+      var its = visibles.filter(function(i){ return enMenu(i, m.id); });
       h += '<section class="c-menu' + (actual && actual.id === m.id ? ' on' : '') + '" data-m="' + esc(m.id) + '"><div class="c-hoja"><h2>' + esc(m.nombre) + '</h2><div class="c-hor">' + esc(diasTxt(m)) + '</div>';
-      if (!its.length) h += '<p class="c-hor">Sin platillos cargados todavía.</p>';
-      paqs.forEach(function(p){
-        var op = opcionesPaquete(p);
-        h += '<div class="c-paq"><span class="pp">+' + precioTxt(p) + '</span><b>' + esc(p.nombre) + '</b><div class="d">' + esc(p.descripcion || '') + (op ? (p.descripcion ? '. ' : '') + 'Elige: ' + esc(op) + '.' : (p.descripcion && !/[.!?]$/.test(p.descripcion.trim()) ? '.' : '')) + ' Aplica en cualquier platillo de este menú.</div></div>';
-      });
+      if (!its.some(function(i){ return !i.esPaquete; })) h += '<p class="c-hor">Sin platillos cargados todavía.</p>';
       porCategoria(its, cfg.categorias).forEach(function(g){
         h += '<div class="c-cat"><h3>' + esc(g.categoria) + '</h3>';
         g.items.forEach(function(i){
+          if (i.esPaquete) {
+            var op = opcionesPaquete(i);
+            h += '<div class="c-paq"><span class="pp">+' + precioTxt(i) + '</span><b>' + esc(i.nombre) + '</b><div class="d">' + esc(i.descripcion || '') + (op ? (i.descripcion ? '. ' : '') + 'Elige: ' + esc(op) + '.' : (i.descripcion && !/[.!?]$/.test(i.descripcion.trim()) ? '.' : '')) + ' Aplica en cualquier platillo de este menú.</div></div>';
+            return;
+          }
+          // Variantes en renglón corrido ("Con pollo $135.00 · Con tasajo
+          // $150.00…") para no alargar la carta. Si todas cuestan lo mismo
+          // (ej. salsa verde o roja), el precio va en la columna normal.
           var vs = variantes(i);
+          var mismo = vs.length > 0 && vs.every(function(v){ return Number(v.precio) === Number(vs[0].precio); });
           h += '<div class="c-it"><span class="n">' + esc(i.nombre) + (i.descripcion ? '<span class="d">' + esc(i.descripcion) + '</span>' : '') +
-            (vs.length ? '<span class="c-vars">' + vs.map(function(v){ return '<span class="c-var"><span>' + esc(v.nombre) + '</span><b>' + money(v.precio) + '</b></span>'; }).join('') + '</span>' : '') +
-            '</span><span class="p">' + (vs.length ? '' : money(i.precio)) + '</span></div>';
+            (mismo ? '<span class="c-vars">' + vs.map(function(v){ return esc(v.nombre); }).join(' o ') + '</span>' :
+             vs.length ? '<span class="c-vars">' + vs.map(function(v){ return '<span class="c-var">' + esc(v.nombre) + ' <b>' + money(v.precio) + '</b></span>'; }).join('<span class="c-sep"> · </span>') + '</span>' : '') +
+            '</span><span class="p">' + (mismo ? money(vs[0].precio) : vs.length ? '' : money(i.precio)) + '</span></div>';
         });
         h += '</div>';
       });
