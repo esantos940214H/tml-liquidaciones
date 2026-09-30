@@ -185,7 +185,7 @@
     (orden || []).forEach(function(c, k){ ix[String(c).toLowerCase()] = k; });
     function llave(it){
       var c = catDe(it), k = ix[c.toLowerCase()];
-      return k != null ? [0, k, ''] : [1, it.tipo === 'bebida' ? 1 : 0, c.toLowerCase()];
+      return k != null ? [0, k, ''] : [it.esPaquete ? 2 : 1, it.tipo === 'bebida' ? 1 : 0, c.toLowerCase()];
     }
     return function(a, b){
       var x = llave(a), y = llave(b);
@@ -260,17 +260,19 @@
     });
     h += '</div><div class="c-elige" id="cElige" hidden><p>Son las <b class="hora"></b> y estamos sirviendo dos menús. ¿Vienes a…?</p><div class="ops"></div></div>';
     menus.forEach(function(m){
-      var its = visibles.filter(function(i){ return enMenu(i, m.id) && !i.esPaquete; });
-      var paqs = visibles.filter(function(i){ return i.esPaquete && enMenu(i, m.id); });
+      // Los paquetes van en su categoría (ej. PAQUETES), en el lugar que le
+      // toque según el orden de categorías; si no está en ese orden, al final.
+      var its = visibles.filter(function(i){ return enMenu(i, m.id); });
       h += '<section class="c-menu' + (actual && actual.id === m.id ? ' on' : '') + '" data-m="' + esc(m.id) + '"><div class="c-hoja"><h2>' + esc(m.nombre) + '</h2><div class="c-hor">' + esc(diasTxt(m)) + '</div>';
-      if (!its.length) h += '<p class="c-hor">Sin platillos cargados todavía.</p>';
-      paqs.forEach(function(p){
-        var op = opcionesPaquete(p);
-        h += '<div class="c-paq"><span class="pp">+' + precioTxt(p) + '</span><b>' + esc(p.nombre) + '</b><div class="d">' + esc(p.descripcion || '') + (op ? (p.descripcion ? '. ' : '') + 'Elige: ' + esc(op) + '.' : (p.descripcion && !/[.!?]$/.test(p.descripcion.trim()) ? '.' : '')) + ' Aplica en cualquier platillo de este menú.</div></div>';
-      });
+      if (!its.some(function(i){ return !i.esPaquete; })) h += '<p class="c-hor">Sin platillos cargados todavía.</p>';
       porCategoria(its, cfg.categorias).forEach(function(g){
         h += '<div class="c-cat"><h3>' + esc(g.categoria) + '</h3>';
         g.items.forEach(function(i){
+          if (i.esPaquete) {
+            var op = opcionesPaquete(i);
+            h += '<div class="c-paq"><span class="pp">+' + precioTxt(i) + '</span><b>' + esc(i.nombre) + '</b><div class="d">' + esc(i.descripcion || '') + (op ? (i.descripcion ? '. ' : '') + 'Elige: ' + esc(op) + '.' : (i.descripcion && !/[.!?]$/.test(i.descripcion.trim()) ? '.' : '')) + ' Aplica en cualquier platillo de este menú.</div></div>';
+            return;
+          }
           var vs = variantes(i);
           h += '<div class="c-it"><span class="n">' + esc(i.nombre) + (i.descripcion ? '<span class="d">' + esc(i.descripcion) + '</span>' : '') +
             (vs.length ? '<span class="c-vars">' + vs.map(function(v){ return '<span class="c-var"><span>' + esc(v.nombre) + '</span><b>' + money(v.precio) + '</b></span>'; }).join('') + '</span>' : '') +
