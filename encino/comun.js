@@ -205,13 +205,13 @@
 
   // ── Carta (menú para clientes por QR) ──────────────────────────────────
   var CARTA_CSS = [
-    ':root{--bg:#f7f3ec;--card:#fffdf8;--ink:#2b2a26;--mut:#7a7466;--acc:#4f6b3a;--line:#e4dccd}',
-    '@media (prefers-color-scheme:dark){:root{--bg:#171a15;--card:#1f231c;--ink:#ece8df;--mut:#a9a392;--acc:#a8c48c;--line:#343a2f}}',
+    ':root{--bg:#f7f3ec;--card:#fffdf8;--ink:#2b2a26;--mut:#7a7466;--acc:#4f6b3a;--line:#e4dccd;--tit:#8e2c1f}',
+    '@media (prefers-color-scheme:dark){:root{--bg:#171a15;--card:#1f231c;--ink:#ece8df;--mut:#a9a392;--acc:#a8c48c;--line:#343a2f;--tit:#d9826a}}',
     '*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font-family:Georgia,"Times New Roman",serif}',
     '.c-wrap{max-width:720px;margin:0 auto;padding:24px 16px 48px;position:relative;z-index:1}',
     '.c-fondo{position:fixed;inset:-40px;z-index:0;background-size:cover;background-position:center;filter:blur(7px);pointer-events:none}',
     '.c-fondo~.c-wrap h1,.c-fondo~.c-wrap .c-head p,.c-fondo~.c-wrap h2,.c-fondo~.c-wrap .c-hor,.c-fondo~.c-wrap .c-foot{text-shadow:0 0 6px var(--bg),0 0 2px var(--bg)}',
-    '.c-head{text-align:center;margin-bottom:18px}.c-head h1{margin:0;font-size:2rem;letter-spacing:.04em;color:var(--acc)}',
+    '.c-head{text-align:center;margin-bottom:18px}.c-head h1{margin:0;font-size:2rem;letter-spacing:.04em;color:var(--tit)}',
     '.c-head p{margin:4px 0 0;color:var(--mut);font-family:system-ui,sans-serif;font-size:.85rem}',
     '.c-tabs{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;padding:6px 0 12px}',
     '.c-tabs button{line-height:1.25;border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:999px;padding:8px 14px;font:600 .85rem system-ui,sans-serif;cursor:pointer}',
