@@ -69,7 +69,23 @@ a{color:var(--acc)}
     return { menuId: m.id, varId: v ? v.id : null, nombre: m.nombre + (v ? ' · ' + v.nombre : ''), precio: Number(v ? v.precio : m.precio) || 0, tipo: m.tipo };
   }
   function total(){ var t = 0; Object.keys(cart).forEach(function(k){ var l = linea(k); if (l) t += l.precio * cart[k]; }); return t; }
-  function qtyBtns(key){ var q = cart[key] || 0; return '<span class="qty">' + (q ? '<button data-menos="' + key + '">−</button><b>' + q + '</b>' : '') + '<button data-mas="' + key + '">+</button></span>'; }
+  function qtyBtns(key, sinMas){ var q = cart[key] || 0; return '<span class="qty">' + (q ? '<button data-menos="' + key + '">−</button><b>' + q + '</b>' : '') + '<button data-mas="' + key + '"' + (sinMas ? ' disabled style="opacity:.35"' : '') + '>+</button></span>'; }
+  // Paquetes: solo se pueden agregar tantos como platillos que acepten paquete haya en el carrito
+  function esPaqKey(k){ var m = menu.find(function(x){ return x.id === k.split('|')[0]; }); return !!(m && m.esPaquete); }
+  function cupoPaquetes(){
+    var np = 0, nd = 0;
+    Object.keys(cart).forEach(function(k){ var m = menu.find(function(x){ return x.id === k.split('|')[0]; }); if (!m) return;
+      if (m.esPaquete) np += cart[k]; else if (E.paquetesPara(m, menu).length) nd += cart[k]; });
+    return { np: np, nd: nd, libre: nd - np };
+  }
+  // Si se quitan platillos, se quitan también los paquetes que ya no tienen a qué ir
+  function ajustarPaquetes(){
+    var c = cupoPaquetes(), sobran = c.np - c.nd;
+    Object.keys(cart).reverse().forEach(function(k){
+      if (sobran <= 0 || !esPaqKey(k)) return;
+      var q = Math.min(cart[k], sobran); cart[k] -= q; sobran -= q; if (cart[k] <= 0) delete cart[k];
+    });
+  }
   function nArt(){ return Object.keys(cart).reduce(function(s,k){ return s + cart[k]; }, 0); }
 
   function pinta(){
@@ -88,12 +104,14 @@ a{color:var(--acc)}
     }
     var its = items().filter(function(i){ return E.enMenu(i, menuSel) && !i.esPaquete; });
     var paqs = items().filter(function(i){ return i.esPaquete && E.enMenu(i, menuSel); });
-    var paqH = '';
+    var paqH = '', cupo = cupoPaquetes(), lleno = cupo.libre <= 0;
     paqs.forEach(function(p){
       var vs = E.variantes(p);
       paqH += '<div class="cat paq"><h3>🥐 ' + esc(p.nombre) + '</h3><p class="mut" style="margin:0 0 4px;font-size:.85rem">' + esc(p.descripcion || '') + (p.descripcion && !/[.!?]$/.test(p.descripcion.trim()) ? '.' : '') + ' Se agrega a un platillo de tu pedido (uno por platillo).</p>' +
-        (vs.length ? vs.map(function(v){ return '<div class="it var"><span class="n">' + esc(v.nombre) + '</span><span class="p">+' + money(v.precio) + '</span>' + qtyBtns(p.id + '|' + v.id) + '</div>'; }).join('')
-          : '<div class="it"><span class="n">' + esc(p.nombre) + '</span><span class="p">+' + money(p.precio) + '</span>' + qtyBtns(p.id) + '</div>') + '</div>';
+        (!cupo.nd ? '<p style="margin:4px 0 8px;font-size:.85rem;color:var(--bad)">Agrega primero un platillo para poder hacerlo paquete.</p>'
+          : lleno ? '<p class="mut" style="margin:4px 0 8px;font-size:.85rem">Ya tienes un paquete por cada platillo.</p>' : '') +
+        (vs.length ? vs.map(function(v){ return '<div class="it var"><span class="n">' + esc(v.nombre) + '</span><span class="p">+' + money(v.precio) + '</span>' + qtyBtns(p.id + '|' + v.id, lleno) + '</div>'; }).join('')
+          : '<div class="it"><span class="n">' + esc(p.nombre) + '</span><span class="p">+' + money(p.precio) + '</span>' + qtyBtns(p.id, lleno) + '</div>') + '</div>';
     });
     if (!its.length) h += '<div class="box mut">No hay platillos disponibles en este menú.</div>';
     if (its.length) h += '<div class="hoja">';
@@ -268,8 +286,8 @@ a{color:var(--acc)}
   app.addEventListener('click', function(e){
     var t = e.target.closest('button'); if (!t) return;
     if (t.dataset.m) { menuSel = t.dataset.m; menuElegido = true; pinta(); }
-    else if (t.dataset.mas) { cart[t.dataset.mas] = (cart[t.dataset.mas] || 0) + 1; pinta(); }
-    else if (t.dataset.menos) { var k = t.dataset.menos; cart[k]--; if (cart[k] <= 0) delete cart[k]; pinta(); }
+    else if (t.dataset.mas) { if (esPaqKey(t.dataset.mas) && cupoPaquetes().libre <= 0) return; cart[t.dataset.mas] = (cart[t.dataset.mas] || 0) + 1; pinta(); }
+    else if (t.dataset.menos) { var k = t.dataset.menos; cart[k]--; if (cart[k] <= 0) delete cart[k]; ajustarPaquetes(); pinta(); }
   });
   // No más paquetes que platillos a los que se les puede agregar
   function paquetesOk(){
