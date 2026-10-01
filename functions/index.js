@@ -555,11 +555,29 @@ function _crearAutorizacionServer(ingresosDB, datos) {
     // original y el correo con el monto confirmado, exigir el mismo
     // operador dejaba el pendiente huérfano para siempre y creaba un
     // duplicado bajo el operador nuevo.
-    const existentePendiente = ingresosDB.find(function (v) {
+    // Si el T.U. se repite en 2 tramos del mismo viaje (CEDIS + destino
+    // final), puede haber MÁS DE UNA pendiente compartiendo ese mismo T.U.
+    // — mismo criterio que su gemela en maniobras.html (ver comentario ahí):
+    // sin esto, el segundo tramo nunca se registraba porque siempre se
+    // actualizaba la pendiente del PRIMER tramo que encontraba (de otro
+    // destino). Se desambigua por destino; si ninguna coincide (o no hay
+    // destino para comparar), no se actualiza ninguna a ciegas — se deja
+    // que se registre como tramo nuevo más abajo.
+    const candidatosPendiente = ingresosDB.filter(function (v) {
       if (!v.esAutorizacionCliente || !v.montoPendiente || v.sustituidoPorXML) return false;
       const vIds = _idsDeObservacionesServer(v.observaciones);
       return idsNuevos.some(function (id) { return vIds.indexOf(id) !== -1; });
     });
+    const destinoNuevoPend = _normTxtServer(datos.destino);
+    let existentePendiente = null;
+    if (candidatosPendiente.length === 1) {
+      existentePendiente = candidatosPendiente[0];
+    } else if (candidatosPendiente.length > 1 && destinoNuevoPend) {
+      const porDestinoPend = candidatosPendiente.filter(function (v) {
+        return _normTxtServer((v.ruta && v.ruta[0] && v.ruta[0].destino) || '') === destinoNuevoPend;
+      });
+      if (porDestinoPend.length === 1) existentePendiente = porDestinoPend[0];
+    }
     if (existentePendiente) {
       const ivaExist = Math.round(monto * 0.16 * 100) / 100;
       existentePendiente.subtotal = monto; existentePendiente.subtManiobras = monto;
