@@ -178,7 +178,7 @@ tr:hover td{background:#fafafa}
         <button class="btn btn-red btn-sm" onclick="altaOperador()">Dar de alta</button>
       </div>
       <div class="row" style="margin-top:10px">
-        <button class="btn btn-out btn-sm" onclick="importarDatosNominaJSON()">📥 Importar datos de Nómina (JSON)</button>
+        <button class="btn btn-out btn-sm" onclick="importarDatosNominaJSON()">📥 Importar datos (Nómina + Carta Porte, JSON)</button>
       </div>
     </div>
     <div class="card">
@@ -781,39 +781,46 @@ async function editarDatosNominaOperador(id){
   }catch(e){console.error('editarDatosNominaOperador:',e);alert('⚠️ Error: '+e.message);}
 }
 // importarDatosNominaJSON: carga en bloque los datos de Nómina (CURP, NSS,
-// etc.) de varios operadores a la vez, en vez de pasar por los 9 prompts de
-// editarDatosNominaOperador() uno por uno para cada persona — pensado para
-// cuando ya se tiene el expediente completo de varios operadores a mano
-// (ej. de un despacho/proveedor anterior). Empareja por NOMBRE (sin
-// acentos/mayúsculas) contra los operadores ya existentes — nunca crea
-// operadores nuevos, solo completa datos de los que ya están. Si un
+// etc.) Y de Carta Porte (RFC/licencia del operador, placas/permiso SCT/
+// seguro de su unidad) de varios operadores a la vez, en vez de ir campo
+// por campo con los prompts individuales — pensado para cuando ya se tiene
+// el expediente completo de varios operadores a mano (ej. de un despacho/
+// proveedor anterior). Empareja por NOMBRE (sin acentos/mayúsculas) contra
+// los operadores ya existentes — nunca crea operadores ni unidades nuevas,
+// solo completa datos de los que ya están. Los datos de unidad (placas,
+// cartaPorte) se aplican a la UNIDAD ACTUAL asignada de ese operador — si
+// no tiene unidad asignada, esa parte se omite para él (se avisa). Si un
 // renglón trae "bajaFecha", también marca al operador como inactivo con
 // esa fecha (caso real: alguien que se da de baja antes de migrar sus
 // datos).
 function _normNombreFlota(s){return(s||'').toString().toUpperCase().normalize('NFD').replace(/[̀-ͯ]/g,'').trim();}
 async function importarDatosNominaJSON(){
-  var texto=prompt('Pega aquí el JSON con los datos de nómina a importar (arreglo de objetos {nombre,curp,nss,fechaIngreso,puesto,riesgoPuesto,codigoPostal,salarioDiario,sdiSbc,banco,clabe,bajaFecha}):','');
+  var texto=prompt('Pega aquí el JSON a importar — arreglo de objetos con "nombre" y, según aplique:\n· Nómina: curp,nss,fechaIngreso,puesto,riesgoPuesto,codigoPostal,salarioDiario,sdiSbc,banco,clabe,bajaFecha\n· Carta Porte (operador): rfc,licencia,licenciaVigencia\n· Carta Porte (su unidad actual): placas,configVehicular,anioModeloVM,pesoBrutoVehicular,permSCT,numPermisoSCT,aseguradora,poliza','');
   if(!texto)return;
   var datos;
   try{datos=JSON.parse(texto);}catch(e){alert('⚠️ Ese texto no es JSON válido: '+e.message);return;}
   if(!Array.isArray(datos)){alert('⚠️ Debe ser un arreglo de objetos, uno por operador.');return;}
-  var encontrados=[],noEncontrados=[];
+  var encontrados=[],noEncontrados=[],sinUnidad=[];
   datos.forEach(function(d){
     var nombreBuscado=_normNombreFlota(d.nombre);
     var op=operadoresRaw.find(function(o){return _normNombreFlota(o.nombre)===nombreBuscado;});
-    if(op)encontrados.push({op:op,datos:d});
-    else noEncontrados.push(d.nombre||'(sin nombre)');
+    if(!op){noEncontrados.push(d.nombre||'(sin nombre)');return;}
+    var necesitaUnidad=['placas','configVehicular','anioModeloVM','pesoBrutoVehicular','permSCT','numPermisoSCT','aseguradora','poliza'].some(function(k){return d[k]!=null;});
+    var un=op.unidadActual!=null?unidadesRaw.find(function(u){return String(u.id)===String(op.unidadActual)||u.numero===op.unidadActual;}):null;
+    if(necesitaUnidad&&!un)sinUnidad.push(op.nombre);
+    encontrados.push({op:op,un:un,datos:d});
   });
   if(!encontrados.length){alert('⚠️ No se encontró ningún operador que coincida por nombre.\n\nSin emparejar: '+noEncontrados.join(', '));return;}
-  var msg='Se van a actualizar los datos de Nómina de '+encontrados.length+' operador(es):\n'+encontrados.map(function(e){return '  · '+e.op.nombre;}).join('\n');
+  var msg='Se van a actualizar los datos de '+encontrados.length+' operador(es):\n'+encontrados.map(function(e){return '  · '+e.op.nombre;}).join('\n');
   if(noEncontrados.length)msg+='\n\n⚠️ NO se encontraron (no se tocan): '+noEncontrados.join(', ');
-  msg+='\n\n¿Continuar? Esto reemplaza el campo "nomina" completo de cada uno (banco/CLABE que ya tuvieran capturado se conserva si el JSON no trae esos campos).';
+  if(sinUnidad.length)msg+='\n\n⚠️ Traen datos de Carta Porte de unidad, pero no tienen unidad asignada (esa parte se omite): '+sinUnidad.join(', ');
+  msg+='\n\n¿Continuar? Esto reemplaza por completo los campos "nomina"/"cartaPorte" de cada uno (lo que ya tuvieran capturado se conserva si el JSON no trae ese campo).';
   if(!confirm(msg))return;
   var db=firebase.firestore();
   var batch=db.batch();
   encontrados.forEach(function(e){
     var d=e.datos,actual=e.op.nomina||{};
-    var nuevo={
+    var nuevoNomina={
       curp:(d.curp||actual.curp||'').toString().trim().toUpperCase()||null,
       nss:(d.nss||actual.nss||'').toString().replace(/\D/g,'')||null,
       fechaIngreso:d.fechaIngreso||actual.fechaIngreso||null,
@@ -825,15 +832,33 @@ async function importarDatosNominaJSON(){
       sdiSbc:d.sdiSbc!=null?parseFloat(d.sdiSbc):(actual.sdiSbc||null),
       codigoPostal:(d.codigoPostal||actual.codigoPostal||'').toString().replace(/\D/g,'')||null
     };
-    var upd={nomina:nuevo};
-    if(d.bajaFecha){upd.activo=false;upd.fechaBaja=d.bajaFecha;}
-    batch.update(db.collection('operadores').doc(e.op.id),upd);
+    var updOp={nomina:nuevoNomina};
+    if(d.rfc)updOp.rfc=d.rfc.toString().trim().toUpperCase();
+    if(d.licencia)updOp.licencia=d.licencia.toString().trim();
+    if(d.licenciaVigencia)updOp.licenciaVigencia=d.licenciaVigencia;
+    if(d.bajaFecha){updOp.activo=false;updOp.fechaBaja=d.bajaFecha;}
+    batch.update(db.collection('operadores').doc(e.op.id),updOp);
+    if(e.un){
+      var cpActual=e.un.cartaPorte||{};
+      var nuevoCP={
+        configVehicular:(d.configVehicular||cpActual.configVehicular||'').toString().trim().toUpperCase()||null,
+        anioModeloVM:(d.anioModeloVM||cpActual.anioModeloVM||'').toString().trim()||null,
+        pesoBrutoVehicular:d.pesoBrutoVehicular!=null?parseFloat(d.pesoBrutoVehicular):(cpActual.pesoBrutoVehicular||null),
+        permSCT:(d.permSCT||cpActual.permSCT||'TPAF01').toString().trim().toUpperCase(),
+        numPermisoSCT:(d.numPermisoSCT||cpActual.numPermisoSCT||'').toString().trim()||null,
+        aseguradora:(d.aseguradora||cpActual.aseguradora||'').toString().trim()||null,
+        poliza:(d.poliza||cpActual.poliza||'').toString().trim()||null
+      };
+      var updUn={cartaPorte:nuevoCP};
+      if(d.placas)updUn.placas=d.placas.toString().trim().toUpperCase();
+      batch.update(db.collection('unidades').doc(e.un.id),updUn);
+    }
   });
   try{
     await batch.commit();
     if(window.cargarOperadores)window.cargarOperadores(true);
     await cargarTodo();
-    alert('✅ Se actualizaron '+encontrados.length+' operador(es).'+(noEncontrados.length?'\n⚠️ No se encontraron: '+noEncontrados.join(', '):''));
+    alert('✅ Se actualizaron '+encontrados.length+' operador(es).'+(noEncontrados.length?'\n⚠️ No se encontraron: '+noEncontrados.join(', '):'')+(sinUnidad.length?'\n⚠️ Sin unidad asignada (Carta Porte omitida): '+sinUnidad.join(', '):''));
   }catch(e){console.error('importarDatosNominaJSON:',e);alert('⚠️ Error al guardar: '+e.message);}
 }
 async function toggleActivoOperador(id){
