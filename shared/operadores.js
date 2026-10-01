@@ -138,7 +138,15 @@
           modelo: datosUn.modelo || '',
           licencia: o.licencia || '',
           licenciaVigencia: o.licenciaVigencia || '',
-          firmaURL: o.firmaURL || ''
+          firmaURL: o.firmaURL || '',
+          rfc: o.rfc || '',
+          // nomina: datos laborales/fiscales para timbrar el CFDI de Nómina
+          // vía Facturapi (ver flota.html → editarDatosNominaOperador y
+          // nomina.html → Generar y timbrar) — se pasa el objeto completo
+          // tal cual, sin curar campo por campo, porque solo lo necesita la
+          // función de nómina y no vale la pena mantenerlo sincronizado aquí
+          // campo por campo cada vez que se agregue uno nuevo.
+          nomina: o.nomina || {}
         });
       });
       lista.sort(function (a, b) { return (a.unidad || 0) - (b.unidad || 0); });

@@ -22,6 +22,8 @@ header{background:#1a1a2e;color:#fff;padding:14px 24px;display:flex;align-items:
 .field input,.field select{border:1.5px solid #dde;border-radius:6px;padding:8px 10px;font-size:13px;color:#1a1a2e;background:#fafafa;width:100%}
 .field input:focus,.field select:focus{outline:none;border-color:#e63946}
 .row{display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end}
+.grid2{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px}
+@media(max-width:700px){.grid2{grid-template-columns:1fr}}
 .btn{padding:8px 18px;border-radius:6px;border:none;font-size:12px;font-weight:700;cursor:pointer;transition:all .15s;text-transform:uppercase;letter-spacing:.5px}
 .btn-red{background:#e63946;color:#fff}.btn-red:hover{background:#c1121f}
 .btn-dark{background:#1a1a2e;color:#fff}.btn-dark:hover{background:#0d0d1a}
@@ -141,6 +143,27 @@ tr:hover td{background:#fafafa}
     <div class="upload-zone" id="dzNomina" onclick="document.getElementById('fNomina').click()"><div class="icon">🧾</div><p><strong>Arrastra XML de nómina</strong></p></div>
     <input type="file" id="fNomina" accept=".xml" multiple style="display:none">
     <div id="nominaXMLInfo" style="display:none;margin-top:10px"></div>
+  </div>
+
+  <!-- GENERAR Y TIMBRAR (FACTURAPI) — solo admin -->
+  <div class="card" id="cardGenerarNomina" style="display:none">
+    <div class="card-title">🧾 Generar y timbrar nómina del periodo (Facturapi) <span class="info-tip">?<span class="info-tip-box">Los montos de Percepción/ISR/IMSS/RCV/INFONAVIT/otras deducciones NO se calculan aquí — captúralos tal cual te los dé tu cálculo externo. Esta tabla solo arma el CFDI de nómina con esos montos y los datos de cada operador (CURP, NSS, etc. — captúralos antes en Flota) y lo manda a timbrar con Facturapi. Se usa la llave de PRUEBA mientras dure el periodo de prueba.</span></span></div>
+    <div class="grid2" style="margin-bottom:12px">
+      <div class="field"><label>Periodo — desde</label><input type="date" id="genNomPeriodoIni"></div>
+      <div class="field"><label>Periodo — hasta</label><input type="date" id="genNomPeriodoFin"></div>
+      <div class="field"><label>Fecha de pago</label><input type="date" id="genNomFechaPago"></div>
+    </div>
+    <div class="row" style="margin-bottom:12px">
+      <button class="btn btn-out btn-sm" onclick="cargarTablaGenerarNomina()">Cargar operadores activos</button>
+      <button class="btn btn-red btn-sm" id="btnGenerarNomina" style="display:none" onclick="generarYTimbrarNominaUI()">⚡ Generar y timbrar todos</button>
+    </div>
+    <div class="tbl-wrap" id="wrapTablaGenNomina" style="display:none">
+      <table>
+        <thead><tr><th>Operador</th><th class="r">Percepción</th><th class="r">ISR</th><th class="r">IMSS</th><th class="r">RCV</th><th class="r">INFONAVIT</th><th class="r">Otras ded.</th></tr></thead>
+        <tbody id="tbGenNomina"></tbody>
+      </table>
+    </div>
+    <div id="genNominaResultado" style="display:none;margin-top:10px"></div>
   </div>
 
   <!-- FILTROS -->
@@ -388,6 +411,7 @@ function mostrarSesionEnHeader(){
   if($('sesionUsuarioLabel'))$('sesionUsuarioLabel').textContent='👤 '+(u.nombre||u.usuario)+(u.esAdmin?' (admin)':'');
   if($('btnCerrarSesion'))$('btnCerrarSesion').style.display='inline';
   if($('btnCambiarPass'))$('btnCambiarPass').style.display='inline';
+  if($('cardGenerarNomina'))$('cardGenerarNomina').style.display=u.esAdmin?'block':'none';
   aplicarPermisosNav(u);
 }
 function verificarSesionModulo(){
@@ -727,6 +751,73 @@ function renderNomina(){
   });
   tb.innerHTML=filas.length?filasNom.join(''):'<tr><td colspan="8" style="text-align:center;color:#aaa;padding:20px">Sin recibos de nómina registrados.</td></tr>';
   tf.innerHTML='<tr style="background:#f5f5f8;font-weight:700"><td colspan="4">TOTALES</td><td class="num r">'+fmt(totPerc)+'</td><td class="num r" style="color:#9b1c1c">'+fmt(totDed)+'</td><td colspan="2"></td></tr>';
+}
+
+// ── GENERAR Y TIMBRAR NÓMINA (FACTURAPI, admin) ──────────────────────────
+// Los montos (percepción/ISR/IMSS/RCV/INFONAVIT/otras deducciones) se
+// capturan a mano aquí, tal cual los calcule el proceso externo del dueño
+// — esta pantalla NO calcula nada fiscal, solo junta esos montos con los
+// datos de cada operador (CURP/NSS/etc., capturados en Flota) y llama a la
+// función que arma el CFDI y lo manda a timbrar con Facturapi.
+function cargarTablaGenerarNomina(){
+  var tb=$('tbGenNomina');
+  if(!OPERADORES.length){alert('Todavía no cargan los operadores, espera un momento e intenta de nuevo.');return;}
+  tb.innerHTML=OPERADORES.map(function(op){
+    return '<tr data-opid="'+op.operadorId+'">'
+      +'<td style="font-size:12px">'+op.clave+' · '+op.nombre+'</td>'
+      +'<td class="r"><input type="number" step="0.01" min="0" class="genNomPercepcion" style="width:100px;text-align:right" value="0"></td>'
+      +'<td class="r"><input type="number" step="0.01" min="0" class="genNomIsr" style="width:90px;text-align:right" value="0"></td>'
+      +'<td class="r"><input type="number" step="0.01" min="0" class="genNomImss" style="width:90px;text-align:right" value="0"></td>'
+      +'<td class="r"><input type="number" step="0.01" min="0" class="genNomRcv" style="width:90px;text-align:right" value="0"></td>'
+      +'<td class="r"><input type="number" step="0.01" min="0" class="genNomInfonavit" style="width:90px;text-align:right" value="0"></td>'
+      +'<td class="r"><input type="number" step="0.01" min="0" class="genNomOtras" style="width:90px;text-align:right" value="0"></td>'
+      +'</tr>';
+  }).join('');
+  $('wrapTablaGenNomina').style.display='block';
+  $('btnGenerarNomina').style.display='inline-block';
+}
+const FUNCTION_URL_GENERAR_NOMINA='https://us-central1-tml-liquidaciones.cloudfunctions.net/generarNominaFacturapi';
+async function generarYTimbrarNominaUI(){
+  var u=usuarioSesion();
+  if(!u||!u.esAdmin){alert('Solo un administrador puede usar esto.');return;}
+  var periodoIni=$('genNomPeriodoIni').value, periodoFin=$('genNomPeriodoFin').value, fechaPago=$('genNomFechaPago').value;
+  if(!periodoIni||!periodoFin||!fechaPago){alert('Completa las 3 fechas (periodo desde/hasta y fecha de pago).');return;}
+  var items=[];
+  document.querySelectorAll('#tbGenNomina tr').forEach(function(tr){
+    var percepcion=parseFloat(tr.querySelector('.genNomPercepcion').value||0);
+    if(!percepcion)return; // sin percepción capturada, se omite (no todos los operadores tienen por qué timbrarse este periodo)
+    items.push({
+      operadorId:parseInt(tr.dataset.opid),
+      percepcion:percepcion,
+      isr:parseFloat(tr.querySelector('.genNomIsr').value||0),
+      imss:parseFloat(tr.querySelector('.genNomImss').value||0),
+      rcv:parseFloat(tr.querySelector('.genNomRcv').value||0),
+      infonavit:parseFloat(tr.querySelector('.genNomInfonavit').value||0),
+      otrasDeducciones:parseFloat(tr.querySelector('.genNomOtras').value||0)
+    });
+  });
+  if(!items.length){alert('No capturaste ninguna percepción — no hay nada que timbrar.');return;}
+  if(!confirm('¿Timbrar '+items.length+' recibo(s) de nómina con Facturapi (llave de prueba)? Esto NO se puede deshacer una vez timbrado.'))return;
+  var boton=$('btnGenerarNomina');
+  boton.disabled=true;
+  try{
+    var idToken=await firebase.auth().currentUser.getIdToken();
+    var r=await fetch(FUNCTION_URL_GENERAR_NOMINA,{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+idToken},body:JSON.stringify({periodoIni:periodoIni,periodoFin:periodoFin,fechaPago:fechaPago,items:items})});
+    var data=await r.json();
+    if(!r.ok)throw new Error(data.error||'Error desconocido');
+    var exitosos=data.resultados.filter(function(x){return x.ok;});
+    var fallidos=data.resultados.filter(function(x){return!x.ok;});
+    var html='<div class="alert '+(fallidos.length?'alert-warn':'alert-ok')+'">'
+      +'✅ '+exitosos.length+' timbrado(s) correctamente.'
+      +(fallidos.length?'<br>⚠️ '+fallidos.length+' con error:<ul style="margin:6px 0 0 18px">'+fallidos.map(function(f){return '<li>'+(nombreOp(f.operadorId)||f.operadorId)+': '+f.error+'</li>';}).join('')+'</ul>':'')
+      +'</div>';
+    $('genNominaResultado').style.display='block';
+    $('genNominaResultado').innerHTML=html;
+  }catch(e){
+    alert('⚠️ '+e.message);
+  }finally{
+    boton.disabled=false;
+  }
 }
 </script>
 </body>
