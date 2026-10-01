@@ -515,7 +515,7 @@ function renderPendientes(){
       +'<td class="num" style="font-size:11px">'+(ids.tu2||'—')+'</td>'
       +'<td style="font-size:11px">'+responsable+'</td>'
       +'<td>'+(vencido?'<span class="badge bg-red">⚠ Vencido</span>':'<span class="badge bg-yellow">⏳ '+(v.fechaLimiteJustificacion||'').slice(0,10)+'</span>')+'</td>'
-      +'<td><button class="btn btn-out btn-sm" onclick="eliminarAutorizacion(\''+v.id+'\')">✕</button></td>'
+      +'<td><button class="btn btn-out btn-sm" title="Corregir el monto de esta fila ya registrada (ej. quedó en $0 por error)" onclick="corregirMontoAutorizacion(\''+v.id+'\')">✏️</button> <button class="btn btn-out btn-sm" onclick="eliminarAutorizacion(\''+v.id+'\')">✕</button></td>'
       +'</tr>';
   }).join('');
 }
@@ -538,6 +538,43 @@ function revertirAPendiente(id){
     window.FB.set('estado','ingresosDB',{data:JSON.stringify(ingresosDB)});
     renderPendientes();
   }).catch(function(e){console.error('revertirAPendiente:',e);alert('⚠️ No se pudo actualizar: problema de conexión. Nada se guardó, intenta de nuevo.');});
+}
+// corregirMontoAutorizacion: caso real (Eduardo Hernández Aceves, Alejandro
+// Rodríguez González — quedaron confirmados en $0 por error y el correo del
+// cliente con el monto real ya no se podía volver a registrar porque el
+// candado de duplicados lo bloqueaba todo-o-nada al "Procesar y sustituir"
+// de Ingresos) — corrige el monto de la fila YA EXISTENTE en vez de
+// intentar crear una nueva. Solo un administrador puede usarlo, y pide
+// teclear el identificador (folio/pedido/T.U.'s) de la fila como
+// confirmación, mismo criterio que abrirCorregirOperador en Ingresos, para
+// no cambiar el monto equivocado de otra fila por error.
+function corregirMontoAutorizacion(id){
+  var v=ingresosDB.find(function(x){return x.id===id;});
+  if(!v)return;
+  var u=usuarioSesion();
+  if(!u||!u.esAdmin){alert('Solo un administrador puede corregir un monto ya registrado.');return;}
+  if(v.sustituidoPorXML){alert('Esta autorización ya se sustituyó con una factura real — corrígela desde Ingresos, no aquí.');return;}
+  var confirmacion=prompt('Vas a corregir el monto de esta autorización. Para confirmar, teclea su identificador TAL CUAL aparece abajo:\n\n"'+(v.observaciones||'')+'"');
+  if(confirmacion==null)return;
+  if(confirmacion.trim().toUpperCase()!==(v.observaciones||'').trim().toUpperCase()){
+    alert('No coincide con el identificador de esta fila. No se hizo ningún cambio.');
+    return;
+  }
+  var nuevoMontoTxt=prompt('Monto autorizado correcto (sin IVA), para "'+(v.observaciones||'')+'":',String(v.subtotal||0));
+  if(nuevoMontoTxt==null)return;
+  var nuevoMonto=parseFloat(nuevoMontoTxt);
+  if(isNaN(nuevoMonto)||nuevoMonto<0){alert('Monto inválido.');return;}
+  cargarIngresosEstricto().then(function(){
+    var vv=ingresosDB.find(function(x){return x.id===id;});
+    if(!vv){alert('Ya no se encontró esta autorización (¿la borraron mientras tanto?).');return;}
+    if(vv.sustituidoPorXML){alert('Esta autorización ya se sustituyó con una factura real mientras corregías — ya no se puede tocar aquí.');return;}
+    var ivaNuevo=Math.round(nuevoMonto*0.16*100)/100;
+    vv.subtotal=nuevoMonto;vv.subtManiobras=nuevoMonto;vv.iva=ivaNuevo;vv.total=nuevoMonto+ivaNuevo;
+    vv.montoPendiente=false;
+    vv.observaciones=(vv.observaciones||'')+' — monto corregido a mano el '+hoy()+' por '+(u.nombre||u.usuario);
+    window.FB.set('estado','ingresosDB',{data:JSON.stringify(ingresosDB)});
+    renderPendientes();
+  }).catch(function(e){console.error('corregirMontoAutorizacion:',e);alert('⚠️ No se pudo corregir: problema de conexión. Nada se guardó, intenta de nuevo.');});
 }
 async function cargarIngresos(){
   var data=await window.FB.get('estado','ingresosDB');
