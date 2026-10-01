@@ -177,6 +177,9 @@ tr:hover td{background:#fafafa}
         <div class="field"><label>Vigencia de licencia</label><input type="date" id="nuevoOpLicenciaVigencia"></div>
         <button class="btn btn-red btn-sm" onclick="altaOperador()">Dar de alta</button>
       </div>
+      <div class="row" style="margin-top:10px">
+        <button class="btn btn-out btn-sm" onclick="importarDatosNominaJSON()">📥 Importar datos de Nómina (JSON)</button>
+      </div>
     </div>
     <div class="card">
       <div class="card-title">👤 Operadores registrados</div>
@@ -744,8 +747,15 @@ async function editarDatosNominaOperador(id){
   if(banco===null)return;
   var clabe=prompt('CLABE (18 dígitos, opcional si no se paga por transferencia):',nom.clabe||'');
   if(clabe===null)return;
-  var salarioDiario=prompt('Salario diario integrado (SDI), para este periodo:',nom.salarioDiario||'');
+  var salarioDiario=prompt('Salario diario (SD, nominal, sin integrar):',nom.salarioDiario||'');
   if(salarioDiario===null)return;
+  // sdiSbc: Salario Diario Integrado = Salario Base de Cotización — el
+  // valor que de verdad exige el complemento de nómina del SAT
+  // (SalarioDiarioIntegrado/SalarioBaseCotApor), siempre MAYOR al salario
+  // diario nominal (incluye el factor de integración: aguinaldo,
+  // vacaciones, prima vacacional prorrateados).
+  var sdiSbc=prompt('SDI / SBC (Salario Diario Integrado = Salario Base de Cotización):',nom.sdiSbc||'');
+  if(sdiSbc===null)return;
   // Código postal fiscal del operador (su domicilio registrado ante el
   // SAT) — obligatorio en CUALQUIER CFDI 4.0 para el receptor, sea factura
   // o nómina.
@@ -762,12 +772,69 @@ async function editarDatosNominaOperador(id){
         banco:banco.trim().toUpperCase()||null,
         clabe:clabe.trim().replace(/\s/g,'')||null,
         salarioDiario:parseFloat(salarioDiario)||null,
+        sdiSbc:parseFloat(sdiSbc)||null,
         codigoPostal:codigoPostal.trim().replace(/\D/g,'')||null
       }
     });
     if(window.cargarOperadores)window.cargarOperadores(true);
     await cargarTodo();
   }catch(e){console.error('editarDatosNominaOperador:',e);alert('⚠️ Error: '+e.message);}
+}
+// importarDatosNominaJSON: carga en bloque los datos de Nómina (CURP, NSS,
+// etc.) de varios operadores a la vez, en vez de pasar por los 9 prompts de
+// editarDatosNominaOperador() uno por uno para cada persona — pensado para
+// cuando ya se tiene el expediente completo de varios operadores a mano
+// (ej. de un despacho/proveedor anterior). Empareja por NOMBRE (sin
+// acentos/mayúsculas) contra los operadores ya existentes — nunca crea
+// operadores nuevos, solo completa datos de los que ya están. Si un
+// renglón trae "bajaFecha", también marca al operador como inactivo con
+// esa fecha (caso real: alguien que se da de baja antes de migrar sus
+// datos).
+function _normNombreFlota(s){return(s||'').toString().toUpperCase().normalize('NFD').replace(/[̀-ͯ]/g,'').trim();}
+async function importarDatosNominaJSON(){
+  var texto=prompt('Pega aquí el JSON con los datos de nómina a importar (arreglo de objetos {nombre,curp,nss,fechaIngreso,puesto,riesgoPuesto,codigoPostal,salarioDiario,sdiSbc,banco,clabe,bajaFecha}):','');
+  if(!texto)return;
+  var datos;
+  try{datos=JSON.parse(texto);}catch(e){alert('⚠️ Ese texto no es JSON válido: '+e.message);return;}
+  if(!Array.isArray(datos)){alert('⚠️ Debe ser un arreglo de objetos, uno por operador.');return;}
+  var encontrados=[],noEncontrados=[];
+  datos.forEach(function(d){
+    var nombreBuscado=_normNombreFlota(d.nombre);
+    var op=operadoresRaw.find(function(o){return _normNombreFlota(o.nombre)===nombreBuscado;});
+    if(op)encontrados.push({op:op,datos:d});
+    else noEncontrados.push(d.nombre||'(sin nombre)');
+  });
+  if(!encontrados.length){alert('⚠️ No se encontró ningún operador que coincida por nombre.\n\nSin emparejar: '+noEncontrados.join(', '));return;}
+  var msg='Se van a actualizar los datos de Nómina de '+encontrados.length+' operador(es):\n'+encontrados.map(function(e){return '  · '+e.op.nombre;}).join('\n');
+  if(noEncontrados.length)msg+='\n\n⚠️ NO se encontraron (no se tocan): '+noEncontrados.join(', ');
+  msg+='\n\n¿Continuar? Esto reemplaza el campo "nomina" completo de cada uno (banco/CLABE que ya tuvieran capturado se conserva si el JSON no trae esos campos).';
+  if(!confirm(msg))return;
+  var db=firebase.firestore();
+  var batch=db.batch();
+  encontrados.forEach(function(e){
+    var d=e.datos,actual=e.op.nomina||{};
+    var nuevo={
+      curp:(d.curp||actual.curp||'').toString().trim().toUpperCase()||null,
+      nss:(d.nss||actual.nss||'').toString().replace(/\D/g,'')||null,
+      fechaIngreso:d.fechaIngreso||actual.fechaIngreso||null,
+      puesto:(d.puesto||actual.puesto||'OPERADOR').toString().trim().toUpperCase(),
+      riesgoPuesto:(d.riesgoPuesto!=null?String(d.riesgoPuesto):(actual.riesgoPuesto||'4')),
+      banco:(d.banco||actual.banco||'')||null,
+      clabe:(d.clabe||actual.clabe||'')||null,
+      salarioDiario:d.salarioDiario!=null?parseFloat(d.salarioDiario):(actual.salarioDiario||null),
+      sdiSbc:d.sdiSbc!=null?parseFloat(d.sdiSbc):(actual.sdiSbc||null),
+      codigoPostal:(d.codigoPostal||actual.codigoPostal||'').toString().replace(/\D/g,'')||null
+    };
+    var upd={nomina:nuevo};
+    if(d.bajaFecha){upd.activo=false;upd.fechaBaja=d.bajaFecha;}
+    batch.update(db.collection('operadores').doc(e.op.id),upd);
+  });
+  try{
+    await batch.commit();
+    if(window.cargarOperadores)window.cargarOperadores(true);
+    await cargarTodo();
+    alert('✅ Se actualizaron '+encontrados.length+' operador(es).'+(noEncontrados.length?'\n⚠️ No se encontraron: '+noEncontrados.join(', '):''));
+  }catch(e){console.error('importarDatosNominaJSON:',e);alert('⚠️ Error al guardar: '+e.message);}
 }
 async function toggleActivoOperador(id){
   var op=operadoresRaw.find(function(o){return o.id===id;});

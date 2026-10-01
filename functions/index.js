@@ -4446,7 +4446,7 @@ exports.generarNominaFacturapi = onRequest({ secrets: [FACTURAPI_TEST_KEY], cors
             Antigüedad: 'P' + semanas + 'W', TipoContrato: '01', Sindicalizado: 'No', TipoJornada: '01',
             TipoRegimen: '02', NumEmpleado: String(opId), Puesto: nom.puesto || 'OPERADOR',
             RiesgoPuesto: nom.riesgoPuesto || '4', PeriodicidadPago: '05', ClaveEntFed: 'MEX',
-            SalarioBaseCotApor: nom.salarioDiario || 0, SalarioDiarioIntegrado: nom.salarioDiario || 0
+            SalarioBaseCotApor: nom.sdiSbc || 0, SalarioDiarioIntegrado: nom.sdiSbc || 0
           },
           Percepciones: { TotalSueldos: percepcion, TotalSeparacionIndemnizacion: 0, TotalJubilacionPensionRetiro: 0, TotalGravado: percepcion, TotalExento: 0, Percepcion: percepciones },
           Deducciones: { TotalOtrasDeducciones: Math.round((imss + rcv + infonavit + otrasDeducciones) * 100) / 100, TotalImpuestosRetenidos: isr, Deduccion: deducciones }
