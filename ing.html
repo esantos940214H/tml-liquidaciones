@@ -3216,22 +3216,41 @@ async function procesarFacturaManiobrasExcel(){
     // matchear por T.U. directo) — eso generaba ambigüedades falsas.
     var pendientesPase2=[];
     renglones.forEach(function(rg){
-      var candidato=null;
-      for(var i=0;i<rg.tus.length&&!candidato;i++){
-        var idNorm=_normTxtFactManiobras(rg.tus[i]);
-        candidato=ingresosDB.find(function(v){
-          return v.esAutorizacionCliente&&!v.sustituidoPorXML&&!v.montoPendiente&&!usadosIds[v.id]&&
-            _idsDeObservacionesFactManiobras(v.observaciones).indexOf(idNorm)!==-1;
+      // Junta TODOS los candidatos (no solo el primero) que comparten
+      // alguno de los T.U.'s de este renglón — un mismo T.U. puede tener
+      // más de una fila ya registrada (dos tramos del mismo viaje, o un
+      // renglón duplicado del correo del cliente, uno sin monto y otro con
+      // el monto real — ver _registrarNoPagaServer). Usar solo el primero
+      // que encontraba .find() (como antes) causaba un bug real: si ese
+      // primero no cuadraba en monto, se reportaba como "diferencia" pero
+      // NUNCA se marcaba usado, así que el SIGUIENTE renglón del Excel con
+      // el mismo T.U. volvía a toparse con esa misma fila en $0 — dos
+      // renglones reales y distintos terminaban comparándose contra la
+      // MISMA autorización equivocada, en vez de cada uno con la suya.
+      var candidatosTU=[];
+      rg.tus.forEach(function(tu){
+        var idNorm=_normTxtFactManiobras(tu);
+        ingresosDB.forEach(function(v){
+          if(v.esAutorizacionCliente&&!v.sustituidoPorXML&&!v.montoPendiente&&!usadosIds[v.id]&&
+             _idsDeObservacionesFactManiobras(v.observaciones).indexOf(idNorm)!==-1&&
+             candidatosTU.indexOf(v)===-1){
+            candidatosTU.push(v);
+          }
         });
-      }
-      if(candidato){
-        var diff0=Math.abs((candidato.subtotal||0)-rg.total);
-        if(diff0>TOLERANCIA){diferencias.push({rg:rg,candidato:candidato,diff:diff0});return;}
-        usadosIds[candidato.id]=true;
-        resueltos.push({rg:rg,candidato:candidato});
-      }else{
-        pendientesPase2.push(rg);
-      }
+      });
+      if(!candidatosTU.length){pendientesPase2.push(rg);return;}
+      // Si hay varios candidatos para este mismo T.U., se prefiere el que
+      // YA tiene el monto exacto de este renglón — así no se le "quita" a
+      // otro renglón (del mismo T.U.) el candidato que en realidad es suyo.
+      // Si ninguno cuadra en monto y hay más de uno, no se adivina cuál es
+      // — se manda a revisar a mano (mismo criterio que la Pasada 2, abajo).
+      var candidato=candidatosTU.find(function(v){return Math.abs((v.subtotal||0)-rg.total)<0.01;})||
+        (candidatosTU.length===1?candidatosTU[0]:null);
+      if(!candidato){sinMatch.push(rg);return;}
+      var diff0=Math.abs((candidato.subtotal||0)-rg.total);
+      if(diff0>TOLERANCIA){diferencias.push({rg:rg,candidato:candidato,diff:diff0});return;}
+      usadosIds[candidato.id]=true;
+      resueltos.push({rg:rg,candidato:candidato});
     });
     // PASADA 2: para lo que no matcheó por T.U. (el cliente reasignó T.U.
     // nuevo en su CEDIS), respaldo por TIENDA (el código de tienda en el
