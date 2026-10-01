@@ -892,6 +892,18 @@ function renderAnticipos(){
   Object.values(porOp).sort((a,b)=>a.unidad-b.unidad).forEach(grp=>{
     const totGrp=grp.items.reduce((s,a)=>s+a.importe,0);
     const div=document.createElement('div');div.className='op-block';
+    // El encabezado del grupo identifica al OPERADOR (grp.unidad en
+    // realidad es su operadorId, la clave permanente del anticipo — nunca
+    // cambia aunque lo reasignen de camión, ver agregarManualReal arriba).
+    // Antes decía "Unidad ${grp.unidad}", lo cual confundía porque ese
+    // número solo coincide con un camión real por casualidad histórica (al
+    // migrar a Firestore, el operadorId se sembró igual al número de
+    // unidad que traía cada uno en ese momento) — un anticipo se le
+    // deposita a LA PERSONA, no al camión, así que aquí se muestra su
+    // unidad ACTUAL (si sigue activo) solo como referencia, no como la
+    // clave del grupo.
+    const opActualGrp=OPERADORES.find(o=>o.operadorId===grp.unidad);
+    const refUnidadTxt=opActualGrp?(' (hoy: unidad '+opActualGrp.unidad+')'):' (dado de baja o sin unidad)';
     const rows=grp.items.map(a=>`<tr>
       <td style="width:32px;text-align:center">${a.estado==='pendiente'?`<input type="checkbox" class="chkAnt" data-id="${a.id}" data-unidad="${a.unidad}" onchange="actualizarBarraSelAnt()">`:'—'}</td>
       <td>${a.fecha}</td>
@@ -902,7 +914,7 @@ function renderAnticipos(){
       <td><span class="badge ${a.origen==='manual'?'bg-blue':'bg-gray'}">${a.origen==='manual'?'MANUAL':'ARCHIVO'}</span></td>
       <td>${a.estado==='pendiente'?`<button class="btn-sm" style="background:#fde8e8;color:#9b1c1c;border:none;cursor:pointer;border-radius:4px;padding:3px 8px" onclick="eliminarAnticipo(${a.unidad},'${a.id}')">✕</button>`:'—'}</td>
     </tr>`).join('');
-    div.innerHTML=`<div class="op-bar"><span>Unidad ${grp.unidad} · ${grp.nombre}</span><span class="tot">${fmt(totGrp)}</span></div>
+    div.innerHTML=`<div class="op-bar"><span>${grp.nombre}${refUnidadTxt}</span><span class="tot">${fmt(totGrp)}</span></div>
     <div class="tbl-wrap"><table>
       <thead><tr><th style="width:32px"><input type="checkbox" title="Seleccionar todos pendientes" onchange="toggleTodosAnts(this)"></th><th>Fecha</th><th>Concepto</th><th>Referencia</th><th class="r">Importe</th><th>Estatus</th><th>Origen</th><th></th></tr></thead>
       <tbody>${rows}</tbody>
