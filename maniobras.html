@@ -716,11 +716,30 @@ function _crearAutorizacionEnMemoria(datos){
     // identificador único de por sí (ver "idsChoque" más abajo), así que
     // no hace falta el candado extra de operador — y de paso se corrige
     // "unidad" al operador correcto vigente al momento de la confirmación.
-    var existentePendiente=ingresosDB.find(function(v){
+    // Si el T.U. se repite en 2 tramos del mismo viaje (CEDIS + destino
+    // final), puede haber MÁS DE UNA pendiente compartiendo ese mismo T.U.
+    // — caso real: el segundo tramo nunca se registraba porque siempre se
+    // actualizaba la pendiente del PRIMER tramo que encontraba (otro
+    // destino), sin importar que fuera de otro tramo; el segundo se quedaba
+    // sin su propio registro para siempre. Si hay varias, se desambigua por
+    // destino; si ninguna coincide (o no hay destino para comparar), no se
+    // actualiza ninguna a ciegas — se deja que se registre como tramo nuevo
+    // más abajo.
+    var candidatosPendiente=ingresosDB.filter(function(v){
       if(!v.esAutorizacionCliente||!v.montoPendiente||v.sustituidoPorXML)return false;
       var vIds=_idsDeObservaciones(v.observaciones);
       return idsNuevos.some(function(id){return vIds.indexOf(id)!==-1;});
     });
+    var destinoNuevoPend=_normTxt(datos.destino);
+    var existentePendiente=null;
+    if(candidatosPendiente.length===1){
+      existentePendiente=candidatosPendiente[0];
+    }else if(candidatosPendiente.length>1&&destinoNuevoPend){
+      var porDestinoPend=candidatosPendiente.filter(function(v){
+        return _normTxt((v.ruta&&v.ruta[0]&&v.ruta[0].destino)||'')===destinoNuevoPend;
+      });
+      if(porDestinoPend.length===1)existentePendiente=porDestinoPend[0];
+    }
     if(existentePendiente){
       var ivaExist=Math.round(monto*0.16*100)/100;
       existentePendiente.subtotal=monto;existentePendiente.subtManiobras=monto;existentePendiente.iva=ivaExist;existentePendiente.total=monto+ivaExist;
