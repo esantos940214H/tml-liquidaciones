@@ -1730,55 +1730,34 @@ async function _subirXMLStorage(path, text) {
 // por una tabla compacta armada aquí con los mismos datos del XML — mismo
 // espíritu que el formato de Facturo por Ti, sin tener que calcular sellos
 // ni QR (esos ya vienen correctos en la página 1 que se conserva).
-async function _compactarPdfCartaPorteServer(pdfOriginalBuffer, cartaPorteData, fac, unidad, operador, pedido, eventosBitacora) {
+async function _compactarPdfCartaPorteServer(cartaPorteData, fac, unidad, operador, pedido, eventosBitacora) {
   const ubicaciones = cartaPorteData.Ubicaciones || [];
   const mercancias = cartaPorteData.Mercancias || {};
   const autotransporte = mercancias.Autotransporte || {};
   const idVeh = autotransporte.IdentificacionVehicular || {};
   const seguros = autotransporte.Seguros || {};
   const figuras = cartaPorteData.FiguraTransporte || [];
+  const conceptos = (fac && fac.conceptosDetalle) || [];
   const { PDFDocument, StandardFonts, rgb } = require('pdf-lib');
   const QRCode = require('qrcode');
-  const original = await PDFDocument.load(pdfOriginalBuffer);
   const nuevo = await PDFDocument.create();
-
-  // El encabezado (emisor/receptor/conceptos/QR/sellos) casi siempre cabe
-  // en 1 página, pero si la factura trae varios conceptos (flete +
-  // maniobras + seguros, caso real en mudanzas) puede ocupar 2 o más —
-  // se detecta buscando en qué página empieza realmente el Complemento
-  // Carta Porte, en vez de asumir que siempre es la página 1, para nunca
-  // perder información real del encabezado.
-  let paginasEncabezado = 1;
-  try {
-    const pdfjsLib = await import('pdfjs-dist/legacy/build/pdf.mjs');
-    const pdfLeido = await pdfjsLib.getDocument({ data: new Uint8Array(pdfOriginalBuffer) }).promise;
-    for (let i = 1; i <= pdfLeido.numPages; i++) {
-      const pagina = await pdfLeido.getPage(i);
-      const contenido = await pagina.getTextContent();
-      const texto = contenido.items.map(function (it) { return it.str; }).join(' ');
-      if (/Complemento Carta Porte|IdCCP/i.test(texto)) { paginasEncabezado = i - 1 || 1; break; }
-    }
-  } catch (eDeteccion) { console.error('_compactarPdfCartaPorteServer: no se pudo detectar el encabezado, se asume 1 página:', eDeteccion); }
-
-  const indicesEncabezado = Array.from({ length: paginasEncabezado }, function (_, i) { return i; });
-  const paginasEncabezadoCopiadas = await nuevo.copyPages(original, indicesEncabezado);
-  paginasEncabezadoCopiadas.forEach(function (p) { nuevo.addPage(p); });
 
   const font = await nuevo.embedFont(StandardFonts.Helvetica);
   const fontBold = await nuevo.embedFont(StandardFonts.HelveticaBold);
-  const pageWidth = 612, pageHeight = 792, margin = 36, filaAltura = 13, altoEncabezado = 60;
+  const pageWidth = 612, pageHeight = 792, margin = 36, filaAltura = 13;
+  // Única barra de color usada en todas las secciones (azul marino del
+  // logo de TML) — el guinda se quitó hace tiempo por pedido explícito.
+  const AZUL_MARINO_TML = rgb(34 / 255, 44 / 255, 62 / 255);
 
-  // Mismo QR de verificación del SAT que trae la página 1 — se repite en
-  // cada página propia porque la Carta Porte viaja físicamente en la
-  // unidad y puede revisarse por separado del resto de la factura.
+  // Mismo QR de verificación del SAT que antes, pero ahora va DENTRO de la
+  // sección "Complemento de Carta Porte" (como en el formato de Facturo
+  // por Ti), no repetido al final junto con los sellos.
   let qrImg = null;
   if (fac && fac.uuid) {
     const qrPng = await QRCode.toBuffer(_urlVerificacionCFDIServer(fac), { type: 'png', width: 100, margin: 1 });
     qrImg = await nuevo.embedPng(qrPng);
   }
-  // Logo: no lo exige el SAT, es solo continuidad de marca — no está
-  // prohibido agregarlo ni repetir los datos fiscales en estas páginas,
-  // lo único regulado (sello/QR/folio) ya se conserva igual.
+  // Logo: no lo exige el SAT, es solo continuidad de marca.
   let logoImg = null, logoRatio = 1;
   try {
     const logoBytes = require('fs').readFileSync(require('path').join(__dirname, 'assets', 'logo.png'));
@@ -1786,11 +1765,10 @@ async function _compactarPdfCartaPorteServer(pdfOriginalBuffer, cartaPorteData, 
     logoRatio = logoImg.height / logoImg.width;
   } catch (eLogo) { console.error('_compactarPdfCartaPorteServer: no se pudo cargar el logo:', eLogo); }
 
-  // El encabezado grande (logo + Folio + Emisor/Receptor, estilo Facturapi)
-  // va SOLO en la primera página propia — sería redundante repetirlo en
-  // cada página, y "Factura"/"con Complemento Carta Porte" no se repite
-  // porque ya aparece en la página 1 real que se conservó. Las páginas
-  // siguientes no llevan encabezado, para aprovechar todo el espacio.
+  // Encabezado grande (logo + badge "Carta Porte - Factura" con folio,
+  // fechas, folio fiscal y datos del emisor) — solo en la primera página
+  // propia, igual que el documento de referencia de Facturo por Ti. Las
+  // páginas siguientes no lo repiten, para aprovechar todo el espacio.
   let _primeraPaginaPropia = true;
   function dibujarEncabezadoPagina(pagina) {
     if (!_primeraPaginaPropia) return pageHeight - margin;
@@ -1798,54 +1776,30 @@ async function _compactarPdfCartaPorteServer(pdfOriginalBuffer, cartaPorteData, 
     const anchoLogo = 110;
     let yTope = pageHeight - margin;
     if (logoImg) pagina.drawImage(logoImg, { x: margin, y: yTope - anchoLogo * logoRatio, width: anchoLogo, height: anchoLogo * logoRatio });
+    pagina.drawText('MUDANZAS TML, S.A. DE C.V.', { x: margin, y: yTope - anchoLogo * logoRatio - 12, size: 8, font: fontBold });
+    pagina.drawText('RFC ' + (fac && fac.rfcEmisor || TML_RFC), { x: margin, y: yTope - anchoLogo * logoRatio - 23, size: 8, font: font });
+    pagina.drawText('55067, Ecatepec de Morelos, Estado de México, MEX', { x: margin, y: yTope - anchoLogo * logoRatio - 34, size: 8, font: font });
+
+    // Caja "Carta Porte - Factura", arriba a la derecha.
+    const xBadge = pageWidth - margin - 220, wBadge = 220;
+    pagina.drawRectangle({ x: xBadge, y: yTope - 92, width: wBadge, height: 92, borderColor: rgb(0.6, 0.6, 0.6), borderWidth: 1 });
+    pagina.drawRectangle({ x: xBadge, y: yTope - 18, width: wBadge, height: 18, color: AZUL_MARINO_TML });
+    pagina.drawText('Carta Porte - Factura', { x: xBadge + 8, y: yTope - 13, size: 9.5, font: fontBold, color: rgb(1, 1, 1) });
     if (fac) {
-      // Caja de folio, arriba a la derecha.
-      pagina.drawRectangle({ x: pageWidth - margin - 90, y: yTope - 32, width: 90, height: 32, borderColor: rgb(0.7, 0.7, 0.7), borderWidth: 1 });
-      pagina.drawText('Folio', { x: pageWidth - margin - 82, y: yTope - 14, size: 8, font: font });
-      pagina.drawText(String(fac.folio || ''), { x: pageWidth - margin - 82, y: yTope - 27, size: 12, font: fontBold });
-
-      let yCol = yTope - (anchoLogo * logoRatio) - 14;
-      pagina.drawText('Complemento Carta Porte 3.1', { x: margin, y: yCol, size: 13, font: fontBold });
-      yCol -= 20;
-      const xCol2 = margin + 280;
-      pagina.drawText('Emisor', { x: margin, y: yCol, size: 9, font: fontBold });
-      pagina.drawText('Folio Fiscal', { x: xCol2, y: yCol, size: 8, font: fontBold });
-      pagina.drawText(fac.uuid || '', { x: xCol2 + 70, y: yCol, size: 8, font: font });
-      yCol -= 12;
-      pagina.drawText('MUDANZAS TML', { x: margin, y: yCol, size: 8, font: fontBold });
-      pagina.drawText('Tipo de CFDI', { x: xCol2, y: yCol, size: 8, font: fontBold });
-      pagina.drawText(fac.tipoComprobante === 'I' ? 'I (Ingreso)' : (fac.tipoComprobante || ''), { x: xCol2 + 70, y: yCol, size: 8, font: font });
-      yCol -= 12;
-      pagina.drawText('55067, Ecatepec de Morelos, Estado de México, MEX', { x: margin, y: yCol, size: 8, font: font });
-      pagina.drawText('Versión CFDI', { x: xCol2, y: yCol, size: 8, font: fontBold });
-      pagina.drawText(fac.version || '', { x: xCol2 + 70, y: yCol, size: 8, font: font });
-      yCol -= 12;
-      pagina.drawText('RFC ' + (fac.rfcEmisor || TML_RFC), { x: margin, y: yCol, size: 8, font: font });
-      pagina.drawText('Lugar emisión', { x: xCol2, y: yCol, size: 8, font: fontBold });
-      pagina.drawText(fac.lugarExpedicion || '', { x: xCol2 + 70, y: yCol, size: 8, font: font });
-      yCol -= 12;
-      pagina.drawText('Régimen Fiscal ' + (fac.regimenFiscalEmisor || '624') + ' - Coordinados', { x: margin, y: yCol, size: 8, font: font });
-      pagina.drawText('Fecha emisión', { x: xCol2, y: yCol, size: 8, font: fontBold });
-      pagina.drawText(fac.fechaCompleta || '', { x: xCol2 + 70, y: yCol, size: 8, font: font });
-      yCol -= 12;
-      pagina.drawText('Fecha certific.', { x: xCol2, y: yCol, size: 8, font: fontBold });
-      pagina.drawText(fac.fechaTimbrado || '', { x: xCol2 + 70, y: yCol, size: 8, font: font });
-      yCol -= 18;
-
-      pagina.drawText('Receptor', { x: margin, y: yCol, size: 9, font: fontBold });
-      yCol -= 12;
-      pagina.drawText('Razón Social: ' + (fac.cliente || ''), { x: margin, y: yCol, size: 8, font: font });
-      yCol -= 12;
-      pagina.drawText('RFC: ' + (fac.rfcReceptor || ''), { x: margin, y: yCol, size: 8, font: font });
-      pagina.drawText('Régimen Fiscal: ' + (fac.regimenFiscalReceptor || ''), { x: xCol2, y: yCol, size: 8, font: font });
-      yCol -= 12;
-      pagina.drawText('Domicilio: ' + (fac.domicilioFiscalReceptor || ''), { x: margin, y: yCol, size: 8, font: font });
-      pagina.drawText('Uso del CFDI: ' + (fac.usoCFDI || ''), { x: xCol2, y: yCol, size: 8, font: font });
-      yCol -= 12;
-      pagina.drawLine({ start: { x: margin, y: yCol }, end: { x: pageWidth - margin, y: yCol }, thickness: 0.5, color: rgb(0.7, 0.7, 0.7) });
-      return yCol - 10;
+      let yB = yTope - 30;
+      function filaBadge(etq, val) {
+        pagina.drawText(etq + ':', { x: xBadge + 8, y: yB, size: 7.5, font: fontBold });
+        pagina.drawText(String(val == null || val === '' ? '—' : val), { x: xBadge + 70, y: yB, size: 7.5, font: font });
+        yB -= 11;
+      }
+      filaBadge('Folio', fac.folio);
+      filaBadge('Fecha emisión', fac.fechaCompleta);
+      filaBadge('Fecha timbrado', fac.fechaTimbrado);
+      filaBadge('Folio fiscal', fac.uuid);
+      filaBadge('No. certificado', fac.noCertificadoSAT);
+      filaBadge('RFC PAC', fac.rfcProvCertif);
     }
-    return yTope - (anchoLogo * logoRatio) - 10;
+    return yTope - Math.max(anchoLogo * logoRatio + 34, 92) - 14;
   }
 
   let pagina = nuevo.addPage([pageWidth, pageHeight]);
@@ -1858,33 +1812,28 @@ async function _compactarPdfCartaPorteServer(pdfOriginalBuffer, cartaPorteData, 
   }
   // Barras de encabezado por sección, todas en azul marino (del logo de
   // TML) con el texto en blanco.
-  const AZUL_MARINO_TML = rgb(34 / 255, 44 / 255, 62 / 255);
-  let _seccionesDibujadas = 0;
   function tituloSeccion(texto) {
     y -= 10; nuevaPaginaSiHaceFalta();
     const altoBarra = 20;
-    const color = AZUL_MARINO_TML;
-    _seccionesDibujadas++;
-    pagina.drawRectangle({ x: margin, y: y - 5, width: pageWidth - margin * 2, height: altoBarra, color: color });
+    pagina.drawRectangle({ x: margin, y: y - 5, width: pageWidth - margin * 2, height: altoBarra, color: AZUL_MARINO_TML });
     pagina.drawText(texto, { x: margin + 8, y: y, size: 11, font: fontBold, color: rgb(1, 1, 1) });
     y -= altoBarra + 8;
-  }
-  // lineaDelgada: para la primera sección ("Complemento de Carta Porte") —
-  // repetir su título sería redundante con "Complemento Carta Porte 3.1"
-  // que ya aparece en el encabezado grande, así que solo se separa con
-  // una línea delgada en vez de otra barra de color. Avanza el contador
-  // de colores igual que tituloSeccion, para que las demás secciones
-  // sigan alternando como antes.
-  function lineaDelgada() {
-    y -= 10; nuevaPaginaSiHaceFalta();
-    pagina.drawLine({ start: { x: margin, y: y }, end: { x: pageWidth - margin, y: y }, thickness: 0.75, color: rgb(0.75, 0.75, 0.75) });
-    _seccionesDibujadas++;
-    y -= 14;
   }
   function campoValor(campo, valor) {
     nuevaPaginaSiHaceFalta();
     pagina.drawText(campo + ':', { x: margin, y, size: 8, font: fontBold });
     pagina.drawText(String(valor == null || valor === '' ? '—' : valor), { x: margin + 220, y, size: 8, font: font });
+    y -= 12;
+  }
+  // campoValor2: dos campos en la misma línea (columna izquierda/derecha),
+  // para aprovechar el ancho completo en secciones con muchos datos cortos.
+  function campoValor2(campo1, valor1, campo2, valor2) {
+    nuevaPaginaSiHaceFalta();
+    const xCol2 = margin + 280;
+    pagina.drawText(campo1 + ':', { x: margin, y, size: 8, font: fontBold });
+    pagina.drawText(String(valor1 == null || valor1 === '' ? '—' : valor1), { x: margin + 110, y, size: 8, font: font });
+    pagina.drawText(campo2 + ':', { x: xCol2, y, size: 8, font: fontBold });
+    pagina.drawText(String(valor2 == null || valor2 === '' ? '—' : valor2), { x: xCol2 + 90, y, size: 8, font: font });
     y -= 12;
   }
   // campoTextoLargo: para los sellos/cadena original — son cadenas base64
@@ -1924,7 +1873,7 @@ async function _compactarPdfCartaPorteServer(pdfOriginalBuffer, cartaPorteData, 
     });
     if (linea) { nuevaPaginaSiHaceFalta(); pagina.drawText(linea, { x: margin, y, size: size, font: font }); y -= size + 3; }
   }
-  // dibujarTabla: helper reusado por Mercancías/Ubicaciones/Figuras — cada
+  // dibujarTabla: helper reusado por Remitentes/Figuras/Productos — cada
   // columna es {label, w, get(fila)}; repite el encabezado solo cuando
   // brinca de página de verdad, nunca por secciones fijas.
   function dibujarTabla(columnas, filas) {
@@ -1947,38 +1896,87 @@ async function _compactarPdfCartaPorteServer(pdfOriginalBuffer, cartaPorteData, 
       y -= filaAltura;
     });
   }
+  // dibujarTablaDosColumnas: misma idea que dibujarTabla, pero en 2
+  // columnas lado a lado (mitad de las filas en cada una) — pedido
+  // explícito para Mercancías, para no ocupar tantas hojas cuando el
+  // viaje trae 100+ bienes transportados.
+  function dibujarTablaDosColumnas(columnas, filas) {
+    const anchoTotal = pageWidth - margin * 2, separacion = 16;
+    const anchoCol = (anchoTotal - separacion) / 2;
+    const xIzq = margin, xDer = margin + anchoCol + separacion;
+    const mitad = Math.ceil(filas.length / 2);
+    const filasIzq = filas.slice(0, mitad), filasDer = filas.slice(mitad);
+    function encabezado() {
+      [xIzq, xDer].forEach(function (xBase) {
+        let x = xBase;
+        columnas.forEach(function (c) { pagina.drawText(c.label, { x: x, y: y, size: 7, font: fontBold }); x += c.w; });
+      });
+      y -= filaAltura;
+    }
+    nuevaPaginaSiHaceFalta();
+    encabezado();
+    const n = Math.max(filasIzq.length, filasDer.length);
+    for (let i = 0; i < n; i++) {
+      const saltoPagina = y < margin + filaAltura;
+      nuevaPaginaSiHaceFalta();
+      if (saltoPagina) encabezado();
+      [[filasIzq[i], xIzq], [filasDer[i], xDer]].forEach(function (par) {
+        const fila = par[0], xBase = par[1];
+        if (!fila) return;
+        let x = xBase;
+        columnas.forEach(function (c) {
+          pagina.drawText(String(c.get(fila) == null ? '—' : c.get(fila)), { x: x, y: y, size: 6.8, font: font });
+          x += c.w;
+        });
+      });
+      y -= filaAltura;
+    }
+  }
 
-  lineaDelgada();
+  // ─── Datos del cliente ──────────────────────────────────────────────────
+  tituloSeccion('Datos del cliente');
+  campoValor('Razón social', fac && fac.cliente);
+  campoValor2('RFC', fac && fac.rfcReceptor, 'Régimen fiscal', fac && fac.regimenFiscalReceptor);
+  campoValor2('Domicilio fiscal', fac && fac.domicilioFiscalReceptor, 'Uso del CFDI', fac && fac.usoCFDI);
+
+  // ─── Datos del comprobante ──────────────────────────────────────────────
+  tituloSeccion('Datos del comprobante');
+  campoValor2('Versión CFDI', fac && fac.version, 'Tipo de comprobante', fac && (fac.tipoComprobante === 'I' ? 'I (Ingreso)' : fac.tipoComprobante));
+  campoValor2('Lugar de expedición', fac && fac.lugarExpedicion, 'Moneda', fac && fac.moneda);
+  campoValor2('Forma de pago', fac && fac.formaPago, 'Método de pago', fac && fac.metodoPago);
+  campoValor2('Régimen fiscal emisor', (fac && fac.regimenFiscalEmisor || '624') + ' - Coordinados', 'Exportación', fac && fac.exportacion);
+
+  // ─── Complemento de carta porte (con el QR de verificación del SAT) ────
+  tituloSeccion('Complemento de carta porte');
   campoValor('Folio del CCP (IdCCP)', cartaPorteData.IdCCP);
-  campoValor('Transporte internacional', cartaPorteData.TranspInternac);
-  campoValor('Total distancia recorrida', (cartaPorteData.TotalDistRec || 0) + ' km');
+  campoValor2('Transporte internacional', cartaPorteData.TranspInternac, 'Distancia total recorrida', (cartaPorteData.TotalDistRec || 0) + ' km');
+  y -= 4; nuevaPaginaSiHaceFalta();
+  pagina.drawText('Autotransporte', { x: margin, y: y, size: 9, font: fontBold }); y -= 12;
+  campoValor2('Permiso SCT/ATT', autotransporte.PermSCT, 'Número de permiso', autotransporte.NumPermisoSCT);
+  campoValor2('Configuración vehicular', idVeh.ConfigVehicular, 'Placa', idVeh.PlacaVM);
+  campoValor2('Año modelo', idVeh.AnioModeloVM, 'Peso bruto vehicular', (idVeh.PesoBrutoVehicular || '') + ' kg');
+  campoValor2('Aseguradora resp. civil', seguros.AseguraRespCivil, 'Póliza resp. civil', seguros.PolizaRespCivil);
+  if (qrImg) {
+    y -= 8; nuevaPaginaSiHaceFalta();
+    if (y < margin + 70) { pagina = nuevo.addPage([pageWidth, pageHeight]); y = dibujarEncabezadoPagina(pagina); }
+    pagina.drawImage(qrImg, { x: margin, y: y - 60, width: 60, height: 60 });
+    pagina.drawText('Verificación del CFDI ante el SAT', { x: margin + 70, y: y - 30, size: 8, font: font });
+    y -= 70;
+  }
 
-  tituloSeccion('Autotransporte');
-  campoValor('Permiso SCT/ATT', autotransporte.PermSCT);
-  campoValor('Número de permiso', autotransporte.NumPermisoSCT);
-  campoValor('Configuración vehicular', idVeh.ConfigVehicular);
-  campoValor('Placa', idVeh.PlacaVM);
-  campoValor('Año modelo', idVeh.AnioModeloVM);
-  campoValor('Peso bruto vehicular', (idVeh.PesoBrutoVehicular || '') + ' kg');
-  campoValor('Aseguradora resp. civil', seguros.AseguraRespCivil);
-  campoValor('Póliza resp. civil', seguros.PolizaRespCivil);
-
+  // ─── Mercancías, en 2 columnas para ocupar menos hojas ─────────────────
   tituloSeccion('Mercancías (' + (mercancias.Mercancia || []).length + ')');
-  campoValor('Peso bruto total', (mercancias.PesoBrutoTotal || 0) + ' ' + (mercancias.UnidadPeso || ''));
-  campoValor('Peso neto total', (mercancias.PesoNetoTotal || 0) + ' ' + (mercancias.UnidadPeso || ''));
+  campoValor2('Peso bruto total', (mercancias.PesoBrutoTotal || 0) + ' ' + (mercancias.UnidadPeso || ''), 'Peso neto total', (mercancias.PesoNetoTotal || 0) + ' ' + (mercancias.UnidadPeso || ''));
   y -= 4;
-  dibujarTabla([
-    { label: 'Clave', w: 50, get: function (m) { return m.BienesTransp; } },
-    { label: 'Descripción', w: 195, get: function (m) { return (m.Descripcion || '').slice(0, 42); } },
-    { label: 'Cant.', w: 45, get: function (m) { return m.Cantidad; } },
-    { label: 'Unidad', w: 45, get: function (m) { return m.ClaveUnidad; } },
-    { label: 'Peso (kg)', w: 55, get: function (m) { return m.PesoEnKg; } },
-    { label: 'Material pelig.', w: 65, get: function (m) { return m.MaterialPeligroso || 'No'; } }
+  dibujarTablaDosColumnas([
+    { label: 'Clave', w: 32, get: function (m) { return m.BienesTransp; } },
+    { label: 'Descripción', w: 110, get: function (m) { return (m.Descripcion || '').slice(0, 26); } },
+    { label: 'Cant.', w: 28, get: function (m) { return m.Cantidad; } },
+    { label: 'Peso(kg)', w: 40, get: function (m) { return m.PesoEnKg; } }
   ], mercancias.Mercancia || []);
 
+  // ─── Remitentes y destinatarios ─────────────────────────────────────────
   tituloSeccion('Remitentes y destinatarios');
-  campoValor('Total distancia recorrida', (cartaPorteData.TotalDistRec || 0) + ' km');
-  y -= 4;
   dibujarTabla([
     { label: 'Tipo', w: 45, get: function (u) { return u.TipoUbicacion; } },
     { label: 'RFC', w: 85, get: function (u) { return u.RFCRemitenteDestinatario; } },
@@ -1992,34 +1990,75 @@ async function _compactarPdfCartaPorteServer(pdfOriginalBuffer, cartaPorteData, 
     }
   ], ubicaciones);
 
-  tituloSeccion('Figura de transporte');
-  dibujarTabla([
-    { label: 'Tipo', w: 40, get: function (f) { return f.TipoFigura === '01' ? 'Operador' : f.TipoFigura; } },
-    { label: 'RFC', w: 85, get: function (f) { return f.RFCFigura; } },
-    { label: 'Nombre', w: 160, get: function (f) { return (f.NombreFigura || '').slice(0, 35); } },
-    { label: 'Licencia', w: 90, get: function (f) { return f.NumLicencia; } },
-    {
-      label: 'Domicilio', w: 130, get: function (f) {
-        const d = f.Domicilio || {};
-        return ((d.Calle || '') + ' ' + (d.NumeroExterior || '')).slice(0, 35);
-      }
-    }
-  ], figuras);
+  // ─── Tipos de figura de transporte (licencia bajo el nombre) ───────────
+  tituloSeccion('Tipos de figura de transporte');
+  (function dibujarFiguras() {
+    nuevaPaginaSiHaceFalta();
+    pagina.drawText('Tipo', { x: margin, y: y, size: 8, font: fontBold });
+    pagina.drawText('RFC', { x: margin + 60, y: y, size: 8, font: fontBold });
+    pagina.drawText('Nombre / Licencia', { x: margin + 150, y: y, size: 8, font: fontBold });
+    pagina.drawText('Domicilio', { x: margin + 350, y: y, size: 8, font: fontBold });
+    y -= filaAltura;
+    figuras.forEach(function (f) {
+      nuevaPaginaSiHaceFalta();
+      const d = f.Domicilio || {};
+      pagina.drawText(f.TipoFigura === '01' ? 'Operador' : String(f.TipoFigura || ''), { x: margin, y: y, size: 7.5, font: font });
+      pagina.drawText(String(f.RFCFigura || '—'), { x: margin + 60, y: y, size: 7.5, font: font });
+      pagina.drawText(String(f.NombreFigura || '—').slice(0, 32), { x: margin + 150, y: y, size: 7.5, font: font });
+      pagina.drawText(((d.Calle || '') + ' ' + (d.NumeroExterior || '')).slice(0, 28) || '—', { x: margin + 350, y: y, size: 7.5, font: font });
+      y -= 11;
+      pagina.drawText('Licencia: ' + (f.NumLicencia || '—'), { x: margin + 150, y: y, size: 7, font: font });
+      y -= filaAltura;
+    });
+  })();
 
-  // Sellos y certificación — para que se sienta igual que la
-  // representación de antes (mismos datos, ya certificados en el XML,
-  // solo repetidos aquí al final).
+  // ─── Productos, servicios y partidas ────────────────────────────────────
+  tituloSeccion('Productos, servicios y partidas');
+  dibujarTabla([
+    { label: 'Clave prod/serv', w: 65, get: function (c) { return c.claveProdServ; } },
+    { label: 'Descripción', w: 220, get: function (c) { return (c.descripcion || '').slice(0, 55); } },
+    { label: 'Cant.', w: 35, get: function (c) { return c.cantidad; } },
+    { label: 'Unidad', w: 40, get: function (c) { return c.claveUnidad; } },
+    { label: 'V. unitario', w: 80, get: function (c) { return _fmtMonedaServer(c.valorUnitario); } },
+    { label: 'Importe', w: 80, get: function (c) { return _fmtMonedaServer(c.importe); } }
+  ], conceptos);
+
+  // ─── Importe con letra + totales ────────────────────────────────────────
+  if (fac) {
+    y -= 6; nuevaPaginaSiHaceFalta();
+    pagina.drawText('Importe con letra:', { x: margin, y: y, size: 8, font: fontBold });
+    y -= 11;
+    dibujarParrafo(_importeEnLetrasServer(fac.total), 8.5);
+    y -= 6;
+    const xTot = pageWidth - margin - 190;
+    nuevaPaginaSiHaceFalta();
+    pagina.drawRectangle({ x: xTot, y: y - 70, width: 190, height: 76, borderColor: rgb(0.6, 0.6, 0.6), borderWidth: 1 });
+    let yT = y;
+    function filaTotal(etq, val, negritas) {
+      pagina.drawText(etq, { x: xTot + 8, y: yT, size: 8, font: negritas ? fontBold : font });
+      pagina.drawText(String(val == null ? '—' : val), { x: xTot + 110, y: yT, size: 8, font: negritas ? fontBold : font });
+      yT -= 12;
+    }
+    yT -= 8;
+    filaTotal('Subtotal', _fmtMonedaServer(fac.subtotal));
+    filaTotal('Descuento', _fmtMonedaServer(fac.descuento || 0));
+    filaTotal('Impuestos', fac.impuestosTexto || '—');
+    filaTotal('Total', _fmtMonedaServer(fac.total), true);
+    y -= 84;
+  }
+
+  // Sellos y certificación — datos ya certificados en el XML, se repiten
+  // aquí solo como texto (el QR de verificación ya se mostró arriba, en
+  // la sección del Complemento de Carta Porte — no se repite al final).
   if (fac) {
     tituloSeccion('Sellos y certificación del SAT');
     campoTextoLargo('Sello digital del CFDI', fac.sello);
     campoTextoLargo('Sello del SAT', fac.selloSAT);
     campoTextoLargo('Cadena original del complemento de certificación digital del SAT', _cadenaOriginalTFDServer(fac));
-    campoValor('No. de certificado del SAT', fac.noCertificadoSAT);
-    campoValor('RFC del proveedor de certificación (PAC)', fac.rfcProvCertif);
+    campoValor2('No. de certificado del SAT', fac.noCertificadoSAT, 'RFC del PAC', fac.rfcProvCertif);
     y -= 6; nuevaPaginaSiHaceFalta();
-    if (qrImg) { pagina.drawImage(qrImg, { x: margin, y: y - 60, width: 60, height: 60 }); }
-    pagina.drawText('Este documento es una representación impresa de un CFDI', { x: margin + 70, y: y - 30, size: 8, font: font });
-    y -= 70;
+    pagina.drawText('Este documento es una representación impresa de un CFDI', { x: margin, y: y, size: 8, font: font });
+    y -= 20;
   }
 
   // Condiciones de prestación de servicios (cláusulas SCT) — texto fijo,
@@ -2898,6 +2937,26 @@ function _parseFacturaFleteXMLServer(xmlText) {
     const sumaKms = ubics.reduce(function (s, u) { return s + (parseFloat(u['@_DistanciaRecorrida']) || 0); }, 0);
     distanciaKm = sumaKms > 0 ? sumaKms : null;
   }
+  // Detalle de conceptos (partidas) e impuestos — necesarios para la
+  // sección "Productos, servicios y partidas" y los totales del nuevo
+  // formato de PDF (antes no hacía falta, porque esa página se tomaba tal
+  // cual del PDF que regresaba Facturapi).
+  const conceptosDetalle = conceptos.map(function (c) {
+    return {
+      claveProdServ: c['@_ClaveProdServ'] || '', descripcion: c['@_Descripcion'] || '',
+      cantidad: c['@_Cantidad'] || '', claveUnidad: c['@_ClaveUnidad'] || '', unidad: c['@_Unidad'] || '',
+      valorUnitario: parseFloat(c['@_ValorUnitario'] || 0), importe: parseFloat(c['@_Importe'] || 0),
+      objetoImp: c['@_ObjetoImp'] || ''
+    };
+  });
+  let traslados = (impResumen.Traslados && impResumen.Traslados.Traslado) || [];
+  if (!Array.isArray(traslados)) traslados = traslados ? [traslados] : [];
+  let retenciones = (impResumen.Retenciones && impResumen.Retenciones.Retencion) || [];
+  if (!Array.isArray(retenciones)) retenciones = retenciones ? [retenciones] : [];
+  function _etiquetaImpuestoServer(codigo) { return codigo === '002' ? 'IVA' : (codigo === '001' ? 'ISR' : (codigo === '003' ? 'IEPS' : (codigo || ''))); }
+  const impuestosTexto = traslados.map(function (t) { return _etiquetaImpuestoServer(t['@_Impuesto']) + ' ' + (parseFloat(t['@_TasaOCuota'] || 0) * 100) + '%'; })
+    .concat(retenciones.map(function (r) { return 'Ret. ' + _etiquetaImpuestoServer(r['@_Impuesto']) + ' ' + (parseFloat(r['@_TasaOCuota'] || 0) * 100) + '%'; }))
+    .join(', ');
   return {
     uuid: (tfd['@_UUID'] || '').toUpperCase(), folio: (comp['@_Serie'] ? comp['@_Serie'] + '-' : '') + (comp['@_Folio'] || ''),
     fecha: (comp['@_Fecha'] || '').slice(0, 10),
@@ -2911,7 +2970,10 @@ function _parseFacturaFleteXMLServer(xmlText) {
     tipoComprobante: comp['@_TipoDeComprobante'] || '', version: comp['@_Version'] || '',
     regimenFiscalEmisor: emisor['@_RegimenFiscal'] || '', regimenFiscalReceptor: receptor['@_RegimenFiscalReceptor'] || '',
     domicilioFiscalReceptor: receptor['@_DomicilioFiscalReceptor'] || '', usoCFDI: receptor['@_UsoCFDI'] || '',
-    destino: destinoPunto ? destinoPunto.label : null, horaSalida: origen ? origen.fechaHora : null, distanciaKm: distanciaKm
+    destino: destinoPunto ? destinoPunto.label : null, horaSalida: origen ? origen.fechaHora : null, distanciaKm: distanciaKm,
+    noCertificado: comp['@_NoCertificado'] || '', moneda: comp['@_Moneda'] || '', tipoCambio: comp['@_TipoCambio'] || '',
+    metodoPago: comp['@_MetodoPago'] || '', formaPago: comp['@_FormaPago'] || '', descuento: parseFloat(comp['@_Descuento'] || 0),
+    exportacion: receptor['@_Exportacion'] || '', conceptosDetalle: conceptosDetalle, impuestosTexto: impuestosTexto
   };
 }
 
@@ -2931,6 +2993,46 @@ function _urlVerificacionCFDIServer(fac) {
 // inventa, con datos que ya vienen en el mismo XML certificado.
 function _cadenaOriginalTFDServer(fac) {
   return '||1.1|' + fac.uuid + '|' + fac.fechaTimbrado + '|' + fac.rfcProvCertif + '|' + fac.sello + '||';
+}
+
+// _importeEnLetrasServer: convierte un monto a su representación en letra
+// ("CINCUENTA Y OCHO MIL SEISCIENTOS SEIS PESOS 51/100 M.N."), para la
+// sección de totales del nuevo formato de PDF de Carta Porte (estilo
+// Facturo por Ti). Soporta hasta cientos de millones, más que suficiente
+// para cualquier factura real de flete.
+function _importeEnLetrasServer(monto) {
+  monto = Math.round((parseFloat(monto) || 0) * 100) / 100;
+  const entero = Math.floor(monto);
+  const centavos = Math.round((monto - entero) * 100);
+  const UNIDADES = ['', 'UNO', 'DOS', 'TRES', 'CUATRO', 'CINCO', 'SEIS', 'SIETE', 'OCHO', 'NUEVE', 'DIEZ',
+    'ONCE', 'DOCE', 'TRECE', 'CATORCE', 'QUINCE', 'DIECISEIS', 'DIECISIETE', 'DIECIOCHO', 'DIECINUEVE', 'VEINTE'];
+  const DECENAS = ['TREINTA', 'CUARENTA', 'CINCUENTA', 'SESENTA', 'SETENTA', 'OCHENTA', 'NOVENTA'];
+  const CENTENAS = ['CIENTO', 'DOSCIENTOS', 'TRESCIENTOS', 'CUATROCIENTOS', 'QUINIENTOS', 'SEISCIENTOS', 'SETECIENTOS', 'OCHOCIENTOS', 'NOVECIENTOS'];
+  function _grupo(n) {
+    if (n === 0) return '';
+    if (n === 100) return 'CIEN';
+    const centena = Math.floor(n / 100), resto = n % 100;
+    const partes = [];
+    if (centena) partes.push(CENTENAS[centena - 1]);
+    if (resto) {
+      if (resto <= 20) partes.push(UNIDADES[resto]);
+      else if (resto < 30) partes.push('VEINTI' + UNIDADES[resto - 20]);
+      else { const d = Math.floor(resto / 10), u = resto % 10; partes.push(DECENAS[d - 3] + (u ? ' Y ' + UNIDADES[u] : '')); }
+    }
+    return partes.join(' ');
+  }
+  function _entero(n) {
+    if (n === 0) return 'CERO';
+    const millones = Math.floor(n / 1000000), restoM = n % 1000000;
+    const miles = Math.floor(restoM / 1000), resto = restoM % 1000;
+    const partes = [];
+    if (millones) partes.push(millones === 1 ? 'UN MILLON' : _grupo(millones) + ' MILLONES');
+    if (miles) partes.push(miles === 1 ? 'MIL' : _grupo(miles) + ' MIL');
+    if (resto) partes.push(_grupo(resto));
+    return partes.join(' ');
+  }
+  const textoEntero = entero === 1 ? 'UN PESO' : (_entero(entero) + ' PESOS');
+  return textoEntero + ' ' + String(centavos).padStart(2, '0') + '/100 M.N.';
 }
 
 // Texto oficial y textual de las 15 cláusulas del "Contrato de Prestación
@@ -4278,32 +4380,26 @@ exports.generarCartaPorteFlete = onRequest({ secrets: [FACTURAPI_TEST_KEY], cors
     try { xmlURL = await _subirXMLStorage('facturasFlete/' + fac.uuid + '.xml', xmlTexto); }
     catch (eStorage) { console.error('generarCartaPorteFlete: no se pudo subir el XML a Storage:', eStorage); }
 
-    // PDF: se conserva la página 1 OFICIAL que regresa Facturapi (con
-    // QR/sello/folio fiscal — nunca calculado a mano) y se reemplazan las
-    // páginas del Complemento Carta Porte por una tabla compacta armada
-    // aquí (ver _compactarPdfCartaPorteServer) en vez de las 20+ páginas,
-    // un campo por renglón, que arma Facturapi por default.
+    // PDF: ya no se usa el que regresa Facturapi (ni para copiar su página
+    // 1) — se arma 100% aquí, con el formato de Facturo por Ti que pidió
+    // Raúl (ver _compactarPdfCartaPorteServer): encabezado propio, datos
+    // del cliente/comprobante, Complemento de Carta Porte con el QR de
+    // verificación del SAT, Mercancías en 2 columnas, Remitentes/Figuras,
+    // Productos/partidas, totales con importe en letra, sellos, y al
+    // final las cláusulas SCT + bitácora (sin cambios).
     let pdfURL = null;
     try {
-      const rPdf = await fetch('https://www.facturapi.io/v2/invoices/' + respuestaTimbrado.id + '/pdf', {
-        headers: { 'Authorization': 'Bearer ' + FACTURAPI_TEST_KEY.value() }
-      });
-      if (rPdf.ok) {
-        const pdfOriginal = Buffer.from(await rPdf.arrayBuffer());
-        let pdfFinal = pdfOriginal;
-        // Bitácora de horas de servicio del viaje (si el operador la llenó
-        // desde su app) — se anexa como respaldo en papel, con logo y
-        // datos reales de esta unidad/operador, no una plantilla en blanco.
-        let eventosBitacora = [];
-        try {
-          const snapBitacora = await db.collection('bitacoras').doc(ordenEmbarque).get();
-          if (snapBitacora.exists && Array.isArray(snapBitacora.data().eventos)) eventosBitacora = snapBitacora.data().eventos;
-        } catch (eBitacora) { console.error('generarCartaPorteFlete: no se pudo leer la bitácora del viaje:', eBitacora); }
-        try { pdfFinal = await _compactarPdfCartaPorteServer(pdfOriginal, cartaPorteData, fac, unidad, operador, pedido, eventosBitacora); }
-        catch (eCompact) { console.error('generarCartaPorteFlete: no se pudo compactar el PDF, se usa el original de Facturapi:', eCompact); }
-        pdfURL = await _subirPDFStorage('facturasFlete/' + fac.uuid + '.pdf', pdfFinal);
-      } else console.error('generarCartaPorteFlete: Facturapi no regresó el PDF, status', rPdf.status);
-    } catch (ePdf) { console.error('generarCartaPorteFlete: no se pudo descargar/subir el PDF:', ePdf); }
+      // Bitácora de horas de servicio del viaje (si el operador la llenó
+      // desde su app) — se anexa como respaldo en papel, con logo y
+      // datos reales de esta unidad/operador, no una plantilla en blanco.
+      let eventosBitacora = [];
+      try {
+        const snapBitacora = await db.collection('bitacoras').doc(ordenEmbarque).get();
+        if (snapBitacora.exists && Array.isArray(snapBitacora.data().eventos)) eventosBitacora = snapBitacora.data().eventos;
+      } catch (eBitacora) { console.error('generarCartaPorteFlete: no se pudo leer la bitácora del viaje:', eBitacora); }
+      const pdfFinal = await _compactarPdfCartaPorteServer(cartaPorteData, fac, unidad, operador, pedido, eventosBitacora);
+      pdfURL = await _subirPDFStorage('facturasFlete/' + fac.uuid + '.pdf', pdfFinal);
+    } catch (ePdf) { console.error('generarCartaPorteFlete: no se pudo generar/subir el PDF:', ePdf); }
 
     const resultadoSustitucion = await _sustituirFacturaFleteServer(fac, xmlURL, pdfURL);
 
