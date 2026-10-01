@@ -4315,6 +4315,202 @@ exports.generarCartaPorteFlete = onRequest({ secrets: [FACTURAPI_TEST_KEY], cors
 });
 
 // ══════════════════════════════════════════════════════════════════════════
+// generarNominaFacturapi — timbra automático el CFDI de Nómina de un
+// operador vía Facturapi (llave de PRUEBA mientras dure el periodo de
+// prueba), igual que generarCartaPorteFlete pero para recibos de nómina.
+// Los montos (percepción/ISR/IMSS/RCV/INFONAVIT/otras deducciones) NO se
+// calculan aquí — llegan ya calculados desde nomina.html (el dueño los saca
+// de un cálculo aparte) — esta función solo arma el CFDI con esos montos y
+// los datos fiscales/laborales del operador (ver flota.html →
+// editarDatosNominaOperador) y lo manda a timbrar.
+//
+// IMPORTANTE — a diferencia de Carta Porte, este payload es la PRIMERA
+// versión sin haber probado contra Facturapi todavía. Va a necesitar
+// ajustes tras la primera prueba real (mismo método que Carta Porte: leer
+// el rechazo exacto de Facturapi y corregir ese campo puntual) — no asumir
+// que el primer intento tiembra limpio.
+// ══════════════════════════════════════════════════════════════════════════
+
+// Catálogo c_Banco del SAT — solo los bancos que de verdad usan los
+// operadores hoy (ver anticiposDB real) — si no se reconoce el banco
+// capturado, se omite el nodo Banco/CuentaBancaria del complemento en vez
+// de mandar un código inventado.
+const BANCO_SAT_SERVER = {
+  'BBVA': '012', 'BBVA MEXICO': '012', 'BANAMEX': '002', 'CITIBANAMEX': '002',
+  'BANORTE': '072', 'BANCOPPEL': '137', 'AZTECA': '127', 'BANCO AZTECA': '127',
+  'SANTANDER': '014', 'HSBC': '021', 'SCOTIABANK': '044', 'MIFEL': '042',
+  'INBURSA': '036', 'STP': '646'
+};
+
+// _parseNominaXMLServer(xmlText): mismo criterio que
+// _parseFacturaFleteXMLServer — regresa null si no es un CFDI de Nómina
+// válido. Extrae EXACTAMENTE los mismos campos que nomina.html →
+// parseNominaXML (cliente) para poder registrar el recibo en nominaDB con
+// la misma forma, sin tener que tocar el resto de ese módulo.
+function _parseNominaXMLServer(xmlText) {
+  const { XMLParser } = require('fast-xml-parser');
+  const parser = new XMLParser({ ignoreAttributes: false, attributeNamePrefix: '@_', removeNSPrefix: true });
+  let obj;
+  try { obj = parser.parse(xmlText); } catch (e) { return null; }
+  const comp = obj && obj.Comprobante;
+  if (!comp) return null;
+  if ((comp['@_TipoDeComprobante'] || '') !== 'N') return null;
+  const tfd = comp.Complemento && comp.Complemento.TimbreFiscalDigital;
+  const nomina = comp.Complemento && comp.Complemento.Nomina;
+  if (!tfd || !nomina) return null;
+  const emisor = comp.Emisor || {};
+  const receptor = comp.Receptor || {};
+  let percepciones = (nomina.Percepciones && nomina.Percepciones.Percepcion) || [];
+  if (!Array.isArray(percepciones)) percepciones = percepciones ? [percepciones] : [];
+  let deducciones = (nomina.Deducciones && nomina.Deducciones.Deduccion) || [];
+  if (!Array.isArray(deducciones)) deducciones = deducciones ? [deducciones] : [];
+  return {
+    uuid: (tfd['@_UUID'] || '').toUpperCase(),
+    folio: (comp['@_Serie'] || '') + (comp['@_Folio'] || ''),
+    fecha: (comp['@_Fecha'] || '').slice(0, 10),
+    periodoIni: nomina['@_FechaInicialPago'] || '',
+    periodoFin: nomina['@_FechaFinalPago'] || '',
+    totalPercepciones: parseFloat(nomina['@_TotalPercepciones'] || 0),
+    totalDeducciones: parseFloat(nomina['@_TotalDeducciones'] || 0),
+    receptorNombre: receptor['@_Nombre'] || '',
+    receptorRfc: receptor['@_Rfc'] || '',
+    percepciones: percepciones.map(function (p) {
+      return { concepto: p['@_Concepto'] || '', clave: p['@_Clave'] || '', importe: (parseFloat(p['@_ImporteGravado'] || 0) + parseFloat(p['@_ImporteExento'] || 0)) };
+    }),
+    deducciones: deducciones.map(function (d) {
+      return { concepto: d['@_Concepto'] || '', clave: d['@_Clave'] || '', importe: parseFloat(d['@_Importe'] || 0) };
+    }),
+    emisorNombre: emisor['@_Nombre'] || '',
+    emisorRfc: (emisor['@_Rfc'] || '').toUpperCase(),
+    fechaTimbrado: tfd['@_FechaTimbrado'] || '',
+    selloSAT: tfd['@_SelloSAT'] || '',
+    noCertificadoSAT: tfd['@_NoCertificadoSAT'] || '',
+    rfcProvCertif: tfd['@_RfcProvCertif'] || '',
+    selloCFD: comp['@_Sello'] || '',
+    total: parseFloat(comp['@_Total'] || 0)
+  };
+}
+
+exports.generarNominaFacturapi = onRequest({ secrets: [FACTURAPI_TEST_KEY], cors: true, region: 'us-central1', timeoutSeconds: 120 }, async (req, res) => {
+  if (req.method !== 'POST') { res.status(405).json({ error: 'Método no permitido, usa POST.' }); return; }
+  try {
+    const decoded = await _verificarAdmin(req);
+    const body = req.body || {};
+    const periodoIni = body.periodoIni, periodoFin = body.periodoFin, fechaPago = body.fechaPago;
+    const items = Array.isArray(body.items) ? body.items : [];
+    if (!periodoIni || !periodoFin || !fechaPago) { res.status(400).json({ error: 'Faltan las fechas del periodo o de pago.' }); return; }
+    if (!items.length) { res.status(400).json({ error: 'No se mandó ningún operador para timbrar.' }); return; }
+
+    // NumDiasPagados: días naturales del periodo, inclusivo.
+    const msDia = 24 * 60 * 60 * 1000;
+    const numDiasPagados = Math.round((new Date(periodoFin) - new Date(periodoIni)) / msDia) + 1;
+
+    const resultados = [];
+    for (const item of items) {
+      const opId = parseInt(item.operadorId);
+      const percepcion = parseFloat(item.percepcion) || 0;
+      const isr = parseFloat(item.isr) || 0;
+      const imss = parseFloat(item.imss) || 0;
+      const rcv = parseFloat(item.rcv) || 0;
+      const infonavit = parseFloat(item.infonavit) || 0;
+      const otrasDeducciones = parseFloat(item.otrasDeducciones) || 0;
+      const totalDeducciones = Math.round((isr + imss + rcv + infonavit + otrasDeducciones) * 100) / 100;
+      try {
+        if (!percepcion) throw new Error('Sin percepción capturada, no se timbra.');
+        const snapOp = await db.collection('operadores').doc(String(opId)).get();
+        if (!snapOp.exists) throw new Error('No se encontró el operador ' + opId + '.');
+        const op = snapOp.data();
+        const nom = op.nomina || {};
+        const faltan = ['curp', 'nss', 'fechaIngreso', 'codigoPostal'].filter(function (k) { return !nom[k]; });
+        if (faltan.length) throw new Error('Al operador le faltan estos datos de Nómina en Flota: ' + faltan.join(', ') + '.');
+        if (!op.rfc) throw new Error('Al operador le falta el RFC en Flota.');
+
+        // Antigüedad: formato ISO 8601 de semanas completas (ej. "P12W"),
+        // como exige el catálogo del complemento de nómina.
+        const semanas = Math.max(0, Math.floor((new Date(fechaPago) - new Date(nom.fechaIngreso)) / (7 * msDia)));
+
+        const percepciones = [{ TipoPercepcion: '001', Clave: '001', Concepto: 'Sueldos', ImporteGravado: percepcion, ImporteExento: 0 }];
+
+        const deducciones = [];
+        if (isr > 0) deducciones.push({ TipoDeduccion: '002', Clave: '002', Concepto: 'ISR', Importe: isr });
+        if (imss > 0) deducciones.push({ TipoDeduccion: '001', Clave: '001', Concepto: 'Seguridad social', Importe: imss });
+        if (rcv > 0) deducciones.push({ TipoDeduccion: '003', Clave: '003', Concepto: 'Aportaciones a retiro, cesantía en edad avanzada y vejez (RCV)', Importe: rcv });
+        if (infonavit > 0) deducciones.push({ TipoDeduccion: '007', Clave: '007', Concepto: 'INFONAVIT', Importe: infonavit });
+        if (otrasDeducciones > 0) deducciones.push({ TipoDeduccion: '023', Clave: '023', Concepto: 'Otras deducciones', Importe: otrasDeducciones });
+
+        const nominaData = {
+          Version: '1.2', TipoNomina: 'O', FechaPago: fechaPago, FechaInicialPago: periodoIni, FechaFinalPago: periodoFin,
+          NumDiasPagados: numDiasPagados, TotalPercepciones: percepcion, TotalDeducciones: totalDeducciones,
+          Receptor: {
+            Curp: nom.curp, NumSeguridadSocial: nom.nss, FechaInicioRelLaboral: nom.fechaIngreso,
+            Antigüedad: 'P' + semanas + 'W', TipoContrato: '01', Sindicalizado: 'No', TipoJornada: '01',
+            TipoRegimen: '02', NumEmpleado: String(opId), Puesto: nom.puesto || 'OPERADOR',
+            RiesgoPuesto: nom.riesgoPuesto || '4', PeriodicidadPago: '05', ClaveEntFed: 'MEX',
+            SalarioBaseCotApor: nom.salarioDiario || 0, SalarioDiarioIntegrado: nom.salarioDiario || 0
+          },
+          Percepciones: { TotalSueldos: percepcion, TotalSeparacionIndemnizacion: 0, TotalJubilacionPensionRetiro: 0, TotalGravado: percepcion, TotalExento: 0, Percepcion: percepciones },
+          Deducciones: { TotalOtrasDeducciones: Math.round((imss + rcv + infonavit + otrasDeducciones) * 100) / 100, TotalImpuestosRetenidos: isr, Deduccion: deducciones }
+        };
+        const bancoClave = BANCO_SAT_SERVER[(nom.banco || '').toUpperCase()];
+        if (bancoClave && nom.clabe && nom.clabe.length >= 10) {
+          nominaData.Receptor.Banco = bancoClave;
+          nominaData.Receptor.CuentaBancaria = nom.clabe;
+        }
+
+        const invoice = {
+          type: 'N',
+          customer: { legal_name: op.nombre, tax_id: op.rfc, tax_system: '605', address: { zip: nom.codigoPostal } },
+          items: [{ quantity: 1, product: { description: 'Pago de nómina', product_key: '84111506', unit_key: 'ACT', price: percepcion } }],
+          use: 'CN01', payment_form: '99', payment_method: 'PUE',
+          complements: [{ type: 'nomina', data: nominaData }]
+        };
+
+        const rTimbrado = await fetch('https://www.facturapi.io/v2/invoices', {
+          method: 'POST',
+          headers: { 'Authorization': 'Bearer ' + FACTURAPI_TEST_KEY.value(), 'Content-Type': 'application/json' },
+          body: JSON.stringify(invoice)
+        });
+        const respuestaTimbrado = await rTimbrado.json();
+        if (!rTimbrado.ok) throw new Error((respuestaTimbrado && (respuestaTimbrado.message || respuestaTimbrado.error)) || 'Facturapi rechazó el CFDI de nómina.');
+
+        const rXml = await fetch('https://www.facturapi.io/v2/invoices/' + respuestaTimbrado.id + '/xml', { headers: { 'Authorization': 'Bearer ' + FACTURAPI_TEST_KEY.value() } });
+        if (!rXml.ok) throw new Error('Se timbró (id ' + respuestaTimbrado.id + ') pero no se pudo descargar el XML.');
+        const xmlTexto = await rXml.text();
+        const fac = _parseNominaXMLServer(xmlTexto);
+        if (!fac) throw new Error('Se timbró (id ' + respuestaTimbrado.id + ') pero el XML no se pudo leer como nómina — revísalo a mano en el dashboard de Facturapi.');
+
+        let xmlURL = null;
+        try { xmlURL = await _subirXMLStorage('comprobantes/nomina/' + fac.uuid + '.xml', xmlTexto); }
+        catch (eStorage) { console.error('generarNominaFacturapi: no se pudo subir el XML:', eStorage); }
+
+        // Registrar en nominaDB con la MISMA forma que produce
+        // nomina.html → parseNominaXML, releyendo fresco justo antes de
+        // guardar (ver CLAUDE.md — nunca sobrescribir este blob en bloque).
+        const snapNom = await db.collection('estado').doc('nominaDB').get();
+        let nominaDB = (snapNom.exists && snapNom.data().data) ? JSON.parse(snapNom.data().data) : {};
+        if (Array.isArray(nominaDB)) nominaDB = {};
+        if (!nominaDB[opId]) nominaDB[opId] = [];
+        nominaDB[opId].push(Object.assign({
+          id: 'nom-' + Date.now() + '-' + Math.random().toString(36).slice(2),
+          estado: 'pendiente', liqNum: null, xmlURL: xmlURL
+        }, fac));
+        await db.collection('estado').doc('nominaDB').set({ data: JSON.stringify(nominaDB) });
+
+        resultados.push({ operadorId: opId, ok: true, uuid: fac.uuid, folio: fac.folio });
+      } catch (eItem) {
+        console.error('generarNominaFacturapi, operador ' + opId + ':', eItem);
+        resultados.push({ operadorId: opId, ok: false, error: eItem.message || String(eItem) });
+      }
+    }
+
+    res.json({ ok: true, resultados: resultados });
+  } catch (e) {
+    console.error('generarNominaFacturapi:', e);
+    res.status(/administrador|sesión/.test(e.message || '') ? 403 : 500).json({ error: e.message || 'Error interno del servidor.' });
+  }
+});
+
+// ══════════════════════════════════════════════════════════════════════════
 // recuperarAnticiposDesdeHistorial — herramienta de UN SOLO USO para reparar
 // el documento estado/anticiposDB después del bug real de sobrescritura en
 // ant.html (guardar() escribía a ciegas la copia en memoria del navegador,

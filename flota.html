@@ -714,6 +714,61 @@ async function editarOperador(id){
     await cargarTodo();
   }catch(e){console.error('editarOperador:',e);alert('⚠️ Error: '+e.message);}
 }
+// editarDatosNominaOperador: datos que solo hacen falta para timbrar un CFDI
+// de Nómina automático vía Facturapi (ver nomina.html → Generar y timbrar) —
+// aparte de editarOperador() para no mezclar datos laborales/fiscales
+// sensibles con los datos operativos de todos los días. El SAT exige CURP y
+// Número de Seguridad Social en el complemento de nómina — sin esos dos no
+// se puede timbrar nada para este operador, los demás son opcionales pero
+// recomendados.
+async function editarDatosNominaOperador(id){
+  var op=operadoresRaw.find(function(o){return o.id===id;});
+  if(!op)return;
+  var nom=op.nomina||{};
+  var curp=prompt('CURP (obligatorio para timbrar nómina):',nom.curp||'');
+  if(curp===null)return;
+  var nss=prompt('Número de Seguridad Social IMSS (obligatorio):',nom.nss||'');
+  if(nss===null)return;
+  var fechaIngreso=prompt('Fecha de inicio de la relación laboral (YYYY-MM-DD):',nom.fechaIngreso||'');
+  if(fechaIngreso===null)return;
+  var puesto=prompt('Puesto:',nom.puesto||'OPERADOR');
+  if(puesto===null)return;
+  // riesgoPuesto: clase de riesgo IMSS (catálogo c_RiesgoPuesto, 1 a 5) con
+  // la que está dado de alta ante el IMSS — Esa no tenía el dato exacto a
+  // la mano para todos, puso "4" como mejor estimado para choferes/
+  // operadores; CONFIRMAR el valor real de cada uno antes de timbrar en
+  // producción (no sandbox), es un dato de su registro patronal real.
+  var riesgoPuesto=prompt('Clase de riesgo de puesto IMSS (1 a 5 — "4" si no estás seguro, CONFIRMAR antes de timbrar en producción):',nom.riesgoPuesto||'4');
+  if(riesgoPuesto===null)return;
+  var banco=prompt('Banco (ej. BBVA, BANAMEX, BANORTE, BANCOPPEL, AZTECA — como aparece en su CLABE):',nom.banco||'');
+  if(banco===null)return;
+  var clabe=prompt('CLABE (18 dígitos, opcional si no se paga por transferencia):',nom.clabe||'');
+  if(clabe===null)return;
+  var salarioDiario=prompt('Salario diario integrado (SDI), para este periodo:',nom.salarioDiario||'');
+  if(salarioDiario===null)return;
+  // Código postal fiscal del operador (su domicilio registrado ante el
+  // SAT) — obligatorio en CUALQUIER CFDI 4.0 para el receptor, sea factura
+  // o nómina.
+  var codigoPostal=prompt('Código postal fiscal del operador (domicilio registrado ante el SAT):',nom.codigoPostal||'');
+  if(codigoPostal===null)return;
+  try{
+    await firebase.firestore().collection('operadores').doc(id).update({
+      nomina:{
+        curp:curp.trim().toUpperCase()||null,
+        nss:nss.trim().replace(/\D/g,'')||null,
+        fechaIngreso:fechaIngreso.trim()||null,
+        puesto:puesto.trim().toUpperCase()||'OPERADOR',
+        riesgoPuesto:riesgoPuesto.trim()||'4',
+        banco:banco.trim().toUpperCase()||null,
+        clabe:clabe.trim().replace(/\s/g,'')||null,
+        salarioDiario:parseFloat(salarioDiario)||null,
+        codigoPostal:codigoPostal.trim().replace(/\D/g,'')||null
+      }
+    });
+    if(window.cargarOperadores)window.cargarOperadores(true);
+    await cargarTodo();
+  }catch(e){console.error('editarDatosNominaOperador:',e);alert('⚠️ Error: '+e.message);}
+}
 async function toggleActivoOperador(id){
   var op=operadoresRaw.find(function(o){return o.id===id;});
   if(!op)return;
@@ -746,6 +801,7 @@ function renderOperadores(){
       +'<td><span class="badge '+(o.activo?'bg-green':'bg-gray')+'">'+(o.activo?'Activo':'Baja')+'</span></td>'
       +'<td style="white-space:nowrap">'
         +'<button class="btn-sm btn-out" onclick="editarOperador(\''+o.id+'\')">✏️</button> '
+        +'<button class="btn-sm btn-out" title="Datos para timbrar Nómina (CURP, NSS, etc.)" onclick="editarDatosNominaOperador(\''+o.id+'\')">🧾</button> '
         +'<button class="btn-sm" style="background:'+(o.activo?'#fde8e8':'#d1e7dd')+';color:'+(o.activo?'#9b1c1c':'#0a5233')+';border:none;cursor:pointer" onclick="toggleActivoOperador(\''+o.id+'\')">'+(o.activo?'Dar de baja':'Reactivar')+'</button>'
       +'</td>'
       +'</tr>';
