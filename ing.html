@@ -3242,10 +3242,22 @@ async function procesarFacturaManiobrasExcel(){
       // Si hay varios candidatos para este mismo T.U., se prefiere el que
       // YA tiene el monto exacto de este renglón — así no se le "quita" a
       // otro renglón (del mismo T.U.) el candidato que en realidad es suyo.
-      // Si ninguno cuadra en monto y hay más de uno, no se adivina cuál es
-      // — se manda a revisar a mano (mismo criterio que la Pasada 2, abajo).
+      // Si ninguno cuadra en monto pero sí hay uno solo cuyo DESTINO
+      // coincide con el de este renglón (caso real: mismo T.U. para 2
+      // tramos del viaje — ej. "CC13 Aguascalientes..." y "SLP Hidalgo" —
+      // cada uno con su propio destino aunque comparten T.U.), se usa ese.
+      // Solo si de verdad sigue sin poder distinguirse (ni por monto ni
+      // por destino) se manda a revisar a mano, igual que la Pasada 2.
+      var destinoNorm0=_normTxtFactManiobras(rg.destino);
       var candidato=candidatosTU.find(function(v){return Math.abs((v.subtotal||0)-rg.total)<0.01;})||
-        (candidatosTU.length===1?candidatosTU[0]:null);
+        (candidatosTU.length===1?candidatosTU[0]:null)||
+        (destinoNorm0?(function(){
+          var porDestino=candidatosTU.filter(function(v){
+            var vDestino=_normTxtFactManiobras((v.ruta&&v.ruta[0]&&v.ruta[0].destino)||'');
+            return vDestino&&(vDestino.indexOf(destinoNorm0)!==-1||destinoNorm0.indexOf(vDestino)!==-1);
+          });
+          return porDestino.length===1?porDestino[0]:null;
+        })():null);
       if(!candidato){sinMatch.push(rg);return;}
       var diff0=Math.abs((candidato.subtotal||0)-rg.total);
       if(diff0>TOLERANCIA){diferencias.push({rg:rg,candidato:candidato,diff:diff0});return;}
