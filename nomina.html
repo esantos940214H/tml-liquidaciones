@@ -706,14 +706,31 @@ function verReciboNomina(unidad,id){
     alert('No se pudo generar la vista previa: '+e.message);
   });
 }
-function eliminarNomina(unidad,id){
-  if(!nominaDB[unidad])return;
-  var n=nominaDB[unidad].find(function(x){return x.id===id;});
+// cancelarReciboNomina: cancela ante el SAT (vía Facturapi) el CFDI real de
+// este recibo — a diferencia del botón ✕ de antes (que solo borraba el
+// registro interno sin tocar el CFDI timbrado), esto deja el recibo
+// marcado "cancelado" en nominaDB para siempre (no se borra, queda como
+// rastro) y el resto del sistema (liq.html solo toma nómina "pendiente"
+// para armar una liquidación) lo excluye automático.
+const FUNCTION_URL_CANCELAR_NOMINA='https://us-central1-tml-liquidaciones.cloudfunctions.net/cancelarNominaFacturapi';
+async function cancelarReciboNomina(unidad,id){
+  var u=usuarioSesion();
+  if(!u||!u.esAdmin){alert('Solo un administrador puede cancelar un CFDI.');return;}
+  var n=(nominaDB[unidad]||[]).find(function(x){return x.id===id;});
   if(!n||n.estado!=='pendiente')return;
-  if(!confirm('¿Eliminar este recibo de nómina ('+fmt(n.totalDeducciones)+')?'))return;
-  nominaDB[unidad]=nominaDB[unidad].filter(function(x){return x.id!==id;});
-  guardarNominaDB();
-  renderNomina();
+  if(!confirm('¿Cancelar ante el SAT el CFDI de nómina de '+(nombreOp(unidad)||unidad)+' (folio '+(n.folio||'?')+', '+fmt(n.totalPercepciones||0)+')?\n\nEsto NO se puede deshacer — el recibo queda marcado como cancelado para siempre.'))return;
+  try{
+    var idToken=await firebase.auth().currentUser.getIdToken();
+    var r=await fetch(FUNCTION_URL_CANCELAR_NOMINA,{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+idToken},body:JSON.stringify({operadorId:unidad,id:id,motivo:'02'})});
+    var data=await r.json();
+    if(!r.ok)throw new Error(data.error||'Error desconocido');
+    alert('✅ CFDI cancelado ante el SAT.');
+    // No hace falta recargar a mano: window.FB.listen('estado','nominaDB',...)
+    // ya está escuchando y vuelve a renderizar solo en cuanto el servidor
+    // guarde el cambio.
+  }catch(e){
+    alert('⚠️ No se pudo cancelar: '+e.message);
+  }
 }
 
 function renderNomina(){
@@ -742,7 +759,9 @@ function renderNomina(){
     totPerc+=n.totalPercepciones||0;totDed+=n.totalDeducciones||0;
     var estadoCell=n.estado==='liquidado'
       ?'<span class="badge bg-green">✓ Liquidado #'+n.liqNum+'</span>'
-      :'<span class="badge bg-yellow">Pendiente</span>';
+      :(n.estado==='cancelado'
+        ?'<span class="badge bg-gray" title="'+(n.canceladoEn||'')+' por '+(n.canceladoPor||'?')+'">🚫 Cancelado ante el SAT</span>'
+        :'<span class="badge bg-yellow">Pendiente</span>');
     filasNom.push('<tr><td style="font-size:12px">'+(nombreOp(n.unidad)||n.unidad)+'</td>'
       +'<td style="font-size:11px">'+(n.fecha||'—')+'</td>'
       +'<td style="font-size:11px">'+(n.periodoIni||'?')+' al '+(n.periodoFin||'?')+'</td>'
@@ -750,7 +769,12 @@ function renderNomina(){
       +'<td class="num r">'+fmt(n.totalPercepciones||0)+'</td>'
       +'<td class="num r" style="color:#9b1c1c;font-weight:700">'+fmt(n.totalDeducciones||0)+'</td>'
       +'<td>'+estadoCell+'</td>'
-      +'<td>'+(n.estado==='pendiente'?'<button class="btn btn-sm" style="background:#fde8e8;color:#9b1c1c;border:none;cursor:pointer" onclick="eliminarNomina('+n.unidad+',\''+n.id+'\')">✕</button>':'')+'</td></tr>');
+      // Cancelar (no borrar) — ver cancelarReciboNomina: pide el CFDI
+      // real cancelado ante el SAT vía Facturapi, y el estado "cancelado"
+      // queda reflejado en nominaDB (liq.html y el resto del sistema solo
+      // toman nómina con estado "pendiente", así que un cancelado se
+      // excluye automático de cualquier liquidación futura).
+      +'<td>'+(n.estado==='pendiente'?'<button class="btn btn-sm" style="background:#fde8e8;color:#9b1c1c;border:none;cursor:pointer" onclick="cancelarReciboNomina('+n.unidad+',\''+n.id+'\')">🚫 Cancelar CFDI</button>':'')+'</td></tr>');
   });
   tb.innerHTML=filas.length?filasNom.join(''):'<tr><td colspan="8" style="text-align:center;color:#aaa;padding:20px">Sin recibos de nómina registrados.</td></tr>';
   tf.innerHTML='<tr style="background:#f5f5f8;font-weight:700"><td colspan="4">TOTALES</td><td class="num r">'+fmt(totPerc)+'</td><td class="num r" style="color:#9b1c1c">'+fmt(totDed)+'</td><td colspan="2"></td></tr>';
