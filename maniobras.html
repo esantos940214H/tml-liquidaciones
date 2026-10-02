@@ -642,15 +642,13 @@ function _idsDeObservaciones(observaciones){
 }
 
 // Revisa si YA existe una autorización con los mismos datos (operador,
-// monto, fecha, destino, tienda, y al menos uno de folio/pedido/T.U.'s
-// coincidiendo) — para detectar quien pega el mismo correo dos veces por
-// error. No bloquea por monto/fecha solos (podría ser una maniobra
-// distinta the mismo día) — solo cuando ADEMÁS coincide algún identificador.
+// monto, y al menos uno de folio/pedido/T.U.'s coincidiendo) — para
+// detectar quien pega el mismo correo dos veces por error. No bloquea por
+// monto solo (podría ser una maniobra distinta el mismo día) — solo
+// cuando ADEMÁS coincide algún identificador.
 function _buscarDuplicado(datos){
   var unidad=parseInt(datos.unidad||0);
   var monto=parseFloat(datos.monto||0);
-  var destino=_normTxt(datos.destino);
-  var tienda=_normTxt(datos.tienda);
   var ids=[datos.folio,datos.pedido,datos.tu1,datos.tu2].map(_normTxt).filter(function(s){return s;});
   if(!ids.length)return null;
   // Ya NO se exige que "fecha" coincida exacta (caso real: Francisco
@@ -663,14 +661,20 @@ function _buscarDuplicado(datos){
   // fueran nuevas). El monto + el mismo operador + compartir folio/pedido/
   // T.U. ya es una señal más que suficiente de que es la misma
   // autorización — no hace falta además la fecha exacta.
+  // Tampoco se exige ya que "destino"/"tienda" coincidan exacto (caso real:
+  // Eduardo Hernández Aceves, FOLIO:654, mismo T.U. — el mismo correo
+  // reenviado/reprocesado dos veces quedó registrado DOS VECES en $0,
+  // porque la IA extrajo el destino con una redacción ligeramente distinta
+  // entre una mención y otra del mismo hecho, y ese texto nunca coincidía
+  // exacto). El FOLIO ya es el identificador único real del documento (ver
+  // comentario más abajo, "idsChoque") — cuando coincide junto con el T.U.
+  // y el monto, es sobra evidencia de que es la misma autorización; cuando
+  // de verdad son 2 tramos distintos del mismo viaje, cada uno trae su
+  // PROPIO folio (nunca el mismo), así que esto no bloquea ese caso legítimo.
   return ingresosDB.find(function(v){
     if(!v.esAutorizacionCliente)return false;
     if(v.unidad!==unidad)return false;
     if(Math.abs((v.subtotal||0)-monto)>=0.01)return false;
-    var vDestino=_normTxt((v.ruta&&v.ruta[0]&&v.ruta[0].destino)||'');
-    var vTienda=_normTxt(v.tienda);
-    if(destino&&vDestino&&destino!==vDestino)return false;
-    if(tienda&&vTienda&&tienda!==vTienda)return false;
     var vIds=_idsDeObservaciones(v.observaciones);
     return ids.some(function(id){return vIds.indexOf(id)!==-1;});
   });
