@@ -4603,8 +4603,12 @@ exports.generarNominaFacturapi = onRequest({ secrets: [FACTURAPI_TEST_KEY], cors
             riesgo_puesto: nom.riesgoPuesto || '4', periodicidad_pago: '05', clave_ent_fed: 'MEX',
             salario_base_cot_apor: nom.sdiSbc || 0, salario_diario_integrado: nom.sdiSbc || 0
           },
-          percepciones: { total_sueldos: percepcion, total_gravado: percepcion, total_exento: 0, percepcion: percepciones },
-          deducciones: { total_otras_deducciones: Math.round((imss + rcv + infonavit + otrasDeducciones) * 100) / 100, total_impuestos_retenidos: isr, deduccion: deducciones }
+          // Facturapi rechazó "total_sueldos" dentro de percepciones con
+          // "no está permitido" — calcula esos totales solo a partir de
+          // total_percepciones/total_deducciones (arriba) y de los arreglos
+          // mismos, así que aquí solo van los arreglos, sin sub-totales.
+          percepciones: { percepcion: percepciones },
+          deducciones: { deduccion: deducciones }
         };
         const bancoClave = BANCO_SAT_SERVER[(nom.banco || '').toUpperCase()];
         if (bancoClave && nom.clabe && nom.clabe.length >= 10) {
