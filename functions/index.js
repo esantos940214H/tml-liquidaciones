@@ -4607,8 +4607,11 @@ exports.generarNominaFacturapi = onRequest({ secrets: [FACTURAPI_TEST_KEY], cors
           // "no está permitido" — calcula esos totales solo a partir de
           // total_percepciones/total_deducciones (arriba) y de los arreglos
           // mismos, así que aquí solo van los arreglos, sin sub-totales.
+          // "deducciones tiene un tipo inválido" — a diferencia de
+          // percepciones (que sí espera {percepcion:[...]}), deducciones
+          // espera el arreglo DIRECTO, sin envolver.
           percepciones: { percepcion: percepciones },
-          deducciones: { deduccion: deducciones }
+          deducciones: deducciones
         };
         const bancoClave = BANCO_SAT_SERVER[(nom.banco || '').toUpperCase()];
         if (bancoClave && nom.clabe && nom.clabe.length >= 10) {
