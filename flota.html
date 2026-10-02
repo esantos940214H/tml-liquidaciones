@@ -71,6 +71,24 @@ tr:hover td{background:#fafafa}
 .session-user-label{font-size:11px;color:#aaa}
 .session-logout{font-size:11px;color:#aaa;text-decoration:underline;cursor:pointer;background:none;border:none}
 .session-logout:hover{color:#fff}
+
+/* ── MODAL de edición completa (operador/unidad) — reemplaza las cadenas
+   de prompt() de antes: un solo formulario con todos los campos a la
+   vista, más los PDF (licencia/póliza/tarjeta de circulación). ── */
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:9999;display:none;align-items:center;justify-content:center;padding:20px}
+.modal-overlay.show{display:flex}
+.modal-box{background:#fff;border-radius:12px;padding:26px 28px;width:100%;max-width:720px;max-height:90vh;overflow-y:auto;box-shadow:0 16px 48px rgba(0,0,0,.3)}
+.modal-box h3{font-size:16px;font-weight:800;color:#1a1a2e;margin-bottom:4px}
+.modal-box .modal-sub{font-size:12px;color:#888;margin-bottom:18px}
+.modal-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:12px}
+.modal-grid .field-full{grid-column:1/-1}
+.modal-section{font-size:11px;font-weight:700;color:#e63946;text-transform:uppercase;letter-spacing:.6px;margin:18px 0 8px;padding-top:12px;border-top:1px solid #f0f0f0}
+.modal-section:first-of-type{margin-top:4px;padding-top:0;border-top:none}
+.doc-box{border:1.5px dashed #dde;border-radius:8px;padding:10px 12px;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
+.doc-box .doc-status{font-size:12px}
+.doc-box a{color:#1a1a2e;font-weight:700;text-decoration:underline}
+.modal-actions{display:flex;gap:10px;justify-content:flex-end;margin-top:20px;position:sticky;bottom:0;background:#fff;padding-top:14px}
+@media(max-width:600px){.modal-grid{grid-template-columns:1fr}}
 </style>
 <script>if(window!==window.top)document.documentElement.className+=' in-iframe';</script>
 </head>
@@ -422,11 +440,94 @@ tr:hover td{background:#fafafa}
 
 </div>
 
+<!-- MODAL: Editar operador (nombre, comisión, clave, licencia, RFC, datos de
+     nómina y el PDF de la licencia de conducir) — un solo formulario, en vez
+     de la cadena de prompt() de antes. -->
+<div class="modal-overlay" id="modalOperador">
+  <div class="modal-box">
+    <h3>✏️ Editar operador</h3>
+    <div class="modal-sub" id="modalOperadorSub"></div>
+    <div class="modal-grid">
+      <div class="field"><label>Nombre completo</label><input type="text" id="mopNombre"></div>
+      <div class="field"><label>% Comisión</label><input type="number" id="mopComision" step="1" min="0" max="100"></div>
+      <div class="field"><label>Clave</label><input type="text" id="mopClave"></div>
+      <div class="field"><label>RFC (para Carta Porte, opcional)</label><input type="text" id="mopRfc"></div>
+
+      <div class="modal-section field-full">Licencia de conducir (bitácora SCT)</div>
+      <div class="field"><label>Licencia No.</label><input type="text" id="mopLicencia"></div>
+      <div class="field"><label>Vigencia de licencia</label><input type="date" id="mopLicenciaVigencia"></div>
+      <div class="field-full doc-box">
+        <span class="doc-status" id="mopLicenciaPdfStatus">Sin PDF cargado.</span>
+        <span><input type="file" accept="application/pdf" id="mopLicenciaPdfInput" style="display:none" onchange="_subirDocModal('operador','licenciaPdfURL','mopLicenciaPdfInput','mopLicenciaPdfStatus')"><button class="btn btn-out btn-sm" onclick="$('mopLicenciaPdfInput').click()">📎 Subir/reemplazar PDF</button></span>
+      </div>
+
+      <div class="modal-section field-full">Datos para timbrar Nómina (Facturapi)</div>
+      <div class="field"><label>CURP</label><input type="text" id="mopCurp"></div>
+      <div class="field"><label>Núm. Seguridad Social (IMSS)</label><input type="text" id="mopNss"></div>
+      <div class="field"><label>Fecha inicio relación laboral</label><input type="date" id="mopFechaIngreso"></div>
+      <div class="field"><label>Puesto</label><input type="text" id="mopPuesto"></div>
+      <div class="field"><label>Clase de riesgo IMSS (1-5)</label><input type="text" id="mopRiesgoPuesto" placeholder="4 si no estás seguro — confirmar antes de timbrar"></div>
+      <div class="field"><label>Banco</label><input type="text" id="mopBanco"></div>
+      <div class="field"><label>CLABE</label><input type="text" id="mopClabe"></div>
+      <div class="field"><label>Salario diario (SD, nominal)</label><input type="text" id="mopSalarioDiario"></div>
+      <div class="field"><label>SDI / SBC (integrado)</label><input type="text" id="mopSdiSbc"></div>
+      <div class="field"><label>Código postal fiscal</label><input type="text" id="mopCodigoPostal"></div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-out" onclick="cerrarModalOperador()">Cancelar</button>
+      <button class="btn btn-red" onclick="guardarModalOperador()">Guardar</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: Editar unidad (datos básicos + Carta Porte + los PDF de póliza y
+     tarjeta de circulación). -->
+<div class="modal-overlay" id="modalUnidad">
+  <div class="modal-box">
+    <h3>✏️ Editar unidad</h3>
+    <div class="modal-sub" id="modalUnidadSub"></div>
+    <div class="modal-grid">
+      <div class="field"><label>Placas</label><input type="text" id="munPlacas"></div>
+      <div class="field"><label>Marca (bitácora SCT)</label><input type="text" id="munMarca"></div>
+      <div class="field"><label>Modelo (bitácora SCT)</label><input type="text" id="munModelo"></div>
+      <div class="field"><label>Capacidad de tanque(s), litros (coma si son varios)</label><input type="text" id="munTanques"></div>
+      <div class="field"><label>Colchonetas esperadas</label><input type="number" id="munColch"></div>
+      <div class="field"><label>Extintores esperados</label><input type="number" id="munExt"></div>
+
+      <div class="modal-section field-full">Datos para Carta Porte (SAT)</div>
+      <div class="field"><label>Config. vehicular (catálogo c_ConfigAutotransporte)</label><input type="text" id="munConfigVehicular" placeholder="Ej: C2, C3, T3S2"></div>
+      <div class="field"><label>Año modelo del vehículo</label><input type="text" id="munAnioModeloVM"></div>
+      <div class="field"><label>Peso bruto vehicular (kg)</label><input type="number" id="munPesoBrutoVehicular"></div>
+      <div class="field"><label>Tipo de permiso SCT/ATT</label><input type="text" id="munPermSCT" placeholder="Ej: TPAF01"></div>
+      <div class="field"><label>Número de permiso SCT/ATT</label><input type="text" id="munNumPermisoSCT"></div>
+      <div class="field"><label>Aseguradora (resp. civil)</label><input type="text" id="munAseguradora"></div>
+      <div class="field"><label>Número de póliza (resp. civil)</label><input type="text" id="munPoliza"></div>
+      <div class="field-full doc-box">
+        <span class="doc-status" id="munPolizaPdfStatus">Sin PDF cargado.</span>
+        <span><input type="file" accept="application/pdf" id="munPolizaPdfInput" style="display:none" onchange="_subirDocModal('unidad','polizaPdfURL','munPolizaPdfInput','munPolizaPdfStatus')"><button class="btn btn-out btn-sm" onclick="$('munPolizaPdfInput').click()">📎 Subir/reemplazar póliza (PDF)</button></span>
+      </div>
+      <div class="field-full doc-box">
+        <span class="doc-status" id="munTarjetaPdfStatus">Sin PDF cargado.</span>
+        <span><input type="file" accept="application/pdf" id="munTarjetaPdfInput" style="display:none" onchange="_subirDocModal('unidad','tarjetaCirculacionPdfURL','munTarjetaPdfInput','munTarjetaPdfStatus')"><button class="btn btn-out btn-sm" onclick="$('munTarjetaPdfInput').click()">📎 Subir/reemplazar tarjeta de circulación (PDF)</button></span>
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-out" onclick="cerrarModalUnidad()">Cancelar</button>
+      <button class="btn btn-red" onclick="guardarModalUnidad()">Guardar</button>
+    </div>
+  </div>
+</div>
+
 <!-- Firebase compat -->
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
 <!-- Firebase Auth (login del módulo — ver shared/sesion.js) -->
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
+<!-- Storage — para los PDF de licencia/póliza/tarjeta de circulación (ver
+     shared/comprobantes.js → subirArchivo, usado en editarOperador/editarUnidad). -->
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-storage-compat.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+<script src="shared/comprobantes.js"></script>
 <script src="shared/sesion.js"></script>
 <script src="shared/blobSeguro.js"></script>
 <script src="shared/avisoFacturasVencidas.js"></script>
@@ -687,99 +788,99 @@ async function altaOperador(){
     await cargarTodo();
   }catch(e){console.error('altaOperador:',e);alert('⚠️ Error: '+e.message);}
 }
-async function editarOperador(id){
+// editarOperador: abre un formulario completo (modal) con TODOS los datos
+// del operador a la vista — nombre/comisión/clave/RFC, licencia (+ su PDF),
+// y los datos de Nómina — en vez de la cadena de prompt() de antes (uno por
+// uno, sin ver el resto). Antes esto estaba partido en dos funciones
+// (editarOperador + editarDatosNominaOperador, con dos botones ✏️/🧾); se
+// juntó en un solo formulario porque de todos modos es el mismo operador.
+var _modalOperadorId=null;
+function editarOperador(id){
   var op=operadoresRaw.find(function(o){return o.id===id;});
   if(!op)return;
-  var nombre=prompt('Nombre:',op.nombre);
-  if(nombre===null)return;
-  var comisionTxt=prompt('% Comisión:',op.comision);
-  if(comisionTxt===null)return;
-  var clave=prompt('Clave:',op.clave||'');
-  if(clave===null)return;
-  // Licencia+vigencia: solo se usan para autollenar la bitácora electrónica
-  // de horas de servicio (operador.html) — ver NOM-087-SCT-2-2017.
-  var licencia=prompt('Licencia No. (para la bitácora SCT, opcional):',op.licencia||'');
-  if(licencia===null)return;
-  var licenciaVigencia=prompt('Vigencia de licencia (YYYY-MM-DD, opcional):',op.licenciaVigencia||'');
-  if(licenciaVigencia===null)return;
-  // RFC: solo se usa para autollenar FiguraTransporte al generar una Carta
-  // Porte (ver ing.html → Generar Carta Porte) — opcional, no bloquea nada
-  // si se deja en blanco.
-  var rfc=prompt('RFC (para Carta Porte, opcional):',op.rfc||'');
-  if(rfc===null)return;
-  try{
-    await firebase.firestore().collection('operadores').doc(id).update({
-      nombre:nombre.trim().toUpperCase(),comision:parseFloat(comisionTxt)||12,clave:clave.trim(),
-      licencia:licencia.trim()||null,licenciaVigencia:licenciaVigencia.trim()||null,
-      rfc:rfc.trim().toUpperCase()||null
-    });
-    if(window.cargarOperadores)window.cargarOperadores(true);
-    await cargarTodo();
-  }catch(e){console.error('editarOperador:',e);alert('⚠️ Error: '+e.message);}
-}
-// editarDatosNominaOperador: datos que solo hacen falta para timbrar un CFDI
-// de Nómina automático vía Facturapi (ver nomina.html → Generar y timbrar) —
-// aparte de editarOperador() para no mezclar datos laborales/fiscales
-// sensibles con los datos operativos de todos los días. El SAT exige CURP y
-// Número de Seguridad Social en el complemento de nómina — sin esos dos no
-// se puede timbrar nada para este operador, los demás son opcionales pero
-// recomendados.
-async function editarDatosNominaOperador(id){
-  var op=operadoresRaw.find(function(o){return o.id===id;});
-  if(!op)return;
+  _modalOperadorId=id;
   var nom=op.nomina||{};
-  var curp=prompt('CURP (obligatorio para timbrar nómina):',nom.curp||'');
-  if(curp===null)return;
-  var nss=prompt('Número de Seguridad Social IMSS (obligatorio):',nom.nss||'');
-  if(nss===null)return;
-  var fechaIngreso=prompt('Fecha de inicio de la relación laboral (YYYY-MM-DD):',nom.fechaIngreso||'');
-  if(fechaIngreso===null)return;
-  var puesto=prompt('Puesto:',nom.puesto||'OPERADOR');
-  if(puesto===null)return;
-  // riesgoPuesto: clase de riesgo IMSS (catálogo c_RiesgoPuesto, 1 a 5) con
-  // la que está dado de alta ante el IMSS — Esa no tenía el dato exacto a
-  // la mano para todos, puso "4" como mejor estimado para choferes/
-  // operadores; CONFIRMAR el valor real de cada uno antes de timbrar en
-  // producción (no sandbox), es un dato de su registro patronal real.
-  var riesgoPuesto=prompt('Clase de riesgo de puesto IMSS (1 a 5 — "4" si no estás seguro, CONFIRMAR antes de timbrar en producción):',nom.riesgoPuesto||'4');
-  if(riesgoPuesto===null)return;
-  var banco=prompt('Banco (ej. BBVA, BANAMEX, BANORTE, BANCOPPEL, AZTECA — como aparece en su CLABE):',nom.banco||'');
-  if(banco===null)return;
-  var clabe=prompt('CLABE (18 dígitos, opcional si no se paga por transferencia):',nom.clabe||'');
-  if(clabe===null)return;
-  var salarioDiario=prompt('Salario diario (SD, nominal, sin integrar):',nom.salarioDiario||'');
-  if(salarioDiario===null)return;
-  // sdiSbc: Salario Diario Integrado = Salario Base de Cotización — el
-  // valor que de verdad exige el complemento de nómina del SAT
-  // (SalarioDiarioIntegrado/SalarioBaseCotApor), siempre MAYOR al salario
-  // diario nominal (incluye el factor de integración: aguinaldo,
-  // vacaciones, prima vacacional prorrateados).
-  var sdiSbc=prompt('SDI / SBC (Salario Diario Integrado = Salario Base de Cotización):',nom.sdiSbc||'');
-  if(sdiSbc===null)return;
-  // Código postal fiscal del operador (su domicilio registrado ante el
-  // SAT) — obligatorio en CUALQUIER CFDI 4.0 para el receptor, sea factura
-  // o nómina.
-  var codigoPostal=prompt('Código postal fiscal del operador (domicilio registrado ante el SAT):',nom.codigoPostal||'');
-  if(codigoPostal===null)return;
+  $('modalOperadorSub').textContent=op.clave+' · '+op.nombre;
+  $('mopNombre').value=op.nombre||'';
+  $('mopComision').value=op.comision!=null?op.comision:12;
+  $('mopClave').value=op.clave||'';
+  $('mopRfc').value=op.rfc||'';
+  $('mopLicencia').value=op.licencia||'';
+  $('mopLicenciaVigencia').value=op.licenciaVigencia||'';
+  $('mopCurp').value=nom.curp||'';
+  $('mopNss').value=nom.nss||'';
+  $('mopFechaIngreso').value=nom.fechaIngreso||'';
+  $('mopPuesto').value=nom.puesto||'OPERADOR';
+  $('mopRiesgoPuesto').value=nom.riesgoPuesto||'4';
+  $('mopBanco').value=nom.banco||'';
+  $('mopClabe').value=nom.clabe||'';
+  $('mopSalarioDiario').value=nom.salarioDiario!=null?nom.salarioDiario:'';
+  $('mopSdiSbc').value=nom.sdiSbc!=null?nom.sdiSbc:'';
+  $('mopCodigoPostal').value=nom.codigoPostal||'';
+  _actualizarDocStatus('mopLicenciaPdfStatus',op.licenciaPdfURL,'licencia');
+  $('modalOperador').classList.add('show');
+}
+function cerrarModalOperador(){$('modalOperador').classList.remove('show');_modalOperadorId=null;}
+async function guardarModalOperador(){
+  if(!_modalOperadorId)return;
+  var nombre=($('mopNombre').value||'').trim();
+  if(!nombre){alert('Escribe el nombre del operador.');return;}
   try{
-    await firebase.firestore().collection('operadores').doc(id).update({
+    await firebase.firestore().collection('operadores').doc(_modalOperadorId).update({
+      nombre:nombre.toUpperCase(),
+      comision:parseFloat($('mopComision').value)||12,
+      clave:($('mopClave').value||'').trim(),
+      rfc:($('mopRfc').value||'').trim().toUpperCase()||null,
+      licencia:($('mopLicencia').value||'').trim()||null,
+      licenciaVigencia:$('mopLicenciaVigencia').value||null,
       nomina:{
-        curp:curp.trim().toUpperCase()||null,
-        nss:nss.trim().replace(/\D/g,'')||null,
-        fechaIngreso:fechaIngreso.trim()||null,
-        puesto:puesto.trim().toUpperCase()||'OPERADOR',
-        riesgoPuesto:riesgoPuesto.trim()||'4',
-        banco:banco.trim().toUpperCase()||null,
-        clabe:clabe.trim().replace(/\s/g,'')||null,
-        salarioDiario:parseFloat(salarioDiario)||null,
-        sdiSbc:parseFloat(sdiSbc)||null,
-        codigoPostal:codigoPostal.trim().replace(/\D/g,'')||null
+        curp:($('mopCurp').value||'').trim().toUpperCase()||null,
+        nss:($('mopNss').value||'').trim().replace(/\D/g,'')||null,
+        fechaIngreso:$('mopFechaIngreso').value||null,
+        puesto:($('mopPuesto').value||'').trim().toUpperCase()||'OPERADOR',
+        riesgoPuesto:($('mopRiesgoPuesto').value||'').trim()||'4',
+        banco:($('mopBanco').value||'').trim().toUpperCase()||null,
+        clabe:($('mopClabe').value||'').trim().replace(/\s/g,'')||null,
+        salarioDiario:parseFloat($('mopSalarioDiario').value)||null,
+        sdiSbc:parseFloat($('mopSdiSbc').value)||null,
+        codigoPostal:($('mopCodigoPostal').value||'').trim().replace(/\D/g,'')||null
       }
     });
     if(window.cargarOperadores)window.cargarOperadores(true);
+    cerrarModalOperador();
     await cargarTodo();
-  }catch(e){console.error('editarDatosNominaOperador:',e);alert('⚠️ Error: '+e.message);}
+  }catch(e){console.error('guardarModalOperador:',e);alert('⚠️ Error: '+e.message);}
 }
+// _actualizarDocStatus: refleja si ya hay un PDF guardado (con link para
+// verlo) o no, en la cajita de cada documento (licencia/póliza/tarjeta).
+function _actualizarDocStatus(elId,url,etiqueta){
+  $(elId).innerHTML=url
+    ?('✅ PDF cargado — <a href="'+url+'" target="_blank" rel="noopener">ver '+etiqueta+'</a>')
+    :('Sin PDF de '+etiqueta+' cargado.');
+}
+// _subirDocModal: sube el PDF elegido a Storage y lo guarda de inmediato en
+// Firestore (no espera al botón "Guardar" del modal, para no perder el
+// archivo si se cierra el modal sin guardar el resto) — usado por las 3
+// cajitas de documentos (licencia/póliza/tarjeta de circulación).
+async function _subirDocModal(coleccionCorta,campo,inputId,statusId){
+  var input=$(inputId);
+  var file=input.files&&input.files[0];
+  if(!file)return;
+  if(file.type!=='application/pdf'){alert('Solo se aceptan archivos PDF.');input.value='';return;}
+  var id=coleccionCorta==='operador'?_modalOperadorId:_modalUnidadId;
+  var coleccion=coleccionCorta==='operador'?'operadores':'unidades';
+  if(!id)return;
+  var nombreArchivo=campo==='licenciaPdfURL'?'licencia':(campo==='polizaPdfURL'?'poliza':'tarjetaCirculacion');
+  $(statusId).textContent='⏳ Subiendo...';
+  try{
+    var url=await TMLComprobantes.subirArchivo('flota/'+coleccion+'/'+id+'/'+nombreArchivo+'.pdf',file);
+    await firebase.firestore().collection(coleccion).doc(id).update(_objConCampo(campo,url));
+    _actualizarDocStatus(statusId,url,nombreArchivo==='licencia'?'licencia':(nombreArchivo==='poliza'?'póliza':'tarjeta de circulación'));
+    await cargarTodo();
+  }catch(e){console.error('_subirDocModal:',e);alert('⚠️ No se pudo subir el PDF: '+e.message);$(statusId).textContent='⚠️ Error al subir, intenta de nuevo.';}
+  input.value='';
+}
+function _objConCampo(campo,valor){var o={};o[campo]=valor;return o;}
 // importarDatosNominaJSON: carga en bloque los datos de Nómina (CURP, NSS,
 // etc.) Y de Carta Porte (RFC/licencia del operador, placas/permiso SCT/
 // seguro de su unidad) de varios operadores a la vez, en vez de ir campo
@@ -892,8 +993,7 @@ function renderOperadores(){
       +'<td>'+(o.unidadActual?('Unidad '+o.unidadActual):'<span style="color:#aaa">Sin asignar</span>')+'</td>'
       +'<td><span class="badge '+(o.activo?'bg-green':'bg-gray')+'">'+(o.activo?'Activo':'Baja')+'</span></td>'
       +'<td style="white-space:nowrap">'
-        +'<button class="btn-sm btn-out" onclick="editarOperador(\''+o.id+'\')">✏️</button> '
-        +'<button class="btn-sm btn-out" title="Datos para timbrar Nómina (CURP, NSS, etc.)" onclick="editarDatosNominaOperador(\''+o.id+'\')">🧾</button> '
+        +'<button class="btn-sm btn-out" title="Ver/editar toda la información de este operador" onclick="editarOperador(\''+o.id+'\')">✏️ Editar</button> '
         +'<button class="btn-sm" style="background:'+(o.activo?'#fde8e8':'#d1e7dd')+';color:'+(o.activo?'#9b1c1c':'#0a5233')+';border:none;cursor:pointer" onclick="toggleActivoOperador(\''+o.id+'\')">'+(o.activo?'Dar de baja':'Reactivar')+'</button>'
       +'</td>'
       +'</tr>';
@@ -924,69 +1024,62 @@ async function altaUnidad(){
     await cargarTodo();
   }catch(e){console.error('altaUnidad:',e);alert('⚠️ Error: '+e.message);}
 }
-async function editarUnidad(id){
+// editarUnidad: abre un formulario completo (modal) con TODOS los datos de
+// la unidad a la vista — placas/marca/modelo/tanques, Carta Porte, y los PDF
+// de póliza y tarjeta de circulación — en vez de la cadena de prompt() de
+// antes. Antes estaba partido en dos funciones (editarUnidad +
+// editarCartaPorteUnidad, con dos botones ✏️/🧾); se juntó en un solo
+// formulario porque de todos modos es la misma unidad.
+var _modalUnidadId=null;
+function editarUnidad(id){
   var un=unidadesRaw.find(function(u){return u.id===id;});
   if(!un)return;
-  var placas=prompt('Placas:',un.placas||'');
-  if(placas===null)return;
-  // Marca+modelo: solo se usan para autollenar la bitácora electrónica de
-  // horas de servicio (operador.html) — ver NOM-087-SCT-2-2017.
-  var marca=prompt('Marca (para la bitácora SCT, opcional):',un.marca||'');
-  if(marca===null)return;
-  var modelo=prompt('Modelo (para la bitácora SCT, opcional):',un.modelo||'');
-  if(modelo===null)return;
-  var tanquesTxt=prompt('Capacidad de tanque(s) en litros, separados por coma si son varios (ej. 200,100):',(un.tanques||[]).join(','));
-  if(tanquesTxt===null)return;
-  var colchTxt=prompt('Colchonetas esperadas:',un.colchonetasEsperadas!=null?un.colchonetasEsperadas:0);
-  if(colchTxt===null)return;
-  var extTxt=prompt('Extintores esperados:',un.extintoresEsperados!=null?un.extintoresEsperados:0);
-  if(extTxt===null)return;
-  var tanques=tanquesTxt.split(',').map(function(s){return parseFloat(s.trim())||0;}).filter(function(n){return n>0;});
-  try{
-    await firebase.firestore().collection('unidades').doc(id).update({
-      placas:placas.trim().toUpperCase(),marca:marca.trim()||null,modelo:modelo.trim()||null,tanques:tanques,
-      colchonetasEsperadas:parseInt(colchTxt)||0,extintoresEsperados:parseInt(extTxt)||0
-    });
-    await cargarTodo();
-  }catch(e){console.error('editarUnidad:',e);alert('⚠️ Error: '+e.message);}
-}
-// editarCartaPorteUnidad: datos que solo hacen falta al generar una Carta
-// Porte (ver ing.html → Generar Carta Porte) — aparte de editarUnidad()
-// para no obligar a pasar por 7 prompts más solo para corregir la placa.
-// Se capturan una sola vez por unidad y de ahí en adelante se reusan en
-// cada pedido de esa unidad.
-async function editarCartaPorteUnidad(id){
-  var un=unidadesRaw.find(function(u){return u.id===id;});
-  if(!un)return;
+  _modalUnidadId=id;
   var cp=un.cartaPorte||{};
-  var configVehicular=prompt('Config. vehicular SAT (catálogo c_ConfigAutotransporte, ej. C2, C3, T3S2):',cp.configVehicular||'');
-  if(configVehicular===null)return;
-  var anioModeloVM=prompt('Año modelo del vehículo:',cp.anioModeloVM||'');
-  if(anioModeloVM===null)return;
-  var pesoBrutoVehicular=prompt('Peso bruto vehicular (kg):',cp.pesoBrutoVehicular||'');
-  if(pesoBrutoVehicular===null)return;
-  var permSCT=prompt('Tipo de permiso SCT/ATT (catálogo c_TipoPermiso, ej. TPAF01):',cp.permSCT||'TPAF01');
-  if(permSCT===null)return;
-  var numPermisoSCT=prompt('Número de permiso SCT/ATT:',cp.numPermisoSCT||'');
-  if(numPermisoSCT===null)return;
-  var aseguradora=prompt('Aseguradora (responsabilidad civil):',cp.aseguradora||'');
-  if(aseguradora===null)return;
-  var poliza=prompt('Número de póliza (responsabilidad civil):',cp.poliza||'');
-  if(poliza===null)return;
+  $('modalUnidadSub').textContent='Unidad '+un.numero;
+  $('munPlacas').value=un.placas||'';
+  $('munMarca').value=un.marca||'';
+  $('munModelo').value=un.modelo||'';
+  $('munTanques').value=(un.tanques||[]).join(',');
+  $('munColch').value=un.colchonetasEsperadas!=null?un.colchonetasEsperadas:0;
+  $('munExt').value=un.extintoresEsperados!=null?un.extintoresEsperados:0;
+  $('munConfigVehicular').value=cp.configVehicular||'';
+  $('munAnioModeloVM').value=cp.anioModeloVM||'';
+  $('munPesoBrutoVehicular').value=cp.pesoBrutoVehicular!=null?cp.pesoBrutoVehicular:'';
+  $('munPermSCT').value=cp.permSCT||'TPAF01';
+  $('munNumPermisoSCT').value=cp.numPermisoSCT||'';
+  $('munAseguradora').value=cp.aseguradora||'';
+  $('munPoliza').value=cp.poliza||'';
+  _actualizarDocStatus('munPolizaPdfStatus',un.polizaPdfURL,'póliza');
+  _actualizarDocStatus('munTarjetaPdfStatus',un.tarjetaCirculacionPdfURL,'tarjeta de circulación');
+  $('modalUnidad').classList.add('show');
+}
+function cerrarModalUnidad(){$('modalUnidad').classList.remove('show');_modalUnidadId=null;}
+async function guardarModalUnidad(){
+  if(!_modalUnidadId)return;
+  var tanquesTxt=($('munTanques').value||'').trim();
+  var tanques=tanquesTxt?tanquesTxt.split(',').map(function(s){return parseFloat(s.trim())||0;}).filter(function(n){return n>0;}):[];
   try{
-    await firebase.firestore().collection('unidades').doc(id).update({
+    await firebase.firestore().collection('unidades').doc(_modalUnidadId).update({
+      placas:($('munPlacas').value||'').trim().toUpperCase(),
+      marca:($('munMarca').value||'').trim()||null,
+      modelo:($('munModelo').value||'').trim()||null,
+      tanques:tanques,
+      colchonetasEsperadas:parseInt($('munColch').value)||0,
+      extintoresEsperados:parseInt($('munExt').value)||0,
       cartaPorte:{
-        configVehicular:configVehicular.trim().toUpperCase()||null,
-        anioModeloVM:anioModeloVM.trim()||null,
-        pesoBrutoVehicular:parseFloat(pesoBrutoVehicular)||null,
-        permSCT:permSCT.trim().toUpperCase()||null,
-        numPermisoSCT:numPermisoSCT.trim()||null,
-        aseguradora:aseguradora.trim()||null,
-        poliza:poliza.trim()||null
+        configVehicular:($('munConfigVehicular').value||'').trim().toUpperCase()||null,
+        anioModeloVM:($('munAnioModeloVM').value||'').trim()||null,
+        pesoBrutoVehicular:parseFloat($('munPesoBrutoVehicular').value)||null,
+        permSCT:($('munPermSCT').value||'').trim().toUpperCase()||null,
+        numPermisoSCT:($('munNumPermisoSCT').value||'').trim()||null,
+        aseguradora:($('munAseguradora').value||'').trim()||null,
+        poliza:($('munPoliza').value||'').trim()||null
       }
     });
+    cerrarModalUnidad();
     await cargarTodo();
-  }catch(e){console.error('editarCartaPorteUnidad:',e);alert('⚠️ Error: '+e.message);}
+  }catch(e){console.error('guardarModalUnidad:',e);alert('⚠️ Error: '+e.message);}
 }
 async function toggleActivaUnidad(id){
   var un=unidadesRaw.find(function(u){return u.id===id;});
@@ -1021,8 +1114,7 @@ function renderUnidades(){
       +'<td>'+(op?op.nombre:'<span style="color:#aaa">Sin operador</span>')+'</td>'
       +'<td><span class="badge '+(u.activa?'bg-green':'bg-gray')+'">'+(u.activa?'Activa':'Baja')+'</span></td>'
       +'<td style="white-space:nowrap">'
-        +'<button class="btn-sm btn-out" onclick="editarUnidad(\''+u.id+'\')">✏️</button> '
-        +'<button class="btn-sm btn-out" title="Datos para Carta Porte" onclick="editarCartaPorteUnidad(\''+u.id+'\')">🧾</button> '
+        +'<button class="btn-sm btn-out" title="Ver/editar toda la información de esta unidad" onclick="editarUnidad(\''+u.id+'\')">✏️ Editar</button> '
         +'<button class="btn-sm" style="background:'+(u.activa?'#fde8e8':'#d1e7dd')+';color:'+(u.activa?'#9b1c1c':'#0a5233')+';border:none;cursor:pointer" onclick="toggleActivaUnidad(\''+u.id+'\')">'+(u.activa?'Dar de baja':'Reactivar')+'</button>'
       +'</td>'
       +'</tr>';
