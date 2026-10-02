@@ -649,8 +649,25 @@ function _idsDeObservaciones(observaciones){
 function _buscarDuplicado(datos){
   var unidad=parseInt(datos.unidad||0);
   var monto=parseFloat(datos.monto||0);
-  var ids=[datos.folio,datos.pedido,datos.tu1,datos.tu2].map(_normTxt).filter(function(s){return s;});
-  if(!ids.length)return null;
+  // folio/pedido es el identificador único real del documento (ver
+  // comentario más abajo, "idsChoque") — si coincide, ya es evidencia
+  // suficiente por sí sola, sin necesitar que el destino también coincida
+  // (caso real: Eduardo Hernández Aceves, FOLIO:654, mismo T.U. — el mismo
+  // correo reenviado/reprocesado quedó registrado DOS VECES en $0 porque
+  // antes se exigía ADEMÁS que el destino coincidiera exacto, y la IA lo
+  // extrajo con una redacción ligeramente distinta entre una mención y
+  // otra del mismo hecho).
+  // El T.U. por sí solo, SIN folio/pedido, es más débil — puede repetirse
+  // legítimamente entre 2 tramos DISTINTOS del mismo viaje que nunca
+  // trajeron folio propio (caso real: mismo T.U. 6500364245/246, un tramo
+  // "Tapachula Av. Sexta" y otro "Cancún - Porteo 182", cada uno con su
+  // propio monto) — ahí SÍ hace falta que el destino coincida para no
+  // bloquear el segundo tramo como si fuera el mismo que el primero.
+  var idsFuertes=[datos.folio,datos.pedido].map(_normTxt).filter(function(s){return s;});
+  var idsTU=[datos.tu1,datos.tu2].map(_normTxt).filter(function(s){return s;});
+  if(!idsFuertes.length&&!idsTU.length)return null;
+  var destino=_normTxt(datos.destino);
+  var tienda=_normTxt(datos.tienda);
   // Ya NO se exige que "fecha" coincida exacta (caso real: Francisco
   // Artemio Peña Vazquez — al pedir la autorización de una maniobra nueva,
   // el cliente contestó con un correo consolidado que traía, junto con la
@@ -661,22 +678,21 @@ function _buscarDuplicado(datos){
   // fueran nuevas). El monto + el mismo operador + compartir folio/pedido/
   // T.U. ya es una señal más que suficiente de que es la misma
   // autorización — no hace falta además la fecha exacta.
-  // Tampoco se exige ya que "destino"/"tienda" coincidan exacto (caso real:
-  // Eduardo Hernández Aceves, FOLIO:654, mismo T.U. — el mismo correo
-  // reenviado/reprocesado dos veces quedó registrado DOS VECES en $0,
-  // porque la IA extrajo el destino con una redacción ligeramente distinta
-  // entre una mención y otra del mismo hecho, y ese texto nunca coincidía
-  // exacto). El FOLIO ya es el identificador único real del documento (ver
-  // comentario más abajo, "idsChoque") — cuando coincide junto con el T.U.
-  // y el monto, es sobra evidencia de que es la misma autorización; cuando
-  // de verdad son 2 tramos distintos del mismo viaje, cada uno trae su
-  // PROPIO folio (nunca el mismo), así que esto no bloquea ese caso legítimo.
   return ingresosDB.find(function(v){
     if(!v.esAutorizacionCliente)return false;
     if(v.unidad!==unidad)return false;
     if(Math.abs((v.subtotal||0)-monto)>=0.01)return false;
     var vIds=_idsDeObservaciones(v.observaciones);
-    return ids.some(function(id){return vIds.indexOf(id)!==-1;});
+    var coincideFuerte=idsFuertes.some(function(id){return vIds.indexOf(id)!==-1;});
+    var coincideTU=idsTU.some(function(id){return vIds.indexOf(id)!==-1;});
+    if(!coincideFuerte&&!coincideTU)return false;
+    if(!coincideFuerte){
+      var vDestino=_normTxt((v.ruta&&v.ruta[0]&&v.ruta[0].destino)||'');
+      var vTienda=_normTxt(v.tienda);
+      if(destino&&vDestino&&destino!==vDestino)return false;
+      if(tienda&&vTienda&&tienda!==vTienda)return false;
+    }
+    return true;
   });
 }
 // Núcleo compartido: crea UNA autorización en ingresosDB (en memoria, sin
