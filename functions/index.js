@@ -4558,6 +4558,13 @@ exports.generarNominaFacturapi = onRequest({ secrets: [FACTURAPI_TEST_KEY], cors
       const rcv = parseFloat(item.rcv) || 0;
       const infonavit = parseFloat(item.infonavit) || 0;
       const otrasDeducciones = parseFloat(item.otrasDeducciones) || 0;
+      // subsidio: el subsidio al empleo efectivamente entregado (ver
+      // shared/calculoNomina.js) — el ISR que llega aquí ya viene NETO de
+      // subsidio (isrCausado - subsidio), pero el SAT exige declararlo
+      // aparte en "Otros pagos" (ver nominaData.otros_pagos abajo). Si la
+      // fila se llenó a mano (no con "Calcular automático"), llega 0 y
+      // simplemente no se agrega ningún "Otro pago".
+      const subsidio = parseFloat(item.subsidio) || 0;
       const totalDeducciones = Math.round((isr + imss + rcv + infonavit + otrasDeducciones) * 100) / 100;
       try {
         if (!percepcion) throw new Error('Sin percepción capturada, no se timbra.');
@@ -4569,50 +4576,58 @@ exports.generarNominaFacturapi = onRequest({ secrets: [FACTURAPI_TEST_KEY], cors
         if (faltan.length) throw new Error('Al operador le faltan estos datos de Nómina en Flota: ' + faltan.join(', ') + '.');
         if (!op.rfc) throw new Error('Al operador le falta el RFC en Flota.');
 
-        // Antigüedad: formato ISO 8601 de semanas completas (ej. "P12W"),
-        // como exige el catálogo del complemento de nómina.
-        const semanas = Math.max(0, Math.floor((new Date(fechaPago) - new Date(nom.fechaIngreso)) / (7 * msDia)));
-
-        const percepciones = [{ tipo_percepcion: '001', clave: '001', concepto: 'Sueldos', importe_gravado: percepcion, importe_exento: 0 }];
+        const percepciones = [{ tipo_percepcion: '001', clave: '001', importe_gravado: percepcion, importe_exento: 0 }];
 
         const deducciones = [];
-        if (isr > 0) deducciones.push({ tipo_deduccion: '002', clave: '002', concepto: 'ISR', importe: isr });
-        if (imss > 0) deducciones.push({ tipo_deduccion: '001', clave: '001', concepto: 'Seguridad social', importe: imss });
-        if (rcv > 0) deducciones.push({ tipo_deduccion: '003', clave: '003', concepto: 'Aportaciones a retiro, cesantía en edad avanzada y vejez (RCV)', importe: rcv });
-        if (infonavit > 0) deducciones.push({ tipo_deduccion: '007', clave: '007', concepto: 'INFONAVIT', importe: infonavit });
-        if (otrasDeducciones > 0) deducciones.push({ tipo_deduccion: '023', clave: '023', concepto: 'Otras deducciones', importe: otrasDeducciones });
+        if (isr > 0) deducciones.push({ tipo_deduccion: '002', clave: '002', importe: isr });
+        if (imss > 0) deducciones.push({ tipo_deduccion: '001', clave: '001', importe: imss });
+        if (rcv > 0) deducciones.push({ tipo_deduccion: '003', clave: '003', importe: rcv });
+        if (infonavit > 0) deducciones.push({ tipo_deduccion: '007', clave: '007', importe: infonavit });
+        if (otrasDeducciones > 0) deducciones.push({ tipo_deduccion: '023', clave: '023', importe: otrasDeducciones });
+
+        // Subsidio al empleo efectivamente entregado — el SAT lo exige
+        // declarado en "Otros pagos" (TipoOtroPago 002), aparte del ISR ya
+        // neto. Solo se agrega si de verdad aplicó (viene de
+        // shared/calculoNomina.js vía la fila de la tabla).
+        const otrosPagos = [];
+        if (subsidio > 0) {
+          otrosPagos.push({
+            tipo_otro_pago: '002', clave: '002', importe: subsidio, subsidio_causado: subsidio,
+            concepto: 'Subsidio para el empleo (efectivamente entregado al trabajador).'
+          });
+        }
 
         // IMPORTANTE: a diferencia del complemento de Carta Porte (que usa
         // los nombres de atributo tal cual del XML del SAT, en PascalCase),
         // el complemento de Nómina de Facturapi usa SU PROPIO esquema en
-        // snake_case, y las fechas como datetime ISO completo (no solo
-        // "YYYY-MM-DD") — confirmado por el rechazo real
-        // "complements.0.data.fecha_inicial_pago es requerido" y por la
-        // documentación pública de Facturapi. _fechaISOServer agrega una
-        // hora fija (mediodía UTC) solo para tener un datetime válido, sin
-        // que la fecha se recorra un día por huso horario.
+        // snake_case, confirmado contra un ejemplo real de su documentación
+        // (compartido por el dueño) — estructura y nombres de campo abajo
+        // son los de ESE ejemplo, no los del XML del SAT. Las fechas van
+        // como datetime ISO completo, no solo "YYYY-MM-DD".
+        // _fechaISOServer agrega una hora fija (mediodía UTC) solo para
+        // tener un datetime válido, sin que la fecha se recorra un día por
+        // huso horario.
         function _fechaISOServer(fechaYMD) { return new Date(fechaYMD + 'T12:00:00.000Z').toISOString(); }
         const nominaData = {
-          version: '1.2', tipo_nomina: 'O', fecha_pago: _fechaISOServer(fechaPago),
+          fecha_pago: _fechaISOServer(fechaPago),
           fecha_inicial_pago: _fechaISOServer(periodoIni), fecha_final_pago: _fechaISOServer(periodoFin),
           num_dias_pagados: numDiasPagados, total_percepciones: percepcion, total_deducciones: totalDeducciones,
           receptor: {
-            curp: nom.curp, num_seguridad_social: nom.nss, fecha_inicio_rel_laboral: nom.fechaIngreso,
-            antiguedad: 'P' + semanas + 'W', tipo_contrato: '01', tipo_jornada: '01',
-            tipo_regimen: '02', num_empleado: String(opId), puesto: nom.puesto || 'OPERADOR',
-            riesgo_puesto: nom.riesgoPuesto || '4', periodicidad_pago: '05', clave_ent_fed: 'MEX',
-            salario_base_cot_apor: nom.sdiSbc || 0, salario_diario_integrado: nom.sdiSbc || 0
+            curp: nom.curp, num_seguridad_social: nom.nss,
+            fecha_inicio_rel_laboral: _fechaISOServer(nom.fechaIngreso),
+            // antiguedad: true — según el ejemplo real de Facturapi es un
+            // booleano (le pide a Facturapi que la calcule sola a partir de
+            // fecha_inicio_rel_laboral), no el valor "P#W" que exige el XML
+            // crudo del SAT.
+            antiguedad: true, tipo_contrato: '01', tipo_jornada: '01',
+            tipo_regimen: '02', num_empleado: String(opId), departamento: 'OPERACIONES',
+            puesto: nom.puesto || 'OPERADOR', riesgo_puesto: nom.riesgoPuesto || '4',
+            periodicidad_pago: '05', clave_ent_fed: 'MEX', salario_diario_integrado: nom.sdiSbc || 0
           },
-          // Facturapi rechazó "total_sueldos" dentro de percepciones con
-          // "no está permitido" — calcula esos totales solo a partir de
-          // total_percepciones/total_deducciones (arriba) y de los arreglos
-          // mismos, así que aquí solo van los arreglos, sin sub-totales.
-          // "deducciones tiene un tipo inválido" — a diferencia de
-          // percepciones (que sí espera {percepcion:[...]}), deducciones
-          // espera el arreglo DIRECTO, sin envolver.
           percepciones: { percepcion: percepciones },
           deducciones: deducciones
         };
+        if (otrosPagos.length) nominaData.otros_pagos = otrosPagos;
         const bancoClave = BANCO_SAT_SERVER[(nom.banco || '').toUpperCase()];
         if (bancoClave && nom.clabe && nom.clabe.length >= 10) {
           nominaData.receptor.banco = bancoClave;

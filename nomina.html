@@ -775,6 +775,7 @@ function cargarTablaGenerarNomina(){
       +'<td class="r"><input type="number" step="0.01" min="0" class="genNomRcv" style="width:90px;text-align:right" value="0"></td>'
       +'<td class="r"><input type="number" step="0.01" min="0" class="genNomInfonavit" style="width:90px;text-align:right" value="0"></td>'
       +'<td class="r"><input type="number" step="0.01" min="0" class="genNomOtras" style="width:90px;text-align:right" value="0"></td>'
+      +'<td style="display:none"><input type="hidden" class="genNomSubsidio" value="0"></td>'
       +'</tr>';
   }).join('');
   $('wrapTablaGenNomina').style.display='block';
@@ -819,6 +820,7 @@ function calcularNominaAutomatica(){
     tr.querySelector('.genNomImss').value=r.imss;
     tr.querySelector('.genNomRcv').value=r.rcv;
     tr.querySelector('.genNomInfonavit').value=r.infonavit;
+    tr.querySelector('.genNomSubsidio').value=r.subsidio;
     tr.querySelector('.genNomChk').checked=true; // se seleccionó solo al calcularle datos reales
   });
   var info=$('calcNominaInfo');
@@ -844,7 +846,8 @@ async function generarYTimbrarNominaUI(){
       imss:parseFloat(tr.querySelector('.genNomImss').value||0),
       rcv:parseFloat(tr.querySelector('.genNomRcv').value||0),
       infonavit:parseFloat(tr.querySelector('.genNomInfonavit').value||0),
-      otrasDeducciones:parseFloat(tr.querySelector('.genNomOtras').value||0)
+      otrasDeducciones:parseFloat(tr.querySelector('.genNomOtras').value||0),
+      subsidio:parseFloat(tr.querySelector('.genNomSubsidio').value||0)
     });
   });
   if(!items.length){alert('No hay ningún operador seleccionado (checkbox) con percepción capturada — no hay nada que timbrar.');return;}
