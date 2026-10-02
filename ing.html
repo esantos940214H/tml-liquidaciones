@@ -1249,7 +1249,11 @@ function verificarSesionModulo(){
   if($('cardEstimadoIA'))$('cardEstimadoIA').style.display=esAdminIng?'':'none';
   if($('cardBuzonPedidosFlete'))$('cardBuzonPedidosFlete').style.display=esAdminIng?'':'none';
   if($('cardRegistrarFleteManual'))$('cardRegistrarFleteManual').style.display=esAdminIng?'':'none';
-  if($('cardFacturapiPrueba'))$('cardFacturapiPrueba').style.display=esAdminIng?'':'none';
+  // cardFacturapiPrueba: se deja oculta siempre (ya cumplió su propósito —
+  // validar el formato de Carta Porte antes de integrarlo en serio, ver
+  // generarCartaPorteFlete) — la función facturapiPrueba en el servidor se
+  // deja intacta por si hace falta probar otro JSON/complemento a futuro.
+  if($('cardFacturapiPrueba'))$('cardFacturapiPrueba').style.display='none';
   if($('cardClientesFiscales')){$('cardClientesFiscales').style.display=esAdminIng?'':'none';if(esAdminIng)cargarYRenderClientes();}
 }
 window.onFBReady(verificarSesionModulo);
