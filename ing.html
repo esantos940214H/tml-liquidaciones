@@ -3202,7 +3202,7 @@ async function procesarFacturaManiobrasExcel(){
     }
     if(!renglones.length)throw new Error(fXlsx.name+': no se encontró ningún renglón de viaje con datos.');
 
-    var TOLERANCIA=50;
+    var TOLERANCIA=150;
     var resueltos=[],diferencias=[],sinMatch=[],porDestinoMonto=[];
     var usadosIds={};
     // Todo o nada: si CUALQUIER renglón del Excel no encuentra su
