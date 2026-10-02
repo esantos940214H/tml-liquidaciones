@@ -718,7 +718,16 @@ async function cancelarReciboNomina(unidad,id){
   if(!u||!u.esAdmin){alert('Solo un administrador puede cancelar un CFDI.');return;}
   var n=(nominaDB[unidad]||[]).find(function(x){return x.id===id;});
   if(!n||n.estado!=='pendiente')return;
-  if(!confirm('¿Cancelar ante el SAT el CFDI de nómina de '+(nombreOp(unidad)||unidad)+' (folio '+(n.folio||'?')+', '+fmt(n.totalPercepciones||0)+')?\n\nEsto NO se puede deshacer — el recibo queda marcado como cancelado para siempre.'))return;
+  // Confirmación tecleando el folio (no un solo "OK") — mismo criterio que
+  // ya se usa para corregir el operador de un ingreso o el monto de una
+  // autorización: algo irreversible ante el SAT no se cancela de un clic
+  // accidental.
+  var folioTecleado=prompt('Vas a CANCELAR ANTE EL SAT el CFDI de nómina de '+(nombreOp(unidad)||unidad)+' ('+fmt(n.totalPercepciones||0)+'). Esto NO se puede deshacer.\n\nPara confirmar, teclea su folio tal cual aparece en la tabla:\n\n"'+(n.folio||'')+'"');
+  if(folioTecleado==null)return;
+  if(folioTecleado.trim().toUpperCase()!==(n.folio||'').trim().toUpperCase()){
+    alert('El folio no coincide. No se canceló nada.');
+    return;
+  }
   try{
     var idToken=await firebase.auth().currentUser.getIdToken();
     var r=await fetch(FUNCTION_URL_CANCELAR_NOMINA,{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+idToken},body:JSON.stringify({operadorId:unidad,id:id,motivo:'02'})});
