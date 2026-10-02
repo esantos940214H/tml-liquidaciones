@@ -4572,7 +4572,7 @@ exports.generarNominaFacturapi = onRequest({ secrets: [FACTURAPI_TEST_KEY], cors
         if (!snapOp.exists) throw new Error('No se encontró el operador ' + opId + '.');
         const op = snapOp.data();
         const nom = op.nomina || {};
-        const faltan = ['curp', 'nss', 'fechaIngreso', 'codigoPostal'].filter(function (k) { return !nom[k]; });
+        const faltan = ['curp', 'nss', 'fechaIngreso', 'codigoPostal', 'registroPatronal'].filter(function (k) { return !nom[k]; });
         if (faltan.length) throw new Error('Al operador le faltan estos datos de Nómina en Flota: ' + faltan.join(', ') + '.');
         if (!op.rfc) throw new Error('Al operador le falta el RFC en Flota.');
 
@@ -4633,7 +4633,12 @@ exports.generarNominaFacturapi = onRequest({ secrets: [FACTURAPI_TEST_KEY], cors
             salario_base_cot_apor: nom.sdiSbc || 0, salario_diario_integrado: nom.sdiSbc || 0
           },
           percepciones: { percepcion: percepciones },
-          deducciones: deducciones
+          deducciones: deducciones,
+          // emisor.registro_patronal: el SAT lo exige ("Nomina.Emisor.
+          // RegistroPatronal se debe registrar") — TML tiene DOS registros
+          // patronales distintos del IMSS, cada operador trae capturado
+          // en Flota cuál le corresponde (ver nom.registroPatronal).
+          emisor: { registro_patronal: nom.registroPatronal }
         };
         if (otrosPagos.length) nominaData.otros_pagos = otrosPagos;
         const bancoClave = BANCO_SAT_SERVER[(nom.banco || '').toUpperCase()];
