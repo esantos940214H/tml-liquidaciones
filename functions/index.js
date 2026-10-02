@@ -4684,7 +4684,11 @@ exports.generarNominaFacturapi = onRequest({ secrets: [FACTURAPI_TEST_KEY], cors
         if (!nominaDB[opId]) nominaDB[opId] = [];
         nominaDB[opId].push(Object.assign({
           id: 'nom-' + Date.now() + '-' + Math.random().toString(36).slice(2),
-          estado: 'pendiente', liqNum: null, xmlURL: xmlURL
+          estado: 'pendiente', liqNum: null, xmlURL: xmlURL,
+          // facturapiId: necesario para poder cancelar este CFDI después
+          // (ver cancelarNominaFacturapi) — el UUID por sí solo no basta,
+          // Facturapi cancela por SU propio id interno.
+          facturapiId: respuestaTimbrado.id
         }, fac));
         await db.collection('estado').doc('nominaDB').set({ data: JSON.stringify(nominaDB) });
 
@@ -4698,6 +4702,67 @@ exports.generarNominaFacturapi = onRequest({ secrets: [FACTURAPI_TEST_KEY], cors
     res.json({ ok: true, resultados: resultados });
   } catch (e) {
     console.error('generarNominaFacturapi:', e);
+    res.status(/administrador|sesión/.test(e.message || '') ? 403 : 500).json({ error: e.message || 'Error interno del servidor.' });
+  }
+});
+
+// ══════════════════════════════════════════════════════════════════════════
+// cancelarNominaFacturapi — cancela ante el SAT (vía Facturapi) un recibo de
+// nómina ya timbrado por error, y refleja la cancelación en nominaDB: NO lo
+// borra (a diferencia del botón ✕ de antes, que solo quitaba el registro
+// interno sin tocar el CFDI real) — lo deja con estado:'cancelado', para que
+// el resto del sistema (ej. liq.html, que solo junta nómina con
+// estado==='pendiente' para armar una liquidación) deje de tomarlo en
+// cuenta automáticamente, sin tener que avisarle a cada pantalla por su
+// cuenta.
+// Motivo de cancelación (catálogo del SAT): "02" (comprobante emitido con
+// errores SIN relación) es el caso normal de un recibo de nómina mal
+// capturado — no se pide "01" (con relación/sustitución) porque eso
+// requiere timbrar antes el CFDI que lo sustituye, que esta pantalla no
+// genera todavía.
+// ══════════════════════════════════════════════════════════════════════════
+exports.cancelarNominaFacturapi = onRequest({ secrets: [FACTURAPI_TEST_KEY], cors: true, region: 'us-central1', timeoutSeconds: 60 }, async (req, res) => {
+  if (req.method !== 'POST') { res.status(405).json({ error: 'Método no permitido, usa POST.' }); return; }
+  try {
+    const decoded = await _verificarAdmin(req);
+    const opId = parseInt(req.body && req.body.operadorId);
+    const reciboId = (req.body && req.body.id || '').toString().trim();
+    const motivo = (req.body && req.body.motivo || '02').toString().trim();
+    if (!opId || !reciboId) { res.status(400).json({ error: 'Faltan operadorId/id del recibo.' }); return; }
+
+    const snapNom = await db.collection('estado').doc('nominaDB').get();
+    let nominaDB = (snapNom.exists && snapNom.data().data) ? JSON.parse(snapNom.data().data) : {};
+    if (Array.isArray(nominaDB)) nominaDB = {};
+    const recibo = (nominaDB[opId] || []).find(function (x) { return x.id === reciboId; });
+    if (!recibo) { res.status(404).json({ error: 'No se encontró ese recibo de nómina.' }); return; }
+    if (recibo.estado === 'cancelado') { res.status(400).json({ error: 'Ese recibo ya estaba cancelado.' }); return; }
+    if (recibo.estado === 'liquidado') { res.status(400).json({ error: 'Ese recibo ya se usó en una liquidación cerrada — no se puede cancelar desde aquí, pide ayuda a un administrador para revertir la liquidación primero.' }); return; }
+    if (!recibo.facturapiId) { res.status(400).json({ error: 'Este recibo no tiene guardado el id de Facturapi (es de antes de que se guardara ese dato) — cancélalo a mano desde el dashboard de Facturapi.' }); return; }
+
+    const rCancel = await fetch('https://www.facturapi.io/v2/invoices/' + recibo.facturapiId + '?motive=' + encodeURIComponent(motivo), {
+      method: 'DELETE',
+      headers: { 'Authorization': 'Bearer ' + FACTURAPI_TEST_KEY.value() }
+    });
+    const respuestaCancel = await rCancel.json().catch(function () { return null; });
+    if (!rCancel.ok) { res.status(502).json({ error: 'Facturapi no pudo cancelar el CFDI.', detalleFacturapi: respuestaCancel }); return; }
+
+    // Releer fresco justo antes de guardar — mismo criterio de siempre
+    // (ver CLAUDE.md) — otra pestaña/corrida pudo haber agregado otro
+    // recibo a este mismo documento mientras se cancelaba este.
+    const snapNom2 = await db.collection('estado').doc('nominaDB').get();
+    let nominaDB2 = (snapNom2.exists && snapNom2.data().data) ? JSON.parse(snapNom2.data().data) : {};
+    if (Array.isArray(nominaDB2)) nominaDB2 = {};
+    const recibo2 = (nominaDB2[opId] || []).find(function (x) { return x.id === reciboId; });
+    if (!recibo2) { res.status(404).json({ error: 'Se canceló en Facturapi, pero el recibo ya no se encontró en nominaDB para marcarlo — revísalo a mano.' }); return; }
+    recibo2.estado = 'cancelado';
+    recibo2.canceladoEn = new Date().toISOString();
+    recibo2.canceladoPor = decoded.email || decoded.uid;
+    recibo2.motivoCancelacion = motivo;
+    await db.collection('estado').doc('nominaDB').set({ data: JSON.stringify(nominaDB2) });
+
+    res.json({ ok: true });
+  } catch (e) {
+    console.error('cancelarNominaFacturapi:', e);
     res.status(/administrador|sesión/.test(e.message || '') ? 403 : 500).json({ error: e.message || 'Error interno del servidor.' });
   }
 });
