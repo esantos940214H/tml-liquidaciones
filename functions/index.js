@@ -4611,7 +4611,10 @@ exports.generarNominaFacturapi = onRequest({ secrets: [FACTURAPI_TEST_KEY], cors
         const nominaData = {
           fecha_pago: _fechaISOServer(fechaPago),
           fecha_inicial_pago: _fechaISOServer(periodoIni), fecha_final_pago: _fechaISOServer(periodoFin),
-          num_dias_pagados: numDiasPagados, total_percepciones: percepcion, total_deducciones: totalDeducciones,
+          // total_percepciones/total_deducciones NO aparecen en el esquema
+          // oficial de Facturapi (NominaComplementDataInput) — los calcula
+          // solo, igual que total_sueldos dentro de percepciones.
+          num_dias_pagados: numDiasPagados,
           receptor: {
             curp: nom.curp, num_seguridad_social: nom.nss,
             fecha_inicio_rel_laboral: _fechaISOServer(nom.fechaIngreso),
