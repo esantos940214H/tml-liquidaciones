@@ -147,7 +147,7 @@ tr:hover td{background:#fafafa}
 
   <!-- GENERAR Y TIMBRAR (FACTURAPI) — solo admin -->
   <div class="card" id="cardGenerarNomina" style="display:none">
-    <div class="card-title">🧾 Generar y timbrar nómina del periodo (Facturapi) <span class="info-tip">?<span class="info-tip-box">Los montos de Percepción/ISR/IMSS/RCV/INFONAVIT/otras deducciones NO se calculan aquí — captúralos tal cual te los dé tu cálculo externo. Esta tabla solo arma el CFDI de nómina con esos montos y los datos de cada operador (CURP, NSS, etc. — captúralos antes en Flota) y lo manda a timbrar con Facturapi. Se usa la llave de PRUEBA mientras dure el periodo de prueba.</span></span></div>
+    <div class="card-title">🧾 Generar y timbrar nómina del periodo (Facturapi) <span class="info-tip">?<span class="info-tip-box">"🧮 Calcular automático" prellena Percepción/ISR/IMSS/RCV/INFONAVIT con el salario diario, SDI/SBC e Infonavit ya capturados en Flota para cada operador (ver shared/calculoNomina.js) — revísalos antes de timbrar, no sustituye tu propio cálculo/contador. "Otras deducciones" (préstamos, faltantes, etc.) siempre se captura a mano. Esta tabla arma el CFDI de nómina con esos montos y los datos de cada operador (CURP, NSS, etc. — captúralos antes en Flota) y lo manda a timbrar con Facturapi. Se usa la llave de PRUEBA mientras dure el periodo de prueba.</span></span></div>
     <div class="grid2" style="margin-bottom:12px">
       <div class="field"><label>Periodo — desde</label><input type="date" id="genNomPeriodoIni"></div>
       <div class="field"><label>Periodo — hasta</label><input type="date" id="genNomPeriodoFin"></div>
@@ -155,8 +155,10 @@ tr:hover td{background:#fafafa}
     </div>
     <div class="row" style="margin-bottom:12px">
       <button class="btn btn-out btn-sm" onclick="cargarTablaGenerarNomina()">Cargar operadores activos</button>
+      <button class="btn btn-dark btn-sm" id="btnCalcularNomina" style="display:none" onclick="calcularNominaAutomatica()">🧮 Calcular automático</button>
       <button class="btn btn-red btn-sm" id="btnGenerarNomina" style="display:none" onclick="generarYTimbrarNominaUI()">⚡ Generar y timbrar todos</button>
     </div>
+    <div id="calcNominaInfo" style="display:none;margin-bottom:12px"></div>
     <div class="tbl-wrap" id="wrapTablaGenNomina" style="display:none">
       <table>
         <thead><tr><th>Operador</th><th class="r">Percepción</th><th class="r">ISR</th><th class="r">IMSS</th><th class="r">RCV</th><th class="r">INFONAVIT</th><th class="r">Otras ded.</th></tr></thead>
@@ -203,6 +205,7 @@ tr:hover td{background:#fafafa}
 <script src="shared/sesion.js"></script>
 <script src="shared/avisoFacturasVencidas.js"></script>
 <script src="shared/operadores.js"></script>
+<script src="shared/calculoNomina.js"></script>
 <script src="shared/autoActualizar.js"></script>
 <!-- Guardar el XML original de cada recibo de nómina (ver shared/comprobantes.js) -->
 <script src="shared/comprobantes.js"></script>
@@ -774,7 +777,45 @@ function cargarTablaGenerarNomina(){
       +'</tr>';
   }).join('');
   $('wrapTablaGenNomina').style.display='block';
+  $('btnCalcularNomina').style.display='inline-block';
   $('btnGenerarNomina').style.display='inline-block';
+}
+// calcularNominaAutomatica: prellena Percepción/ISR/IMSS/RCV/INFONAVIT de
+// cada fila con los datos que ya tiene el sistema (salario diario, SDI/SBC
+// e Infonavit, capturados en Flota → editarOperador) y los días naturales
+// del periodo — ver shared/calculoNomina.js para las fórmulas y los
+// parámetros fiscales 2026. "Otras deducciones" nunca se calcula aquí
+// (préstamos, faltantes, etc. — eso sigue siendo captura manual). Los
+// campos quedan editables después de calcular — esto es un punto de
+// partida para revisar, NO timbra nada solo.
+function calcularNominaAutomatica(){
+  if(!window.CalculoNomina){alert('Falta cargar shared/calculoNomina.js.');return;}
+  var periodoIni=$('genNomPeriodoIni').value, periodoFin=$('genNomPeriodoFin').value;
+  if(!periodoIni||!periodoFin){alert('Captura el periodo (desde/hasta) antes de calcular.');return;}
+  var dias=window.CalculoNomina.diasEnPeriodo(periodoIni,periodoFin);
+  if(dias<=0){alert('El periodo "hasta" debe ser igual o posterior al "desde".');return;}
+  var sinDatos=[];
+  document.querySelectorAll('#tbGenNomina tr').forEach(function(tr){
+    var opId=parseInt(tr.dataset.opid);
+    var op=OPERADORES.find(function(o){return o.operadorId===opId;});
+    var nom=(op&&op.nomina)||{};
+    if(nom.salarioDiario==null&&nom.sdiSbc==null){
+      sinDatos.push((op&&op.nombre)||opId);
+      return; // sin datos de Flota — se deja en 0 para captura manual, no se adivina
+    }
+    var r=window.CalculoNomina.calcular({
+      salarioDiario:nom.salarioDiario,sdiSbc:nom.sdiSbc,dias:dias,infonavit:nom.infonavit||null
+    });
+    tr.querySelector('.genNomPercepcion').value=r.percepcion;
+    tr.querySelector('.genNomIsr').value=r.isr;
+    tr.querySelector('.genNomImss').value=r.imss;
+    tr.querySelector('.genNomRcv').value=r.rcv;
+    tr.querySelector('.genNomInfonavit').value=r.infonavit;
+  });
+  var info=$('calcNominaInfo');
+  info.style.display='block';
+  info.innerHTML='<div class="alert alert-ok">✅ Calculado para '+dias+' día(s) del periodo. Revisa cada fila (en especial ISR/IMSS/RCV) antes de timbrar — esto es un punto de partida, no un cálculo certificado por tu contador.</div>'
+    +(sinDatos.length?'<div class="alert alert-warn" style="margin-top:6px">⚠️ Sin salario diario/SDI capturado en Flota, se dejaron en $0.00 — captúralo antes de timbrarles: '+sinDatos.join(', ')+'.</div>':'');
 }
 const FUNCTION_URL_GENERAR_NOMINA='https://us-central1-tml-liquidaciones.cloudfunctions.net/generarNominaFacturapi';
 async function generarYTimbrarNominaUI(){
