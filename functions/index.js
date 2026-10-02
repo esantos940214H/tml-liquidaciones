@@ -507,20 +507,37 @@ function _sumarDiasHabilesServer(fechaISO, n) {
 function _buscarDuplicadoServer(ingresosDB, datos) {
   const unidad = parseInt(datos.unidad || 0);
   const monto = parseFloat(datos.monto || 0);
-  const ids = [datos.folio, datos.pedido, datos.tu1, datos.tu2].map(_normTxtServer).filter(function (s) { return s; });
-  if (!ids.length) return null;
-  // Ya NO se exige que "fecha" coincida exacta — mismo criterio que su
-  // gemela en maniobras.html (ver comentario ahí, caso real de Francisco
-  // Artemio Peña Vazquez): un correo consolidado que reautoriza varias
-  // maniobras ya registradas antes no siempre trae la fecha original de
-  // cada una, así que exigir fecha exacta hacía que esas ya-registradas
-  // nunca coincidieran y se volvieran a crear como duplicadas.
+  // Mismo criterio que su gemela en maniobras.html (ver comentario ahí,
+  // casos reales de Francisco Artemio Peña Vazquez, Eduardo Hernández
+  // Aceves y el tramo Tapachula/Cancún): folio/pedido por sí solo ya basta
+  // como duplicado (identificador único real del documento); el T.U. sin
+  // folio/pedido es más débil — puede repetirse legítimamente entre 2
+  // tramos distintos del mismo viaje, así que ahí sí se exige que el
+  // destino también coincida.
+  const idsFuertes = [datos.folio, datos.pedido].map(_normTxtServer).filter(function (s) { return s; });
+  const idsTU = [datos.tu1, datos.tu2].map(_normTxtServer).filter(function (s) { return s; });
+  if (!idsFuertes.length && !idsTU.length) return null;
+  const destino = _normTxtServer(datos.destino);
+  const tienda = _normTxtServer(datos.tienda);
+  // Ya NO se exige que "fecha" coincida exacta — un correo consolidado que
+  // reautoriza varias maniobras ya registradas antes no siempre trae la
+  // fecha original de cada una, así que exigir fecha exacta hacía que esas
+  // ya-registradas nunca coincidieran y se volvieran a crear como duplicadas.
   return ingresosDB.find(function (v) {
     if (!v.esAutorizacionCliente) return false;
     if (v.unidad !== unidad) return false;
     if (Math.abs((v.subtotal || 0) - monto) >= 0.01) return false;
     const vIds = _idsDeObservacionesServer(v.observaciones);
-    return ids.some(function (id) { return vIds.indexOf(id) !== -1; });
+    const coincideFuerte = idsFuertes.some(function (id) { return vIds.indexOf(id) !== -1; });
+    const coincideTU = idsTU.some(function (id) { return vIds.indexOf(id) !== -1; });
+    if (!coincideFuerte && !coincideTU) return false;
+    if (!coincideFuerte) {
+      const vDestino = _normTxtServer((v.ruta && v.ruta[0] && v.ruta[0].destino) || '');
+      const vTienda = _normTxtServer(v.tienda);
+      if (destino && vDestino && destino !== vDestino) return false;
+      if (tienda && vTienda && tienda !== vTienda) return false;
+    }
+    return true;
   });
 }
 
