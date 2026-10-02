@@ -4642,10 +4642,12 @@ exports.generarNominaFacturapi = onRequest({ secrets: [FACTURAPI_TEST_KEY], cors
           nominaData.receptor.cuenta_bancaria = nom.clabe;
         }
 
+        // "El campo 'items' no está permitido" — a diferencia de una
+        // factura normal, en tipo "N" (nómina) Facturapi arma el concepto
+        // solo a partir del complemento; no se le manda "items".
         const invoice = {
           type: 'N',
           customer: { legal_name: op.nombre, tax_id: op.rfc, tax_system: '605', address: { zip: nom.codigoPostal } },
-          items: [{ quantity: 1, product: { description: 'Pago de nómina', product_key: '84111506', unit_key: 'ACT', price: percepcion } }],
           use: 'CN01', payment_form: '99', payment_method: 'PUE',
           complements: [{ type: 'nomina', data: nominaData }]
         };
