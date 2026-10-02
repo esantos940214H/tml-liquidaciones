@@ -487,7 +487,11 @@ function renderPendientes(){
     };
   }
   tb.innerHTML=pendientes.map(function(v){
-    var vencido=yaVencioLimite(v.fechaLimiteJustificacion);
+    // Un $0 ya confirmado (sinFacturaJustificar:false) nunca va a tener
+    // una factura real que lo sustituya — no tiene caso mostrarlo como
+    // "vencido" pasados los 15 días, es una alerta falsa sobre algo que ya
+    // quedó resuelto (caso real reportado).
+    var vencido=v.sinFacturaJustificar!==false&&yaVencioLimite(v.fechaLimiteJustificacion);
     var responsable=(v.capturadoPor&&v.capturadoPor.usuario)||'';
     var destino=(v.ruta&&v.ruta[0]&&v.ruta[0].destino)||'';
     // "Reciente" = registrada hace menos de 32 horas Y todavía no confirmaste
@@ -514,7 +518,7 @@ function renderPendientes(){
       +'<td class="num" style="font-size:11px">'+(ids.tu1||'—')+'</td>'
       +'<td class="num" style="font-size:11px">'+(ids.tu2||'—')+'</td>'
       +'<td style="font-size:11px">'+responsable+'</td>'
-      +'<td>'+(vencido?'<span class="badge bg-red">⚠ Vencido</span>':'<span class="badge bg-yellow">⏳ '+(v.fechaLimiteJustificacion||'').slice(0,10)+'</span>')+'</td>'
+      +'<td>'+(v.sinFacturaJustificar===false?'<span class="badge bg-green">✓ Resuelto ($0)</span>':(vencido?'<span class="badge bg-red">⚠ Vencido</span>':'<span class="badge bg-yellow">⏳ '+(v.fechaLimiteJustificacion||'').slice(0,10)+'</span>'))+'</td>'
       +'<td><button class="btn btn-out btn-sm" title="Corregir el monto de esta fila ya registrada (ej. quedó en $0 por error)" onclick="corregirMontoAutorizacion(\''+v.id+'\')">✏️</button> <button class="btn btn-out btn-sm" onclick="eliminarAutorizacion(\''+v.id+'\')">✕</button></td>'
       +'</tr>';
   }).join('');
@@ -765,6 +769,10 @@ function _crearAutorizacionEnMemoria(datos){
       existentePendiente.subtotal=monto;existentePendiente.subtManiobras=monto;existentePendiente.iva=ivaExist;existentePendiente.total=monto+ivaExist;
       existentePendiente.montoPendiente=false;
       existentePendiente.unidad=unidad;
+      // $0 real (ya confirmado, no "no paga" por fuera de este flujo) nunca
+      // va a tener factura que lo sustituya — no debe quedar marcado como
+      // "sin factura"/vencido (ver comentario en el bloque de "No paga").
+      existentePendiente.sinFacturaJustificar=(monto!==0);
       return{ok:true,monto:monto,fechaLimite:existentePendiente.fechaLimiteJustificacion,idCombinado:existentePendiente.observaciones,actualizado:true};
     }
   }
@@ -787,6 +795,7 @@ function _crearAutorizacionEnMemoria(datos){
     var montoAnterior=existenteCorregible.subtotal;
     var ivaCorr=Math.round(monto*0.16*100)/100;
     existenteCorregible.subtotal=monto;existenteCorregible.subtManiobras=monto;existenteCorregible.iva=ivaCorr;existenteCorregible.total=monto+ivaCorr;
+    existenteCorregible.sinFacturaJustificar=(monto!==0);
     return{ok:true,monto:monto,fechaLimite:existenteCorregible.fechaLimiteJustificacion,idCombinado:existenteCorregible.observaciones,actualizado:true,corregido:true,montoAnterior:montoAnterior};
   }
   var dup=_buscarDuplicado(datos);
@@ -848,7 +857,14 @@ function _crearAutorizacionEnMemoria(datos){
     subtotal:montoGuardar,subtFlete:0,subtManiobras:montoGuardar,subtOtros:0,
     iva:ivaGuardar,ret:0,total:montoGuardar+ivaGuardar,estado:'sin_liquidar',liqNum:null,origen:'autorizacion_cliente',
     ruta:destino?[{origen:'',destino:destino,kms:''}]:[],tienda:tienda,observaciones:idCombinado,
-    sinFacturaJustificar:true,fechaLimiteJustificacion:fechaLimite,montoPendiente:pendiente,
+    // sinFacturaJustificar: un $0 ya CONFIRMADO (no pendiente) nunca va a
+    // tener una factura real que lo sustituya — si se deja marcado como
+    // "sin factura" igual que uno con monto real, a los 15 días hábiles
+    // sale "⚠ SIN FACTURA VENCIDO" para siempre por algo que ya está
+    // resuelto. Un "Pendiente" (esperando que el cliente confirme cuánto
+    // paga) SÍ debe seguir marcado — ahí de verdad hace falta dar
+    // seguimiento.
+    sinFacturaJustificar:(pendiente||montoGuardar!==0),fechaLimiteJustificacion:fechaLimite,montoPendiente:pendiente,
     capturadoPor:{usuario:responsable,nombre:responsable},
     // creadoEn: momento EXACTO del registro (a diferencia de "fecha", que es
     // solo el día) — se usa para saber si ya pasaron las 32 horas del aviso
@@ -1189,6 +1205,12 @@ async function _procesarRenglonesExtraidos(renglones){
     if(existente){
       existente.subtotal=0;existente.subtManiobras=0;existente.iva=0;existente.total=0;
       existente.montoPendiente=false;
+      // Un "No paga" confirmado en $0 nunca va a tener una factura real que
+      // lo sustituya (no hay nada que cobrar) — si se deja marcado como
+      // "sin factura" igual que uno con monto real, a los 15 días hábiles
+      // sale "⚠ SIN FACTURA VENCIDO" para siempre, una alerta falsa sobre
+      // algo que en realidad ya quedó resuelto. Caso real reportado.
+      existente.sinFacturaJustificar=false;
       existente.observaciones=(existente.observaciones||'')+' | NO_PAGA confirmado el '+hoy();
       noPagaResueltosCount++;
       return;
@@ -1216,7 +1238,10 @@ async function _procesarRenglonesExtraidos(renglones){
     ingresosDB.push({id:uid(),unidad:match.operadorId,folio:'MANIOBRAS',fecha:fecha,cliente:'GRUPO COMERCIAL DSW',tipo:'maniobra',
       subtotal:0,subtFlete:0,subtManiobras:0,subtOtros:0,iva:0,ret:0,total:0,estado:'sin_liquidar',liqNum:null,origen:'autorizacion_cliente',
       ruta:(x.destino||'').trim()?[{origen:'',destino:(x.destino||'').trim(),kms:''}]:[],tienda:(x.tienda||'').trim(),
-      observaciones:idParts.join(' | '),sinFacturaJustificar:true,
+      // sinFacturaJustificar:false — un $0 confirmado ("No paga") nunca va a
+      // tener factura real que lo sustituya, así que no debe salir como
+      // "pendiente de factura" ni "vencido" (ver comentario arriba).
+      observaciones:idParts.join(' | '),sinFacturaJustificar:false,
       fechaLimiteJustificacion:sumarDiasHabiles(fecha,15)+'T23:59:59',montoPendiente:false,
       capturadoPor:{usuario:'admin',nombre:'No paga (registrado al extraer)'},creadoEn:new Date().toISOString(),depositoConfirmado:false,
       sustituidoPorXML:false,pdfURL:null,esAutorizacionCliente:true});

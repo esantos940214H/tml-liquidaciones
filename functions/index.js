@@ -601,6 +601,10 @@ function _crearAutorizacionServer(ingresosDB, datos) {
       existentePendiente.iva = ivaExist; existentePendiente.total = monto + ivaExist;
       existentePendiente.montoPendiente = false;
       existentePendiente.unidad = unidad;
+      // $0 real ya confirmado nunca va a tener factura que lo sustituya —
+      // no debe quedar marcado como "sin factura"/vencido (mismo criterio
+      // que su gemela en maniobras.html, ver comentario ahí).
+      existentePendiente.sinFacturaJustificar = (monto !== 0);
       return { ok: true, actualizado: true };
     }
   }
@@ -617,6 +621,7 @@ function _crearAutorizacionServer(ingresosDB, datos) {
     const ivaCorr = Math.round(monto * 0.16 * 100) / 100;
     existenteCorregible.subtotal = monto; existenteCorregible.subtManiobras = monto;
     existenteCorregible.iva = ivaCorr; existenteCorregible.total = monto + ivaCorr;
+    existenteCorregible.sinFacturaJustificar = (monto !== 0);
     return { ok: true, corregido: true };
   }
 
@@ -660,7 +665,10 @@ function _crearAutorizacionServer(ingresosDB, datos) {
     subtotal: montoGuardar, subtFlete: 0, subtManiobras: montoGuardar, subtOtros: 0,
     iva: ivaGuardar, ret: 0, total: montoGuardar + ivaGuardar, estado: 'sin_liquidar', liqNum: null,
     origen: 'autorizacion_cliente', ruta: destino ? [{ origen: '', destino: destino, kms: '' }] : [],
-    tienda: tienda, observaciones: idCombinado, sinFacturaJustificar: true,
+    // sinFacturaJustificar: un $0 ya CONFIRMADO (no pendiente) nunca va a
+    // tener una factura real que lo sustituya — ver comentario en su
+    // gemela de maniobras.html. Un "Pendiente" sí debe seguir marcado.
+    tienda: tienda, observaciones: idCombinado, sinFacturaJustificar: (pendiente || montoGuardar !== 0),
     fechaLimiteJustificacion: fechaLimite, montoPendiente: pendiente,
     capturadoPor: { usuario: 'buzón automático', nombre: 'Buzón automático' },
     creadoEn: new Date().toISOString(), depositoConfirmado: false,
@@ -765,6 +773,9 @@ function _registrarNoPagaServer(ingresosDB, x, operadores) {
   if (existente) {
     existente.subtotal = 0; existente.subtManiobras = 0; existente.iva = 0; existente.total = 0;
     existente.montoPendiente = false;
+    // Un "No paga" confirmado en $0 nunca va a tener una factura real que
+    // lo sustituya — no debe quedar marcado como "sin factura"/vencido.
+    existente.sinFacturaJustificar = false;
     existente.observaciones = (existente.observaciones || '') + ' | NO_PAGA confirmado el ' + new Date().toISOString().slice(0, 10);
     return true;
   }
@@ -795,7 +806,9 @@ function _registrarNoPagaServer(ingresosDB, x, operadores) {
     subtotal: 0, subtFlete: 0, subtManiobras: 0, subtOtros: 0, iva: 0, ret: 0, total: 0,
     estado: 'sin_liquidar', liqNum: null, origen: 'autorizacion_cliente',
     ruta: (x.destino || '').trim() ? [{ origen: '', destino: (x.destino || '').trim(), kms: '' }] : [], tienda: (x.tienda || '').trim(),
-    observaciones: idParts.join(' | '), sinFacturaJustificar: true,
+    // sinFacturaJustificar:false — un $0 confirmado ("No paga") nunca va a
+    // tener factura real que lo sustituya.
+    observaciones: idParts.join(' | '), sinFacturaJustificar: false,
     fechaLimiteJustificacion: _sumarDiasHabilesServer(fecha, 15) + 'T23:59:59', montoPendiente: false,
     capturadoPor: { usuario: 'buzón automático', nombre: 'Buzón automático (No paga)' },
     creadoEn: new Date().toISOString(), depositoConfirmado: false,
