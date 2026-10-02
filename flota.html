@@ -472,6 +472,8 @@ tr:hover td{background:#fafafa}
       <div class="field"><label>Salario diario (SD, nominal)</label><input type="text" id="mopSalarioDiario"></div>
       <div class="field"><label>SDI / SBC (integrado)</label><input type="text" id="mopSdiSbc"></div>
       <div class="field"><label>Código postal fiscal</label><input type="text" id="mopCodigoPostal"></div>
+      <div class="field"><label>Crédito Infonavit</label><select id="mopInfonavitTipo"><option value="">— Sin crédito —</option><option value="cuota_fija">Cuota fija (monto mensual del aviso)</option><option value="porcentaje">Porcentaje del SBC</option></select></div>
+      <div class="field"><label>Valor (monto mensual, o % según lo de arriba)</label><input type="text" id="mopInfonavitValor" placeholder="Ej: 850 o 20"></div>
     </div>
     <div class="modal-actions">
       <button class="btn btn-out" onclick="cerrarModalOperador()">Cancelar</button>
@@ -817,6 +819,8 @@ function editarOperador(id){
   $('mopSalarioDiario').value=nom.salarioDiario!=null?nom.salarioDiario:'';
   $('mopSdiSbc').value=nom.sdiSbc!=null?nom.sdiSbc:'';
   $('mopCodigoPostal').value=nom.codigoPostal||'';
+  $('mopInfonavitTipo').value=(nom.infonavit&&nom.infonavit.tipo)||'';
+  $('mopInfonavitValor').value=(nom.infonavit&&nom.infonavit.valor!=null)?nom.infonavit.valor:'';
   _actualizarDocStatus('mopLicenciaPdfStatus',op.licenciaPdfURL,'licencia');
   $('modalOperador').classList.add('show');
 }
@@ -843,7 +847,8 @@ async function guardarModalOperador(){
         clabe:($('mopClabe').value||'').trim().replace(/\s/g,'')||null,
         salarioDiario:parseFloat($('mopSalarioDiario').value)||null,
         sdiSbc:parseFloat($('mopSdiSbc').value)||null,
-        codigoPostal:($('mopCodigoPostal').value||'').trim().replace(/\D/g,'')||null
+        codigoPostal:($('mopCodigoPostal').value||'').trim().replace(/\D/g,'')||null,
+        infonavit:$('mopInfonavitTipo').value?{tipo:$('mopInfonavitTipo').value,valor:parseFloat($('mopInfonavitValor').value)||0}:null
       }
     });
     if(window.cargarOperadores)window.cargarOperadores(true);
@@ -896,7 +901,7 @@ function _objConCampo(campo,valor){var o={};o[campo]=valor;return o;}
 // datos).
 function _normNombreFlota(s){return(s||'').toString().toUpperCase().normalize('NFD').replace(/[̀-ͯ]/g,'').trim();}
 async function importarDatosNominaJSON(){
-  var texto=prompt('Pega aquí el JSON a importar — arreglo de objetos con "nombre" y, según aplique:\n· Nómina: curp,nss,fechaIngreso,puesto,riesgoPuesto,codigoPostal,salarioDiario,sdiSbc,banco,clabe,bajaFecha\n· Carta Porte (operador): rfc,licencia,licenciaVigencia\n· Carta Porte (su unidad actual): placas,configVehicular,anioModeloVM,pesoBrutoVehicular,permSCT,numPermisoSCT,aseguradora,poliza','');
+  var texto=prompt('Pega aquí el JSON a importar — arreglo de objetos con "nombre" y, según aplique:\n· Nómina: curp,nss,fechaIngreso,puesto,riesgoPuesto,codigoPostal,salarioDiario,sdiSbc,banco,clabe,bajaFecha\n· Infonavit: infonavitTipo ("cuota_fija" o "porcentaje"), infonavitValor\n· Carta Porte (operador): rfc,licencia,licenciaVigencia\n· Carta Porte (su unidad actual): placas,configVehicular,anioModeloVM,pesoBrutoVehicular,permSCT,numPermisoSCT,aseguradora,poliza','');
   if(!texto)return;
   var datos;
   try{datos=JSON.parse(texto);}catch(e){alert('⚠️ Ese texto no es JSON válido: '+e.message);return;}
@@ -931,7 +936,8 @@ async function importarDatosNominaJSON(){
       clabe:(d.clabe||actual.clabe||'')||null,
       salarioDiario:d.salarioDiario!=null?parseFloat(d.salarioDiario):(actual.salarioDiario||null),
       sdiSbc:d.sdiSbc!=null?parseFloat(d.sdiSbc):(actual.sdiSbc||null),
-      codigoPostal:(d.codigoPostal||actual.codigoPostal||'').toString().replace(/\D/g,'')||null
+      codigoPostal:(d.codigoPostal||actual.codigoPostal||'').toString().replace(/\D/g,'')||null,
+      infonavit:d.infonavitTipo?{tipo:d.infonavitTipo,valor:parseFloat(d.infonavitValor)||0}:(actual.infonavit||null)
     };
     var updOp={nomina:nuevoNomina};
     if(d.rfc)updOp.rfc=d.rfc.toString().trim().toUpperCase();
