@@ -4573,32 +4573,43 @@ exports.generarNominaFacturapi = onRequest({ secrets: [FACTURAPI_TEST_KEY], cors
         // como exige el catálogo del complemento de nómina.
         const semanas = Math.max(0, Math.floor((new Date(fechaPago) - new Date(nom.fechaIngreso)) / (7 * msDia)));
 
-        const percepciones = [{ TipoPercepcion: '001', Clave: '001', Concepto: 'Sueldos', ImporteGravado: percepcion, ImporteExento: 0 }];
+        const percepciones = [{ tipo_percepcion: '001', clave: '001', concepto: 'Sueldos', importe_gravado: percepcion, importe_exento: 0 }];
 
         const deducciones = [];
-        if (isr > 0) deducciones.push({ TipoDeduccion: '002', Clave: '002', Concepto: 'ISR', Importe: isr });
-        if (imss > 0) deducciones.push({ TipoDeduccion: '001', Clave: '001', Concepto: 'Seguridad social', Importe: imss });
-        if (rcv > 0) deducciones.push({ TipoDeduccion: '003', Clave: '003', Concepto: 'Aportaciones a retiro, cesantía en edad avanzada y vejez (RCV)', Importe: rcv });
-        if (infonavit > 0) deducciones.push({ TipoDeduccion: '007', Clave: '007', Concepto: 'INFONAVIT', Importe: infonavit });
-        if (otrasDeducciones > 0) deducciones.push({ TipoDeduccion: '023', Clave: '023', Concepto: 'Otras deducciones', Importe: otrasDeducciones });
+        if (isr > 0) deducciones.push({ tipo_deduccion: '002', clave: '002', concepto: 'ISR', importe: isr });
+        if (imss > 0) deducciones.push({ tipo_deduccion: '001', clave: '001', concepto: 'Seguridad social', importe: imss });
+        if (rcv > 0) deducciones.push({ tipo_deduccion: '003', clave: '003', concepto: 'Aportaciones a retiro, cesantía en edad avanzada y vejez (RCV)', importe: rcv });
+        if (infonavit > 0) deducciones.push({ tipo_deduccion: '007', clave: '007', concepto: 'INFONAVIT', importe: infonavit });
+        if (otrasDeducciones > 0) deducciones.push({ tipo_deduccion: '023', clave: '023', concepto: 'Otras deducciones', importe: otrasDeducciones });
 
+        // IMPORTANTE: a diferencia del complemento de Carta Porte (que usa
+        // los nombres de atributo tal cual del XML del SAT, en PascalCase),
+        // el complemento de Nómina de Facturapi usa SU PROPIO esquema en
+        // snake_case, y las fechas como datetime ISO completo (no solo
+        // "YYYY-MM-DD") — confirmado por el rechazo real
+        // "complements.0.data.fecha_inicial_pago es requerido" y por la
+        // documentación pública de Facturapi. _fechaISOServer agrega una
+        // hora fija (mediodía UTC) solo para tener un datetime válido, sin
+        // que la fecha se recorra un día por huso horario.
+        function _fechaISOServer(fechaYMD) { return new Date(fechaYMD + 'T12:00:00.000Z').toISOString(); }
         const nominaData = {
-          Version: '1.2', TipoNomina: 'O', FechaPago: fechaPago, FechaInicialPago: periodoIni, FechaFinalPago: periodoFin,
-          NumDiasPagados: numDiasPagados, TotalPercepciones: percepcion, TotalDeducciones: totalDeducciones,
-          Receptor: {
-            Curp: nom.curp, NumSeguridadSocial: nom.nss, FechaInicioRelLaboral: nom.fechaIngreso,
-            Antigüedad: 'P' + semanas + 'W', TipoContrato: '01', Sindicalizado: 'No', TipoJornada: '01',
-            TipoRegimen: '02', NumEmpleado: String(opId), Puesto: nom.puesto || 'OPERADOR',
-            RiesgoPuesto: nom.riesgoPuesto || '4', PeriodicidadPago: '05', ClaveEntFed: 'MEX',
-            SalarioBaseCotApor: nom.sdiSbc || 0, SalarioDiarioIntegrado: nom.sdiSbc || 0
+          version: '1.2', tipo_nomina: 'O', fecha_pago: _fechaISOServer(fechaPago),
+          fecha_inicial_pago: _fechaISOServer(periodoIni), fecha_final_pago: _fechaISOServer(periodoFin),
+          num_dias_pagados: numDiasPagados, total_percepciones: percepcion, total_deducciones: totalDeducciones,
+          receptor: {
+            curp: nom.curp, num_seguridad_social: nom.nss, fecha_inicio_rel_laboral: nom.fechaIngreso,
+            antiguedad: 'P' + semanas + 'W', tipo_contrato: '01', tipo_jornada: '01',
+            tipo_regimen: '02', num_empleado: String(opId), puesto: nom.puesto || 'OPERADOR',
+            riesgo_puesto: nom.riesgoPuesto || '4', periodicidad_pago: '05', clave_ent_fed: 'MEX',
+            salario_base_cot_apor: nom.sdiSbc || 0, salario_diario_integrado: nom.sdiSbc || 0
           },
-          Percepciones: { TotalSueldos: percepcion, TotalSeparacionIndemnizacion: 0, TotalJubilacionPensionRetiro: 0, TotalGravado: percepcion, TotalExento: 0, Percepcion: percepciones },
-          Deducciones: { TotalOtrasDeducciones: Math.round((imss + rcv + infonavit + otrasDeducciones) * 100) / 100, TotalImpuestosRetenidos: isr, Deduccion: deducciones }
+          percepciones: { total_sueldos: percepcion, total_gravado: percepcion, total_exento: 0, percepcion: percepciones },
+          deducciones: { total_otras_deducciones: Math.round((imss + rcv + infonavit + otrasDeducciones) * 100) / 100, total_impuestos_retenidos: isr, deduccion: deducciones }
         };
         const bancoClave = BANCO_SAT_SERVER[(nom.banco || '').toUpperCase()];
         if (bancoClave && nom.clabe && nom.clabe.length >= 10) {
-          nominaData.Receptor.Banco = bancoClave;
-          nominaData.Receptor.CuentaBancaria = nom.clabe;
+          nominaData.receptor.banco = bancoClave;
+          nominaData.receptor.cuenta_bancaria = nom.clabe;
         }
 
         const invoice = {
