@@ -4625,7 +4625,12 @@ exports.generarNominaFacturapi = onRequest({ secrets: [FACTURAPI_TEST_KEY], cors
             antiguedad: true, tipo_contrato: '01', tipo_jornada: '01',
             tipo_regimen: '02', num_empleado: String(opId), departamento: 'OPERACIONES',
             puesto: nom.puesto || 'OPERADOR', riesgo_puesto: nom.riesgoPuesto || '4',
-            periodicidad_pago: '05', clave_ent_fed: 'MEX', salario_diario_integrado: nom.sdiSbc || 0
+            periodicidad_pago: '05', clave_ent_fed: 'MEX',
+            // Ambos son campos reales y válidos del esquema de Facturapi
+            // (confirmado contra la documentación) — TML no distingue las
+            // prestaciones en especie del SDI, así que se manda el mismo
+            // valor en los dos.
+            salario_base_cot_apor: nom.sdiSbc || 0, salario_diario_integrado: nom.sdiSbc || 0
           },
           percepciones: { percepcion: percepciones },
           deducciones: deducciones
