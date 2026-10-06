@@ -198,6 +198,7 @@ $('nav').addEventListener('click', function(e){
 });
 function render(forzar){
   if (!listo) return;
+  if (ESTACION) { revisaEstacion(); if (forzar) vEstacion(); return; }
   badges();
   // Configuración tiene un formulario largo: solo se redibuja al entrar,
   // para no borrar lo que la persona esté escribiendo.
@@ -386,21 +387,78 @@ function elegirPaquete(o, l){
     Store.put('ordenes', { id: o2.id, items: items }).then(pintaOrden);
   };
 }
+// Área de cada renglón: las bebidas van a barra, lo demás a cocina
+function areaDe(l){ return l.tipo === 'bebida' ? 'barra' : 'cocina'; }
+function comandaHTML(o, area, lineas){
+  var h = '<div class="c b g">COMANDA · ' + area.toUpperCase() + '</div><div class="c b">' + esc(etiquetaOrden(o)) + '</div><div class="c">' + esc(fecha(Date.now())) + (o.mesero ? ' · ' + esc(o.mesero) : '') + '</div><hr>';
+  lineas.forEach(function(l){ h += '<div class="g"><b>' + l.cant + '</b> ' + esc(l.nombre) + '</div>' + (l.nota ? '<div>&nbsp;&nbsp;» ' + esc(l.nota) + '</div>' : ''); });
+  return h + '<hr>';
+}
 function comanda(){
   var o = getOrden(OM.dataset.id); if (!o) return;
   var pend = (o.items || []).filter(function(l){ return !l.enviado; });
   if (!pend.length) return toast('No hay renglones nuevos para enviar.');
-  var grupos = [['Cocina', pend.filter(function(l){ return l.tipo !== 'bebida'; })], ['Barra', pend.filter(function(l){ return l.tipo === 'bebida'; })]];
+  var ahora = Date.now();
+  var marcar = function(){ return Store.put('ordenes', { id: o.id, items: o.items.map(function(l){ return l.enviado ? l : Object.assign({}, l, { enviado: true, enviadoEn: ahora }); }) }).then(pintaOrden); };
+  // Con estaciones de impresión, cada área (cocina / barra) la imprime la
+  // ventana de esa área en la computadora de las impresoras.
+  if (S.config.estacionesComanda) {
+    var areas = ['cocina', 'barra'].filter(function(a){ return pend.some(function(l){ return areaDe(l) === a; }); });
+    return marcar().then(function(){ toast('🧾 Comanda enviada a ' + areas.join(' y ')); });
+  }
   var h = '';
-  grupos.forEach(function(g){
-    if (!g[1].length) return;
+  ['cocina', 'barra'].forEach(function(a){
+    var ls = pend.filter(function(l){ return areaDe(l) === a; });
+    if (!ls.length) return;
     if (h) h += '<div style="page-break-after:always"></div>';
-    h += '<div class="c b g">COMANDA · ' + g[0].toUpperCase() + '</div><div class="c b">' + esc(etiquetaOrden(o)) + '</div><div class="c">' + esc(fecha(Date.now())) + (o.mesero ? ' · ' + esc(o.mesero) : '') + '</div><hr>';
-    g[1].forEach(function(l){ h += '<div class="g"><b>' + l.cant + '</b> ' + esc(l.nombre) + '</div>' + (l.nota ? '<div>&nbsp;&nbsp;» ' + esc(l.nota) + '</div>' : ''); });
-    h += '<hr>';
+    h += comandaHTML(o, a, ls);
   });
   imprimir(h);
-  Store.put('ordenes', { id: o.id, items: o.items.map(function(l){ return Object.assign({}, l, { enviado: true }); }) }).then(pintaOrden);
+  marcar();
+}
+
+// ── Estación de impresión (admin.html?estacion=cocina o ?estacion=barra) ─
+// Ventana que se deja abierta en la computadora de las impresoras: imprime
+// sola las comandas de su área que se envían desde cualquier dispositivo.
+// Lo ya impreso se marca en la orden con un campo imp_<renglón> = hora de
+// envío (escritura parcial: no toca los renglones de la orden). Si el
+// renglón se reenvía (ej. le cambiaron la nota) tiene otra hora y se imprime
+// de nuevo.
+var ESTACION = (location.search.match(/[?&]estacion=(cocina|barra)\b/) || [])[1] || null;
+var est = { impresos: {}, log: [], cola: [], ocupada: false };
+var EST_VENTANA = 30 * 60000; // al abrir, solo se imprime lo enviado en los últimos 30 min
+function revisaEstacion(){
+  var desde = Date.now() - EST_VENTANA;
+  S.ordenes.forEach(function(o){
+    var ls = (o.items || []).filter(function(l){ return l.enviado && l.enviadoEn >= desde && areaDe(l) === ESTACION && o['imp_' + l.lid] !== l.enviadoEn && !est.impresos[l.lid + ':' + l.enviadoEn]; });
+    if (!ls.length) return;
+    ls.forEach(function(l){ est.impresos[l.lid + ':' + l.enviadoEn] = true; });
+    est.cola.push({ o: o, ls: ls });
+  });
+  siguienteEstacion();
+}
+function siguienteEstacion(){
+  if (est.ocupada || !est.cola.length) return;
+  est.ocupada = true;
+  var t = est.cola.shift(), marca = { id: t.o.id };
+  t.ls.forEach(function(l){ marca['imp_' + l.lid] = l.enviadoEn; });
+  imprimir(comandaHTML(t.o, ESTACION, t.ls));
+  est.log.unshift({ ts: Date.now(), txt: etiquetaOrden(t.o) + ': ' + t.ls.map(function(l){ return l.cant + ' ' + l.nombre; }).join(', ') });
+  est.log = est.log.slice(0, 30);
+  Store.put('ordenes', marca);
+  vEstacion();
+  // Pausa entre comandas para que la impresora reciba una a la vez
+  setTimeout(function(){ est.ocupada = false; siguienteEstacion(); }, 2500);
+}
+function vEstacion(){
+  document.title = 'Comandas · ' + (ESTACION === 'barra' ? 'Barra' : 'Cocina');
+  $('nav').style.display = 'none';
+  $('main').innerHTML = '<div class="card"><h2 style="margin-top:0">🖨️ Comandas · ' + (ESTACION === 'barra' ? 'Barra' : 'Cocina') + '</h2>' +
+    '<p class="small mut">Deja esta ventana abierta. Imprime sola las comandas de ' + (ESTACION === 'barra' ? 'barra (bebidas)' : 'cocina (alimentos)') + ' en la impresora de esta ventana.' +
+    (S.config.estacionesComanda ? '' : ' <b style="color:var(--bad)">Ojo: en Configuración no está activado "Imprimir comandas en estaciones", así que los meseros siguen imprimiendo desde su dispositivo.</b>') + '</p>' +
+    '<div class="toolbar"><button class="b" id="estPrueba">🧪 Imprimir prueba</button></div>' +
+    '<h3>Últimas impresas</h3>' + (est.log.length ? est.log.map(function(x){ return '<div class="small" style="padding:4px 0;border-bottom:1px solid var(--line)"><b>' + esc(new Date(x.ts).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' })) + '</b> · ' + esc(x.txt) + '</div>'; }).join('') : '<p class="small mut">Todavía nada en esta sesión.</p>') + '</div>';
+  $('estPrueba').onclick = function(){ imprimir('<div class="c b g">PRUEBA · ' + ESTACION.toUpperCase() + '</div><div class="c">' + esc(fecha(Date.now())) + '</div><hr><div class="c">Si lees esto, la impresora de ' + ESTACION + ' está bien configurada.</div><hr>'); };
 }
 
 // ── Cobro ───────────────────────────────────────────────────────────────
@@ -628,23 +686,34 @@ function normalizarCategorias(){
 }
 function editarCategorias(){
   var filas = listaCategorias().map(function(c){ return { orig: c, nombre: c.toUpperCase() }; });
-  function usados(nombre){ return S.menu.filter(function(i){ return (i.categoria || '').toLowerCase() === String(nombre || '').toLowerCase(); }).length; }
-  var md = modal('<h2>Categorías del menú</h2><p class="small mut" style="margin-top:0">Este es el orden en que aparecen en la carta, la página de inicio, los pedidos en línea y la pantalla de mesas. Usa ↑ ↓ para acomodarlas. Si cambias un nombre, se actualiza en todos sus platillos.</p>' +
+  function deCat(nombre){ return S.menu.filter(function(i){ return (i.categoria || '').toLowerCase() === String(nombre || '').toLowerCase(); }); }
+  function usados(nombre){ return deCat(nombre).length; }
+  // Platillos de cada categoría en su orden actual (se acomodan con ↑ ↓ al abrirla)
+  filas.forEach(function(f){ f.items = deCat(f.orig).sort(E.cmpCat([])); f.abierta = false; f.movida = false; });
+  var md = modal('<h2>Categorías del menú</h2><p class="small mut" style="margin-top:0">Este es el orden en que aparecen en la carta, la página de inicio, los pedidos en línea y la pantalla de mesas. Usa ↑ ↓ para acomodarlas. Toca "platillos" para acomodar también los platillos dentro de esa categoría. Si cambias un nombre, se actualiza en todos sus platillos.</p>' +
     '<div id="cLista"></div><div class="toolbar" style="margin-top:10px"><input id="cNueva" placeholder="Nueva categoría (ej. Postres, Coctelería)" style="flex:1"><button class="b" id="cAdd">＋ Agregar</button></div>' +
     '<div class="foot"><button class="b" id="cNo">Cancelar</button><button class="b p" id="cOk">Guardar orden</button></div>', { sticky: true });
   function pinta(){
     $('cLista').innerHTML = filas.length ? filas.map(function(f, k){
       var n = usados(f.orig);
       return '<div class="toolbar" style="margin:4px 0"><b style="width:22px;text-align:right" class="mut">' + (k + 1) + '</b><input data-k="' + k + '" value="' + esc(f.nombre) + '" style="flex:1">' +
-        '<span class="small mut" style="width:74px">' + (f.orig ? n + ' platillo' + (n === 1 ? '' : 's') : 'nueva') + '</span>' +
+        (f.orig && n ? '<button class="b s" data-ab="' + k + '" style="width:110px" title="Acomodar los platillos de esta categoría">' + (f.abierta ? '▾ ' : '▸ ') + n + ' platillo' + (n === 1 ? '' : 's') + '</button>' : '<span class="small mut" style="width:110px">' + (f.orig ? '0 platillos' : 'nueva') + '</span>') +
         '<button class="b s" data-up="' + k + '"' + (k ? '' : ' disabled') + ' title="Subir">↑</button><button class="b s" data-dn="' + k + '"' + (k < filas.length - 1 ? '' : ' disabled') + ' title="Bajar">↓</button>' +
-        '<button class="b s d" data-rm="' + k + '" title="Quitar">×</button></div>'; }).join('') : '<p class="small mut">Sin categorías todavía.</p>';
+        '<button class="b s d" data-rm="' + k + '" title="Quitar">×</button></div>' +
+        (f.abierta ? '<div style="margin:2px 0 10px 32px;padding-left:10px;border-left:2px solid var(--line, #ddd)">' + f.items.map(function(it, j){
+          return '<div class="toolbar" style="margin:2px 0"><span class="small mut" style="width:22px;text-align:right">' + (j + 1) + '</span><span style="flex:1">' + esc(it.nombre) + '</span>' +
+            '<button class="b s" data-iup="' + k + ':' + j + '"' + (j ? '' : ' disabled') + ' title="Subir">↑</button><button class="b s" data-idn="' + k + ':' + j + '"' + (j < f.items.length - 1 ? '' : ' disabled') + ' title="Bajar">↓</button></div>'; }).join('') + '</div>' : ''); }).join('') : '<p class="small mut">Sin categorías todavía.</p>';
   }
   $('cLista').oninput = function(e){ var t = e.target; if (t.dataset.k == null) return; mayus(t); filas[t.dataset.k].nombre = t.value; };
   $('cLista').onclick = function(e){
     var b = e.target.closest('button'); if (!b) return;
     var k;
-    if (b.dataset.up != null) { k = +b.dataset.up; filas.splice(k - 1, 0, filas.splice(k, 1)[0]); }
+    if (b.dataset.ab != null) { k = +b.dataset.ab; filas[k].abierta = !filas[k].abierta; }
+    else if (b.dataset.iup != null || b.dataset.idn != null) {
+      var pj = (b.dataset.iup != null ? b.dataset.iup : b.dataset.idn).split(':'), f = filas[+pj[0]], j = +pj[1], d = b.dataset.iup != null ? -1 : 1;
+      f.items.splice(j + d, 0, f.items.splice(j, 1)[0]); f.movida = true;
+    }
+    else if (b.dataset.up != null) { k = +b.dataset.up; filas.splice(k - 1, 0, filas.splice(k, 1)[0]); }
     else if (b.dataset.dn != null) { k = +b.dataset.dn; filas.splice(k + 1, 0, filas.splice(k, 1)[0]); }
     else if (b.dataset.rm != null) {
       k = +b.dataset.rm; var n = filas[k].orig ? usados(filas[k].orig) : 0;
@@ -667,13 +736,17 @@ function editarCategorias(){
     if (nombres.some(function(n){ return !n; })) return alert('Hay una categoría sin nombre.');
     var vistos = {};
     for (var i = 0; i < nombres.length; i++) { var l = nombres[i].toLowerCase(); if (vistos[l]) return alert('La categoría "' + nombres[i] + '" está repetida.'); vistos[l] = true; }
-    // Renombres: se actualiza solo el campo categoria de cada platillo afectado
-    var ps = [];
+    // Renombres y orden de platillos: a cada platillo afectado se le
+    // actualizan solo los campos categoria y/o orden (nada más se toca).
+    var cambios = {};
+    function cambia(id, campo, v){ (cambios[id] = cambios[id] || { id: id })[campo] = v; }
     filas.forEach(function(f){
       if (!f.orig) return;
       var nuevo = f.nombre.trim().toUpperCase();
-      S.menu.forEach(function(i){ if ((i.categoria || '').toLowerCase() === f.orig.toLowerCase() && i.categoria !== nuevo) ps.push(Store.put('menu', { id: i.id, categoria: nuevo })); });
+      S.menu.forEach(function(i){ if ((i.categoria || '').toLowerCase() === f.orig.toLowerCase() && i.categoria !== nuevo) cambia(i.id, 'categoria', nuevo); });
+      if (f.movida) f.items.forEach(function(it, j){ if (it.orden !== j + 1) cambia(it.id, 'orden', j + 1); });
     });
+    var ps = Object.keys(cambios).map(function(id){ return Store.put('menu', cambios[id]); });
     this.disabled = true;
     Promise.all(ps).then(function(){ return Store.put('config', { id: 'general', categorias: nombres }); })
       .then(function(){ md.close(); toast('Categorías guardadas'); });
@@ -1126,6 +1199,7 @@ function vConfig(){
     '<div><label class="f">Dirección web pública (donde quedará publicado, para el QR)</label><input id="gUrl" class="w100" placeholder="https://encino.ejemplo.com" value="' + esc(c.urlPublica) + '"></div></div>' +
     '<label class="f">Datos para transferencia (se muestran al cliente que elige pagar por transferencia)</label><textarea id="gTransf" rows="3" class="w100" placeholder="Banco, titular, CLABE…">' + esc(c.datosTransferencia || '') + '</textarea>' +
     '<label style="display:block;margin-top:10px"><input type="checkbox" id="gPed"' + (c.pedidosActivos ? ' checked' : '') + '> Recibir pedidos en línea</label>' +
+    '<label style="display:block;margin-top:6px"><input type="checkbox" id="gEstC"' + (c.estacionesComanda ? ' checked' : '') + '> Imprimir comandas en estaciones (cocina y barra en su propia impresora; ver "Impresión de comandas" abajo)</label>' +
     '<h3>Menús (carta)</h3><p class="small mut">Cada renglón es un menú: su nombre, <b>qué días</b> se sirve (toca los días para marcarlos) y <b>de qué hora a qué hora</b>. La carta abre sola en el menú que toca; si dos horarios se enciman (ej. 12:30 a 13:00), le pregunta al cliente cuál quiere ver. Qué platillos van en cada menú se elige en la pestaña Menú.</p><div id="gMenus"></div><button class="b s" id="gAddMenu">＋ Menú</button>' +
     '<div class="foot"><button class="b p" id="gOk">Guardar configuración</button></div></div>';
   var fondo = S.config.fondo;
@@ -1142,6 +1216,8 @@ function vConfig(){
     '<div class="toolbar"><input id="eOrs" class="w100" style="flex:1;min-width:220px" placeholder="Pega aquí la clave (API key) de OpenRouteService" value="' + esc(ent.orsKey) + '"><button class="b" id="eProbar">Probar clave</button></div>' +
     '<label style="display:block;margin-top:6px"><input type="checkbox" id="eLimCalle"' + (ent.limitePorCalle ? ' checked' : '') + '> Medir el límite de entrega <b>por calle</b> (si no, en línea recta)</label>' +
     '<div class="foot" style="margin-top:6px"><button class="b p" id="eOk">Guardar entregas</button></div></div>';
+  h += '<div class="card"><h3 style="margin-top:0">🖨️ Impresión de comandas</h3><p class="small mut" style="margin-top:0">Para que la comanda de cocina salga en la impresora de cocina y la de barra en la de barra: en la computadora donde están conectadas las impresoras abre estas dos direcciones, cada una en su propia ventana, y déjalas abiertas. Activa arriba "Imprimir comandas en estaciones". Así "Enviar comanda" ya no abre la ventana de imprimir en el dispositivo del mesero.</p>' +
+    '<div class="grid2"><div><p class="small">🍳 Cocina:<br><code>' + esc(urlDe('admin.html?estacion=cocina')) + '</code></p></div><div><p class="small">🍹 Barra:<br><code>' + esc(urlDe('admin.html?estacion=barra')) + '</code></p></div></div></div>';
   h += '<div class="card"><h3 style="margin-top:0">🖼️ Fondo de la carta (por temporada)</h3><p class="small mut" style="margin-top:0">Una imagen que se ve difuminada detrás de la carta QR: Día de Muertos, Navidad, San Valentín… Cámbiala cuando quieras; se ve al momento en los celulares.</p>' +
     '<div class="toolbar" style="align-items:flex-start"><div id="fPrev" style="width:160px;height:110px;border-radius:10px;border:1px solid var(--line);background:var(--bg) center/cover no-repeat;' + (fondo ? 'background-image:url(\'' + fondo.imagen + '\')' : '') + '"></div>' +
     '<div style="flex:1;min-width:220px"><label class="b">🖼️ ' + (fondo ? 'Cambiar imagen' : 'Subir imagen') + '<input type="file" id="fImg" accept="image/*" hidden></label> ' + (fondo ? '<button class="b d" id="fQuitar">Quitar fondo</button>' : '') +
@@ -1177,7 +1253,7 @@ function vConfig(){
   $('gAddMenu').onclick = function(){ menus.push({ id: Store.uid(), nombre: 'Nuevo menú', dias: [], desde: '', hasta: '' }); pintaMenus(); };
   $('gOk').onclick = function(){
     Store.put('config', { id: 'general', nombre: $('gNom').value.trim() || 'Restaurante Encino', telefono: $('gTel').value.trim(), direccion: $('gDir').value.trim(), rfc: $('gRfc').value.trim(),
-      leyenda: $('gLey').value.trim(), mesas: Math.max(1, parseInt($('gMes').value, 10) || 10), anchoTicket: +$('gAn').value, urlPublica: $('gUrl').value.trim(), datosTransferencia: $('gTransf').value.trim(), pedidosActivos: $('gPed').checked,
+      leyenda: $('gLey').value.trim(), mesas: Math.max(1, parseInt($('gMes').value, 10) || 10), anchoTicket: +$('gAn').value, urlPublica: $('gUrl').value.trim(), datosTransferencia: $('gTransf').value.trim(), pedidosActivos: $('gPed').checked, estacionesComanda: $('gEstC').checked,
       menus: menus.filter(function(m){ return m.nombre.trim(); }) }).then(function(){ toast('Configuración guardada'); vConfig(); });
   };
   // Fondo de temporada: se reduce y comprime en el navegador (documento de
@@ -1315,9 +1391,9 @@ function arrancar(){
     render(false);
   }); });
   ps.push(Store.watch('config', function(arr){ S.config = E.cfgFrom(arr); S.configDocs = arr.filter(function(d){ return d.id === 'general'; }); render(false); }));
-  Promise.all(ps).then(function(){ listo = true; avisoPedidos(); render(true); normalizarCategorias(); recordatorios(); });
+  Promise.all(ps).then(function(){ listo = true; if (ESTACION) return render(true); avisoPedidos(); render(true); normalizarCategorias(); recordatorios(); });
   setInterval(function(){ if (TAB === 'mesas' && !OM) render(false); }, 60000);
-  setInterval(recordatorios, 30000);
+  if (!ESTACION) setInterval(recordatorios, 30000);
 }
 window.onStoreError = function(c, err, escritura){
   if (err && err.code === 'permission-denied') toast('⚠️ Sin permiso para ' + (escritura ? 'guardar en ' : 'leer ') + c + ': cierra sesión y vuelve a entrar.', 8000);
