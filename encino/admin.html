@@ -628,23 +628,34 @@ function normalizarCategorias(){
 }
 function editarCategorias(){
   var filas = listaCategorias().map(function(c){ return { orig: c, nombre: c.toUpperCase() }; });
-  function usados(nombre){ return S.menu.filter(function(i){ return (i.categoria || '').toLowerCase() === String(nombre || '').toLowerCase(); }).length; }
-  var md = modal('<h2>Categorías del menú</h2><p class="small mut" style="margin-top:0">Este es el orden en que aparecen en la carta, la página de inicio, los pedidos en línea y la pantalla de mesas. Usa ↑ ↓ para acomodarlas. Si cambias un nombre, se actualiza en todos sus platillos.</p>' +
+  function deCat(nombre){ return S.menu.filter(function(i){ return (i.categoria || '').toLowerCase() === String(nombre || '').toLowerCase(); }); }
+  function usados(nombre){ return deCat(nombre).length; }
+  // Platillos de cada categoría en su orden actual (se acomodan con ↑ ↓ al abrirla)
+  filas.forEach(function(f){ f.items = deCat(f.orig).sort(E.cmpCat([])); f.abierta = false; f.movida = false; });
+  var md = modal('<h2>Categorías del menú</h2><p class="small mut" style="margin-top:0">Este es el orden en que aparecen en la carta, la página de inicio, los pedidos en línea y la pantalla de mesas. Usa ↑ ↓ para acomodarlas. Toca "platillos" para acomodar también los platillos dentro de esa categoría. Si cambias un nombre, se actualiza en todos sus platillos.</p>' +
     '<div id="cLista"></div><div class="toolbar" style="margin-top:10px"><input id="cNueva" placeholder="Nueva categoría (ej. Postres, Coctelería)" style="flex:1"><button class="b" id="cAdd">＋ Agregar</button></div>' +
     '<div class="foot"><button class="b" id="cNo">Cancelar</button><button class="b p" id="cOk">Guardar orden</button></div>', { sticky: true });
   function pinta(){
     $('cLista').innerHTML = filas.length ? filas.map(function(f, k){
       var n = usados(f.orig);
       return '<div class="toolbar" style="margin:4px 0"><b style="width:22px;text-align:right" class="mut">' + (k + 1) + '</b><input data-k="' + k + '" value="' + esc(f.nombre) + '" style="flex:1">' +
-        '<span class="small mut" style="width:74px">' + (f.orig ? n + ' platillo' + (n === 1 ? '' : 's') : 'nueva') + '</span>' +
+        (f.orig && n ? '<button class="b s" data-ab="' + k + '" style="width:110px" title="Acomodar los platillos de esta categoría">' + (f.abierta ? '▾ ' : '▸ ') + n + ' platillo' + (n === 1 ? '' : 's') + '</button>' : '<span class="small mut" style="width:110px">' + (f.orig ? '0 platillos' : 'nueva') + '</span>') +
         '<button class="b s" data-up="' + k + '"' + (k ? '' : ' disabled') + ' title="Subir">↑</button><button class="b s" data-dn="' + k + '"' + (k < filas.length - 1 ? '' : ' disabled') + ' title="Bajar">↓</button>' +
-        '<button class="b s d" data-rm="' + k + '" title="Quitar">×</button></div>'; }).join('') : '<p class="small mut">Sin categorías todavía.</p>';
+        '<button class="b s d" data-rm="' + k + '" title="Quitar">×</button></div>' +
+        (f.abierta ? '<div style="margin:2px 0 10px 32px;padding-left:10px;border-left:2px solid var(--line, #ddd)">' + f.items.map(function(it, j){
+          return '<div class="toolbar" style="margin:2px 0"><span class="small mut" style="width:22px;text-align:right">' + (j + 1) + '</span><span style="flex:1">' + esc(it.nombre) + '</span>' +
+            '<button class="b s" data-iup="' + k + ':' + j + '"' + (j ? '' : ' disabled') + ' title="Subir">↑</button><button class="b s" data-idn="' + k + ':' + j + '"' + (j < f.items.length - 1 ? '' : ' disabled') + ' title="Bajar">↓</button></div>'; }).join('') + '</div>' : ''); }).join('') : '<p class="small mut">Sin categorías todavía.</p>';
   }
   $('cLista').oninput = function(e){ var t = e.target; if (t.dataset.k == null) return; mayus(t); filas[t.dataset.k].nombre = t.value; };
   $('cLista').onclick = function(e){
     var b = e.target.closest('button'); if (!b) return;
     var k;
-    if (b.dataset.up != null) { k = +b.dataset.up; filas.splice(k - 1, 0, filas.splice(k, 1)[0]); }
+    if (b.dataset.ab != null) { k = +b.dataset.ab; filas[k].abierta = !filas[k].abierta; }
+    else if (b.dataset.iup != null || b.dataset.idn != null) {
+      var pj = (b.dataset.iup != null ? b.dataset.iup : b.dataset.idn).split(':'), f = filas[+pj[0]], j = +pj[1], d = b.dataset.iup != null ? -1 : 1;
+      f.items.splice(j + d, 0, f.items.splice(j, 1)[0]); f.movida = true;
+    }
+    else if (b.dataset.up != null) { k = +b.dataset.up; filas.splice(k - 1, 0, filas.splice(k, 1)[0]); }
     else if (b.dataset.dn != null) { k = +b.dataset.dn; filas.splice(k + 1, 0, filas.splice(k, 1)[0]); }
     else if (b.dataset.rm != null) {
       k = +b.dataset.rm; var n = filas[k].orig ? usados(filas[k].orig) : 0;
@@ -667,13 +678,17 @@ function editarCategorias(){
     if (nombres.some(function(n){ return !n; })) return alert('Hay una categoría sin nombre.');
     var vistos = {};
     for (var i = 0; i < nombres.length; i++) { var l = nombres[i].toLowerCase(); if (vistos[l]) return alert('La categoría "' + nombres[i] + '" está repetida.'); vistos[l] = true; }
-    // Renombres: se actualiza solo el campo categoria de cada platillo afectado
-    var ps = [];
+    // Renombres y orden de platillos: a cada platillo afectado se le
+    // actualizan solo los campos categoria y/o orden (nada más se toca).
+    var cambios = {};
+    function cambia(id, campo, v){ (cambios[id] = cambios[id] || { id: id })[campo] = v; }
     filas.forEach(function(f){
       if (!f.orig) return;
       var nuevo = f.nombre.trim().toUpperCase();
-      S.menu.forEach(function(i){ if ((i.categoria || '').toLowerCase() === f.orig.toLowerCase() && i.categoria !== nuevo) ps.push(Store.put('menu', { id: i.id, categoria: nuevo })); });
+      S.menu.forEach(function(i){ if ((i.categoria || '').toLowerCase() === f.orig.toLowerCase() && i.categoria !== nuevo) cambia(i.id, 'categoria', nuevo); });
+      if (f.movida) f.items.forEach(function(it, j){ if (it.orden !== j + 1) cambia(it.id, 'orden', j + 1); });
     });
+    var ps = Object.keys(cambios).map(function(id){ return Store.put('menu', cambios[id]); });
     this.disabled = true;
     Promise.all(ps).then(function(){ return Store.put('config', { id: 'general', categorias: nombres }); })
       .then(function(){ md.close(); toast('Categorías guardadas'); });

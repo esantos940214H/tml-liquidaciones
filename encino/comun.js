@@ -179,7 +179,8 @@
   // Las categorías se manejan siempre en MAYÚSCULAS
   function catDe(it){ return String(it.categoria || (it.tipo === 'bebida' ? 'Bebidas' : 'Platillos')).toUpperCase(); }
   // Comparador: primero por el orden de categorías configurado, luego las no
-  // listadas (alimentos antes que bebidas, alfabético) y al final por nombre.
+  // listadas (alimentos antes que bebidas, alfabético); dentro de cada
+  // categoría, por el orden acomodado a mano y luego por nombre.
   function cmpCat(orden){
     var ix = {};
     (orden || []).forEach(function(c, k){ ix[String(c).toLowerCase()] = k; });
@@ -187,9 +188,16 @@
       var c = catDe(it), k = ix[c.toLowerCase()];
       return k != null ? [0, k, ''] : [it.esPaquete ? 2 : 1, it.tipo === 'bebida' ? 1 : 0, c.toLowerCase()];
     }
+    // Dentro de la categoría: el orden acomodado a mano (campo orden); los
+    // que no tienen orden van después, alfabético.
+    function pos(it){ var o = it.orden; return (o === null || o === undefined || o === '' || !isFinite(Number(o))) ? null : Number(o); }
     return function(a, b){
       var x = llave(a), y = llave(b);
       for (var i = 0; i < 3; i++) { if (x[i] < y[i]) return -1; if (x[i] > y[i]) return 1; }
+      var oa = pos(a), ob = pos(b);
+      if (oa !== null && ob !== null && oa !== ob) return oa - ob;
+      if (oa !== null && ob === null) return -1;
+      if (oa === null && ob !== null) return 1;
       return (a.nombre || '').localeCompare(b.nombre || '', 'es');
     };
   }
