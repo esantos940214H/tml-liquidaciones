@@ -2,3 +2,5 @@ dist/
 node_modules/
 .firebase/
 serviceAccountKey.json
+encino/publico/
+encino/publico-preview/
