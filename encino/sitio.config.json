@@ -11,23 +11,33 @@
     "cp": "71232",
     "pais": "MX"
   },
-  "geo": { "lat": null, "lng": null },
+  "geo": {
+    "lat": null,
+    "lng": null
+  },
   "telefono": "55 8101 5992",
   "whatsapp": "55 8101 5992",
-  "mapa": "https://www.google.com/maps/search/?api=1&query=Restaurante+Encino+Bulevar+Guadalupe+Hinojosa+de+Murat+700+Santa+Cruz+Xoxocotl%C3%A1n+Oaxaca",
-  "_mapa_nota": "PROVISIONAL: reemplazar por el enlace exacto del perfil de Google Maps del restaurante.",
+  "mapa": "https://maps.app.goo.gl/EStiMfJYb1RbYGMAA",
   "carta": "/carta.html",
   "pedidos": "/pedidos.html",
   "facebook": "",
   "instagram": "",
-  "cocina": ["Oaxaqueña", "Mexicana"],
+  "cocina": [
+    "Oaxaqueña",
+    "Mexicana"
+  ],
   "rangoPrecio": "$$",
   "aceptaReservaciones": false,
   "horario": {
     "texto": "Viernes a domingo. Desayunos de 8:00 a 13:00, comidas de 12:30 a 18:00.",
     "nota": "Barbacoa de horno solo sábado y domingo.",
-    "dias": ["Friday", "Saturday", "Sunday"],
+    "dias": [
+      "Friday",
+      "Saturday",
+      "Sunday"
+    ],
     "abre": "08:00",
     "cierra": "18:00"
-  }
+  },
+  "_geo_nota": "Coordenadas del restaurante para Google (opcionales). En Google Maps, mantén presionado el punto del restaurante y copia los dos números que aparecen (latitud, longitud)."
 }
