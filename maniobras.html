@@ -451,7 +451,13 @@ function renderPendientes(){
   var filtUnidad=parseInt(($('filtPendUnidad')&&$('filtPendUnidad').value)||0);
   var opPorUnidadPend=filtUnidad?OPERADORES.find(function(o){return o.unidad===filtUnidad;}):null;
   var pendientes=ingresosDB.filter(function(v){
-    if(!v.esAutorizacionCliente||v.sustituidoPorXML)return false;
+    // Un $0 ya CONFIRMADO (sinFacturaJustificar:false) no tiene nada
+    // pendiente — nunca va a llegar una factura que lo sustituya, así que
+    // dejarlo aquí para siempre era justo el bug reportado ("siguen
+    // registrándose" sin salir nunca de Pendientes). Uno con monto
+    // pendiente de confirmar (montoPendiente:true) SÍ debe seguir
+    // apareciendo, todavía necesita seguimiento.
+    if(!v.esAutorizacionCliente||v.sustituidoPorXML||v.sinFacturaJustificar===false)return false;
     if(filtOp&&v.unidad!==filtOp)return false;
     if(filtUnidad&&(!opPorUnidadPend||v.unidad!==opPorUnidadPend.operadorId))return false;
     return true;
