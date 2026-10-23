@@ -2538,16 +2538,20 @@ exports.revisarComplementosPagoProgramado = onSchedule(
 // (mismo criterio que el resto del sistema: la IA sugiere, nunca aplica sola).
 // ══════════════════════════════════════════════════════════════════════════
 const PROMPT_COMPROBANTE_PAGO_CXP =
-  'Eres un asistente que lee un COMPROBANTE DE PAGO (ficha de depósito, comprobante de transferencia bancaria, captura de ' +
-  'banca en línea) que una empresa de mudanzas genera al pagarle a un proveedor. En el concepto, referencia o descripción ' +
-  'del comprobante normalmente se anota el número de factura que se está pagando y, cuando el gasto corresponde al ' +
-  'camión/unidad de un operador, también el número económico de esa unidad. Extrae un solo objeto JSON con estas llaves ' +
-  'exactas: {"folioFactura":"el número de folio de factura mencionado, SOLO el número sin la serie ni prefijos (ej. de ' +
-  '\\"F-2575\\" o \\"factura 2575\\" extrae \\"2575\\"), o null si no se menciona ningún folio","economico":"el número ' +
-  'económico o identificador de la unidad/camión mencionado en el concepto, o null si no se menciona ninguno",' +
-  '"fechaPago":"YYYY-MM-DD si se puede determinar la fecha del comprobante (convierte desde el formato que traiga), o ' +
-  'null","monto":"el monto pagado que muestra el comprobante, como número, o 0 si no se puede determinar"}. No inventes ' +
-  'datos que no estén en el comprobante. Responde SOLO el objeto JSON (sin texto explicativo, sin backticks, sin markdown).';
+  'Eres un asistente que lee un COMPROBANTE DE PAGO (ficha de depósito, comprobante de transferencia bancaria/SPEI, captura ' +
+  'de banca en línea) que una empresa de mudanzas genera al pagarle a un proveedor. En el concepto, referencia o ' +
+  'descripción del comprobante normalmente se anota el número de factura que se está pagando y, cuando el gasto ' +
+  'corresponde al camión/unidad de un operador, también el número económico de esa unidad — además, el comprobante de un ' +
+  'SPEI suele traer un campo separado llamado "Referencia numérica" (varios dígitos, NO confundir con la "Clave de ' +
+  'rastreo", que es alfanumérica y mucho más larga). Extrae un solo objeto JSON con estas llaves exactas: ' +
+  '{"folioFactura":"el número de folio de factura mencionado, SOLO el número sin la serie ni prefijos (ej. de \\"F-2575\\" ' +
+  'o \\"factura 2575\\" extrae \\"2575\\"), o null si no se menciona ningún folio","economico":"el número económico o ' +
+  'identificador de la unidad/camión mencionado en el concepto, o null si no se menciona ninguno","referenciaNumerica":' +
+  '"el valor del campo \\"Referencia numérica\\" del SPEI tal cual aparece (solo dígitos), o null si el comprobante no ' +
+  'trae ese campo","fechaPago":"YYYY-MM-DD si se puede determinar la fecha del comprobante (convierte desde el formato ' +
+  'que traiga), o null","monto":"el monto pagado que muestra el comprobante, como número, o 0 si no se puede ' +
+  'determinar"}. No inventes datos que no estén en el comprobante. Responde SOLO el objeto JSON (sin texto explicativo, ' +
+  'sin backticks, sin markdown).';
 
 exports.extraerComprobantePagoCxP = onRequest(
   { secrets: [ANTHROPIC_API_KEY], cors: true, region: 'us-central1' },

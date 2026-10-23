@@ -237,6 +237,13 @@ tr:hover td{background:#fafafa}
   <div class="tabpanel active" id="panelPagos">
 
   <div class="card">
+    <details>
+      <summary style="cursor:pointer;font-size:12px;font-weight:700;color:#1a1a2e;text-transform:uppercase;letter-spacing:1px">🔢 Referencias de pago por unidad <span class="info-tip">?<span class="info-tip-box">Referencia FIJA y permanente (no cambia, no hay que generar nada) — úsala como "Referencia numérica" al hacer el SPEI al proveedor. Al subir el comprobante de pago, la IA la lee sola del comprobante y sugiere a qué unidad asignar el 100% de la factura, sin ningún paso extra.</span></span></summary>
+      <div id="refPagoCatalogo" style="margin-top:10px;font-size:12px"></div>
+    </details>
+  </div>
+
+  <div class="card">
     <div class="card-title">
       <span>🧾 Facturas de proveedor registradas <span id="facCountLabel" style="font-weight:400;color:#888;text-transform:none;letter-spacing:normal"></span></span>
       <button class="btn btn-out btn-sm" onclick="cargarYRenderFacturas(true)">🔄 Recargar</button>
@@ -283,13 +290,7 @@ window.onFBReady=function(cb){if(window._fbInit)cb();else window._fbCallbacks.pu
       getAll:async function(col){
         try{var s=await db.collection(col).get();var r=[];s.forEach(function(d){r.push(Object.assign({id:d.id},d.data()));});return r.sort(function(a,b){return(b.num||0)-(a.num||0);});}
         catch(e){console.error('FB.getAll:',e);return[];}
-      },
-      // transaction: expone db.runTransaction tal cual — lo usa
-      // generarReferenciaPago() para repartir consecutivos sin que dos pagos
-      // registrados al mismo tiempo puedan terminar con la misma referencia
-      // (mismo riesgo de blobs compartidos que ya documenta CLAUDE.md, aquí
-      // resuelto con una transacción en vez de "leer, sumar 1, guardar").
-      transaction:function(fn){return db.runTransaction(fn);}
+      }
     };
     window._fbInit=true;
     window._fbCallbacks.forEach(function(cb){try{cb();}catch(e){console.error(e);}});
@@ -960,69 +961,21 @@ function togglePagoForm(uuid){
 }
 
 // ══════════════════════════════════════════════
-// Referencia numérica de pago (7 dígitos) — se genera ANTES de hacer la
-// transferencia al proveedor, para usarla como "Referencia numérica" SPEI
-// en la banca. Con eso, el prorrateo queda hecho de una vez (no hay que
-// llenar el formulario de prorrateo aparte):
-//   - Referencia por UNIDAD: 4 dígitos del económico (con ceros a la
-//     izquierda si tiene menos) + 3 dígitos de consecutivo propio de esa
-//     unidad. Ej. unidad 529 -> "0529001", "0529002"...
-//   - Referencia GENERAL (gasto repartido entre varias unidades, o que no
-//     corresponde a ninguna en particular): prefijo reservado "0000" + su
-//     propio consecutivo. Ej. "0000001". El dueño confirmó que una factura
-//     siempre se paga con UNA sola transferencia (nunca una por unidad),
-//     así que un prorrateo a varias unidades usa esta misma referencia
-//     general — no tiene caso generar una por unidad si el pago es uno solo.
-// El consecutivo de cada bolsa (cada unidad, y la general) se guarda en
-// estado/referenciasPagoContador y se reparte con una transacción para que
-// dos pagos registrados al mismo tiempo nunca puedan repetir número.
-async function _siguienteConsecutivoReferencia(clave){
-  var ref=firebase.firestore().collection('estado').doc('referenciasPagoContador');
-  return window.FB.transaction(async function(tx){
-    var snap=await tx.get(ref);
-    var datos=(snap.exists&&snap.data())||{};
-    var siguiente=(datos[clave]||0)+1;
-    var actualizar={};actualizar[clave]=siguiente;
-    tx.set(ref,actualizar,{merge:true});
-    return siguiente;
-  });
-}
-function _formatearReferenciaPago(tipo,unidad,consecutivo){
-  var consecStr=String(consecutivo).padStart(3,'0').slice(-3);
-  if(tipo==='general')return '0000'+consecStr;
-  return String(unidad).padStart(4,'0').slice(-4)+consecStr;
-}
-async function generarReferenciaPago(uuid){
-  var f=FACTURAS.find(function(x){return x.id===uuid;});
-  if(!f)return;
-  var sel=document.getElementById('refPagoUnidad_'+uuid);
-  var valorSel=sel?sel.value:'';
-  var tipo,unidad=null;
-  if(valorSel==='general'){tipo='general';}
-  else if(valorSel){tipo='unidad';unidad=parseInt(valorSel);}
-  else{alert('Elige una unidad, o "Gasto general / repartido" si no corresponde a una sola.');return;}
-  var btn=document.getElementById('refPagoBtn_'+uuid);
-  if(btn)btn.disabled=true;
-  try{
-    var clave=tipo==='general'?'general':('unidad_'+unidad);
-    var consecutivo=await _siguienteConsecutivoReferencia(clave);
-    var referencia=_formatearReferenciaPago(tipo,unidad,consecutivo);
-    var updateFactura={referenciaPago:referencia,referenciaPagoTipo:tipo};
-    // Si la factura todavía no tenía prorrateo asignado, generar la
-    // referencia LO HACE de una vez (ver comentario arriba) — si ya tenía
-    // uno asignado, no se toca (no queremos pisar un prorrateo ya revisado).
-    if(f.estadoProrrateo!=='completo'&&f.estadoProrrateo!=='n_aplica'){
-      if(tipo==='unidad'){updateFactura.estadoProrrateo='completo';updateFactura.prorrateo=[{unidad:unidad,monto:f.total,aplicado:false,liqNum:null}];}
-      else{updateFactura.estadoProrrateo='n_aplica';updateFactura.prorrateo=[];}
-    }
-    await window.FB.set('cxpFacturas',uuid,updateFactura,{merge:true});
-    await cargarYRenderFacturas(true);
-  }catch(e){
-    console.error('generarReferenciaPago:',e);
-    alert('⚠️ No se pudo generar la referencia: '+e.message);
-  }finally{
-    if(btn)btn.disabled=false;
-  }
+// Referencia numérica de pago — FIJA y permanente por unidad, no se genera
+// ni se guarda nada: es una simple función del número económico, así que
+// existe desde siempre para las 11 unidades de la flota y para el "gasto
+// general". Úsala tal cual como "Referencia numérica" al hacer el SPEI —
+// luego, al subir el comprobante de pago, la IA la lee del comprobante
+// (extraerComprobantePagoCxP ya la busca junto con el económico) y
+// renderPagoExtraido() la usa para sugerir la unidad/gasto general sin
+// necesidad de ningún botón ni paso extra.
+var REFERENCIA_PAGO_GENERAL='9999999';
+function referenciaDeUnidad(unidad){return String(unidad).padStart(7,'0');}
+function _unidadDesdeReferencia(ref){
+  var limpio=String(ref||'').replace(/[^0-9]/g,'');
+  if(!limpio)return null;
+  if(parseInt(limpio)===parseInt(REFERENCIA_PAGO_GENERAL))return 'general';
+  return parseInt(limpio)||null;
 }
 function toggleRepForm(uuid){
   var el=document.getElementById('repForm_'+uuid);
@@ -1065,6 +1018,17 @@ function renderPagoExtraido(uuid,file,base64,mimeType,c){
   var folioFactura=parseInt(String(f.folio||'').replace(/[^0-9]/g,'')||0);
   var coincideFolio=!!(folioIA&&folioFactura&&folioIA===folioFactura);
   var ecoNum=c.economico?parseInt(String(c.economico).replace(/[^0-9]/g,'')||0):0;
+  var esGeneralPorReferencia=false;
+  // Si el comprobante no trae el económico mencionado en el concepto, usar
+  // la Referencia numérica del SPEI (ver REFERENCIA_PAGO_GENERAL/
+  // referenciaDeUnidad arriba) — es una referencia FIJA por unidad, así que
+  // no hace falta ningún paso extra para generarla, la IA ya la trae del
+  // comprobante.
+  if(!ecoNum&&c.referenciaNumerica){
+    var desdeRef=_unidadDesdeReferencia(c.referenciaNumerica);
+    if(desdeRef==='general')esGeneralPorReferencia=true;
+    else if(desdeRef)ecoNum=desdeRef;
+  }
   var op=ecoNum?OPERADORES.find(function(o){return o.unidad===ecoNum;}):null;
   // Mismo criterio de "4" antepuesto usado en el resto del módulo (ver
   // aplicarSugerenciaProrrateo) — algunas unidades viven como 4521 pero se
@@ -1073,13 +1037,19 @@ function renderPagoExtraido(uuid,file,base64,mimeType,c){
     var ecoConPrefijo=parseInt('4'+ecoNum);
     op=OPERADORES.find(function(o){return o.unidad===ecoConPrefijo;});
   }
-  var yaProrrateada=f.estadoProrrateo==='completo';
-  _pagoExtraido[uuid]={file:file,base64:base64,mimeType:mimeType,c:c,coincideFolio:coincideFolio,op:op,yaProrrateada:yaProrrateada};
+  var yaProrrateada=f.estadoProrrateo==='completo'||f.estadoProrrateo==='n_aplica';
+  _pagoExtraido[uuid]={file:file,base64:base64,mimeType:mimeType,c:c,coincideFolio:coincideFolio,op:op,esGeneralPorReferencia:esGeneralPorReferencia,yaProrrateada:yaProrrateada};
   var html='';
   html+=coincideFolio
     ?'<div class="alert alert-ok">✅ El comprobante menciona la factura '+c.folioFactura+', coincide con esta factura ('+f.folio+').</div>'
     :'<div class="alert alert-warn">⚠️ '+(folioIA?'El comprobante menciona la factura '+c.folioFactura+', que NO coincide con esta factura ('+f.folio+').':'No se pudo leer a qué factura corresponde este comprobante.')+' <label style="display:block;margin-top:6px"><input type="checkbox" id="pagoConfirmar_'+uuid+'"> Confirmo que este comprobante SÍ corresponde a la factura '+f.folio+'</label></div>';
-  if(ecoNum){
+  if(esGeneralPorReferencia){
+    if(yaProrrateada){
+      html+='<div class="alert alert-info">ℹ️ La referencia numérica del comprobante es la de "gasto general", pero esta factura ya tiene un prorrateo asignado — no se modifica.</div>';
+    }else{
+      html+='<div class="alert alert-info">📋 La referencia numérica del comprobante es la de "gasto general" — <label><input type="checkbox" id="pagoAsignarGeneral_'+uuid+'" checked> marcar esta factura como gasto general (sin prorratear a ninguna unidad)</label></div>';
+    }
+  }else if(ecoNum){
     if(yaProrrateada){
       html+='<div class="alert alert-info">ℹ️ Se detectó la unidad '+ecoNum+' en el comprobante, pero esta factura ya tiene un prorrateo asignado — no se modifica.</div>';
     }else if(op){
@@ -1102,6 +1072,8 @@ async function guardarPagoFactura(uuid){
   }
   var chkUnidad=document.getElementById('pagoAsignarUnidad_'+uuid);
   var asignarUnidad=!!(ex.op&&!ex.yaProrrateada&&chkUnidad&&chkUnidad.checked);
+  var chkGeneral=document.getElementById('pagoAsignarGeneral_'+uuid);
+  var asignarGeneral=!!(ex.esGeneralPorReferencia&&!ex.yaProrrateada&&chkGeneral&&chkGeneral.checked);
   try{
     var ext=(ex.mimeType==='application/pdf')?'pdf':((ex.file.name.split('.').pop())||'jpg');
     var url=await TMLComprobantes.subirArchivo('comprobantes/proveedores/pagos/'+uuid+'.'+ext,ex.file);
@@ -1109,13 +1081,16 @@ async function guardarPagoFactura(uuid){
     await window.FB.set('cxpPagos',uuid,{
       facturaId:uuid,proveedorId:f.proveedorId,monto:ex.c.monto||f.total,
       fechaPago:ex.c.fechaPago||new Date().toISOString().slice(0,10),
-      comprobanteURL:url,extraidoIA:{folioFactura:ex.c.folioFactura||null,economico:ex.c.economico||null},
+      comprobanteURL:url,extraidoIA:{folioFactura:ex.c.folioFactura||null,economico:ex.c.economico||null,referenciaNumerica:ex.c.referenciaNumerica||null},
       coincideFolio:ex.coincideFolio,capturadoPor:u?(u.nombre||u.usuario):'',fechaAlta:new Date().toISOString()
     });
     var updateFactura={estadoPago:'pagada',comprobanteURL:url};
     if(asignarUnidad){
       updateFactura.estadoProrrateo='completo';
       updateFactura.prorrateo=[{unidad:ex.op.unidad,monto:f.total,aplicado:false,liqNum:null}];
+    }else if(asignarGeneral){
+      updateFactura.estadoProrrateo='n_aplica';
+      updateFactura.prorrateo=[];
     }
     await window.FB.set('cxpFacturas',uuid,updateFactura,{merge:true});
     // El complemento de pago (REP) solo aplica a facturas PPD (con crédito) —
@@ -1139,7 +1114,7 @@ async function guardarPagoFactura(uuid){
         if(dataPago.correoEnviado)avisoRep=' Se le avisó al proveedor que su factura ya está pagada.';
       }catch(e){console.error('enviarConfirmacionPago:',e);}
     }
-    alert('✅ Pago registrado'+(asignarUnidad?' y factura asignada a la unidad '+ex.op.unidad+'.':'.')+avisoRep);
+    alert('✅ Pago registrado'+(asignarUnidad?' y factura asignada a la unidad '+ex.op.unidad+'.':(asignarGeneral?' y factura marcada como gasto general.':'.'))+avisoRep);
     delete _pagoExtraido[uuid];
     await cargarYRenderFacturas(true);
   }catch(e){
@@ -1470,7 +1445,7 @@ function renderFacturas(){
       var negrita=sinPagar?'font-weight:700':'';
       var fila='<tr'+(sinPagar?' style="background:#fff8e1"':'')+'>'
         +'<td style="font-size:12px;'+negrita+'">'+(f.proveedorNombre||f.proveedorId||'')+(f.proveedorRegistrado===false?' <span class="badge bg-yellow" title="Este proveedor todavía no está dado de alta — se registró sin días de crédito. Dalo de alta para que le apliquen los días de crédito normales.">⚠️ no registrado</span>':'')+(f.estadoProrrateo==='n_aplica'?'<div style="font-size:10px;color:#888">gasto general (sin unidad)</div>':'')+'</td>'
-        +'<td class="num" style="'+negrita+'">'+(f.serie?f.serie+'-':'')+f.folio+(f.folioAutoAsignado?'<div style="font-size:10px;color:#888;font-weight:400" title="Este proveedor no trajo Folio en su CFDI — se usó el último tramo de su folio fiscal (UUID) para identificarla. Usa este mismo texto de concepto/referencia al hacer la transferencia.">💬 concepto transferencia: '+f.folio+'</div>':'')+(f.referenciaPago?'<div style="font-size:11px;font-weight:700;color:#1c6b3c">🔢 Ref. pago: '+f.referenciaPago+'</div>':'')+'</td>'
+        +'<td class="num" style="'+negrita+'">'+(f.serie?f.serie+'-':'')+f.folio+(f.folioAutoAsignado?'<div style="font-size:10px;color:#888;font-weight:400" title="Este proveedor no trajo Folio en su CFDI — se usó el último tramo de su folio fiscal (UUID) para identificarla. Usa este mismo texto de concepto/referencia al hacer la transferencia.">💬 concepto transferencia: '+f.folio+'</div>':'')+'</td>'
         +'<td style="'+negrita+'">'+f.fechaEmision+'</td>'
         +'<td class="num r" style="'+negrita+'">'+fmt(f.total)+'</td>'
         +'<td>'+(vencido&&!bloqueada&&!pagada?'<span class="badge bg-red">⚠ Vencida '+f.fechaVencimiento+'</span>':'<span class="badge bg-green">'+f.fechaVencimiento+'</span>')+'</td>'
@@ -1482,18 +1457,8 @@ function renderFacturas(){
         +'</tr>';
       if(!pagada){
         fila+='<tr id="pagoForm_'+f.id+'" style="display:none;background:#fff8f0"><td colspan="9" style="padding:10px 20px">'
-          +(f.referenciaPago
-            ?'<div style="margin-bottom:10px"><span style="font-weight:700">🔢 Referencia para la transferencia:</span> <span style="font-size:18px;font-weight:700;color:#1c6b3c;letter-spacing:1px">'+f.referenciaPago+'</span> <span style="font-size:11px;color:#888">(úsala como "Referencia numérica" en el SPEI)</span></div>'
-            :'<div style="margin-bottom:10px;background:#eef4f8;padding:8px;border-radius:6px"><div style="font-weight:700;margin-bottom:4px">🔢 Generar referencia para la transferencia (antes de pagar)</div>'
-              +'<select id="refPagoUnidad_'+f.id+'" style="margin-right:6px">'
-                +'<option value="">Elige unidad...</option>'
-                +OPERADORES.slice().sort(function(a,b){return a.unidad-b.unidad;}).map(function(o){return '<option value="'+o.unidad+'">'+o.unidad+' — '+o.nombre+'</option>';}).join('')
-                +'<option value="general">— Gasto general / repartido entre varias unidades —</option>'
-              +'</select>'
-              +'<button class="btn btn-out btn-sm" id="refPagoBtn_'+f.id+'" onclick="generarReferenciaPago(\''+f.id+'\')">Generar referencia</button>'
-              +'<div style="font-size:11px;color:#888;margin-top:4px">Elegir una unidad asigna el 100% de esta factura a esa unidad; "gasto general" la deja sin prorratear a ninguna. Si ya tiene prorrateo asignado, no se toca.</div>'
-            +'</div>')
           +'<div style="font-weight:700;margin-bottom:6px">💳 Registrar pago — sube el comprobante (foto o PDF de la transferencia/depósito)</div>'
+          +'<div style="font-size:11px;color:#888;margin-bottom:6px">Usa la referencia numérica fija de la unidad al hacer la transferencia (ver tabla "🔢 Referencias de pago por unidad" arriba) — al subir el comprobante, la IA la lee sola y sugiere la unidad.</div>'
           +'<input type="file" accept="image/*,.pdf" onchange="handlePagoArchivo(event,\''+f.id+'\')">'
           +'<div id="pagoInfo_'+f.id+'" style="margin-top:8px"></div>'
           +'</td></tr>';
@@ -1525,8 +1490,20 @@ function toggleProrrateoDetalle(id){
   if(el)el.style.display=(el.style.display==='none'?'table-row':'none');
 }
 
+function renderCatalogoReferenciasPago(){
+  var wrap=document.getElementById('refPagoCatalogo');
+  if(!wrap)return;
+  var filas=OPERADORES.slice().sort(function(a,b){return a.unidad-b.unidad;}).map(function(o){
+    return '<tr><td>'+o.unidad+' — '+o.nombre+'</td><td class="num" style="font-weight:700;letter-spacing:1px">'+referenciaDeUnidad(o.unidad)+'</td></tr>';
+  }).join('');
+  wrap.innerHTML='<table style="width:100%"><thead><tr><th style="text-align:left">Unidad</th><th class="num">Referencia</th></tr></thead><tbody>'
+    +filas
+    +'<tr><td>— Gasto general / repartido entre varias unidades —</td><td class="num" style="font-weight:700;letter-spacing:1px">'+REFERENCIA_PAGO_GENERAL+'</td></tr>'
+    +'</tbody></table>';
+}
 window.onFBReady(async function(){
   OPERADORES=await window.cargarOperadores();
+  renderCatalogoReferenciasPago();
   fbReady=true;
   $('fbStatus').textContent='✅ Conectado';
   $('fbStatus').className='fb-status fb-ok';
