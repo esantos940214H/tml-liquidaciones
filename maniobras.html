@@ -325,6 +325,17 @@ function tmlDeleteCookie(name){
 function usuarioSesion(){
   try{return JSON.parse(tmlGetCookie('tml_user')||'null');}catch(e){return null;}
 }
+// SUPER_ADMIN_EMAILS: quién puede eliminar renglones de autorizaciones en
+// Maniobras — a propósito MÁS estricto que "esAdmin" (que ya exigen todos
+// los demás candados de este archivo). El dueño pidió que otros admins
+// (ej. Raúl) dejen de ver el botón ✕, para que no pueda "limpiar" pendientes
+// sin que quede registro — ver eliminarAutorizacion() más abajo, que además
+// guarda un log de cada eliminación por si algún día hace falta auditar.
+var SUPER_ADMIN_EMAILS=['emilio@mudandote.mx'];
+function esSuperAdmin(){
+  var u=usuarioSesion();
+  return !!(u&&u.usuario&&SUPER_ADMIN_EMAILS.indexOf(u.usuario.toLowerCase())!==-1);
+}
 async function cerrarSesionTML(){
   if(window.TMLSesion) await TMLSesion.cerrarSesion();
   else tmlDeleteCookie('tml_user');
@@ -525,7 +536,7 @@ function renderPendientes(){
       +'<td class="num" style="font-size:11px">'+(ids.tu2||'—')+'</td>'
       +'<td style="font-size:11px">'+responsable+'</td>'
       +'<td>'+(v.sinFacturaJustificar===false?'<span class="badge bg-green">✓ Resuelto ($0)</span>':(vencido?'<span class="badge bg-red">⚠ Vencido</span>':'<span class="badge bg-yellow">⏳ '+(v.fechaLimiteJustificacion||'').slice(0,10)+'</span>'))+'</td>'
-      +'<td><button class="btn btn-out btn-sm" title="Corregir el monto de esta fila ya registrada (ej. quedó en $0 por error)" onclick="corregirMontoAutorizacion(\''+v.id+'\')">✏️</button> <button class="btn btn-out btn-sm" onclick="eliminarAutorizacion(\''+v.id+'\')">✕</button></td>'
+      +'<td><button class="btn btn-out btn-sm" title="Corregir el monto de esta fila ya registrada (ej. quedó en $0 por error)" onclick="corregirMontoAutorizacion(\''+v.id+'\')">✏️</button> '+(esSuperAdmin()?'<button class="btn btn-out btn-sm" onclick="eliminarAutorizacion(\''+v.id+'\')">✕</button>':'')+'</td>'
       +'</tr>';
   }).join('');
 }
@@ -603,9 +614,19 @@ async function cargarIngresosEstricto(){
   renderPendientes();
 }
 function eliminarAutorizacion(id){
+  var u=usuarioSesion();
+  if(!esSuperAdmin()){alert('No tienes permiso para eliminar autorizaciones.');return;}
   var v=ingresosDB.find(function(x){return x.id===id;});
   if(!v)return;
-  if(!confirm('¿Eliminar esta autorización pendiente ('+fmt(v.subtotal)+' + IVA, pedido "'+v.observaciones+'")? Solo hazlo si se capturó por error — si ya hay factura real, mejor sustitúyela desde Ingresos.'))return;
+  if(!confirm('¿Eliminar esta autorización pendiente ('+fmt(v.subtotal)+' + IVA, pedido "'+v.observaciones+'")? Solo hazlo si se capturó por error — si ya hay factura real, mejor sustitúyela desde Ingresos.\n\nEsto queda registrado en el log de eliminaciones.'))return;
+  // Log de auditoría ANTES de borrar — guarda quién, cuándo, y el renglón
+  // completo tal cual estaba, para poder consultarlo después si hace falta
+  // (ver SUPER_ADMIN_EMAILS arriba: el dueño pidió trazabilidad, no solo
+  // restringir el botón).
+  window.FB.set('logsEliminaciones',uid(),{
+    modulo:'maniobras',quien:(u&&u.usuario)||'desconocido',cuando:new Date().toISOString(),
+    idOriginal:id,datosEliminados:v
+  });
   cargarIngresosEstricto().then(function(){
     ingresosDB=ingresosDB.filter(function(x){return x.id!==id;});
     window.FB.set('estado','ingresosDB',{data:JSON.stringify(ingresosDB)});
