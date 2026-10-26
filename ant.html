@@ -176,7 +176,7 @@ tr:hover td{background:#fafafa}
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
       <div class="upload-zone" id="dzCSV" onclick="document.getElementById('fCSV').click()">
         <div class="icon">📊</div>
-        <p><strong>CSV BBVA</strong><br><span style="font-size:11px;color:#aaa">MovimientosCheque.csv</span></p>
+        <p><strong>CSV BBVA o Santander</strong><br><span style="font-size:11px;color:#aaa">MovimientosCheque.csv, o "Consulta de Transferencias" de Santander (celular)</span></p>
       </div>
       <div class="upload-zone" id="dzTXT" onclick="document.getElementById('fTXT').click()">
         <div class="icon">📄</div>
@@ -648,12 +648,30 @@ async function guardar(mutar){
 }
 
 // ── PARSERS ─────────────────────────────────────────────
-// CSV BBVA (MovimientosCheque.csv)
+// CSV — detecta el formato por el encabezado y despacha al parser que
+// corresponda. Hoy se reconocen dos:
+//   - BBVA (MovimientosCheque.csv): columnas "Fecha","Hora","Cargo"/"Abono"
+//     separadas, un movimiento por fila (cargos Y abonos juntos, se filtra
+//     por "Cargo"==='-').
+//   - Santander "Consulta de Transferencias" (se descarga desde el celular,
+//     ver caso real reportado): ya viene filtrado a solo transferencias
+//     salientes, trae "Cuenta de abono"/"Descripción cuenta de abono" en
+//     vez de "Cargo", y usa "Referencia Operación" como folio único en vez
+//     de "Referencia". Ambos terminan en la misma forma {fecha,hora,
+//     importe,concepto,referencia,beneficiario} que ya espera procesarRows.
 function parseCSV(text){
   const lines=text.split(/\r?\n/).filter(l=>l.trim());
-  const clean=s=>s.replace(/^'+/,'').replace(/'+$/,'').trim();
   const sep=lines[0].includes('\t')?'\t':',';
   const headers=lines[0].split(sep).map(h=>h.trim().replace(/^'/,''));
+  const idxTodos=(...necesita)=>{
+    const n=necesita.map(x=>x.toLowerCase());
+    return headers.findIndex(h=>{const hl=h.toLowerCase();return n.every(x=>hl.indexOf(x)>-1);});
+  };
+  if(idxTodos('descripci','abono')>-1)return _parseCSVSantanderTransferencias(lines,sep,headers,idxTodos);
+  return _parseCSVBBVA(lines,sep,headers);
+}
+function _parseCSVBBVA(lines,sep,headers){
+  const clean=s=>s.replace(/^'+/,'').replace(/'+$/,'').trim();
   const idx=h=>headers.findIndex(x=>x.toLowerCase().includes(h.toLowerCase()));
   const iFecha=idx('Fecha'),iHora=idx('Hora'),iCA=idx('Cargo'),iImporte=idx('Importe'),iConcepto=idx('Concepto'),iReferencia=idx('Referencia'),iBeneficiario=idx('Nombre Beneficiario');
   const rows=[];
@@ -678,6 +696,35 @@ function parseCSV(text){
     // comparar contra anticipos reconstruidos que no tienen Referencia
     // (ver recuperarAnticiposDesdeHistorial en functions/index.js).
     rows.push({fecha,hora:(iHora>-1?cols[iHora]:'')||'',importe:parseFloat((cols[iImporte]||'0').replace(/,/g,'')),concepto:cols[iConcepto]||'',referencia:(cols[iReferencia]||'').trim(),beneficiario:(cols[iBeneficiario]||'').trim()});
+  }
+  return rows;
+}
+// Santander "Consulta de Transferencias" — mismo criterio de Referencia+Hora
+// que BBVA (ver comentario arriba), solo que aquí el folio único por
+// transacción es "Referencia Operación" (viene lleno tanto en SPEI como en
+// transferencias al mismo banco, a diferencia de "Clave de Rastreo" que solo
+// trae SPEI) y la hora sale de "Fecha y Hora de Alta" (ej. "19-10-2026
+// 08:15:36:000311" → "08:15:36"; viene vacía en transferencias al mismo
+// banco, igual que a veces pasa en BBVA).
+function _parseCSVSantanderTransferencias(lines,sep,headers,idxTodos){
+  const clean=s=>s.replace(/^'+/,'').replace(/'+$/,'').trim();
+  const iImporte=headers.findIndex(h=>h.trim().toLowerCase()==='importe');
+  const iConcepto=idxTodos('concepto');
+  const iFecha=idxTodos('fecha','aplicaci');
+  const iAbonoDesc=idxTodos('descripci','abono');
+  const iRefOp=idxTodos('referencia','operaci');
+  const iFechaHoraAlta=idxTodos('fecha','hora','alta');
+  const iEstatus=idxTodos('estatus');
+  const rows=[];
+  for(let i=1;i<lines.length;i++){
+    const cols=lines[i].split(sep).map(clean);
+    if(cols.length<6)continue;
+    if(iEstatus>-1&&cols[iEstatus]&&cols[iEstatus].trim().toUpperCase()!=='EJECUTADO')continue;
+    const fecha=parseFechaTXT(cols[iFecha]);
+    if(!fecha)continue;
+    const fechaHoraAlta=(iFechaHoraAlta>-1?cols[iFechaHoraAlta]:'')||'';
+    const hora=fechaHoraAlta.indexOf(' ')>-1?fechaHoraAlta.split(' ')[1].split(':').slice(0,3).join(':'):'';
+    rows.push({fecha,hora,importe:parseFloat((cols[iImporte]||'0').replace(/,/g,'')),concepto:cols[iConcepto]||'',referencia:(cols[iRefOp]||'').trim(),beneficiario:(cols[iAbonoDesc]||'').trim()});
   }
   return rows;
 }
@@ -797,10 +844,27 @@ setupDrop('dzTXT','fTXT',parseTXT);
 
 function handleFile(file,parser){
   if(!file)return;
-  lockRequest('Subir estado de cuenta BBVA — Anticipos', function(){
+  lockRequest('Subir estado de cuenta — Anticipos', function(){
     const r=new FileReader();
-    r.onload=e=>procesarRows(parser(e.target.result),file.name);
-    r.readAsText(file,'UTF-8');
+    r.onload=e=>{
+      const buf=e.target.result;
+      let texto;
+      try{
+        // La mayoría de los bancos exportan en UTF-8, pero la "Consulta de
+        // Transferencias" de Santander que se descarga desde el celular
+        // (caso real reportado) viene en una codificación vieja
+        // (Windows-1252) — decodificada como UTF-8, los acentos/ñ salen como
+        // caracteres sueltos (ej. "Descripci�n") y el detector de formato de
+        // parseCSV ya no reconoce el encabezado. {fatal:true} hace que
+        // decode() truene si el archivo NO es UTF-8 válido, para caer al
+        // fallback en vez de quedarnos con texto corrupto silenciosamente.
+        texto=new TextDecoder('utf-8',{fatal:true}).decode(buf);
+      }catch(err){
+        texto=new TextDecoder('windows-1252').decode(buf);
+      }
+      procesarRows(parser(texto),file.name);
+    };
+    r.readAsArrayBuffer(file);
   });
 }
 
