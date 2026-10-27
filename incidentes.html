@@ -190,6 +190,32 @@ tr:hover td{background:#fafafa}
     </div>
   </div>
 
+  <!-- CARGOS A PLAZOS -->
+  <div class="card">
+    <div class="card-title">💰 Cargos a plazos (mercancía dañada u otro adeudo) <span class="info-tip">?<span class="info-tip-box">Para un descuento que el operador va a pagar EN PARTES (ej. mercancía dañada, acordado a meses) — NO tiene el tope de $1,500 ni la lógica de retenes/mordidas de arriba, es independiente. Crea el plan UNA vez con el monto total y el número de mensualidades; cada mes, en automático (revisión diaria), se registra solo el anticipo de esa mensualidad en Anticipos, en la fecha que le toca — así nunca se te pasa ni se adelanta antes de tiempo.</span></span></div>
+    <div class="grid3" style="margin-bottom:14px">
+      <div class="field"><label>Unidad / Operador</label>
+        <select id="cpUnidad"><option value="">— Selecciona —</option></select>
+      </div>
+      <div class="field"><label>Concepto</label><input type="text" id="cpConcepto" placeholder="Ej: Mercancía dañada mudanza 12-oct"></div>
+      <div class="field"><label>Monto total</label><input type="number" id="cpMontoTotal" placeholder="0.00" step="0.01" min="0.01"></div>
+    </div>
+    <div class="grid3" style="margin-bottom:14px">
+      <div class="field"><label>Número de mensualidades</label>
+        <select id="cpPlazos">
+          <option value="3">3</option>
+          <option value="6">6</option>
+          <option value="9">9</option>
+        </select>
+      </div>
+      <div class="field"><label>Fecha de la 1ª mensualidad</label><input type="date" id="cpFechaInicio"></div>
+    </div>
+    <div class="row">
+      <button class="btn btn-red" onclick="crearCargoPlazos()">💾 Crear plan de cargos a plazos</button>
+    </div>
+    <div id="bloqueCargosPlazos" style="margin-top:16px"><div style="text-align:center;padding:20px;color:#aaa">Sin planes de cargos a plazos registrados.</div></div>
+  </div>
+
   <!-- RESUMEN STATS -->
   <div class="card" id="cardStats" style="display:none">
     <div class="card-title">📊 Resumen general</div>
@@ -307,6 +333,7 @@ function calcularMontoReconocido(montoReportado,causa,negocio){
 }
 
 let incidentesDB={};
+let cargosPlazosDB={};
 let fbReady=false;
 
 // ══════════════════════════════════════════════
@@ -472,7 +499,7 @@ function verificarSesionModulo(){
 window.onFBReady(verificarSesionModulo);
 
 function initSelects(){
-  ['iUnidad','filtOp'].forEach(function(id){
+  ['iUnidad','filtOp','cpUnidad'].forEach(function(id){
     var s=$(id);if(!s)return;
     while(s.options.length>1)s.remove(1);
     // value=operadorId (identidad PERMANENTE), no la unidad actual — así el
@@ -523,6 +550,9 @@ window.onFBReady(async function(){
   initSelects();
   const data=await window.FB.get('estado','incidentesDB');
   if(data&&data.data){var _ic=JSON.parse(data.data);incidentesDB=Array.isArray(_ic)?{}:_ic;}
+  const dataCP=await window.FB.get('estado','cargosPlazosDB');
+  if(dataCP&&dataCP.data){var _cp=JSON.parse(dataCP.data);cargosPlazosDB=Array.isArray(_cp)?{}:_cp;}
+  if($('cpFechaInicio'))$('cpFechaInicio').value=new Date().toISOString().slice(0,10);
   // fbReady se marca hasta AQUÍ (no antes) — si se marcaba antes de traer
   // incidentesDB, registrar un incidente que le ganara la carrera al fetch
   // alcanzaba a guardar con incidentesDB todavía vacío ({}), borrando de
@@ -532,8 +562,12 @@ window.onFBReady(async function(){
   $('fbStatus').textContent='✅ Conectado';
   $('fbStatus').className='fb-status fb-ok';
   renderIncidentes();
+  renderCargosPlazos();
   window.FB.listen('estado','incidentesDB',function(data){
     if(data&&data.data){var _ic2=JSON.parse(data.data);incidentesDB=Array.isArray(_ic2)?{}:_ic2;renderIncidentes();}
+  });
+  window.FB.listen('estado','cargosPlazosDB',function(data){
+    if(data&&data.data){var _cp2=JSON.parse(data.data);cargosPlazosDB=Array.isArray(_cp2)?{}:_cp2;renderCargosPlazos();}
   });
 });
 setTimeout(function(){
@@ -560,6 +594,119 @@ async function guardar(){
   Object.keys(incidentesDB).forEach(function(k){actual[k]=incidentesDB[k];});
   incidentesDB=actual;
   window.FB.set('estado','incidentesDB',{data:JSON.stringify(incidentesDB)});
+}
+
+// ══════════════════════════════════════════════
+// CARGOS A PLAZOS (mercancía dañada u otro adeudo que se cobra en varias
+// mensualidades) — independiente de retenes/mordidas de arriba, sin el
+// tope de $1,500. Esta sección solo CREA/CANCELA el plan; quien de verdad
+// registra cada mensualidad como anticipo real es la función programada
+// generarCargosAPlazosProgramado (functions/index.js), que corre todos los
+// días y revisa, para cada plazo pendiente, si ya llegó su fecha — así
+// nunca se adelanta antes de tiempo ni se le olvida al dueño (ver
+// discusión real: un anticipo con fecha futura NO se defiere solo, liq.html
+// jala TODO lo "pendiente" sin importar la fecha — por eso el plazo se
+// queda aquí, como "pendiente de generar", hasta que de verdad le toca).
+// ══════════════════════════════════════════════
+async function guardarCargosPlazos(){
+  if(!fbReady)return;
+  var actual;
+  try{
+    var data=await window.FB.getEstricto('estado','cargosPlazosDB');
+    actual=(data&&data.data)?JSON.parse(data.data):{};
+    if(Array.isArray(actual))actual={};
+  }catch(e){
+    console.error('guardarCargosPlazos: error leyendo cargosPlazosDB, se cancela sin guardar nada:',e);
+    alert('⚠️ No se pudo guardar: hubo un problema de conexión. Revisa tu conexión e intenta de nuevo.');
+    return false;
+  }
+  Object.keys(cargosPlazosDB).forEach(function(k){actual[k]=cargosPlazosDB[k];});
+  cargosPlazosDB=actual;
+  await window.FB.set('estado','cargosPlazosDB',{data:JSON.stringify(cargosPlazosDB)});
+  return true;
+}
+// sumarMeses: suma meses de calendario conservando el día cuando se puede
+// (ej. 15-ene + 1 mes = 15-feb); si el mes destino no tiene ese día (ej.
+// 31-ene + 1 mes), cae al último día de ese mes — mismo criterio intuitivo
+// que usan los bancos para mensualidades.
+function sumarMeses(fechaISO,n){
+  var d=new Date(fechaISO+'T12:00:00');
+  var dia=d.getDate();
+  d.setDate(1);
+  d.setMonth(d.getMonth()+n);
+  var ultimoDiaMes=new Date(d.getFullYear(),d.getMonth()+1,0).getDate();
+  d.setDate(Math.min(dia,ultimoDiaMes));
+  return d.toISOString().slice(0,10);
+}
+async function crearCargoPlazos(){
+  var unidad=parseInt($('cpUnidad').value||0);
+  if(!unidad){alert('Selecciona la unidad/operador.');return;}
+  var op=OPERADORES.find(function(o){return o.operadorId===unidad;});
+  var concepto=($('cpConcepto').value||'').trim();
+  if(!concepto){alert('Captura el concepto (ej. "Mercancía dañada mudanza 12-oct").');return;}
+  var montoTotal=parseFloat($('cpMontoTotal').value||0);
+  if(!montoTotal||montoTotal<=0){alert('Captura el monto total.');return;}
+  var numPlazos=parseInt($('cpPlazos').value||0);
+  var fechaInicio=$('cpFechaInicio').value||hoy();
+  // Redondeo: cada mensualidad es el total entre el número de plazos,
+  // ajustando la ÚLTIMA para que la suma cierre exacta con el monto total
+  // (evita que centavos de redondeo se pierdan o se dupliquen).
+  var montoPlazo=Math.round((montoTotal/numPlazos)*100)/100;
+  var plazos=[];
+  var sumaParcial=0;
+  for(var i=0;i<numPlazos;i++){
+    var monto=(i===numPlazos-1)?Math.round((montoTotal-sumaParcial)*100)/100:montoPlazo;
+    sumaParcial+=monto;
+    plazos.push({num:i+1,monto:monto,fecha:sumarMeses(fechaInicio,i),estado:'pendiente',anticipoId:null});
+  }
+  var u=usuarioSesion();
+  if(!cargosPlazosDB[unidad])cargosPlazosDB[unidad]=[];
+  cargosPlazosDB[unidad].push({
+    id:uid(),unidad:unidad,operador:op?op.nombre:'',concepto:concepto,
+    montoTotal:montoTotal,numPlazos:numPlazos,fechaInicio:fechaInicio,plazos:plazos,
+    estado:'activo',creadoPor:u?(u.nombre||u.usuario):'',creadoEn:new Date().toISOString()
+  });
+  var ok=await guardarCargosPlazos();
+  if(!ok)return;
+  renderCargosPlazos();
+  $('cpConcepto').value='';$('cpMontoTotal').value='';
+  alert('✅ Plan creado: '+numPlazos+' mensualidades de '+fmt(montoPlazo)+' aprox., la primera el '+plazos[0].fecha+'. Cada una se va a registrar sola en Anticipos el día que le toque.');
+}
+function renderCargosPlazos(){
+  var wrap=$('bloqueCargosPlazos');
+  if(!wrap)return;
+  var filas=[];
+  Object.keys(cargosPlazosDB).forEach(function(u){
+    (cargosPlazosDB[u]||[]).forEach(function(c){filas.push(c);});
+  });
+  if(!filas.length){wrap.innerHTML='<div style="text-align:center;padding:20px;color:#aaa">Sin planes de cargos a plazos registrados.</div>';return;}
+  filas.sort(function(a,b){return(b.creadoEn||'').localeCompare(a.creadoEn||'');});
+  wrap.innerHTML='<table style="width:100%"><thead><tr><th>Operador</th><th>Concepto</th><th class="num">Total</th><th>Mensualidades</th><th>Próximo vencimiento</th><th>Estado</th><th></th></tr></thead><tbody>'
+    +filas.map(function(c){
+      var generados=c.plazos.filter(function(p){return p.estado==='generado';}).length;
+      var siguiente=c.plazos.find(function(p){return p.estado==='pendiente';});
+      var estadoTxt=c.estado==='cancelado'?'<span class="badge bg-red">Cancelado</span>':(generados===c.numPlazos?'<span class="badge bg-green">✅ Completado</span>':'<span class="badge bg-yellow">Activo</span>');
+      return '<tr>'
+        +'<td style="font-size:12px">'+(c.operador||c.unidad)+'</td>'
+        +'<td style="font-size:12px">'+c.concepto+'</td>'
+        +'<td class="num">'+fmt(c.montoTotal)+'</td>'
+        +'<td class="num">'+generados+' de '+c.numPlazos+'</td>'
+        +'<td>'+(siguiente?siguiente.fecha+' ('+fmt(siguiente.monto)+')':'—')+'</td>'
+        +'<td>'+estadoTxt+'</td>'
+        +'<td>'+(c.estado==='activo'?'<button class="btn btn-out btn-sm" onclick="cancelarCargoPlazos(\''+c.id+'\')">✕ Cancelar restantes</button>':'')+'</td>'
+        +'</tr>';
+    }).join('')
+    +'</tbody></table>';
+}
+async function cancelarCargoPlazos(id){
+  var plan=null;
+  Object.keys(cargosPlazosDB).forEach(function(u){(cargosPlazosDB[u]||[]).forEach(function(c){if(c.id===id)plan=c;});});
+  if(!plan)return;
+  if(!confirm('¿Cancelar las mensualidades PENDIENTES de "'+plan.concepto+'"? Las que ya se generaron como anticipo NO se tocan/borran.'))return;
+  plan.estado='cancelado';
+  plan.plazos.forEach(function(p){if(p.estado==='pendiente')p.estado='cancelado';});
+  var ok=await guardarCargosPlazos();
+  if(ok)renderCargosPlazos();
 }
 
 // ── REGISTRAR ─────────────────────────────────────────────
