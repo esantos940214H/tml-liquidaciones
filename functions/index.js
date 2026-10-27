@@ -4059,6 +4059,95 @@ exports.wialonSincronizarOdometrosProgramado = onSchedule(
 );
 
 // ══════════════════════════════════════════════════════════════════════════
+// CARGOS A PLAZOS (incidentes.html) — un descuento que el operador va a
+// pagar EN VARIAS MENSUALIDADES (ej. mercancía dañada) se crea UNA vez como
+// plan (estado/cargosPlazosDB: {unidad:[{id,concepto,montoTotal,numPlazos,
+// plazos:[{num,monto,fecha,estado:'pendiente'|'generado'|'cancelado',
+// anticipoId}],estado:'activo'|'completado'|'cancelado'}]}). Esta función
+// corre TODOS los días y, para cada plazo "pendiente" cuya fecha ya llegó
+// (<= hoy, hora CDMX), registra el anticipo real correspondiente en
+// anticiposDB — un anticipo con fecha futura NUNCA se difiere solo
+// (liq.html jala TODO lo "pendiente" sin importar su fecha, ver discusión
+// real con el dueño), así que sin esto el plazo se aplicaría completo de
+// golpe en la primera liquidación que se cierre, en vez de ir saliendo mes
+// a mes como se negoció con el operador.
+async function _generarCargosAPlazosCore() {
+  const refCP = db.collection('estado').doc('cargosPlazosDB');
+  const snapCP = await refCP.get();
+  const cargosPlazosDB = (snapCP.exists && snapCP.data().data) ? JSON.parse(snapCP.data().data) : {};
+  const hoyStr = new Date().toLocaleDateString('sv-SE', { timeZone: 'America/Mexico_City' }); // YYYY-MM-DD
+  const pendientesPorUnidad = {};
+  Object.keys(cargosPlazosDB).forEach(function (unidad) {
+    (cargosPlazosDB[unidad] || []).forEach(function (plan) {
+      if (plan.estado !== 'activo') return;
+      (plan.plazos || []).forEach(function (p) {
+        if (p.estado === 'pendiente' && p.fecha <= hoyStr) {
+          if (!pendientesPorUnidad[unidad]) pendientesPorUnidad[unidad] = [];
+          pendientesPorUnidad[unidad].push({ planId: plan.id, concepto: plan.concepto, numPlazos: plan.numPlazos, plazoNum: p.num, monto: p.monto, fecha: p.fecha });
+        }
+      });
+    });
+  });
+  const unidadesConPendientes = Object.keys(pendientesPorUnidad);
+  if (!unidadesConPendientes.length) return { generados: 0 };
+
+  // 1) Crear los anticipos reales — releer anticiposDB fresco DENTRO de la
+  // transacción (nunca la copia de arriba, que pudo quedar vieja).
+  const refAnt = db.collection('estado').doc('anticiposDB');
+  const idsGenerados = {}; // unidad -> [{plazoNum, anticipoId}]
+  await db.runTransaction(async function (tx) {
+    const snapAnt = await tx.get(refAnt);
+    const anticiposDB = (snapAnt.exists && snapAnt.data().data) ? JSON.parse(snapAnt.data().data) : {};
+    unidadesConPendientes.forEach(function (unidad) {
+      if (!anticiposDB[unidad]) anticiposDB[unidad] = [];
+      if (!idsGenerados[unidad]) idsGenerados[unidad] = [];
+      pendientesPorUnidad[unidad].forEach(function (item) {
+        const nuevoId = 'cargoplazo-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8);
+        anticiposDB[unidad].push({
+          id: nuevoId, fecha: item.fecha, importe: item.monto,
+          concepto: item.concepto + ' (mensualidad ' + item.plazoNum + '/' + item.numPlazos + ')',
+          estado: 'pendiente', liqNum: null, origen: 'cargo_plazos', planId: item.planId
+        });
+        idsGenerados[unidad].push({ plazoNum: item.plazoNum, planId: item.planId, anticipoId: nuevoId });
+      });
+    });
+    tx.set(refAnt, { data: JSON.stringify(anticiposDB) });
+  });
+
+  // 2) Marcar esos plazos como "generado" en cargosPlazosDB — releer fresco
+  // otra vez (por si se creó/canceló un plan mientras corría el paso 1).
+  await db.runTransaction(async function (tx) {
+    const snap2 = await tx.get(refCP);
+    const freshCP = (snap2.exists && snap2.data().data) ? JSON.parse(snap2.data().data) : {};
+    Object.keys(idsGenerados).forEach(function (unidad) {
+      (freshCP[unidad] || []).forEach(function (plan) {
+        idsGenerados[unidad].forEach(function (item) {
+          if (plan.id !== item.planId) return;
+          const p = (plan.plazos || []).find(function (x) { return x.num === item.plazoNum; });
+          if (p && p.estado === 'pendiente') { p.estado = 'generado'; p.anticipoId = item.anticipoId; }
+        });
+        if (plan.estado === 'activo' && plan.plazos.every(function (x) { return x.estado !== 'pendiente'; })) plan.estado = 'completado';
+      });
+    });
+    tx.set(refCP, { data: JSON.stringify(freshCP) });
+  });
+
+  const generados = Object.keys(idsGenerados).reduce(function (s, u) { return s + idsGenerados[u].length; }, 0);
+  return { generados: generados };
+}
+exports.generarCargosAPlazosProgramado = onSchedule(
+  { schedule: '0 7 * * *', timeZone: 'America/Mexico_City', region: 'us-central1', timeoutSeconds: 60 },
+  async () => {
+    try {
+      const r = await _generarCargosAPlazosCore();
+      console.log('generarCargosAPlazosProgramado:', JSON.stringify(r));
+    } catch (e) {
+      console.error('generarCargosAPlazosProgramado:', e);
+    }
+  }
+);
+
+// ══════════════════════════════════════════════════════════════════════════
 // WIALON → BITÁCORA: cada 15 min revisa los viajes con bitácora abierta
 // (tienen "inicio_viaje", no tienen "cierre_viaje") y, según la velocidad
 // que reporta Wialon, marca automático "conduciendo" o "pausa" — sin que el
