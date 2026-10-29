@@ -1111,6 +1111,31 @@ async function toggleActivaUnidad(id){
     await cargarTodo();
   }catch(e){console.error('toggleActivaUnidad:',e);alert('⚠️ Error: '+e.message);}
 }
+// liberarOperadorDeUnidad: quita el operador de ESTA unidad sin asignarle
+// una nueva — para destrabar un caso como el real de Andrés María Ramos
+// (quedó marcado como operador actual de dos unidades a la vez por un
+// desfase viejo; confirmarAsignacion ya no debería volver a producir esto,
+// ver su comentario, pero este botón sirve para limpiar a mano si pasa).
+// Solo toca operadores.unidadActual del operador si TODAVÍA apunta a esta
+// misma unidad — si ya lo reasignaron a otra unidad real mientras tanto, no
+// se le toca (no queremos borrarle su asignación real buena).
+async function liberarOperadorDeUnidad(id){
+  var un=unidadesRaw.find(function(u){return u.id===id;});
+  if(!un||!un.operadorActual)return;
+  var op=operadoresRaw.find(function(o){return o.id===String(un.operadorActual);});
+  if(!confirm('¿Quitar a '+(op?op.nombre:'el operador actual')+' de la unidad '+un.numero+'? No se le asigna ninguna unidad nueva.'))return;
+  try{
+    var db=firebase.firestore();
+    var batch=db.batch();
+    batch.update(db.collection('unidades').doc(id),{operadorActual:null});
+    if(op&&parseInt(op.unidadActual)===un.numero){
+      batch.update(db.collection('operadores').doc(op.id),{unidadActual:null});
+    }
+    await batch.commit();
+    if(window.cargarOperadores)window.cargarOperadores(true);
+    await cargarTodo();
+  }catch(e){console.error('liberarOperadorDeUnidad:',e);alert('⚠️ Error: '+e.message);}
+}
 function renderUnidades(){
   var tb=$('tbUnidades');
   tb.innerHTML=unidadesRaw.map(function(u){
@@ -1125,6 +1150,7 @@ function renderUnidades(){
       +'<td><span class="badge '+(u.activa?'bg-green':'bg-gray')+'">'+(u.activa?'Activa':'Baja')+'</span></td>'
       +'<td style="white-space:nowrap">'
         +'<button class="btn-sm btn-out" title="Ver/editar toda la información de esta unidad" onclick="editarUnidad(\''+u.id+'\')">✏️ Editar</button> '
+        +(u.operadorActual?'<button class="btn-sm btn-out" title="Quitarle el operador a esta unidad SIN asignarle una nueva — úsalo si quedó un operador pegado aquí por error" onclick="liberarOperadorDeUnidad(\''+u.id+'\')">🔓 Liberar</button> ':'')
         +'<button class="btn-sm" style="background:'+(u.activa?'#fde8e8':'#d1e7dd')+';color:'+(u.activa?'#9b1c1c':'#0a5233')+';border:none;cursor:pointer" onclick="toggleActivaUnidad(\''+u.id+'\')">'+(u.activa?'Dar de baja':'Reactivar')+'</button>'
       +'</td>'
       +'</tr>';
@@ -1173,20 +1199,22 @@ async function confirmarAsignacion(){
   var unidad=unidadesRaw.find(function(u){return u.numero===unidadNum;});
   if(!operador||!unidad){alert('No se encontró el operador o la unidad.');return;}
 
-  var unidadAnteriorDelOperador=operador.unidadActual;
   var operadorAnteriorDeLaUnidad=unidad.operadorActual?parseInt(unidad.operadorActual):null;
   var haySaliente=operadorAnteriorDeLaUnidad&&operadorAnteriorDeLaUnidad!==operadorId;
 
-  // El campo unidadActual del OPERADOR puede quedar desfasado (por ejemplo si
-  // se editó a mano fuera de este flujo). Antes de liberar "su unidad
-  // anterior", se verifica contra la colección unidades — la fuente real de
-  // quién trae cada camión — que esa unidad SIGUE siendo de este operador.
-  // Si ya es de alguien más, no se toca (para no borrarle la asignación real
-  // a ese otro operador por un dato viejo).
-  var unidadAnteriorReal=(unidadAnteriorDelOperador&&unidadAnteriorDelOperador!==unidadNum)
-    ?unidadesRaw.find(function(u){return u.numero===unidadAnteriorDelOperador;})
-    :null;
-  var liberarUnidadAnterior=unidadAnteriorReal&&unidadAnteriorReal.operadorActual&&parseInt(unidadAnteriorReal.operadorActual)===operadorId;
+  // unidadesAReleaser: TODAS las unidades que ahora mismo (en Firestore, no
+  // en el campo operadores.unidadActual, que puede estar desfasado) todavía
+  // apuntan a este operador como operadorActual — normalmente es una sola
+  // (su unidad anterior real), pero si por cualquier motivo quedó en MÁS de
+  // una (caso real: Andrés María Ramos pegado a la vez en 527 y 4522 porque
+  // antes esto solo liberaba la unidad que decía operadores.unidadActual, y
+  // si ese dato ya estaba desfasado, la unidad vieja de verdad nunca se
+  // soltaba), aquí se liberan TODAS — un operador nunca debe quedar como
+  // operadorActual de más de una unidad al mismo tiempo.
+  var unidadesAReleaser=unidadesRaw.filter(function(u){
+    return u.numero!==unidadNum&&u.operadorActual&&parseInt(u.operadorActual)===operadorId;
+  });
+  var liberarUnidadAnterior=unidadesAReleaser.length>0;
 
   var litrosEntrega=null;
   if(haySaliente)litrosEntrega=parseFloat($('asigLitrosEntrega').value||0);
@@ -1197,18 +1225,16 @@ async function confirmarAsignacion(){
     msgConfirm+='\n\nEsto desasigna a '+(opSaliente?opSaliente.nombre:'el operador actual')+' de esa unidad.';
   }
   if(liberarUnidadAnterior){
-    msgConfirm+='\n\n'+operador.nombre+' deja de estar asignado a la unidad '+unidadAnteriorDelOperador+'.';
-  }else if(unidadAnteriorDelOperador&&unidadAnteriorDelOperador!==unidadNum){
-    msgConfirm+='\n\n⚠️ El sistema tenía registrada la unidad '+unidadAnteriorDelOperador+' como la anterior de '+operador.nombre+', pero esa unidad ya es de otro operador — se corrige el dato de '+operador.nombre+' sin tocar esa unidad.';
+    msgConfirm+='\n\n'+operador.nombre+' deja de estar asignado a la unidad'+(unidadesAReleaser.length>1?'es ':' ')+unidadesAReleaser.map(function(u){return u.numero;}).join(', ')+'.';
   }
   if(!confirm(msgConfirm))return;
 
   try{
     var db=firebase.firestore();
     var batch=db.batch();
-    if(liberarUnidadAnterior){
-      batch.update(db.collection('unidades').doc(String(unidadAnteriorDelOperador)),{operadorActual:null});
-    }
+    unidadesAReleaser.forEach(function(u){
+      batch.update(db.collection('unidades').doc(String(u.numero)),{operadorActual:null});
+    });
     if(haySaliente){
       batch.update(db.collection('operadores').doc(String(operadorAnteriorDeLaUnidad)),{unidadActual:null});
     }
