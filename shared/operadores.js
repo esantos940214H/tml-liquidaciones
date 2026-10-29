@@ -114,22 +114,43 @@
       // horas de servicio (operador.html, ver NOM-087-SCT-2-2017). Si
       // "unidades" no carga por alguna razón, no truena — solo se queda sin
       // esos datos (igual que un operador con la placa en blanco).
+      //
+      // unidadPorOperador: quién trae CADA unidad se decide aquí leyendo
+      // unidades.operadorActual, NUNCA operadores.unidadActual — son dos
+      // campos redundantes que se pueden desincronizar (caso real: Ramón
+      // Zaragoza pasó a traer la 4522, unidades/4522.operadorActual quedó
+      // bien actualizado, pero operadores/4522 — que es, por una vieja
+      // convención, el ID de Andrés María Ramos, el operador anterior de esa
+      // unidad — se quedó con unidadActual:4522 sin que nada lo detectara.
+      // Con ese campo viejo, Andrés seguía apareciendo como dueño de la
+      // 4522 en paralelo a Ramón, y el primero que encontrara cualquier
+      // "OPERADORES.find(o=>o.unidad===4522)" en el resto del sistema ganaba
+      // la unidad al azar — llegó a atribuirle ingresos reales de Ramón a
+      // Andrés). unidades.operadorActual es la única fuente que NO puede
+      // tener esta ambigüedad (cada unidad solo guarda UN operador actual),
+      // así que es la que manda — si ninguna unidad reclama a un operador,
+      // simplemente no aparece con unidad asignada, sin importar lo que diga
+      // su propio campo viejo.
       var datosPorUnidad = {};
+      var unidadPorOperador = {};
       try {
         var snapUn = await _db.collection('unidades').get();
         snapUn.forEach(function (d) {
           var u = d.data();
           datosPorUnidad[parseInt(d.id)] = { placa: u.placas || '', marca: u.marca || '', modelo: u.modelo || '' };
+          if (u.operadorActual != null) unidadPorOperador[parseInt(u.operadorActual)] = parseInt(d.id);
         });
       } catch (e) { console.error('shared/operadores.js: no se pudieron cargar las placas:', e); }
       var lista = [];
       snap.forEach(function (d) {
         var o = d.data();
-        if (o.unidadActual == null) return; // sin unidad: aún no aparece en el resto del sistema
-        var datosUn = datosPorUnidad[o.unidadActual] || {};
+        var operadorIdNum = parseInt(d.id);
+        var unidadReal = unidadPorOperador[operadorIdNum];
+        if (unidadReal == null) return; // ninguna unidad lo reclama: aún no aparece en el resto del sistema
+        var datosUn = datosPorUnidad[unidadReal] || {};
         lista.push({
-          unidad: o.unidadActual,
-          operadorId: parseInt(d.id),
+          unidad: unidadReal,
+          operadorId: operadorIdNum,
           nombre: o.nombre || '',
           comision: o.comision != null ? o.comision : 12,
           clave: o.clave || '',
