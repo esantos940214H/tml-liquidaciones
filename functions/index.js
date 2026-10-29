@@ -730,6 +730,63 @@ function _crearProvisionalFleteServer(ingresosDB, operadores, datos) {
   return { ok: true };
 }
 
+// _backfillProvisionalesFleteCore — reintenta, con los datos de Flota de
+// AHORA MISMO, crear el ingreso provisional de cada pedido que sigue
+// "pendiente_factura" y todavía no tiene uno. _crearProvisionalFleteServer
+// solo se intenta UNA VEZ, en el momento exacto en que llega el correo del
+// pedido — si en ese instante el económico no se pudo emparejar con ningún
+// operador (caso real: Andrés María Ramos quedó marcado a la vez como
+// operador actual de dos unidades, 527 y 4522, por el bug de Flota ya
+// corregido — mientras eso duró, el cruce económico→operador fallaba en
+// silencio para esas unidades), el pedido se quedaba PARA SIEMPRE en
+// fletesDB sin su ingreso provisional, sin ningún reintento automático.
+// Se usa tanto desde el botón manual (backfillProvisionalesFlete) como al
+// final de cada revisión programada del buzón, para que esto se
+// autocorrija solo si algún día se vuelve a desincronizar Flota.
+async function _backfillProvisionalesFleteCore() {
+  const snapFletes = await db.collection('fletesDB').where('estado', '==', 'pendiente_factura').get();
+  const pendientes = [];
+  snapFletes.forEach(function (d) { pendientes.push(Object.assign({ id: d.id }, d.data())); });
+  if (!pendientes.length) return { totalPendientes: 0, creados: 0, yaExistian: 0, sinMatch: 0, detalleSinMatch: [] };
+
+  const snapOp = await db.collection('operadores').get();
+  const operadores = [];
+  snapOp.forEach(function (d) {
+    const data = d.data();
+    if (data.unidadActual != null) operadores.push({ operadorId: parseInt(d.id), unidad: data.unidadActual });
+  });
+
+  const refIngresos = db.collection('estado').doc('ingresosDB');
+  let creados = 0, yaExistian = 0, sinMatch = 0;
+  const detalleSinMatch = [];
+  await db.runTransaction(async function (tx) {
+    const snap = await tx.get(refIngresos);
+    const ingresosDB = (snap.exists && snap.data().data) ? JSON.parse(snap.data().data) : [];
+    pendientes.forEach(function (f) {
+      const r = _crearProvisionalFleteServer(ingresosDB, operadores, {
+        economico: f.economico, ordenEmbarque: f.ordenEmbarque, tu2: f.tu2, pedidoFlete: f.pedidoFlete,
+        montoFlete: f.montoFlete, fecha: f.fecha, destino: f.destino, tienda: f.tienda,
+        tiendaPrevias: f.tiendaPrevias, cliente: f.cliente
+      });
+      if (r.ok) creados++;
+      else if (r.error === 'ya existe') yaExistian++;
+      else { sinMatch++; detalleSinMatch.push({ ordenEmbarque: f.ordenEmbarque, economico: f.economico, motivo: r.error }); }
+    });
+    tx.set(refIngresos, { data: JSON.stringify(ingresosDB) });
+  });
+  return { totalPendientes: pendientes.length, creados: creados, yaExistian: yaExistian, sinMatch: sinMatch, detalleSinMatch: detalleSinMatch };
+}
+exports.backfillProvisionalesFlete = onRequest({ cors: true, region: 'us-central1', timeoutSeconds: 120 }, async (req, res) => {
+  try {
+    await _verificarAdmin(req);
+    const r = await _backfillProvisionalesFleteCore();
+    res.json(Object.assign({ ok: true }, r));
+  } catch (e) {
+    console.error('backfillProvisionalesFlete:', e);
+    res.status(/administrador|sesión/.test(e.message || '') ? 403 : 500).json({ error: e.message || 'Error interno del servidor.' });
+  }
+});
+
 // _registrarNoPagaServer: caso real (Martín, CEDIS León / Irapuato) — un
 // correo dice "NO PAGA" para un T.U. Primero se busca si ya existía una
 // autorización "PENDIENTE" (esperando monto) con ese mismo folio/T.U. — si
@@ -3587,6 +3644,13 @@ exports.revisarBuzonPedidosProgramado = onSchedule(
     const inicio = new Date().toISOString();
     try {
       const encontrados = await _revisarBuzonPedidosCore(FLETES_EMAIL_USER.value(), FLETES_EMAIL_PASS.value(), ANTHROPIC_API_KEY.value());
+      // Autocorrección: reintenta crear el ingreso provisional de cualquier
+      // pedido viejo que se haya quedado atorado sin él (ver comentario de
+      // _backfillProvisionalesFleteCore) — en try/catch aparte para que un
+      // problema aquí nunca tumbe el guardado del resultado normal del buzón.
+      let backfill = null;
+      try { backfill = await _backfillProvisionalesFleteCore(); }
+      catch (eBackfill) { console.error('revisarBuzonPedidosProgramado: backfill de provisionales falló:', eBackfill); }
       await db.collection('estado').doc('buzonPedidosEstado').set({
         ultimaEjecucion: inicio, ok: true, correosNuevos: encontrados.length,
         pedidosRegistrados: encontrados._totalRegistrados || 0, pendientesRevision: encontrados._totalPendientes || 0,
@@ -3595,6 +3659,7 @@ exports.revisarBuzonPedidosProgramado = onSchedule(
         facturasFletePendientesRevision: (encontrados._facturasFlete || {}).pendientesRevision || 0,
         excelCartaPorteMatcheados: (encontrados._excelCartaPorte || {}).matcheados || 0,
         excelCartaPorteSinPedido: (encontrados._excelCartaPorte || {}).sinPedido || 0,
+        provisionalesBackfillCreados: backfill ? backfill.creados : 0,
         error: null
       });
     } catch (e) {

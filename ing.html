@@ -361,6 +361,7 @@ tr:hover td{background:#fafafa}
   <div class="card" id="cardBuzonPedidosFlete">
     <div class="card-title">📦 Buzón de pedidos de flete (fletes@mudandote.mx) <span class="info-tip">?<span class="info-tip-box">El cliente manda el pedido de un embarque (orden de embarque, pedido de flete, tienda/destino, fecha) ANTES de que exista la factura. El sistema revisa este buzón cada 6 horas y registra solo lo que trae una orden de embarque reconocible — cuando subas aquí abajo tu XML+Excel de factura consolidada, cada renglón que coincida se marca "facturado" solo.</span></span>
       <button class="btn btn-out btn-sm" onclick="revisarBuzonPedidosAhora()" id="btnRevisarBuzonPedidos">🔄 Revisar buzón ahora</button>
+      <button class="btn btn-out btn-sm" onclick="backfillProvisionalesFleteUI()" id="btnBackfillProvisionales" title="Reintenta crear el ingreso sin factura de pedidos pendientes que se quedaron sin registrar (ej. por un desfase viejo de unidad/operador en Flota) — seguro de correr cuantas veces quieras, nunca duplica.">🩹 Reintentar ingresos sin factura</button>
     </div>
     <div id="buzonPedidosInfo" style="margin-top:8px"></div>
     <div id="buzonPedidosWrap"></div>
@@ -2342,6 +2343,24 @@ async function revisarBuzonPedidosAhora(){
     $('buzonPedidosInfo').innerHTML='<div class="alert alert-warn">⚠️ '+e.message+'</div>';
   }finally{
     $('btnRevisarBuzonPedidos').disabled=false;
+  }
+}
+const FUNCTION_URL_BACKFILL_PROVISIONALES_FLETE='https://us-central1-tml-liquidaciones.cloudfunctions.net/backfillProvisionalesFlete';
+async function backfillProvisionalesFleteUI(){
+  $('btnBackfillProvisionales').disabled=true;
+  $('buzonPedidosInfo').innerHTML='<div class="alert alert-info">⏳ Reintentando pedidos pendientes sin ingreso provisional...</div>';
+  try{
+    var idToken=await firebase.auth().currentUser.getIdToken();
+    var r=await fetch(FUNCTION_URL_BACKFILL_PROVISIONALES_FLETE,{method:'POST',headers:{'Authorization':'Bearer '+idToken}});
+    var data=await r.json();
+    if(data.error)throw new Error(data.error);
+    $('buzonPedidosInfo').innerHTML='<div class="alert alert-ok">✅ Revisados '+data.totalPendientes+' pedido(s) pendiente(s) — '+data.creados+' se registraron ahora como ingreso sin factura'+(data.yaExistian?' · '+data.yaExistian+' ya lo tenían':'')+(data.sinMatch?' · ⚠️ '+data.sinMatch+' siguen sin poder emparejar su económico con ningún operador actual':'')+'.</div>'
+      +(data.sinMatch?'<div style="font-size:11px;color:#888;margin-top:4px">'+data.detalleSinMatch.map(function(d){return d.ordenEmbarque+' (eco '+(d.economico||'—')+'): '+d.motivo;}).join(' · ')+'</div>':'');
+    await cargarYRenderFletesPendientes();
+  }catch(e){
+    $('buzonPedidosInfo').innerHTML='<div class="alert alert-warn">⚠️ '+e.message+'</div>';
+  }finally{
+    $('btnBackfillProvisionales').disabled=false;
   }
 }
 
