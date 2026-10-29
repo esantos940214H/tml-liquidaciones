@@ -451,13 +451,37 @@ function _idsDeObservacionesServer(observaciones) {
   return (observaciones || '').split('|').map(function (s) { return _normTxtServer(s.replace(/^\s*[A-Z0-9]+:/, '')); }).filter(function (s) { return s; });
 }
 
+// Quién trae cada unidad se decide leyendo unidades.operadorActual, NUNCA
+// operadores.unidadActual — son dos campos redundantes que se pueden
+// desincronizar (caso real: Ramón Zaragoza pasó a traer la unidad 4522,
+// unidades/4522.operadorActual quedó bien actualizado, pero
+// operadores/4522 —el ID de Andrés María Ramos, el operador anterior de
+// esa unidad, por una vieja convención donde el ID coincide con una unidad
+// que alguna vez trajo— se quedó con unidadActual:4522 sin que nada lo
+// detectara; con ese campo viejo, Andrés seguía apareciendo como dueño de
+// la 4522 en paralelo a Ramón, y cualquier cruce económico→operador podía
+// atribuirle a Andrés ingresos reales de Ramón). unidades.operadorActual
+// es la única fuente que no puede tener esta ambigüedad (cada unidad solo
+// guarda UN operador actual) — mismo criterio que cargarOperadores() del
+// lado del cliente, ver shared/operadores.js.
+async function _unidadPorOperadorServer() {
+  const snapUn = await db.collection('unidades').get();
+  const mapa = {};
+  snapUn.forEach(function (d) {
+    const u = d.data();
+    if (u.operadorActual != null) mapa[parseInt(u.operadorActual)] = parseInt(d.id);
+  });
+  return mapa;
+}
 async function _cargarOperadoresServer() {
+  const unidadPorOperador = await _unidadPorOperadorServer();
   const snap = await db.collection('operadores').where('activo', '==', true).get();
   const lista = [];
   snap.forEach(function (d) {
+    const unidadReal = unidadPorOperador[parseInt(d.id)];
+    if (unidadReal == null) return;
     const o = d.data();
-    if (o.unidadActual == null) return;
-    lista.push({ unidad: o.unidadActual, operadorId: parseInt(d.id), nombre: o.nombre || '' });
+    lista.push({ unidad: unidadReal, operadorId: parseInt(d.id), nombre: o.nombre || '' });
   });
   return lista;
 }
@@ -749,11 +773,16 @@ async function _backfillProvisionalesFleteCore() {
   snapFletes.forEach(function (d) { pendientes.push(Object.assign({ id: d.id }, d.data())); });
   if (!pendientes.length) return { totalPendientes: 0, creados: 0, yaExistian: 0, sinMatch: 0, detalleSinMatch: [] };
 
+  // Ver _unidadPorOperadorServer: quién trae cada unidad se decide por
+  // unidades.operadorActual, nunca por operadores.unidadActual (fue justo
+  // lo que causó que ingresos reales de Ramón Zaragoza se le atribuyeran a
+  // Andrés María Ramos la primera vez que corrió este backfill).
+  const unidadPorOperadorBackfill = await _unidadPorOperadorServer();
   const snapOp = await db.collection('operadores').get();
   const operadores = [];
   snapOp.forEach(function (d) {
-    const data = d.data();
-    if (data.unidadActual != null) operadores.push({ operadorId: parseInt(d.id), unidad: data.unidadActual });
+    const unidadReal = unidadPorOperadorBackfill[parseInt(d.id)];
+    if (unidadReal != null) operadores.push({ operadorId: parseInt(d.id), unidad: unidadReal });
   });
 
   const refIngresos = db.collection('estado').doc('ingresosDB');
@@ -3849,15 +3878,20 @@ exports.solicitarAnticipoOperador = onRequest({ cors: true, region: 'us-central1
     // para un operador normal, además confirma que el viaje SÍ es suyo (no
     // puede pedir dinero de un viaje de otra unidad).
     let operadorId;
+    // Ver _unidadPorOperadorServer: quién trae cada unidad se decide por
+    // unidades.operadorActual, nunca por operadores.unidadActual (puede
+    // quedar desfasado) — aquí es especialmente sensible porque decide a
+    // nombre de quién se registra una solicitud de dinero real.
+    const unidadPorOperadorSolicitud = await _unidadPorOperadorServer();
     if (claims.maestro) {
       if (!flete.economico) { res.status(400).json({ error: 'Ese viaje no tiene económico registrado — no se puede identificar a qué operador corresponde.' }); return; }
-      const opQuery = await db.collection('operadores').where('unidadActual', '==', _normEconomicoServer(flete.economico)).limit(1).get();
-      if (opQuery.empty) { res.status(404).json({ error: 'No se encontró un operador con esa unidad.' }); return; }
-      operadorId = parseInt(opQuery.docs[0].id);
+      const ecoBuscado = _normEconomicoServer(flete.economico);
+      const opIdEncontrado = Object.keys(unidadPorOperadorSolicitud).find(function (opId) { return unidadPorOperadorSolicitud[opId] === ecoBuscado; });
+      if (!opIdEncontrado) { res.status(404).json({ error: 'No se encontró un operador con esa unidad.' }); return; }
+      operadorId = parseInt(opIdEncontrado);
     } else {
       operadorId = claims.operadorId;
-      const opDoc = await db.collection('operadores').doc(String(operadorId)).get();
-      const miUnidad = opDoc.exists ? opDoc.data().unidadActual : null;
+      const miUnidad = unidadPorOperadorSolicitud[operadorId];
       if (!miUnidad || _normEconomicoServer(flete.economico) !== miUnidad) {
         res.status(403).json({ error: 'Ese viaje no está asignado a tu unidad.' });
         return;
