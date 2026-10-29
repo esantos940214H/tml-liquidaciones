@@ -1,0 +1,163 @@
+/* Recetas de Restaurante Encino. Misma paleta y letras que la página de inicio. */
+:root{
+  --papel:#f5efe3; --hoja:#fffaf0; --tinta:#2a261f; --gris:#6a6252; --encino:#46612f; --corteza:#7a4f2a; --linea:#e2d7c2; --alerta:#a33a1f;
+  --display:"Fraunces",Georgia,"Times New Roman",serif; --texto:"Source Sans 3",system-ui,-apple-system,"Segoe UI",sans-serif;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--papel:#16180f;--hoja:#1e2117;--tinta:#ede6d6;--gris:#b0a792;--encino:#a7c587;--corteza:#d9a570;--linea:#353829;--alerta:#f08a6a;color-scheme:dark}}
+:root[data-theme="dark"]{--papel:#16180f;--hoja:#1e2117;--tinta:#ede6d6;--gris:#b0a792;--encino:#a7c587;--corteza:#d9a570;--linea:#353829;--alerta:#f08a6a;color-scheme:dark}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth;-webkit-text-size-adjust:100%}
+@media (prefers-reduced-motion:reduce){html{scroll-behavior:auto}}
+body{margin:0;background:var(--papel);color:var(--tinta);font:17px/1.6 var(--texto)}
+img{max-width:100%;height:auto;display:block}
+a{color:var(--encino)}
+a:focus-visible,button:focus-visible,input:focus-visible{outline:3px solid var(--corteza);outline-offset:2px}
+.w{max-width:760px;margin:0 auto;padding-inline:16px}
+.js .solo-nojs{display:none!important}
+.no-js .solo-js{display:none!important}
+.saltar{position:absolute;left:-999px;top:0;background:var(--hoja);padding:8px 12px;z-index:50}
+.saltar:focus{left:8px}
+h1,h2,h3{font-family:var(--display);line-height:1.15;text-wrap:balance}
+h1{font-weight:700;font-size:clamp(2rem,7vw,3rem);color:var(--encino);margin:.2em 0 .3em;letter-spacing:-.01em}
+h2{font-weight:700;font-size:1.65rem;margin:0 0 12px}
+h3{font-weight:700;font-size:1.3rem;margin:28px 0 8px}
+h4{margin:16px 0 4px;font-size:.8rem;letter-spacing:.16em;text-transform:uppercase;color:var(--corteza)}
+
+/* Barra del sitio */
+.sitio{border-bottom:1px solid var(--linea);background:var(--papel)}
+.sitio-in{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:56px}
+.marca{font:700 1.35rem var(--display);color:var(--encino);text-decoration:none}
+.sitio nav{display:flex;gap:4px}
+.sitio nav a{text-decoration:none;color:var(--tinta);font-weight:600;padding:10px 10px;border-radius:999px}
+.sitio nav a[aria-current]{color:var(--encino);background:var(--hoja)}
+
+/* Botones */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;min-height:48px;padding:10px 20px;border-radius:999px;font:700 1rem var(--texto);text-decoration:none;border:2px solid var(--encino);color:var(--encino);background:transparent;cursor:pointer}
+.btn.p{background:var(--encino);color:var(--hoja)}
+.chip{display:inline-block;font-size:.75rem;letter-spacing:.14em;text-transform:uppercase;font-weight:700;color:var(--corteza);text-decoration:none}
+
+/* Migas */
+.migas ol{list-style:none;display:flex;flex-wrap:wrap;gap:4px;margin:12px 0;padding:0;font-size:.88rem;color:var(--gris)}
+.migas li+li::before{content:"›";margin-right:4px}
+.migas a{color:var(--gris)}
+
+/* Encabezado de receta */
+.hero-foto img{width:100%;aspect-ratio:3/2;object-fit:cover;border-radius:16px;background:var(--linea)}
+.hero-txt{padding-top:14px}
+.datos-receta{list-style:none;display:flex;flex-wrap:wrap;gap:6px 18px;margin:0 0 16px;padding:0}
+.datos-receta li{font-weight:700;font-variant-numeric:tabular-nums}
+.datos-receta span{display:block;font-weight:400;font-size:.78rem;color:var(--gris);text-transform:uppercase;letter-spacing:.08em}
+.hero-btns{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+@media (max-width:360px){.hero-btns{grid-template-columns:1fr}}
+
+section{padding-block:28px}
+.historia{border-top:1px solid var(--linea);margin-top:24px}
+.historia p{margin:0 0 1em}
+.publicada{font-size:.88rem;color:var(--gris)}
+
+/* Recetario */
+.recetario{border-top:1px solid var(--linea)}
+.herramientas{display:grid;gap:12px;background:var(--hoja);border:1px solid var(--linea);border-radius:16px;padding:14px}
+.porciones{display:flex;align-items:center;justify-content:center;gap:16px}
+.porciones button{width:48px;height:48px;border-radius:50%;border:2px solid var(--encino);background:transparent;color:var(--encino);font:700 1.5rem/1 var(--texto);cursor:pointer}
+.porciones output{min-width:9ch;text-align:center;font-size:1.05rem}
+.porciones b{font:700 1.6rem var(--display);font-variant-numeric:tabular-nums}
+.acciones{display:flex;flex-wrap:wrap;gap:8px}
+.acciones .btn{flex:1 1 auto;padding-inline:14px}
+.ayuda{margin:0;color:var(--gris);font-size:.92rem}
+.ings{list-style:none;margin:0;padding:0}
+.ings li{border-bottom:1px dashed var(--linea)}
+.ings label{display:flex;gap:12px;align-items:baseline;padding:10px 2px;cursor:pointer;min-height:48px}
+.ings input{width:22px;height:22px;flex:none;accent-color:var(--encino);transform:translateY(4px)}
+.ings .q{flex:none;min-width:5.5ch;font-weight:700;font-variant-numeric:tabular-nums}
+.ings .q:empty{display:none}
+.ings input:checked~span{text-decoration:line-through;color:var(--gris)}
+.pasos{list-style:none;counter-reset:paso;margin:0;padding:0}
+.paso{counter-increment:paso;position:relative;padding:14px 0 14px 52px;border-bottom:1px solid var(--linea)}
+.paso::before{content:counter(paso);position:absolute;left:0;top:14px;width:38px;height:38px;border-radius:50%;background:var(--encino);color:var(--hoja);font:700 1.1rem/38px var(--display);text-align:center}
+.paso-tit{margin:6px 0 4px;font-size:.85rem}
+.paso-txt{margin:0 0 8px}
+.paso-tiempo{margin:0;color:var(--gris);font-weight:600}
+.ing{font-weight:700;color:var(--corteza)}
+.crono{min-height:44px;padding:8px 16px;border-radius:999px;border:2px solid var(--corteza);background:transparent;color:var(--corteza);font:700 1rem var(--texto);font-variant-numeric:tabular-nums;cursor:pointer}
+.notas{background:var(--hoja);border-left:4px solid var(--corteza);padding:8px 16px;border-radius:0 12px 12px 0}
+
+/* Bloque "ven a probarla" */
+.cta{background:var(--hoja);border-block:1px solid var(--linea)}
+.cta-txt{font:500 1.15rem/1.45 var(--display)}
+.cta-btns{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:16px 0}
+.cta-datos{margin:0;display:grid;gap:10px}
+.cta-datos dt{font-weight:700}.cta-datos dd{margin:0;color:var(--gris)}
+
+/* Tarjetas */
+.tarjetas{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:16px}
+.tarjeta a{display:block;height:100%;text-decoration:none;color:inherit;background:var(--hoja);border:1px solid var(--linea);border-radius:16px;overflow:hidden}
+.tarjeta img{width:100%;aspect-ratio:3/2;object-fit:cover;background:var(--linea)}
+.tarj-txt{display:grid;gap:4px;padding:12px 14px 16px}
+.tarj-tit{font:700 1.2rem/1.2 var(--display)}
+.tarj-meta{color:var(--gris);font-size:.9rem}
+.relacionadas{border-top:1px solid var(--linea)}
+
+/* Índice */
+.indice{padding-bottom:32px}
+.intro{color:var(--gris);font-size:1.08rem;margin-top:0}
+.filtro{display:flex;gap:8px;overflow-x:auto;padding:4px 0 16px;scrollbar-width:none}
+.filtro a{flex:none;padding:10px 16px;min-height:44px;border-radius:999px;border:1px solid var(--linea);background:var(--hoja);color:var(--tinta);text-decoration:none;font-weight:600}
+.filtro a[aria-current]{background:var(--encino);border-color:var(--encino);color:var(--hoja)}
+.vacio{background:var(--hoja);border:1px solid var(--linea);border-radius:16px;padding:20px}
+.cta-mini{margin-top:32px;background:var(--hoja);border:1px solid var(--linea);border-radius:16px;padding:18px}
+.cta-mini h2{font-size:1.3rem}
+
+.pie{border-top:1px solid var(--linea);padding-block:28px 96px;color:var(--gris);font-size:.92rem;text-align:center}
+.pie-nombre{font:700 1.1rem var(--display);color:var(--tinta)}
+
+/* Cronómetros flotantes */
+.cronos{position:fixed;left:8px;right:8px;bottom:8px;z-index:35;display:flex;flex-direction:column;gap:6px;max-width:560px;margin:0 auto}
+.cr{display:flex;align-items:center;gap:8px;background:var(--tinta);color:var(--papel);border-radius:14px;padding:8px 8px 8px 14px;box-shadow:0 4px 18px rgba(0,0,0,.25)}
+.cr-n{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600}
+.cr-t{font:700 1.35rem var(--texto);font-variant-numeric:tabular-nums}
+.cr button{min-width:44px;height:44px;border:0;border-radius:10px;background:rgba(255,255,255,.14);color:inherit;font:700 1rem var(--texto);cursor:pointer}
+.cr.pausa .cr-t{opacity:.6}
+.cr.fin{background:var(--alerta);color:#fff;animation:late 1s infinite}
+@keyframes late{50%{transform:scale(1.02)}}
+@media (prefers-reduced-motion:reduce){.cr.fin{animation:none}}
+.aviso{position:fixed;left:50%;top:16px;transform:translateX(-50%);z-index:40;background:var(--tinta);color:var(--papel);padding:12px 18px;border-radius:12px;font-weight:700;max-width:90vw}
+
+/* Modo cocina */
+.cocina{position:fixed;inset:0;z-index:30;background:var(--papel);display:flex;flex-direction:column;padding:16px 16px calc(16px + env(safe-area-inset-bottom))}
+.cocina[hidden]{display:none}
+.cocina-top{display:flex;justify-content:space-between;align-items:center;color:var(--gris);font-weight:700}
+.cerrar{width:48px;height:48px;border-radius:50%;border:1px solid var(--linea);background:var(--hoja);color:var(--tinta);font-size:1.3rem;cursor:pointer}
+.cocina-paso{flex:1;overflow:auto;display:flex;flex-direction:column;justify-content:center;max-width:760px;width:100%;margin:0 auto}
+.cocina-paso h2{font-size:clamp(1.6rem,6vw,2.4rem);color:var(--encino)}
+.cocina-paso p{font-size:clamp(1.35rem,5vw,1.9rem);line-height:1.45;margin:0 0 20px}
+.cocina-paso .crono{font-size:1.2rem;min-height:56px;padding-inline:24px}
+.cocina-nav{display:grid;grid-template-columns:1fr 1fr;gap:12px;max-width:760px;width:100%;margin:0 auto}
+.cocina-nav .btn{min-height:60px;font-size:1.1rem}
+.cocina-nav .btn:disabled{opacity:.35;cursor:default}
+body.con-cronos .cocina{padding-bottom:calc(var(--alto-cronos,0px) + 24px)}
+.imprime-pie{display:none}
+
+@media (min-width:760px){
+  .hero-btns{display:flex}
+  .cta-btns{display:flex;flex-wrap:wrap}
+}
+
+/* Impresión: solo título, ingredientes y pasos */
+@media print{
+  @page{margin:14mm}
+  body{background:#fff;color:#000;font-size:11pt}
+  .sitio,.migas,.hero-foto,.hero-btns,.historia,.herramientas,.ayuda,.cta,.relacionadas,.pie,.cronos,.cocina,.aviso,.saltar,.crono,.chip,.paso-tiempo{display:none!important}
+  .w{max-width:none;padding:0}
+  h1{color:#000;font-size:22pt}
+  section{padding:0}
+  .recetario{border:0}
+  .ings label{min-height:0;padding:3px 0}
+  .ings input{display:none}
+  .ings input:checked~span{text-decoration:none;color:#000}
+  .paso{padding:6px 0 6px 34px;break-inside:avoid}
+  .paso::before{background:none;color:#000;border:1px solid #000;width:24px;height:24px;line-height:22px;font-size:10pt;top:6px}
+  .ing{color:#000}
+  .notas{background:none;border-left:2px solid #000}
+  .imprime-pie{display:block;margin-top:16px;font-size:9pt;color:#555}
+}

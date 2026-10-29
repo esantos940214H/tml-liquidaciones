@@ -1,7 +1,12 @@
 # Restaurante Encino — sistema de administración
 
 Carpeta independiente: **no forma parte del despliegue de TML** (`build.sh` y
-`firebase.json` no la tocan). HTML + JavaScript puro, sin instalación.
+`firebase.json` de la raíz no la tocan). Las páginas son HTML + JavaScript puro;
+un build pequeño en Node (`herramientas/build.js`, corre en GitHub Actions)
+arma la carpeta `publico/`, que es lo que se sube a Firebase Hosting: agrega las
+recetas en HTML estático, pre-renderiza la carta para Google/WhatsApp y genera
+`sitemap.xml`, `robots.txt` y `sitio.js`. Se reconstruye en cada push y todos los
+días a las 6:00 (hora de Oaxaca). Cómo publicar recetas: ver `RECETAS.md` en la raíz.
 
 | Archivo | Para quién | Qué hace |
 |---|---|---|
@@ -9,7 +14,9 @@ Carpeta independiente: **no forma parte del despliegue de TML** (`build.sh` y
 | `admin.html` | Personal | Mesas y órdenes, cobro y ticket, menú, inventario, compras, pedidos en línea, históricos y recomendaciones, configuración |
 | `carta.html` | Clientes (QR) | Menú de solo lectura con pestañas: Viernes desayunos / comidas, Sábado y Domingo desayunos / comidas (abre en el que toca por día y hora) |
 | `pedidos.html` | Clientes | Ordenar en línea (recoger o domicilio) y ver el estado del pedido |
-| `store.js` / `comun.js` / `config.js` | — | Datos, utilidades y configuración |
+| `/recetas/` | Público | Recetario (generado desde `recetas/*.md`) con porciones, cronómetros y modo cocina |
+| `store.js` / `comun.js` / `config.js` | — | Datos, utilidades y configuración de Firebase |
+| `sitio.config.json` | — | Datos del restaurante (dirección, horario, teléfono, Google Maps) para todas las páginas |
 
 ## Cómo funciona
 
@@ -36,7 +43,7 @@ cada vez que cambien platillos o precios.
 2. Activa Firestore y Authentication (correo/contraseña); crea un usuario por cada persona del personal.
 3. Pega las reglas de `firestore.rules.txt` en Firestore → Reglas.
 4. Copia la configuración web del proyecto en `config.js` (`window.ENCINO_FIREBASE_CONFIG = {...}`).
-5. Publica la carpeta `encino/` en Firebase Hosting (o cualquier hosting estático) y pon esa dirección en Configuración → "Dirección web pública" para que los QR apunten bien.
+5. Publica el sitio en Firebase Hosting (lo hace `.github/workflows/deploy-encino.yml`, que corre `npm run build` y sube `encino/publico/`) (o cualquier hosting estático) y pon esa dirección en Configuración → "Dirección web pública" para que los QR apunten bien.
 
 Nota: los datos capturados en modo local no se pasan solos a Firebase — usa
 Descargar respaldo (antes) y Restaurar respaldo (después, ya con sesión).
