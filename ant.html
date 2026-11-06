@@ -200,6 +200,7 @@ tr:hover td{background:#fafafa}
           <option>DEPÓSITO BANCARIO</option><option>TRANSFERENCIA</option><option>EFECTIVO</option><option>CHEQUE</option>
         </select>
       </div>
+      <div class="field"><label>Referencia (opcional)</label><input type="text" id="mReferencia" placeholder="Ej: folio del banco/SPEI"></div>
       <div class="field" style="grid-column:span 2"><label>Concepto / Descripción</label><input type="text" id="mConcepto" placeholder="Ej: Anticipo viaje León"></div>
     </div>
     <div class="row">
@@ -879,16 +880,17 @@ function agregarManualReal(){
   if(!importe){alert('Ingresa el importe.');return;}
   const fecha=$('mFecha').value||hoy();
   const concepto=$('mConcepto').value||$('mForma').value;
+  const referencia=($('mReferencia').value||'').trim();
   if(esSaldo(concepto)){alert('Este concepto corresponde a un saldo de liquidación, no a un anticipo. No se puede registrar aquí.');return;}
   guardar(function(freshDB){
     if(!freshDB[unidad])freshDB[unidad]=[];
     // unidadAlCapturar: automático, según el historial de asignaciones y la
     // fecha real del anticipo (ver nota en procesarRows) — queda fija en
     // este registro aunque después lo reasignen de camión.
-    freshDB[unidad].push({id:uid(),fecha,importe,concepto,estado:'pendiente',liqNum:null,origen:'manual',unidadAlCapturar:unidadHistorica(unidad,fecha)});
+    freshDB[unidad].push({id:uid(),fecha,importe,concepto,referencia,estado:'pendiente',liqNum:null,origen:'manual',unidadAlCapturar:unidadHistorica(unidad,fecha)});
   });
   hideManual();
-  $('mOp').value='';$('mImporte').value='';$('mConcepto').value='';
+  $('mOp').value='';$('mImporte').value='';$('mConcepto').value='';$('mReferencia').value='';
 }
 
 // ── RENDER ───────────────────────────────────────────────
