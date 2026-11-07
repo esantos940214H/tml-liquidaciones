@@ -915,7 +915,10 @@ async function importarDatosNominaJSON(){
     var op=operadoresRaw.find(function(o){return _normNombreFlota(o.nombre)===nombreBuscado;});
     if(!op){noEncontrados.push(d.nombre||'(sin nombre)');return;}
     var necesitaUnidad=['placas','configVehicular','anioModeloVM','pesoBrutoVehicular','permSCT','numPermisoSCT','aseguradora','poliza'].some(function(k){return d[k]!=null;});
-    var un=op.unidadActual!=null?unidadesRaw.find(function(u){return String(u.id)===String(op.unidadActual)||u.numero===op.unidadActual;}):null;
+    // Cruzar contra la tabla real de unidades (unidades.operadorActual),
+    // no contra operadores.unidadActual — mismo motivo que en
+    // llenarSelectsAsignacion/renderOperadores.
+    var un=unidadesRaw.find(function(u){return u.operadorActual&&String(u.operadorActual)===op.id;});
     if(necesitaUnidad&&!un)sinUnidad.push(op.nombre);
     encontrados.push({op:op,un:un,datos:d});
   });
@@ -1008,11 +1011,15 @@ async function toggleActivoOperador(id){
 function renderOperadores(){
   var tb=$('tbOperadores');
   tb.innerHTML=operadoresRaw.map(function(o){
+    // La unidad que se muestra sale de cruzar contra la tabla real de
+    // unidades (unidades.operadorActual) — ver comentario en
+    // llenarSelectsAsignacion, mismo motivo.
+    var unidadReal=unidadesRaw.find(function(u){return u.operadorActual&&String(u.operadorActual)===o.id;});
     return '<tr>'
       +'<td>'+o.nombre+'</td>'
       +'<td>'+(o.clave||'—')+'</td>'
       +'<td class="num r">'+(o.comision!=null?o.comision+'%':'—')+'</td>'
-      +'<td>'+(o.unidadActual?('Unidad '+o.unidadActual):'<span style="color:#aaa">Sin asignar</span>')+'</td>'
+      +'<td>'+(unidadReal?('Unidad '+unidadReal.numero):'<span style="color:#aaa">Sin asignar</span>')+'</td>'
       +'<td><span class="badge '+(o.activo?'bg-green':'bg-gray')+'">'+(o.activo?'Activo':'Baja')+'</span></td>'
       +'<td style="white-space:nowrap">'
         +'<button class="btn-sm btn-out" title="Ver/editar toda la información de este operador" onclick="editarOperador(\''+o.id+'\')">✏️ Editar</button> '
@@ -1175,8 +1182,15 @@ function renderUnidades(){
 function llenarSelectsAsignacion(){
   var sOp=$('asigOperador'),sUn=$('asigUnidad');
   var valOp=sOp.value,valUn=sUn.value;
+  // La unidad que se MUESTRA junto al nombre del operador sale de cruzar
+  // contra la tabla real de unidades (unidades.operadorActual), nunca del
+  // campo propio operadores.unidadActual — puede estar desfasado y mostrar
+  // "sin unidad" para alguien que sí trae camión asignado (caso real:
+  // Andrés María Ramos llevaba meses en la 527, con varias liquidaciones
+  // ya hechas con esa unidad, y aquí seguía apareciendo "sin unidad").
   sOp.innerHTML='<option value="">— Selecciona —</option>'+operadoresRaw.filter(function(o){return o.activo;}).map(function(o){
-    return '<option value="'+o.id+'">'+o.nombre+(o.unidadActual?' (hoy: unidad '+o.unidadActual+')':' (sin unidad)')+'</option>';
+    var unidadReal=unidadesRaw.find(function(u){return u.operadorActual&&String(u.operadorActual)===o.id;});
+    return '<option value="'+o.id+'">'+o.nombre+(unidadReal?' (hoy: unidad '+unidadReal.numero+')':' (sin unidad)')+'</option>';
   }).join('');
   sUn.innerHTML='<option value="">— Selecciona —</option>'+unidadesRaw.filter(function(u){return u.activa;}).map(function(u){
     var op=operadoresRaw.find(function(o){return o.id===String(u.operadorActual);});
