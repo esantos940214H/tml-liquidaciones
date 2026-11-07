@@ -976,16 +976,28 @@ async function toggleActivoOperador(id){
   var op=operadoresRaw.find(function(o){return o.id===id;});
   if(!op)return;
   var nuevoEstado=!op.activo;
+  // unidadesAReleaser: TODAS las unidades que de verdad (en la colección
+  // unidades, no en el campo operadores.unidadActual, que puede estar
+  // desfasado — ver confirmarAsignacion) siguen apuntando a este operador
+  // como operadorActual. Mismo criterio que confirmarAsignacion: confiar
+  // solo en op.unidadActual dejó una unidad "pegada" a Andrés Navarro
+  // Ramírez (caso real) incluso después de darlo de baja, porque su propio
+  // campo ya no coincidía con la unidad real que tenía asignada.
+  var unidadesAReleaser=nuevoEstado?[]:unidadesRaw.filter(function(u){
+    return u.operadorActual&&parseInt(u.operadorActual)===parseInt(id);
+  });
   var msg=(nuevoEstado?'¿Reactivar a ':'¿Dar de baja a ')+op.nombre+'?';
-  if(!nuevoEstado&&op.unidadActual)msg+='\n\nSigue asignado a la unidad '+op.unidadActual+' — se le va a desasignar también.';
+  if(unidadesAReleaser.length)msg+='\n\nSigue asignado a la unidad'+(unidadesAReleaser.length>1?'es ':' ')+unidadesAReleaser.map(function(u){return u.numero;}).join(', ')+' — se le va a desasignar también.';
   if(!confirm(msg))return;
   try{
     var db=firebase.firestore();
     var batch=db.batch();
     var upd={activo:nuevoEstado,fechaBaja:nuevoEstado?null:hoy()};
-    if(!nuevoEstado&&op.unidadActual){
+    if(unidadesAReleaser.length){
       upd.unidadActual=null;
-      batch.update(db.collection('unidades').doc(String(op.unidadActual)),{operadorActual:null});
+      unidadesAReleaser.forEach(function(u){
+        batch.update(db.collection('unidades').doc(String(u.numero)),{operadorActual:null});
+      });
     }
     batch.update(db.collection('operadores').doc(id),upd);
     await batch.commit();
