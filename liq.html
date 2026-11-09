@@ -340,15 +340,18 @@ tr:hover td{background:#fafafa}
       <div id="xlsxInfo" style="display:none;margin-top:10px"></div>
     </div>
     <div class="card">
-      <div class="card-title">📦 Diesel inicial (arrastre)</div>
+      <div class="card-title">📦 Diesel inicial (arrastre) <span id="dIniLockMsg" style="font-weight:400;font-size:11px;color:#888;text-transform:none;letter-spacing:normal">🔒 Prellenado automático del arrastre de la liquidación anterior — un error de dedo aquí le genera un "exceso" falso al operador. Solo un administrador puede modificarlo.</span></div>
       <div class="row">
-        <div class="field"><label>Litros pendientes</label><input type="number" id="dIniLts" value="0" min="0" step="0.01" onchange="calcDiesel()"></div>
-        <div class="field"><label>Precio promedio ant. ($/lt)</label><input type="number" id="dIniPrecio" value="0" min="0" step="0.0001" onchange="calcDiesel()"></div>
+        <div class="field"><label>Litros pendientes</label><input type="number" id="dIniLts" value="0" min="0" step="0.01" readonly onchange="calcDiesel();registrarCambioDieselInicial()"></div>
+        <div class="field"><label>Precio promedio ant. ($/lt)</label><input type="number" id="dIniPrecio" value="0" min="0" step="0.0001" readonly onchange="calcDiesel();registrarCambioDieselInicial()"></div>
         <div style="background:#f5f5f8;border-radius:8px;padding:10px 14px">
           <div style="font-size:10px;color:#888;text-transform:uppercase;letter-spacing:.5px">Importe inicial</div>
           <div id="dIniImporte" style="font-size:16px;font-weight:800">$0.00</div>
         </div>
+        <button class="btn btn-out btn-sm" id="btnDesbloquearDieselIni" onclick="desbloquearDieselInicial()" style="align-self:center">🔓 Editar (admin)</button>
+        <button class="btn btn-out btn-sm" onclick="verHistorialDieselInicial()" style="align-self:center">📋 Ver historial de ediciones</button>
       </div>
+      <div id="dIniHistorial" style="margin-top:8px"></div>
     </div>
     <!-- Facturas de combustible XML -->
     <div class="card">
@@ -2636,6 +2639,10 @@ function insertarViaje(id){
 }
 
 function mostrarPreviewLiq(opId){
+  // Re-bloquear el diesel inicial al cambiar de operador/liquidación — un
+  // desbloqueo de admin es solo para ESTA liquidación, nunca debe quedarse
+  // abierto al pasar a otra (ver relockDieselInicial).
+  if(typeof relockDieselInicial==='function')relockDieselInicial();
   // Anticipos, viajes y nómina se buscan por OPERADOR (opId), no por la
   // unidad/vehículo que maneje este periodo — un operador se lleva sus
   // pendientes con él aunque cambie de unidad (el campo en Firebase, por
@@ -3418,6 +3425,70 @@ function eliminarDieselXML(i){
   if(_rem&&_rem.uuid)liberarFacturaUsada(_rem.uuid);
   liq.dieselXML.splice(i,1);
   renderDieselXML();calcDiesel();guardarEstado();
+}
+
+// ══════════════════════════════════════════════
+// BLOQUEO DE DIESEL INICIAL — el campo viene prellenado del arrastre de la
+// liquidación anterior; un error de dedo de la liquidadora aquí (caso
+// real: puso 290 confundiéndolo con el diesel FINAL) le genera al operador
+// un "exceso" que no es real, y es difícil de detectar después porque el
+// campo parece una captura normal más. Ahora está bloqueado por default
+// (readonly) y solo un administrador puede desbloquearlo para editarlo a
+// mano — cada cambio real queda registrado con quién, cuándo y los
+// valores antes/después (logsEdicionDieselInicial).
+// ══════════════════════════════════════════════
+var _dIniValorOriginal=null;
+function desbloquearDieselInicial(){
+  var u=usuarioSesion();
+  if(!u||!u.esAdmin){alert('Solo un administrador puede modificar el diesel inicial.');return;}
+  if(!confirm('El diesel inicial ya viene prellenado del arrastre de la liquidación anterior — normalmente NO debe tocarse. ¿Seguro que lo quieres editar a mano? Queda registrado con tu nombre, fecha y hora.'))return;
+  $('dIniLts').readOnly=false;
+  $('dIniPrecio').readOnly=false;
+  $('btnDesbloquearDieselIni').style.display='none';
+  $('dIniLockMsg').textContent='🔓 Desbloqueado por '+(u.nombre||u.usuario)+' — este cambio queda registrado.';
+  _dIniValorOriginal={lts:parseFloat($('dIniLts').value||0),precio:parseFloat($('dIniPrecio').value||0)};
+}
+// relockDieselInicial: se llama al mostrar/cambiar de liquidación, para que
+// un desbloqueo nunca se quede "pegado" al pasar a otro operador.
+function relockDieselInicial(){
+  if($('dIniLts'))$('dIniLts').readOnly=true;
+  if($('dIniPrecio'))$('dIniPrecio').readOnly=true;
+  if($('btnDesbloquearDieselIni'))$('btnDesbloquearDieselIni').style.display='';
+  if($('dIniLockMsg'))$('dIniLockMsg').textContent='🔒 Prellenado automático del arrastre de la liquidación anterior — un error de dedo aquí le genera un "exceso" falso al operador. Solo un administrador puede modificarlo.';
+  _dIniValorOriginal=null;
+}
+async function registrarCambioDieselInicial(){
+  if(!_dIniValorOriginal)return; // no se desbloqueó por este flujo — no hay nada que auditar
+  var u=usuarioSesion();
+  var ltsNuevo=parseFloat($('dIniLts').value)||0;
+  var precioNuevo=parseFloat($('dIniPrecio').value)||0;
+  if(ltsNuevo===_dIniValorOriginal.lts&&precioNuevo===_dIniValorOriginal.precio)return; // sin cambio real
+  try{
+    await window.FB.set('logsEdicionDieselInicial',uid(),{
+      unidad:(liq&&liq.unidad)||null,liqNum:(liq&&liq.num)||null,
+      quien:(u&&(u.nombre||u.usuario))||'desconocido',cuando:new Date().toISOString(),
+      ltsAnterior:_dIniValorOriginal.lts,ltsNuevo:ltsNuevo,
+      precioAnterior:_dIniValorOriginal.precio,precioNuevo:precioNuevo
+    });
+  }catch(e){console.error('registrarCambioDieselInicial:',e);}
+}
+
+async function verHistorialDieselInicial(){
+  if(!liq){alert('Primero selecciona un operador/liquidación.');return;}
+  var wrap=$('dIniHistorial');
+  wrap.innerHTML='<div style="font-size:11px;color:#888">⏳ Consultando...</div>';
+  try{
+    var todos=await window.FB.getAll('logsEdicionDieselInicial');
+    var deEstaUnidad=todos.filter(function(x){return parseInt(x.unidad)===parseInt(liq.unidad);})
+      .sort(function(a,b){return(b.cuando||'').localeCompare(a.cuando||'');});
+    if(!deEstaUnidad.length){wrap.innerHTML='<div style="font-size:11px;color:#888">Sin ediciones registradas para esta unidad.</div>';return;}
+    wrap.innerHTML='<table style="width:100%;font-size:11px"><thead><tr><th style="text-align:left">Cuándo</th><th style="text-align:left">Quién</th><th>Liq.#</th><th class="r">Lts antes→después</th><th class="r">Precio antes→después</th></tr></thead><tbody>'
+      +deEstaUnidad.map(function(x){
+        return '<tr><td>'+(x.cuando||'').replace('T',' ').slice(0,16)+'</td><td>'+(x.quien||'')+'</td><td class="num">'+(x.liqNum||'—')+'</td>'
+          +'<td class="num r">'+fmtN(x.ltsAnterior)+' → '+fmtN(x.ltsNuevo)+'</td>'
+          +'<td class="num r">'+fmt(x.precioAnterior)+' → '+fmt(x.precioNuevo)+'</td></tr>';
+      }).join('')+'</tbody></table>';
+  }catch(e){console.error('verHistorialDieselInicial:',e);wrap.innerHTML='<div style="font-size:11px;color:#c1121f">⚠️ '+e.message+'</div>';}
 }
 
 function calcDiesel(){
