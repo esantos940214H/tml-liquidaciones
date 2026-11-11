@@ -2768,11 +2768,14 @@ const PROMPT_RECIBO_MANIOBRA =
 // sin que nadie se diera cuenta. Ahora exige una sesión real de Firebase
 // Auth (de cualquier tipo, oficina u operador) y limita a
 // LIMITE_IA_DIARIO usos por persona por día — un operador normal sube 2
-// fotos por viaje, así que 20 al día deja margen amplio sin abrir la
-// puerta a un abuso sostenido. La cuenta maestro tiene un tope más alto
+// fotos por viaje, así que esto deja margen amplio sin abrir la puerta a
+// un abuso sostenido. Subido de 20 a 60 (caso real: procesar la
+// liquidación de un solo operador con varios Estimados de Transportación
+// ya consumía los 20 por completo; con 2-3 operadores en un día normal
+// hacía falta más margen). La cuenta maestro tiene un tope más alto
 // mientras el dueño hace pruebas del módulo (LIMITE_IA_DIARIO_MAESTRO) —
-// bajarlo a 20 también, igual que el resto, en cuanto termine esa fase.
-const LIMITE_IA_DIARIO = 20;
+// bajarlo también, igual que el resto, en cuanto termine esa fase.
+const LIMITE_IA_DIARIO = 60;
 const LIMITE_IA_DIARIO_MAESTRO = 100;
 
 async function _verificarSesionFirebase(req) {
