@@ -52,11 +52,17 @@ const FLETES_EMAIL_PASS = defineSecret('FLETES_EMAIL_PASS');
 // Wialon (Usuario → Token de acceso a la API), nunca se pega en el código.
 const WIALON_TOKEN = defineSecret('WIALON_TOKEN');
 // Llave de PRUEBA (sk_test_...) de la cuenta de Facturapi de Mudanzas TML —
-// SOLO para probar la integración de timbrado con Complemento Carta Porte
-// durante los 14 días de prueba gratuita, antes de decidir si se integra en
-// serio. No timbra CFDI reales ni tiene costo. Nunca usar esta constante
-// para una llave LIVE (sk_live_...) sin repensar los controles de seguridad.
+// se deja viva solo para el botón de sandbox (facturapiPrueba); NUNCA
+// timbra CFDI reales ni tiene costo. generarNominaFacturapi y
+// generarCartaPorteFlete ya pasaron a producción, ver FACTURAPI_LIVE_KEY.
 const FACTURAPI_TEST_KEY = defineSecret('FACTURAPI_TEST_KEY');
+// Llave REAL (sk_live_...) — producción. Timbra CFDI reales ante el SAT,
+// con costo real por timbre. La usan generarNominaFacturapi y
+// generarCartaPorteFlete; cancelarNominaFacturapi necesita AMBAS llaves
+// porque un recibo viejo (timbrado antes de este cambio, modoFacturapi
+// ausente o 'test') solo se puede cancelar con la llave de prueba con la
+// que de verdad se creó — nunca mezclar.
+const FACTURAPI_LIVE_KEY = defineSecret('FACTURAPI_LIVE_KEY');
 // RFC de Mudanzas TML confirmado contra su Constancia de Situación Fiscal
 // (agosto 2026) — el receptor del CFDI de proveedor debe ser este RFC.
 const TML_RFC = 'MTM171214PI4';
@@ -4505,7 +4511,7 @@ async function _generarIdCCPServer() {
   const hex = crypto.randomBytes(16).toString('hex');
   return 'CCC' + hex.slice(3, 8) + '-' + hex.slice(8, 12) + '-' + hex.slice(12, 16) + '-' + hex.slice(16, 20) + '-' + hex.slice(20, 32);
 }
-exports.generarCartaPorteFlete = onRequest({ secrets: [FACTURAPI_TEST_KEY], cors: true, region: 'us-central1', timeoutSeconds: 60 }, async (req, res) => {
+exports.generarCartaPorteFlete = onRequest({ secrets: [FACTURAPI_LIVE_KEY], cors: true, region: 'us-central1', timeoutSeconds: 60 }, async (req, res) => {
   if (req.method !== 'POST') { res.status(405).json({ error: 'Método no permitido, usa POST.' }); return; }
   try {
     const decoded = await _verificarAdmin(req);
@@ -4597,7 +4603,7 @@ exports.generarCartaPorteFlete = onRequest({ secrets: [FACTURAPI_TEST_KEY], cors
 
     const rTimbrado = await fetch('https://www.facturapi.io/v2/invoices', {
       method: 'POST',
-      headers: { 'Authorization': 'Bearer ' + FACTURAPI_TEST_KEY.value(), 'Content-Type': 'application/json' },
+      headers: { 'Authorization': 'Bearer ' + FACTURAPI_LIVE_KEY.value(), 'Content-Type': 'application/json' },
       body: JSON.stringify(invoice)
     });
     const respuestaTimbrado = await rTimbrado.json();
@@ -4611,7 +4617,7 @@ exports.generarCartaPorteFlete = onRequest({ secrets: [FACTURAPI_TEST_KEY], cors
     if (!rTimbrado.ok) { res.status(502).json({ error: 'Facturapi rechazó la Carta Porte.', detalleFacturapi: respuestaTimbrado }); return; }
 
     const rXml = await fetch('https://www.facturapi.io/v2/invoices/' + respuestaTimbrado.id + '/xml', {
-      headers: { 'Authorization': 'Bearer ' + FACTURAPI_TEST_KEY.value() }
+      headers: { 'Authorization': 'Bearer ' + FACTURAPI_LIVE_KEY.value() }
     });
     if (!rXml.ok) { res.status(502).json({ error: 'Se timbró en Facturapi (id ' + respuestaTimbrado.id + ') pero no se pudo descargar el XML para cerrar el pedido — cierra el pedido a mano con ese XML desde el dashboard de Facturapi.' }); return; }
     const xmlTexto = await rXml.text();
@@ -4730,7 +4736,7 @@ function _parseNominaXMLServer(xmlText) {
   };
 }
 
-exports.generarNominaFacturapi = onRequest({ secrets: [FACTURAPI_TEST_KEY], cors: true, region: 'us-central1', timeoutSeconds: 120 }, async (req, res) => {
+exports.generarNominaFacturapi = onRequest({ secrets: [FACTURAPI_LIVE_KEY], cors: true, region: 'us-central1', timeoutSeconds: 120 }, async (req, res) => {
   if (req.method !== 'POST') { res.status(405).json({ error: 'Método no permitido, usa POST.' }); return; }
   try {
     const decoded = await _verificarAdmin(req);
@@ -4854,13 +4860,13 @@ exports.generarNominaFacturapi = onRequest({ secrets: [FACTURAPI_TEST_KEY], cors
 
         const rTimbrado = await fetch('https://www.facturapi.io/v2/invoices', {
           method: 'POST',
-          headers: { 'Authorization': 'Bearer ' + FACTURAPI_TEST_KEY.value(), 'Content-Type': 'application/json' },
+          headers: { 'Authorization': 'Bearer ' + FACTURAPI_LIVE_KEY.value(), 'Content-Type': 'application/json' },
           body: JSON.stringify(invoice)
         });
         const respuestaTimbrado = await rTimbrado.json();
         if (!rTimbrado.ok) throw new Error((respuestaTimbrado && (respuestaTimbrado.message || respuestaTimbrado.error)) || 'Facturapi rechazó el CFDI de nómina.');
 
-        const rXml = await fetch('https://www.facturapi.io/v2/invoices/' + respuestaTimbrado.id + '/xml', { headers: { 'Authorization': 'Bearer ' + FACTURAPI_TEST_KEY.value() } });
+        const rXml = await fetch('https://www.facturapi.io/v2/invoices/' + respuestaTimbrado.id + '/xml', { headers: { 'Authorization': 'Bearer ' + FACTURAPI_LIVE_KEY.value() } });
         if (!rXml.ok) throw new Error('Se timbró (id ' + respuestaTimbrado.id + ') pero no se pudo descargar el XML.');
         const xmlTexto = await rXml.text();
         const fac = _parseNominaXMLServer(xmlTexto);
@@ -4883,7 +4889,12 @@ exports.generarNominaFacturapi = onRequest({ secrets: [FACTURAPI_TEST_KEY], cors
           // facturapiId: necesario para poder cancelar este CFDI después
           // (ver cancelarNominaFacturapi) — el UUID por sí solo no basta,
           // Facturapi cancela por SU propio id interno.
-          facturapiId: respuestaTimbrado.id
+          facturapiId: respuestaTimbrado.id,
+          // modoFacturapi: con qué llave se timbró — cancelarNominaFacturapi
+          // lo necesita para usar la MISMA llave al cancelar (un recibo
+          // 'live' nunca se puede cancelar con la llave de prueba, ni
+          // viceversa).
+          modoFacturapi: 'live'
         }, fac));
         await db.collection('estado').doc('nominaDB').set({ data: JSON.stringify(nominaDB) });
 
@@ -4916,7 +4927,7 @@ exports.generarNominaFacturapi = onRequest({ secrets: [FACTURAPI_TEST_KEY], cors
 // requiere timbrar antes el CFDI que lo sustituye, que esta pantalla no
 // genera todavía.
 // ══════════════════════════════════════════════════════════════════════════
-exports.cancelarNominaFacturapi = onRequest({ secrets: [FACTURAPI_TEST_KEY], cors: true, region: 'us-central1', timeoutSeconds: 60 }, async (req, res) => {
+exports.cancelarNominaFacturapi = onRequest({ secrets: [FACTURAPI_TEST_KEY, FACTURAPI_LIVE_KEY], cors: true, region: 'us-central1', timeoutSeconds: 60 }, async (req, res) => {
   if (req.method !== 'POST') { res.status(405).json({ error: 'Método no permitido, usa POST.' }); return; }
   try {
     const decoded = await _verificarAdmin(req);
@@ -4934,9 +4945,15 @@ exports.cancelarNominaFacturapi = onRequest({ secrets: [FACTURAPI_TEST_KEY], cor
     if (recibo.estado === 'liquidado') { res.status(400).json({ error: 'Ese recibo ya se usó en una liquidación cerrada — no se puede cancelar desde aquí, pide ayuda a un administrador para revertir la liquidación primero.' }); return; }
     if (!recibo.facturapiId) { res.status(400).json({ error: 'Este recibo no tiene guardado el id de Facturapi (es de antes de que se guardara ese dato) — cancélalo a mano desde el dashboard de Facturapi.' }); return; }
 
+    // Un recibo viejo (de antes de pasar a producción) no trae
+    // modoFacturapi — en ese caso SIEMPRE fue de prueba, es la única llave
+    // que existía entonces. Usar la llave equivocada no cancela nada (el
+    // id de Facturapi solo existe en el ambiente donde se creó), así que
+    // esto es indispensable, no un detalle cosmético.
+    const llaveFacturapi = recibo.modoFacturapi === 'live' ? FACTURAPI_LIVE_KEY : FACTURAPI_TEST_KEY;
     const rCancel = await fetch('https://www.facturapi.io/v2/invoices/' + recibo.facturapiId + '?motive=' + encodeURIComponent(motivo), {
       method: 'DELETE',
-      headers: { 'Authorization': 'Bearer ' + FACTURAPI_TEST_KEY.value() }
+      headers: { 'Authorization': 'Bearer ' + llaveFacturapi.value() }
     });
     const respuestaCancel = await rCancel.json().catch(function () { return null; });
     if (!rCancel.ok) { res.status(502).json({ error: 'Facturapi no pudo cancelar el CFDI.', detalleFacturapi: respuestaCancel }); return; }
