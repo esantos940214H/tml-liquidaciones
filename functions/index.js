@@ -653,11 +653,27 @@ function _crearAutorizacionServer(ingresosDB, datos) {
   }
 
   const idsCorreccion = [folio, pedido].map(_normTxtServer).filter(function (s) { return s; });
-  const existenteCorregible = (!pendiente && !montoVacio && idsCorreccion.length) ? ingresosDB.find(function (v) {
+  // También se admite corregir por T.U. cuando no hay folio/pedido (caso
+  // real: una maniobra se registró con un monto equivocado y el cliente
+  // manda después el correo con el monto correcto, referenciando solo el
+  // T.U.) — antes esto NO sustituía el registro viejo, sino que creaba uno
+  // nuevo con el monto bueno y dejaba el equivocado sin resolver para
+  // siempre. Igual que en _buscarDuplicadoServer, el T.U. solo no basta si
+  // puede haber dos tramos del mismo viaje — se exige que el destino
+  // también coincida.
+  const idsCorreccionTU = [tu1, tu2].map(_normTxtServer).filter(function (s) { return s; });
+  const destinoCorr = _normDestinoServer(datos.destino);
+  const existenteCorregible = (!pendiente && !montoVacio && (idsCorreccion.length || idsCorreccionTU.length)) ? ingresosDB.find(function (v) {
     if (!v.esAutorizacionCliente || v.montoPendiente || v.sustituidoPorXML) return false;
     if (v.unidad !== unidad) return false;
     const vIds = _idsDeObservacionesServer(v.observaciones);
-    if (!idsCorreccion.some(function (id) { return vIds.indexOf(id) !== -1; })) return false;
+    const coincideFuerte = idsCorreccion.some(function (id) { return vIds.indexOf(id) !== -1; });
+    const coincideTU = idsCorreccionTU.some(function (id) { return vIds.indexOf(id) !== -1; });
+    if (!coincideFuerte && !coincideTU) return false;
+    if (!coincideFuerte) {
+      const vDestino = _normDestinoServer((v.ruta && v.ruta[0] && v.ruta[0].destino) || '');
+      if (destinoCorr && vDestino && destinoCorr !== vDestino) return false;
+    }
     return Math.abs((v.subtotal || 0) - monto) >= 0.01;
   }) : null;
   if (existenteCorregible) {

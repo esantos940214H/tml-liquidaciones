@@ -818,11 +818,23 @@ function _crearAutorizacionEnMemoria(datos){
   // monto anterior por el nuevo en vez de bloquear o crear un duplicado (el
   // correo más reciente manda).
   var idsCorreccion=[folio,pedido].map(_normTxt).filter(function(s){return s;});
-  var existenteCorregible=(!pendiente&&!montoVacio&&idsCorreccion.length)?ingresosDB.find(function(v){
+  // También se admite corregir por T.U. cuando no hay folio/pedido — mismo
+  // criterio que su gemela en functions/index.js (ver comentario ahí):
+  // antes una corrección solo por T.U. no sustituía el registro viejo, creaba
+  // uno nuevo con el monto bueno y dejaba el equivocado sin resolver.
+  var idsCorreccionTU=[tu1,tu2].map(_normTxt).filter(function(s){return s;});
+  var destinoCorr=_normDestino(datos.destino);
+  var existenteCorregible=(!pendiente&&!montoVacio&&(idsCorreccion.length||idsCorreccionTU.length))?ingresosDB.find(function(v){
     if(!v.esAutorizacionCliente||v.montoPendiente||v.sustituidoPorXML)return false;
     if(v.unidad!==unidad)return false;
     var vIds=_idsDeObservaciones(v.observaciones);
-    if(!idsCorreccion.some(function(id){return vIds.indexOf(id)!==-1;}))return false;
+    var coincideFuerte=idsCorreccion.some(function(id){return vIds.indexOf(id)!==-1;});
+    var coincideTU=idsCorreccionTU.some(function(id){return vIds.indexOf(id)!==-1;});
+    if(!coincideFuerte&&!coincideTU)return false;
+    if(!coincideFuerte){
+      var vDestino=_normDestino((v.ruta&&v.ruta[0]&&v.ruta[0].destino)||'');
+      if(destinoCorr&&vDestino&&destinoCorr!==vDestino)return false;
+    }
     return Math.abs((v.subtotal||0)-monto)>=0.01;
   }):null;
   if(existenteCorregible){
