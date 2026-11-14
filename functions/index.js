@@ -223,7 +223,10 @@ const PROMPT_INSTRUCCIONES =
   '"tu1":"el valor de T.U.\'s(1) de esa fila, o null",' +
   '"tu2":"el valor de T.U.\'s(2) de esa fila, o null",' +
   '"tienda":"el código de tienda de esa fila, o null",' +
-  '"destino":"Destino + \', \' + Estado de esa fila (ej. \'Salamanca Hidalgo, Guanajuato\'), o null"}. ' +
+  '"destino":"el valor de la columna Destino de esa fila; si ADEMÁS aparece la columna Estado, agrégalo como \', \' + Estado ' +
+  '(ej. \'Salamanca Hidalgo, Guanajuato\'). Si NO hay columna Estado o está vacía, deja SOLO el Destino, sin agregar coma ni la ' +
+  'palabra null como texto — la palabra null es el valor JSON cuando el Destino mismo no aparece, nunca texto dentro del ' +
+  'string"}. ' +
   'REGLA del campo "monto": si la columna Autorizado trae un número (con o sin "$"/comas), pon ese número. ' +
   'Si dice literalmente "NO PAGA" o solo "-" (sin ningún número), pon el texto "NO_PAGA" (esa maniobra no se paga, no es ' +
   'un dato faltante). Si dice literalmente "PENDIENTE" (el monto se va a confirmar después en otro correo), pon el texto ' +
@@ -448,6 +451,16 @@ async function _procesarMensajeImap(rawBuffer, apiKey) {
 // para revisión manual en Maniobras, exactamente como antes.
 // ══════════════════════════════════════════════════════════════════════════
 function _normTxtServer(s) { return (s || '').toString().trim().toUpperCase().replace(/\s+/g, ' '); }
+// _normDestinoServer: igual que _normTxtServer, pero además quita un sufijo
+// ", NULL" o " NULL" suelto al final — la IA de maniobras arma "destino" como
+// "Destino + ', ' + Estado" (ver prompt), y cuando el correo no trae Estado
+// a veces escribe el texto literal "null" en vez de omitirlo (caso real:
+// "Acapulco Patio, null"). Esa inconsistencia (a veces sale con el sufijo, a
+// veces sin él, según cómo lo procese la IA esa corrida) rompía la
+// comparación exacta de destino en _buscarDuplicadoServer y dejaba pasar
+// registros duplicados del mismo renglón reprocesado. Se usa SOLO para
+// comparar/deduplicar, nunca para lo que se guarda en ruta[0].destino.
+function _normDestinoServer(s) { return _normTxtServer(s).replace(/,?\s*NULL$/, '').trim(); }
 // _idsDeObservacionesServer: mismo criterio que _idsDeObservaciones en
 // maniobras.html — parte "FOLIO:2763 | TU1:6500360352 | TU2:6500360353" en
 // sus identificadores exactos, en vez de comparar por "contiene" sobre el
@@ -547,7 +560,7 @@ function _buscarDuplicadoServer(ingresosDB, datos) {
   const idsFuertes = [datos.folio, datos.pedido].map(_normTxtServer).filter(function (s) { return s; });
   const idsTU = [datos.tu1, datos.tu2].map(_normTxtServer).filter(function (s) { return s; });
   if (!idsFuertes.length && !idsTU.length) return null;
-  const destino = _normTxtServer(datos.destino);
+  const destino = _normDestinoServer(datos.destino);
   const tienda = _normTxtServer(datos.tienda);
   // Ya NO se exige que "fecha" coincida exacta — un correo consolidado que
   // reautoriza varias maniobras ya registradas antes no siempre trae la
@@ -562,7 +575,7 @@ function _buscarDuplicadoServer(ingresosDB, datos) {
     const coincideTU = idsTU.some(function (id) { return vIds.indexOf(id) !== -1; });
     if (!coincideFuerte && !coincideTU) return false;
     if (!coincideFuerte) {
-      const vDestino = _normTxtServer((v.ruta && v.ruta[0] && v.ruta[0].destino) || '');
+      const vDestino = _normDestinoServer((v.ruta && v.ruta[0] && v.ruta[0].destino) || '');
       const vTienda = _normTxtServer(v.tienda);
       if (destino && vDestino && destino !== vDestino) return false;
       if (tienda && vTienda && tienda !== vTienda) return false;
@@ -615,13 +628,13 @@ function _crearAutorizacionServer(ingresosDB, datos) {
       const vIds = _idsDeObservacionesServer(v.observaciones);
       return idsNuevos.some(function (id) { return vIds.indexOf(id) !== -1; });
     });
-    const destinoNuevoPend = _normTxtServer(datos.destino);
+    const destinoNuevoPend = _normDestinoServer(datos.destino);
     let existentePendiente = null;
     if (candidatosPendiente.length === 1) {
       existentePendiente = candidatosPendiente[0];
     } else if (candidatosPendiente.length > 1 && destinoNuevoPend) {
       const porDestinoPend = candidatosPendiente.filter(function (v) {
-        return _normTxtServer((v.ruta && v.ruta[0] && v.ruta[0].destino) || '') === destinoNuevoPend;
+        return _normDestinoServer((v.ruta && v.ruta[0] && v.ruta[0].destino) || '') === destinoNuevoPend;
       });
       if (porDestinoPend.length === 1) existentePendiente = porDestinoPend[0];
     }

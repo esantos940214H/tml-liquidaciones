@@ -657,6 +657,13 @@ async function confirmarDepositoManiobra(id){
 // Normaliza texto para comparar (mayúsculas, sin espacios de sobra) — usado
 // tanto para armar el ID combinado como para la detección de duplicados.
 function _normTxt(s){return(s||'').toString().trim().toUpperCase().replace(/\s+/g,' ');}
+// _normDestino: igual que _normTxt, pero quita un sufijo ", NULL" suelto al
+// final — mismo criterio que su gemela _normDestinoServer en
+// functions/index.js (ver comentario ahí): la IA a veces escribe el texto
+// literal "null" en destino en vez de omitirlo, de forma inconsistente, y
+// eso rompía la comparación exacta usada para detectar duplicados. Solo
+// para comparar, nunca para lo que se guarda en ruta[0].destino.
+function _normDestino(s){return _normTxt(s).replace(/,?\s*NULL$/,'').trim();}
 // _idsDeObservaciones(observaciones): parte "FOLIO:2763 | TU1:6500360352 |
 // TU2:6500360353" en sus identificadores exactos ["2763","6500360352",
 // "6500360353"] (quita la etiqueta y normaliza cada uno por separado).
@@ -697,7 +704,7 @@ function _buscarDuplicado(datos){
   var idsFuertes=[datos.folio,datos.pedido].map(_normTxt).filter(function(s){return s;});
   var idsTU=[datos.tu1,datos.tu2].map(_normTxt).filter(function(s){return s;});
   if(!idsFuertes.length&&!idsTU.length)return null;
-  var destino=_normTxt(datos.destino);
+  var destino=_normDestino(datos.destino);
   var tienda=_normTxt(datos.tienda);
   // Ya NO se exige que "fecha" coincida exacta (caso real: Francisco
   // Artemio Peña Vazquez — al pedir la autorización de una maniobra nueva,
@@ -718,7 +725,7 @@ function _buscarDuplicado(datos){
     var coincideTU=idsTU.some(function(id){return vIds.indexOf(id)!==-1;});
     if(!coincideFuerte&&!coincideTU)return false;
     if(!coincideFuerte){
-      var vDestino=_normTxt((v.ruta&&v.ruta[0]&&v.ruta[0].destino)||'');
+      var vDestino=_normDestino((v.ruta&&v.ruta[0]&&v.ruta[0].destino)||'');
       var vTienda=_normTxt(v.tienda);
       if(destino&&vDestino&&destino!==vDestino)return false;
       if(tienda&&vTienda&&tienda!==vTienda)return false;
@@ -781,13 +788,13 @@ function _crearAutorizacionEnMemoria(datos){
       var vIds=_idsDeObservaciones(v.observaciones);
       return idsNuevos.some(function(id){return vIds.indexOf(id)!==-1;});
     });
-    var destinoNuevoPend=_normTxt(datos.destino);
+    var destinoNuevoPend=_normDestino(datos.destino);
     var existentePendiente=null;
     if(candidatosPendiente.length===1){
       existentePendiente=candidatosPendiente[0];
     }else if(candidatosPendiente.length>1&&destinoNuevoPend){
       var porDestinoPend=candidatosPendiente.filter(function(v){
-        return _normTxt((v.ruta&&v.ruta[0]&&v.ruta[0].destino)||'')===destinoNuevoPend;
+        return _normDestino((v.ruta&&v.ruta[0]&&v.ruta[0].destino)||'')===destinoNuevoPend;
       });
       if(porDestinoPend.length===1)existentePendiente=porDestinoPend[0];
     }
