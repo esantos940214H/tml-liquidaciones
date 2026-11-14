@@ -1,7 +1,15 @@
 name: Deploy Restaurante Encino
 
-# Independiente del despliegue de TML: publica SOLO la carpeta encino/ en el
-# proyecto de Firebase del restaurante (el definido en encino/.firebaserc).
+# Independiente del despliegue de TML: construye y publica SOLO la carpeta
+# encino/ en el proyecto de Firebase del restaurante (encino/.firebaserc).
+#
+# Corre:
+#   - al hacer push a main con cambios en encino/ (recetas nuevas, fotos, páginas)
+#   - todos los días a las 6:00 hora de Oaxaca (12:00 UTC; México ya no cambia
+#     de horario), para que las recetas programadas aparezcan solas en su fecha
+#     y la carta pre-renderizada tome los precios del día
+#   - a mano desde la pestaña Actions (workflow_dispatch)
+#   - en pull requests: solo valida y construye, no publica
 on:
   push:
     branches:
@@ -9,7 +17,17 @@ on:
     paths:
       - 'encino/**'
       - '.github/workflows/deploy-encino.yml'
+  pull_request:
+    paths:
+      - 'encino/**'
+      - '.github/workflows/deploy-encino.yml'
+  schedule:
+    - cron: '0 12 * * *'
   workflow_dispatch:
+
+concurrency:
+  group: deploy-encino-${{ github.event_name == 'pull_request' && github.ref || 'main' }}
+  cancel-in-progress: false
 
 jobs:
   deploy:
@@ -18,8 +36,30 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: encino/package-lock.json
+
+      - name: Instalar dependencias del build
+        working-directory: encino
+        run: npm ci
+
+      - name: Probar
+        working-directory: encino
+        run: npm test
+
+      - name: Validar recetas y construir el sitio (encino/publico)
+        working-directory: encino
+        run: |
+          npm run build
+          npm run calendario
+
       - name: Revisar que ya esté configurado
         id: check
+        if: github.event_name != 'pull_request'
         run: |
           if [ -z '${{ secrets.FIREBASE_SERVICE_ACCOUNT_ENCINO }}' ] || grep -q PENDIENTE encino/.firebaserc; then
             echo "Falta el secreto FIREBASE_SERVICE_ACCOUNT_ENCINO o el ID del proyecto en encino/.firebaserc; no se publica." 
@@ -27,12 +67,6 @@ jobs:
           else
             echo "listo=si" >> "$GITHUB_OUTPUT"
           fi
-
-      - name: Setup Node
-        if: steps.check.outputs.listo == 'si'
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
 
       - name: Install firebase-tools
         if: steps.check.outputs.listo == 'si'

@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="es">
+<html lang="es-MX">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
@@ -53,26 +53,14 @@ footer{padding-block:32px 48px;text-align:center;color:var(--gris);font-size:.9r
 </style>
 </head>
 <body>
-<script>
-// ─── DATOS DEL RESTAURANTE ─ edita aquí. Lo que quede vacío no se muestra.
-window.ENCINO_SITIO = {
-  lema: 'Desayunos y comidas de fin de semana en Oaxaca',
-  descripcion: '',          // 2-3 líneas: qué tipo de cocina, ambiente, especialidades
-  direccion: '',            // Calle, número, colonia, Oaxaca de Juárez, Oax., C.P.
-  telefono: '',             // 951 000 0000
-  whatsapp: '',             // mismo formato; opcional
-  mapa: '',                 // liga "Compartir" de Google Maps
-  facebook: '', instagram: '',
-  cocina: 'Mexicana, oaxaqueña',
-  rangoPrecio: '$$'
-};
-</script>
+<!-- Datos del restaurante: se generan desde sitio.config.json (ver herramientas/build.js) -->
+<script src="sitio.js"></script>
 <header class="portada w">
   <div class="eyebrow">Oaxaca</div>
   <h1>Restaurante Encino</h1>
   <p class="lema" id="lema"></p>
   <span class="sep" aria-hidden="true"></span>
-  <div class="acciones"><a class="btn p" href="carta.html">Ver el menú</a><a class="btn" href="pedidos.html">Ordenar en línea</a></div>
+  <div class="acciones"><a class="btn p" href="carta.html">Ver el menú</a><a class="btn" href="pedidos.html">Ordenar en línea</a><!--recetas--><a class="btn" href="/recetas/">Recetas</a><!--/recetas--></div>
 </header>
 <main class="w">
   <section id="sobre" hidden><h2>Encino</h2><p id="desc"></p></section>
@@ -92,7 +80,7 @@ window.ENCINO_SITIO = {
     <dl class="datos" id="datos"></dl>
   </section>
 </main>
-<footer class="w">Restaurante Encino · Oaxaca, México</footer>
+<footer class="w">Restaurante Encino · Oaxaca, México<!--recetas--> · <a href="/recetas/">Recetas</a><!--/recetas--></footer>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
 <script src="config.js"></script>
@@ -100,9 +88,8 @@ window.ENCINO_SITIO = {
 <script src="comun.js"></script>
 <script>
 (function(){
-  var E = Encino, esc = E.esc, D = window.ENCINO_SITIO, cfg = E.cfgFrom([]), menu = [];
+  var E = Encino, esc = E.esc, D = window.ENCINO_SITIO || {}, cfg = E.cfgFrom([]), menu = [];
   var $ = function(id){ return document.getElementById(id); };
-  var DIAS_EN = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
 
   // Horario por día a partir de los menús configurados (el más temprano y el más tarde)
   function horarioPorDia(){
@@ -137,20 +124,6 @@ window.ENCINO_SITIO = {
       ['Facebook', D.facebook, '<a href="' + esc(D.facebook) + '" target="_blank" rel="noopener">Facebook</a>'],
       ['Instagram', D.instagram, '<a href="' + esc(D.instagram) + '" target="_blank" rel="noopener">Instagram</a>']].filter(function(x){ return x[1]; });
     if (datos.length) { $('visita').hidden = false; $('datos').innerHTML = datos.map(function(x){ return '<div><dt>' + x[0] + '</dt><dd>' + (x[2] || esc(x[1])) + '</dd></div>'; }).join(''); }
-    jsonLd(h);
-  }
-  // Datos estructurados para Google (tipo Restaurant)
-  function jsonLd(h){
-    var ld = { '@context': 'https://schema.org', '@type': 'Restaurant', name: 'Restaurante Encino', url: 'https://encino.app/',
-      servesCuisine: D.cocina || undefined, priceRange: D.rangoPrecio || undefined, telephone: D.telefono || undefined,
-      hasMenu: 'https://encino.app/carta.html', acceptsReservations: false,
-      address: D.direccion ? { '@type': 'PostalAddress', streetAddress: D.direccion, addressLocality: 'Oaxaca de Juárez', addressRegion: 'Oaxaca', addressCountry: 'MX' } : undefined,
-      sameAs: [D.facebook, D.instagram].filter(Boolean),
-      openingHoursSpecification: Object.keys(h).map(function(d){ return { '@type': 'OpeningHoursSpecification', dayOfWeek: DIAS_EN[d], opens: h[d].desde, closes: h[d].hasta }; }),
-      potentialAction: { '@type': 'OrderAction', target: 'https://encino.app/pedidos.html' } };
-    var s = document.getElementById('ld') || document.createElement('script');
-    s.id = 'ld'; s.type = 'application/ld+json'; s.textContent = JSON.stringify(ld);
-    document.head.appendChild(s);
   }
   pinta();
   Store.init().then(function(){

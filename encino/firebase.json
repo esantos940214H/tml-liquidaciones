@@ -1,10 +1,12 @@
 {
   "hosting": {
-    "public": ".",
-    "ignore": ["firebase.json", ".firebaserc", "README.md", "firestore.rules.txt", "**/.*"],
+    "public": "publico",
+    "ignore": ["**/.*"],
     "cleanUrls": false,
     "headers": [
-      { "source": "**/*.@(html|js)", "headers": [{ "key": "Cache-Control", "value": "no-cache" }] }
+      { "source": "**/*.@(html|js|css)", "headers": [{ "key": "Cache-Control", "value": "no-cache" }] },
+      { "source": "/recetas/**/*.@(jpg|webp)", "headers": [{ "key": "Cache-Control", "value": "public, max-age=604800" }] },
+      { "source": "/recetas/**", "headers": [{ "key": "X-Content-Type-Options", "value": "nosniff" }] }
     ]
   }
 }
