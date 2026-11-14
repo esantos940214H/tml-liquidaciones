@@ -837,6 +837,7 @@ function calcularNominaAutomatica(){
   var dias=window.CalculoNomina.diasEnPeriodo(periodoIni,periodoFin);
   if(dias<=0){alert('El periodo "hasta" debe ser igual o posterior al "desde".');return;}
   var sinDatos=[];
+  var sinSalarioDiario=[];
   document.querySelectorAll('#tbGenNomina tr').forEach(function(tr){
     var opId=parseInt(tr.dataset.opid);
     var op=OPERADORES.find(function(o){return o.operadorId===opId;});
@@ -844,6 +845,15 @@ function calcularNominaAutomatica(){
     if(nom.salarioDiario==null&&nom.sdiSbc==null){
       sinDatos.push((op&&op.nombre)||opId);
       return; // sin datos de Flota — se deja en 0 para captura manual, no se adivina
+    }
+    // La PERCEPCIÓN se calcula con salarioDiario (no con sdiSbc, que es solo
+    // la base para IMSS/RCV) — si falta salarioDiario aunque sí haya sdiSbc,
+    // el cálculo sigue (IMSS/RCV sí salen) pero la percepción queda en $0 sin
+    // avisar, y eso fue justo el bug reportado: se veían IMSS/RCV calculados
+    // pero percepción en ceros sin explicación. Se avisa aparte para que se
+    // note y no se confunda con "operador sin datos en Flota".
+    if(nom.salarioDiario==null){
+      sinSalarioDiario.push((op&&op.nombre)||opId);
     }
     var r=window.CalculoNomina.calcular({
       salarioDiario:nom.salarioDiario,sdiSbc:nom.sdiSbc,dias:dias,infonavit:nom.infonavit||null
@@ -859,7 +869,8 @@ function calcularNominaAutomatica(){
   var info=$('calcNominaInfo');
   info.style.display='block';
   info.innerHTML='<div class="alert alert-ok">✅ Calculado para '+dias+' día(s) del periodo. Revisa cada fila (en especial ISR/IMSS/RCV) antes de timbrar — esto es un punto de partida, no un cálculo certificado por tu contador.</div>'
-    +(sinDatos.length?'<div class="alert alert-warn" style="margin-top:6px">⚠️ Sin salario diario/SDI capturado en Flota, se dejaron en $0.00 — captúralo antes de timbrarles: '+sinDatos.join(', ')+'.</div>':'');
+    +(sinDatos.length?'<div class="alert alert-warn" style="margin-top:6px">⚠️ Sin salario diario/SDI capturado en Flota, se dejaron en $0.00 — captúralo antes de timbrarles: '+sinDatos.join(', ')+'.</div>':'')
+    +(sinSalarioDiario.length?'<div class="alert alert-warn" style="margin-top:6px">⚠️ Tienen SDI/SBC capturado (por eso IMSS/RCV sí calcularon) pero les falta el "Salario diario" en Flota, así que la PERCEPCIÓN quedó en $0.00 — captúrales ese campo antes de timbrar: '+sinSalarioDiario.join(', ')+'.</div>':'');
 }
 const FUNCTION_URL_GENERAR_NOMINA='https://us-central1-tml-liquidaciones.cloudfunctions.net/generarNominaFacturapi';
 async function generarYTimbrarNominaUI(){
