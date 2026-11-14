@@ -1970,6 +1970,16 @@ function mtoOperacionesAplicablesMOP(unidad,km){
   return{esPrimeraVez:esPrimeraVez,nivelesChasis:nivelesChasis,nivelesMotor:nivelesMotor,checkpoint:checkpoint,
     diff:diff,muyTemprano:muyTemprano,vencido:vencido,operaciones:operaciones};
 }
+// mtoCheckpointYaAtendido: true si ya existe una orden de mantenimiento
+// registrada (MTO_HISTORIAL) para esta unidad con kilometraje >= al
+// checkpoint en cuestión (en km absolutos, base+checkpoint). Se usa para que
+// el aviso de "vencido" deje de aparecer en cuanto se genera la orden de ese
+// checkpoint, en vez de seguir pegado hasta que el camión recorra los
+// siguientes 16,000/30,000 km reales (que es lo que tardaría en moverse el
+// odómetro de Wialon por sí solo).
+function mtoCheckpointYaAtendido(unidad,checkpointAbsKm){
+  return MTO_HISTORIAL.some(function(m){return m.unidad===unidad&&m.kilometraje!=null&&m.kilometraje>=checkpointAbsKm;});
+}
 // mtoDiagnosticoMOPUnidad: igual que mtoOperacionesAplicablesMOP pero
 // usando el kilometraje de Wialon (no el capturado a mano en el formulario)
 // — para poder marcar unidades vencidas en el selector/tablas aunque nadie
@@ -1981,7 +1991,9 @@ function mtoDiagnosticoMOPUnidad(unidad){
   if(!odo||odo.km==null)return null;
   var base=MTO_MOP_BASE[String(unidad)];
   if(!base||base.kmIM==null)return null;
-  return mtoOperacionesAplicablesMOP(unidad,odo.km);
+  var r=mtoOperacionesAplicablesMOP(unidad,odo.km);
+  if(r.vencido&&mtoCheckpointYaAtendido(unidad,base.kmIM+r.checkpoint))r.vencido=false;
+  return r;
 }
 // vwDiagnosticoUnidad: mismo criterio que mtoDiagnosticoMOPUnidad, para la
 // unidad 529 (plan VW Delivery 9-170).
@@ -1991,7 +2003,9 @@ function vwDiagnosticoUnidad(unidad){
   if(!odo||odo.km==null)return null;
   var base=MTO_VW_BASE[String(unidad)];
   if(!base||base.kmBase==null)return null;
-  return vwPasoActual(unidad,odo.km);
+  var r=vwPasoActual(unidad,odo.km);
+  if(r.vencido&&mtoCheckpointYaAtendido(unidad,base.kmBase+r.checkpoint))r.vencido=false;
+  return r;
 }
 // mtoUnidadesVencidas: unidades con manual oficial (Freightliner o VW) cuyo
 // checkpoint ya se pasó por más de 1,000 km según el odómetro real de
