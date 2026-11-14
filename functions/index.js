@@ -3557,7 +3557,13 @@ function _revisarBuzonPedidosCore(user, pass, apiKey) {
         // divididos en renglones distintos, pero por si acaso, esto es lo
         // que evita registrar el mismo pedido dos veces como si fueran dos).
         // El T.U.'s 1 se usa como id del documento/orden de embarque principal.
-        const partes = String(r.ordenEmbarque || '').split(/[\/,;]+/)
+        // También se admite "-" como separador: algunos correos traen el par
+        // de T.U.'s unido con guion en vez de "/" (ej. "6500386386-6500386387")
+        // — sin esto, la IA lo extrae tal cual (correcto, así viene en el
+        // correo) pero no se separaba, y el guion completo se usaba como id,
+        // creando un segundo registro "fantasma" (sin Excel de Carta Porte,
+        // nunca facturable) además del que ya existía con el T.U.'s 1 real.
+        const partes = String(r.ordenEmbarque || '').split(/[\/,;-]+/)
           .map(function (p) { return _normalizarOrdenEmbarqueServer(p); })
           .filter(function (p) { return p; });
         if (!partes.length) { renglonesSinOrden.push(r); continue; }
